@@ -6,115 +6,30 @@
 <title>Samurai Motors - 業務管理</title>
 <!-- Telegram Web App SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg: #0f0f0f;
-  --card: #1a1a1a;
-  --border: #2a2a2a;
-  --accent: #c8102e;
-  --gold: #c9a84c;
-  --text: #e8e8e8;
-  --text-dim: #888;
-}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
   height: 100%;
-  font-family: 'Noto Sans Khmer', 'Noto Sans JP', sans-serif;
-  background: var(--bg);
-  color: var(--text);
   overflow: hidden;
+  background: #0f0f0f;
 }
-
-/* タブナビゲーション */
-.tab-nav {
-  display: flex;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-}
-.tab-btn {
-  flex: 1;
-  padding: 14px 8px;
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.2s;
-  border-bottom: 3px solid transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-.tab-btn.active {
-  color: var(--gold);
-  border-bottom-color: var(--gold);
-  background: rgba(201, 168, 76, 0.08);
-}
-.tab-btn .tab-icon {
-  font-size: 18px;
-}
-
-/* iframeコンテナ */
-.tab-content {
-  position: fixed;
-  top: 53px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-.tab-content iframe {
+iframe {
   width: 100%;
   height: 100%;
   border: none;
-  display: none;
-}
-.tab-content iframe.active {
   display: block;
 }
 </style>
 </head>
 <body>
 
-<nav class="tab-nav">
-  <button class="tab-btn active" id="tabJob" onclick="switchTab('job')">
-    <span class="tab-icon">📋</span>
-    <span>ការគ្រប់គ្រង<br><small style="font-size:10px;color:var(--text-dim)">ジョブ管理</small></span>
-  </button>
-  <button class="tab-btn" id="tabInventory" onclick="switchTab('inventory')">
-    <span class="tab-icon">📦</span>
-    <span>ស្តុកទំនិញ<br><small style="font-size:10px;color:var(--text-dim)">在庫管理</small></span>
-  </button>
-</nav>
-
-<div class="tab-content">
-  <iframe id="frameJob" class="active" src="job-manager.html"></iframe>
-  <iframe id="frameInventory" src="inventory.html"></iframe>
-</div>
+<iframe src="job-manager.html"></iframe>
 
 <script>
 // Telegram Mini App 初期化
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
   Telegram.WebApp.expand();
-}
-
-function switchTab(tab) {
-  // ボタンの状態を切り替え
-  document.getElementById('tabJob').classList.toggle('active', tab === 'job');
-  document.getElementById('tabInventory').classList.toggle('active', tab === 'inventory');
-
-  // iframeの表示を切り替え
-  document.getElementById('frameJob').classList.toggle('active', tab === 'job');
-  document.getElementById('frameInventory').classList.toggle('active', tab === 'inventory');
 }
 </script>
 </body>
