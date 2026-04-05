@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: samurai-motors-app
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
