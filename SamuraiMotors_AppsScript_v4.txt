@@ -238,14 +238,14 @@ function handleJobSubmit(data) {
   // Telegram通知（レコード保存確認のみ、写真はjob_start/job_endで送信済み）
   try {
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-      var msg = '📋 *ジョブ記録保存完了*\n'
+      var msg = '📋 *Job Record Saved (កំណត់ត្រាការងារបានរក្សាទុក)*\n'
         + '━━━━━━━━━━━━━━━\n'
         + '🆔 ' + jobId + '\n'
         + '👤 ' + (data.name || '-') + '\n'
         + '🏢 ' + (data.building || '-') + ' ' + (data.room || '') + '\n'
         + '🚘 ' + (data.carModel || '-') + ' | ' + (data.plate || '-') + '\n'
         + '📦 ' + (data.plan || '-') + '\n'
-        + '⏱ ' + duration + ' 分\n';
+        + '⏱ ' + duration + ' min (នាទី)\n';
 
       sendTelegram(msg);
     }
@@ -295,19 +295,19 @@ function handleJobStart(data) {
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
       var startFormatted = data.startTime ? formatCambodiaTime(new Date(data.startTime)) : formatCambodiaTime(new Date());
 
-      var msg = '🚗 *作業スタート*\n'
+      var msg = '🚗 *Work Started (ការងារចាប់ផ្តើម)*\n'
         + '━━━━━━━━━━━━━━━\n'
         + '👤 ' + (data.name || '-') + '\n'
         + '🏢 ' + (data.building || '-') + ' ' + (data.room || '') + '\n'
         + '🚘 ' + (data.carModel || '-') + ' | ' + (data.plate || '-') + '\n'
         + '📦 ' + (data.plan || '-') + '\n'
-        + '▶ 開始: ' + startFormatted + '\n';
+        + '▶ Start (ចាប់ផ្តើម): ' + startFormatted + '\n';
 
       sendTelegram(msg);
 
       // ビフォー写真をTelegramに送信
       if (beforeLinks.length > 0) {
-        sendPhotoGroupToTelegram(beforeLinks, '📸 ビフォー写真');
+        sendPhotoGroupToTelegram(beforeLinks, '📸 Before Photos (រូបថតមុន)');
       }
     }
   } catch (tgErr) {
@@ -363,20 +363,20 @@ function handleJobEnd(data) {
       var endFormatted = data.endTime ? formatCambodiaTime(new Date(data.endTime)) : formatCambodiaTime(new Date());
       var durationMin = data.duration || 0;
 
-      var msg = '✅ *作業完了*\n'
+      var msg = '✅ *Work Completed (ការងារបានបញ្ចប់)*\n'
         + '━━━━━━━━━━━━━━━\n'
         + '👤 ' + (data.name || '-') + '\n'
         + '🏢 ' + (data.building || '-') + ' ' + (data.room || '') + '\n'
         + '🚘 ' + (data.carModel || '-') + ' | ' + (data.plate || '-') + '\n'
         + '📦 ' + (data.plan || '-') + '\n'
-        + '⏹ 終了: ' + endFormatted + '\n'
-        + '⏱ 所要時間: ' + durationMin + ' 分\n';
+        + '⏹ End (បញ្ចប់): ' + endFormatted + '\n'
+        + '⏱ Duration (រយៈពេល): ' + durationMin + ' min\n';
 
       sendTelegram(msg);
 
       // アフター写真をTelegramに送信
       if (afterLinks.length > 0) {
-        sendPhotoGroupToTelegram(afterLinks, '✨ アフター写真');
+        sendPhotoGroupToTelegram(afterLinks, '✨ After Photos (រូបថតក្រោយ)');
       }
     }
   } catch (tgErr) {
@@ -509,37 +509,37 @@ function sendDailySummary() {
   if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
     var sheetUrl = ss.getUrl();
 
-    var msg = '📊 *' + today + ' 日次サマリー*\n'
+    var msg = '📊 *' + today + ' Daily Summary (សង្ខេបប្រចាំថ្ងៃ)*\n'
       + '━━━━━━━━━━━━━━━━━━\n\n'
-      + '🚗 総ジョブ数: *' + todayJobs.length + '件*\n'
-      + '⏱ 総所要時間: *' + totalDuration + '分*\n'
-      + '📐 平均所要時間: *' + avgDuration + '分/台*\n\n';
+      + '🚗 Total Jobs (ការងារសរុប): *' + todayJobs.length + '*\n'
+      + '⏱ Total Time (ពេលវេលាសរុប): *' + totalDuration + ' min*\n'
+      + '📐 Avg per Car (មធ្យមក្នុងមួយគ្រឿង): *' + avgDuration + ' min*\n\n';
 
     if (todayJobs.length > 0) {
-      msg += '📋 *ジョブ詳細*\n';
+      msg += '📋 *Job Details (ព័ត៌មានលម្អិត)*\n';
       todayJobs.forEach(function(job, idx) {
         msg += (idx + 1) + '. ' + (job.name || '-')
           + ' | ' + (job.building || '') + ' ' + (job.room || '')
           + ' | ' + (job.carModel || '-')
-          + ' | ' + job.duration + '分'
+          + ' | ' + job.duration + ' min'
           + ' | ' + (job.plan || '-') + '\n';
       });
       msg += '\n';
     }
 
-    msg += '📦 *プラン内訳*\n' + (planSummary || 'なし') + '\n\n';
+    msg += '📦 *Plan Breakdown (ការបែងចែកគម្រោង)*\n' + (planSummary || 'None') + '\n\n';
 
     if (alerts.length > 0) {
-      msg += '⚠️ *在庫アラート*\n';
+      msg += '⚠️ *Stock Alert (ការជូនដំណឹងស្តុក)*\n';
       alerts.forEach(function(a) {
         var icon = a.qty <= 0 ? '🔴' : '🟡';
-        msg += icon + ' ' + a.name + ': 残 ' + a.qty + ' ' + a.unit + '\n';
+        msg += icon + ' ' + a.name + ': ' + a.qty + ' left (' + a.unit + ')\n';
       });
     } else {
-      msg += '✅ 在庫: 問題なし\n';
+      msg += '✅ Stock: OK (ស្តុក: គ្មានបញ្ហា)\n';
     }
 
-    msg += '\n📄 [スプレッドシートを開く](' + sheetUrl + ')';
+    msg += '\n📄 [Open Spreadsheet (បើកសៀវភៅបញ្ជី)](' + sheetUrl + ')';
 
     sendTelegram(msg);
   }
