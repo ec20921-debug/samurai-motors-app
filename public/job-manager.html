@@ -472,6 +472,114 @@ var totalSteps = 5;
 var photos = { before: [null,null,null,null], after: [null,null,null,null] };
 var timestamps = { registered: null, scheduled: null, start: null, end: null };
 var timerInterval = null;
+var SESSION_KEY = 'samurai_active_job';
+
+// ===== セッション保存・復元 =====
+// 画面を閉じてもデータが残るようにlocalStorageに保存
+function saveSession() {
+  try {
+    var state = {
+      currentStep: currentStep,
+      timestamps: {
+        registered: timestamps.registered ? timestamps.registered.toISOString() : null,
+        scheduled: timestamps.scheduled || null,
+        start: timestamps.start ? timestamps.start.toISOString() : null,
+        end: timestamps.end ? timestamps.end.toISOString() : null
+      },
+      form: {
+        name: document.getElementById('name') ? document.getElementById('name').value : '',
+        phone: document.getElementById('phone') ? document.getElementById('phone').value : '',
+        building: document.getElementById('building') ? document.getElementById('building').value : '',
+        buildingOther: document.getElementById('buildingOther') ? document.getElementById('buildingOther').value : '',
+        room: document.getElementById('room') ? document.getElementById('room').value : '',
+        carModel: document.getElementById('carModel') ? document.getElementById('carModel').value : '',
+        plate: document.getElementById('plate') ? document.getElementById('plate').value : '',
+        plan: (function(){ var el = document.querySelector('input[name="plan"]:checked'); return el ? el.id : ''; })(),
+        mapUrl: document.getElementById('mapUrl') ? document.getElementById('mapUrl').value : '',
+        notes: document.getElementById('notes') ? document.getElementById('notes').value : '',
+        schedDate: document.getElementById('schedDate') ? document.getElementById('schedDate').value : '',
+        schedTime: document.getElementById('schedTime') ? document.getElementById('schedTime').value : ''
+      },
+      // 写真はサイズが大きいため保存しない（開始時にGASに送信済み）
+      photosExist: {
+        before: photos.before.map(function(p){ return p !== null; }),
+        after: photos.after.map(function(p){ return p !== null; })
+      },
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(state));
+  } catch(e) {
+    // localStorageが使えない場合は無視
+  }
+}
+
+// 保存済みセッションを復元
+function restoreSession() {
+  try {
+    var saved = localStorage.getItem(SESSION_KEY);
+    if (!saved) return false;
+    var state = JSON.parse(saved);
+
+    // 24時間以上前のセッションは破棄
+    var savedTime = new Date(state.savedAt);
+    if (new Date() - savedTime > 24 * 60 * 60 * 1000) {
+      clearSession();
+      return false;
+    }
+
+    // タイムスタンプ復元
+    if (state.timestamps.registered) timestamps.registered = new Date(state.timestamps.registered);
+    if (state.timestamps.scheduled) timestamps.scheduled = state.timestamps.scheduled;
+    if (state.timestamps.start) timestamps.start = new Date(state.timestamps.start);
+    if (state.timestamps.end) timestamps.end = new Date(state.timestamps.end);
+
+    // フォーム復元
+    if (state.form) {
+      if (state.form.name) document.getElementById('name').value = state.form.name;
+      if (state.form.phone) document.getElementById('phone').value = state.form.phone;
+      if (state.form.building) {
+        document.getElementById('building').value = state.form.building;
+        if (state.form.building === 'other') {
+          document.getElementById('buildingOtherField').style.display = 'block';
+          document.getElementById('buildingOther').value = state.form.buildingOther || '';
+        }
+      }
+      if (state.form.room) document.getElementById('room').value = state.form.room;
+      if (state.form.carModel) document.getElementById('carModel').value = state.form.carModel;
+      if (state.form.plate) document.getElementById('plate').value = state.form.plate;
+      if (state.form.plan) {
+        var radio = document.getElementById(state.form.plan);
+        if (radio) radio.checked = true;
+      }
+      if (state.form.mapUrl) document.getElementById('mapUrl').value = state.form.mapUrl;
+      if (state.form.notes) document.getElementById('notes').value = state.form.notes;
+      if (state.form.schedDate) document.getElementById('schedDate').value = state.form.schedDate;
+      if (state.form.schedTime) document.getElementById('schedTime').value = state.form.schedTime;
+    }
+
+    // ステップ復元
+    currentStep = state.currentStep || 1;
+
+    // タイマー復元（作業中の場合）
+    if (currentStep === 4 && timestamps.start && !timestamps.end) {
+      // 開始時刻の表示を復元
+      var startDisplay = document.getElementById('startTimeDisplay');
+      if (startDisplay) startDisplay.textContent = formatTime(timestamps.start);
+      // タイマーを開始時刻から再計算して再開
+      startTimer();
+    }
+
+    renderStep();
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+// セッションをクリア（送信完了後）
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+}
 
 var stepNames = [
   '',
@@ -505,7 +613,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // GPS
   document.getElementById('gpsBtn').addEventListener('click', getGPS);
 
-  renderStep();
+  // セッション復元（前回閉じた状態から再開）
+  var restored = restoreSession();
+  if (!restored) {
+    renderStep();
+  }
 });
 
 // ===== NAVIGATION =====
@@ -580,6 +692,7 @@ function goNext() {
     currentStep++;
     renderStep();
     if (currentStep === 2) showRegSummary();
+    saveSession();
   }
 }
 
@@ -645,6 +758,7 @@ function startWork() {
   currentStep = 4;
   renderStep();
   startTimer();
+  saveSession();
 }
 
 // ===== STEP 4: Timer =====
@@ -690,6 +804,7 @@ function endWork() {
   currentStep = 5;
   renderStep();
   showFinalSummary();
+  saveSession();
 }
 
 // ===== STEP 5: Final Summary =====
@@ -803,14 +918,17 @@ function submitAll() {
       body: JSON.stringify(data)
     })
     .then(function() {
+      clearSession();
       document.getElementById('successModal').classList.add('show');
     })
     .catch(function() {
       saveOffline(data);
+      clearSession();
       document.getElementById('successModal').classList.add('show');
     });
   } else {
     saveOffline(data);
+    clearSession();
     document.getElementById('successModal').classList.add('show');
   }
 }
