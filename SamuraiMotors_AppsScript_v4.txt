@@ -34,11 +34,13 @@ var PHOTO_FOLDER_NAME = 'SamuraiMotors_Photos';
 // 在庫管理シート名
 var INVENTORY_SHEET_NAME = 'Inventory';
 
-// Telegram Bot設定（ここにトークンとチャットIDを入れてください）
-// @BotFather から取得したトークン
+// Telegram Bot設定
 var TELEGRAM_BOT_TOKEN = '8248146123:AAEORbRSuqwLgZxcb-Pyc90DaDScH4W2j7w';
-// サマリー送信先のチャットID（個人 or グループ）
-var TELEGRAM_CHAT_ID = '7500384947';
+// 通知先チャットID（複数指定で両方に送信）
+var TELEGRAM_CHAT_IDS = [
+  '7500384947',   // 個人チャット（d suzuki）
+  '-5178607881'   // グループ（【admin】Samurai motors業務管理）
+];
 
 // ═══════════════════════════════════════════
 //  正しいヘッダー定義（23列）
@@ -237,7 +239,7 @@ function handleJobSubmit(data) {
 
   // Telegram通知（レコード保存確認のみ、写真はjob_start/job_endで送信済み）
   try {
-    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
       var msg = '📋 *記録保存完了（កំណត់ត្រាបានរក្សាទុក）*\n'
         + '━━━━━━━━━━━━━━━\n'
         + '🆔 ' + jobId + '\n'
@@ -292,7 +294,7 @@ function handleJobStart(data) {
 
   // Telegram通知を送信
   try {
-    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
       var startFormatted = data.startTime ? formatCambodiaTime(new Date(data.startTime)) : formatCambodiaTime(new Date());
 
       var msg = '🚗 *作業スタート（ការងារចាប់ផ្តើម）*\n'
@@ -359,7 +361,7 @@ function handleJobEnd(data) {
 
   // Telegram通知を送信
   try {
-    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+    if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
       var endFormatted = data.endTime ? formatCambodiaTime(new Date(data.endTime)) : formatCambodiaTime(new Date());
       var durationMin = data.duration || 0;
 
@@ -506,7 +508,7 @@ function sendDailySummary() {
   }
 
   // Telegram送信
-  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
     var sheetUrl = ss.getUrl();
 
     var msg = '📊 *' + today + ' 日次サマリー（សង្ខេបប្រចាំថ្ងៃ）*\n'
@@ -578,41 +580,44 @@ function checkInventoryAlerts() {
 // ═══════════════════════════════════════════
 
 function sendTelegram(message) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    Logger.log('Telegram未設定。BOT_TOKENとCHAT_IDを設定してください。');
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_IDS || TELEGRAM_CHAT_IDS.length === 0) {
+    Logger.log('Telegram未設定。BOT_TOKENとCHAT_IDSを設定してください。');
     return;
   }
 
   var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage';
 
-  var payload = {
-    chat_id: TELEGRAM_CHAT_ID,
-    text: message,
-    parse_mode: 'Markdown',
-    disable_web_page_preview: true
-  };
+  // 全チャットIDに送信
+  TELEGRAM_CHAT_IDS.forEach(function(chatId) {
+    var payload = {
+      chat_id: chatId,
+      text: message,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    };
 
-  var options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
 
-  try {
-    var response = UrlFetchApp.fetch(url, options);
-    var result = JSON.parse(response.getContentText());
-    if (!result.ok) {
-      Logger.log('Telegram error: ' + response.getContentText());
+    try {
+      var response = UrlFetchApp.fetch(url, options);
+      var result = JSON.parse(response.getContentText());
+      if (!result.ok) {
+        Logger.log('Telegram error (chat ' + chatId + '): ' + response.getContentText());
+      }
+    } catch (err) {
+      Logger.log('Telegram fetch error (chat ' + chatId + '): ' + err.toString());
     }
-  } catch (err) {
-    Logger.log('Telegram fetch error: ' + err.toString());
-  }
+  });
 }
 
 // Drive写真をTelegramに送信（ビフォー/アフターをグループで送る）
 function sendPhotoGroupToTelegram(links, caption) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return false;
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_IDS || TELEGRAM_CHAT_IDS.length === 0) return false;
 
   // 有効なリンクだけ抽出
   var validLinks = links.filter(function(l) { return l && l.length > 0; });
@@ -629,65 +634,60 @@ function sendPhotoGroupToTelegram(links, caption) {
 
   if (fileIds.length === 0) return false;
 
-  // 1枚の場合: sendPhoto
+  // Driveから写真Blobを事前取得
+  var photoBlobs = [];
   if (fileIds.length === 1) {
     try {
-      var file = DriveApp.getFileById(fileIds[0]);
-      var blob = file.getBlob();
-      var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendPhoto';
-      var formData = {
-        'chat_id': TELEGRAM_CHAT_ID,
-        'caption': caption,
-        'photo': blob
-      };
-      UrlFetchApp.fetch(url, {
-        method: 'post',
-        payload: formData,
-        muteHttpExceptions: true
-      });
-      return true;
+      photoBlobs.push(DriveApp.getFileById(fileIds[0]).getBlob());
     } catch (err) {
-      Logger.log('sendPhoto error: ' + err.toString());
+      Logger.log('sendPhoto getBlob error: ' + err.toString());
+      return false;
+    }
+  } else {
+    try {
+      for (var i = 0; i < fileIds.length; i++) {
+        photoBlobs.push(DriveApp.getFileById(fileIds[i]).getBlob().setName('photo_' + i + '.jpg'));
+      }
+    } catch (err) {
+      Logger.log('sendMediaGroup getBlob error: ' + err.toString());
       return false;
     }
   }
 
-  // 複数枚の場合: sendMediaGroup
-  try {
-    var blobs = [];
-    var media = [];
-    for (var i = 0; i < fileIds.length; i++) {
-      var file = DriveApp.getFileById(fileIds[i]);
-      var blob = file.getBlob().setName('photo_' + i + '.jpg');
-      blobs.push(blob);
-      var mediaItem = {
-        type: 'photo',
-        media: 'attach://photo_' + i
-      };
-      if (i === 0) mediaItem.caption = caption;
-      media.push(mediaItem);
+  // 全チャットIDに送信
+  TELEGRAM_CHAT_IDS.forEach(function(chatId) {
+    try {
+      if (fileIds.length === 1) {
+        // 1枚の場合: sendPhoto
+        var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendPhoto';
+        UrlFetchApp.fetch(url, {
+          method: 'post',
+          payload: { 'chat_id': chatId, 'caption': caption, 'photo': photoBlobs[0] },
+          muteHttpExceptions: true
+        });
+      } else {
+        // 複数枚の場合: sendMediaGroup
+        var media = [];
+        var formData = { 'chat_id': chatId };
+        for (var i = 0; i < photoBlobs.length; i++) {
+          var mediaItem = { type: 'photo', media: 'attach://photo_' + i };
+          if (i === 0) mediaItem.caption = caption;
+          media.push(mediaItem);
+          formData['photo_' + i] = photoBlobs[i];
+        }
+        formData['media'] = JSON.stringify(media);
+        var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMediaGroup';
+        UrlFetchApp.fetch(url, {
+          method: 'post',
+          payload: formData,
+          muteHttpExceptions: true
+        });
+      }
+    } catch (err) {
+      Logger.log('sendPhoto/MediaGroup error (chat ' + chatId + '): ' + err.toString());
     }
-
-    var formData = {
-      'chat_id': TELEGRAM_CHAT_ID,
-      'media': JSON.stringify(media)
-    };
-    // 各写真をフォームデータに添付
-    for (var i = 0; i < blobs.length; i++) {
-      formData['photo_' + i] = blobs[i];
-    }
-
-    var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMediaGroup';
-    UrlFetchApp.fetch(url, {
-      method: 'post',
-      payload: formData,
-      muteHttpExceptions: true
-    });
-    return true;
-  } catch (err) {
-    Logger.log('sendMediaGroup error: ' + err.toString());
-    return false;
-  }
+  });
+  return true;
 }
 
 // 毎日19:00（日本時間）にサマリーを送信するトリガー設定
@@ -802,12 +802,12 @@ function handleInventoryUpdate(data) {
       var alert = null;
       if (newQty <= 0) {
         alert = 'out_of_stock';
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
           sendTelegram('🔴 *在庫切れ警報*\n' + itemName + ' の在庫が 0 になりました！');
         }
       } else if (newQty <= threshold) {
         alert = 'low_stock';
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
           sendTelegram('🟡 *在庫残少*\n' + itemName + ' の在庫が ' + newQty + ' まで減りました（閾値: ' + threshold + '）');
         }
       }
@@ -883,9 +883,9 @@ function deductInventory(usedMaterials) {
         // 閾値チェック → Telegram通知
         var threshold = sheet.getRange(r, 6).getValue();
         var itemName = sheet.getRange(r, 2).getValue();
-        if (newQty <= 0 && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (newQty <= 0 && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
           sendTelegram('🔴 *在庫切れ*\n' + itemName + ' がジョブ使用により在庫 0 になりました');
-        } else if (newQty <= threshold && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        } else if (newQty <= threshold && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
           sendTelegram('🟡 *在庫残少*\n' + itemName + ': 残 ' + newQty + '（閾値: ' + threshold + '）');
         }
 
