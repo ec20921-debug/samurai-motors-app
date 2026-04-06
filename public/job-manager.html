@@ -907,7 +907,9 @@ function submitAll() {
     scheduled: timestamps.scheduled || '',
     startTime: timestamps.start ? timestamps.start.toISOString() : '',
     endTime: timestamps.end ? timestamps.end.toISOString() : '',
-    duration: duration
+    duration: duration,
+    beforePhotos: photos.before.filter(function(p){return p !== null;}),
+    afterPhotos: photos.after.filter(function(p){return p !== null;})
   };
 
   if (APPS_SCRIPT_URL) {
