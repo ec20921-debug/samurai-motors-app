@@ -42,6 +42,10 @@ var TELEGRAM_CHAT_IDS = [
   '-5178607881'   // グループ（【admin】Samurai motors業務管理）
 ];
 
+// メッセージ転送設定
+var ADMIN_GROUP_ID = '-5178607881';     // Adminグループ
+var FIELD_STAFF_CHAT_ID = '7500384947'; // 現場スタッフ（個人チャット）
+
 // ═══════════════════════════════════════════
 //  正しいヘッダー定義（23列）
 // ═══════════════════════════════════════════
@@ -79,6 +83,13 @@ var CORRECT_HEADERS = [
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+
+    // Telegram Webhookからのメッセージ（update_idがある場合）
+    if (data.update_id) {
+      return handleTelegramWebhook(data);
+    }
+
+    // ミニアプリからのリクエスト（actionがある場合）
     var action = data.action || 'job';
 
     switch (action) {
@@ -94,6 +105,133 @@ function doPost(e) {
   } catch (error) {
     Logger.log('doPost error: ' + error.toString());
     return jsonResponse({ status: 'error', message: error.toString() });
+  }
+}
+
+// ═══════════════════════════════════════════
+//  Telegram Webhook：メッセージ転送
+// ═══════════════════════════════════════════
+
+function handleTelegramWebhook(update) {
+  var message = update.message;
+  if (!message) {
+    // メッセージ以外（edited_message等）は無視
+    return ContentService.createTextOutput('ok');
+  }
+
+  var chatId = String(message.chat.id);
+  var fromBot = message.from && message.from.is_bot;
+
+  // ボット自身のメッセージは無視（ループ防止）
+  if (fromBot) {
+    return ContentService.createTextOutput('ok');
+  }
+
+  var senderName = (message.from.first_name || '') + ' ' + (message.from.last_name || '');
+  senderName = senderName.trim();
+
+  // Adminグループ → 現場スタッフに転送
+  if (chatId === ADMIN_GROUP_ID) {
+    // テキストメッセージ
+    if (message.text) {
+      sendTelegramTo(FIELD_STAFF_CHAT_ID,
+        '📩 *管理者メッセージ*\n'
+        + '━━━━━━━━━━━━━━━\n'
+        + '👤 ' + senderName + '\n'
+        + '💬 ' + message.text
+      );
+    }
+
+    // スタンプ（ステッカー）
+    if (message.sticker) {
+      forwardMessage(FIELD_STAFF_CHAT_ID, chatId, message.message_id);
+    }
+
+    // 写真
+    if (message.photo) {
+      forwardMessage(FIELD_STAFF_CHAT_ID, chatId, message.message_id);
+    }
+
+    // ドキュメント
+    if (message.document) {
+      forwardMessage(FIELD_STAFF_CHAT_ID, chatId, message.message_id);
+    }
+
+    // 音声メッセージ
+    if (message.voice) {
+      forwardMessage(FIELD_STAFF_CHAT_ID, chatId, message.message_id);
+    }
+  }
+
+  // 現場スタッフ → Adminグループに転送
+  if (chatId === FIELD_STAFF_CHAT_ID) {
+    // テキストメッセージ
+    if (message.text) {
+      // ミニアプリ関連のコマンドは転送しない
+      if (message.text.indexOf('/start') === 0) {
+        return ContentService.createTextOutput('ok');
+      }
+      sendTelegramTo(ADMIN_GROUP_ID,
+        '📩 *現場スタッフ*\n'
+        + '━━━━━━━━━━━━━━━\n'
+        + '👤 ' + senderName + '\n'
+        + '💬 ' + message.text
+      );
+    }
+
+    // スタンプ・写真・ドキュメント・音声も転送
+    if (message.sticker || message.photo || message.document || message.voice) {
+      forwardMessage(ADMIN_GROUP_ID, chatId, message.message_id);
+    }
+  }
+
+  return ContentService.createTextOutput('ok');
+}
+
+// 特定のチャットにメッセージを送信（転送用）
+function sendTelegramTo(chatId, message) {
+  if (!TELEGRAM_BOT_TOKEN) return;
+
+  var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage';
+  var payload = {
+    chat_id: chatId,
+    text: message,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true
+  };
+
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('sendTelegramTo error: ' + err.toString());
+  }
+}
+
+// メッセージをそのまま転送（スタンプ・写真・音声など）
+function forwardMessage(toChatId, fromChatId, messageId) {
+  if (!TELEGRAM_BOT_TOKEN) return;
+
+  var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/forwardMessage';
+  var payload = {
+    chat_id: toChatId,
+    from_chat_id: fromChatId,
+    message_id: messageId
+  };
+
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('forwardMessage error: ' + err.toString());
   }
 }
 
@@ -979,4 +1117,20 @@ function testJobSubmit() {
 
 function testTelegram() {
   sendTelegram('🧪 テスト通知\nSamurai Motors v4 Telegram連携テストです。');
+}
+
+// Telegram Webhookを設定（デプロイ後に1回だけ実行）
+function setupWebhook() {
+  var gasUrl = ScriptApp.getService().getUrl();
+  var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/setWebhook?url=' + encodeURIComponent(gasUrl);
+
+  var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  Logger.log('Webhook設定結果: ' + response.getContentText());
+}
+
+// Webhook解除（必要時のみ）
+function removeWebhook() {
+  var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/deleteWebhook';
+  var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  Logger.log('Webhook解除結果: ' + response.getContentText());
 }
