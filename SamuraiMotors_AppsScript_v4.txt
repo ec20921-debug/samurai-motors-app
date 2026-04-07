@@ -317,15 +317,14 @@ function handleJobSubmit(data) {
   // 写真をGoogle Driveに保存 → クリック可能リンク生成
   var beforeLinks = ['','','',''];
   var afterLinks = ['','','',''];
+  var hasNewPhotos = (data.beforePhotos && data.beforePhotos.length > 0) ||
+                     (data.afterPhotos && data.afterPhotos.length > 0);
 
   try {
-    if ((data.beforePhotos && data.beforePhotos.length > 0) ||
-        (data.afterPhotos && data.afterPhotos.length > 0)) {
-
+    if (hasNewPhotos) {
+      // 写真データがある場合：Driveに保存
       var parentFolder = getOrCreateFolder(PHOTO_FOLDER_NAME);
       var jobFolder = parentFolder.createFolder(jobId + '_' + (data.name || 'unknown'));
-
-      // フォルダを共有リンクで閲覧可能にする
       jobFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
       if (data.beforePhotos) {
@@ -344,6 +343,14 @@ function handleJobSubmit(data) {
             afterLinks[i] = link;
           }
         }
+      }
+    } else {
+      // 写真データがない場合（セッション復元後など）：
+      // job_start/job_endで保存済みのフォルダからリンクを取得
+      var existingLinks = findExistingPhotoLinks(dateStr, data.name || 'unknown');
+      if (existingLinks) {
+        beforeLinks = existingLinks.before;
+        afterLinks = existingLinks.after;
       }
     }
   } catch (photoErr) {
@@ -527,6 +534,60 @@ function handleJobEnd(data) {
     status: 'ok',
     photoLinks: afterLinks
   });
+}
+
+// Driveから既存の写真リンクを検索する（セッション復元時のフォールバック）
+function findExistingPhotoLinks(dateStr, name) {
+  try {
+    var parentFolders = DriveApp.getFoldersByName(PHOTO_FOLDER_NAME);
+    if (!parentFolders.hasNext()) return null;
+    var parentFolder = parentFolders.next();
+
+    // job_start/job_endで作成されたフォルダ名: dateStr + '_' + name
+    var folderName = dateStr + '_' + name;
+    var folders = parentFolder.getFoldersByName(folderName);
+    if (!folders.hasNext()) return null;
+
+    var jobFolder = folders.next();
+    var files = jobFolder.getFiles();
+
+    var beforeLinks = ['', '', '', ''];
+    var afterLinks = ['', '', '', ''];
+
+    while (files.hasNext()) {
+      var file = files.next();
+      var fileName = file.getName();
+      var url = file.getUrl();
+
+      // ファイル名パターン: before_1.jpg, before_2.jpg, after_1.jpg, etc.
+      if (fileName.indexOf('before_') === 0) {
+        var numMatch = fileName.match(/before_(\d+)/);
+        if (numMatch) {
+          var idx = parseInt(numMatch[1], 10) - 1;
+          if (idx >= 0 && idx < 4) beforeLinks[idx] = url;
+        }
+      } else if (fileName.indexOf('after_') === 0) {
+        var numMatch = fileName.match(/after_(\d+)/);
+        if (numMatch) {
+          var idx = parseInt(numMatch[1], 10) - 1;
+          if (idx >= 0 && idx < 4) afterLinks[idx] = url;
+        }
+      }
+    }
+
+    // 写真が1つでもあればリンクを返す
+    var hasAny = beforeLinks.some(function(l) { return l !== ''; }) ||
+                 afterLinks.some(function(l) { return l !== ''; });
+
+    if (hasAny) {
+      Logger.log('既存写真リンク取得成功: ' + folderName);
+      return { before: beforeLinks, after: afterLinks };
+    }
+    return null;
+  } catch (e) {
+    Logger.log('findExistingPhotoLinks error: ' + e.toString());
+    return null;
+  }
 }
 
 // 写真リンクをHYPERLINK関数としてセルに書き込む
