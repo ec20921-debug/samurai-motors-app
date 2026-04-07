@@ -6,6 +6,20 @@
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": ["server.js"],
       "port": 3000
+    },
+    {
+      "name": "admin-task",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/task-manager.html"
+    },
+    {
+      "name": "admin-expense",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/expense-entry.html"
     }
   ]
 }

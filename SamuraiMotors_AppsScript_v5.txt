@@ -115,6 +115,8 @@ function doPost(e) {
         return handleTaskCreateFromApp(data);
       case 'task_update':
         return handleTaskUpdateFromApp(data);
+      case 'expense_create':
+        return handleExpenseCreateFromApp(data);
       default:
         return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
     }
@@ -1322,6 +1324,10 @@ function doGet(e) {
     return handleTasksGet();
   }
 
+  if (action === 'expenses') {
+    return handleExpensesGet();
+  }
+
   return ContentService
     .createTextOutput('Samurai Motors Job Manager v5 is active.')
     .setMimeType(ContentService.MimeType.TEXT);
@@ -1422,6 +1428,82 @@ function handleTaskUpdateFromApp(data) {
   }
 
   return jsonResponse({ status: 'ok', taskId: taskId, newStatus: newStatus });
+}
+
+// ミニアプリからの経費登録
+function handleExpenseCreateFromApp(data) {
+  var photoUrl = '';
+
+  // レシート写真をDriveに保存
+  if (data.receiptPhoto) {
+    try {
+      var receiptFolder = getOrCreateFolder(RECEIPT_FOLDER_NAME);
+      var now = new Date();
+      var dateStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
+      var fileName = 'receipt_' + dateStr + '_' + (data.registeredBy || 'unknown') + '.jpg';
+      var link = saveBase64Image(receiptFolder, data.receiptPhoto, fileName.replace('.jpg', ''));
+      photoUrl = link;
+    } catch (photoErr) {
+      Logger.log('handleExpenseCreateFromApp photo error: ' + photoErr.toString());
+    }
+  }
+
+  var expenseId = createExpenseRecord({
+    date: data.date || '',
+    description: data.description || '',
+    amount: data.amount || 0,
+    currency: data.currency || 'USD',
+    vendor: data.vendor || '',
+    category: data.category || '消耗品費',
+    registeredBy: data.registeredBy || '',
+    photoUrl: photoUrl,
+    ocrText: ''
+  });
+
+  // Adminグループに通知
+  sendTelegramTo(ADMIN_GROUP_ID,
+    '💰 *新規経費登録（ミニアプリ）*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + '🆔 ' + expenseId + '\n'
+    + '👤 登録者: ' + (data.registeredBy || '-') + '\n'
+    + '📅 ' + (data.date || '-') + '\n'
+    + '🏪 ' + (data.vendor || '-') + '\n'
+    + '📝 ' + (data.description || '-') + '\n'
+    + '💰 ' + (data.amount || '?') + ' ' + (data.currency || 'USD')
+    + (photoUrl ? '\n📷 [レシート](' + photoUrl + ')' : '')
+  );
+
+  return jsonResponse({ status: 'ok', expenseId: expenseId });
+}
+
+// 経費一覧API（ミニアプリ用）
+function handleExpensesGet() {
+  var sheet = getExpensesSheet();
+  var lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return jsonResponse({ status: 'ok', expenses: [] });
+  }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+  var expenses = data.map(function(row) {
+    return {
+      id: row[0],
+      created: row[1],
+      date: row[2] ? row[2].toString().substring(0, 10) : '',
+      description: row[3],
+      amount: row[4],
+      currency: row[5],
+      vendor: row[6],
+      category: row[7],
+      registeredBy: row[8],
+      photoUrl: row[9],
+      status: row[11],
+      taskId: row[12]
+    };
+  });
+
+  return jsonResponse({ status: 'ok', expenses: expenses });
 }
 
 // ═══════════════════════════════════════════

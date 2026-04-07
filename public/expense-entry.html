@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samurai Motors - 経費入力</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f0f0f;
+  --card: #1a1a1a;
+  --border: #2a2a2a;
+  --accent: #c8102e;
+  --gold: #c9a84c;
+  --gold-soft: rgba(201,168,76,0.12);
+  --text: #e8e8e8;
+  --text-dim: #888;
+  --text-label: #bbb;
+  --success: #2ecc71;
+  --success-bg: rgba(46,204,113,0.12);
+  --blue: #3498db;
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.header {
+  position: sticky; top:0; z-index:100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.logo {
+  width:40px; height:40px; border-radius:10px; flex-shrink:0;
+  overflow:hidden;
+}
+.logo img { width:100%; height:100%; object-fit:cover; }
+.header h1 { font-size:15px; letter-spacing:0.5px; }
+.header p { font-size:11px; color:var(--text-dim); margin-top:1px; }
+
+/* タブ */
+.tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+}
+.tab {
+  flex:1; padding: 12px 8px; text-align:center;
+  font-size:13px; font-weight:600; color:var(--text-dim);
+  border-bottom: 2px solid transparent;
+  cursor:pointer; transition: all 0.2s;
+}
+.tab.active { color:var(--gold); border-bottom-color:var(--gold); }
+
+.container { padding:16px; max-width:480px; margin:0 auto; padding-bottom:120px; }
+
+.view { display:none; }
+.view.active { display:block; }
+
+.section { margin-bottom:18px; }
+.section-title {
+  display:flex; align-items:center; gap:8px;
+  margin-bottom:12px; padding-bottom:6px;
+  border-bottom:1px solid var(--border);
+  font-size:14px; font-weight:600; color:var(--gold);
+}
+
+.field { margin-bottom:14px; }
+.field label {
+  display:block; font-size:13px; font-weight:600;
+  color:var(--text-label); margin-bottom:5px;
+}
+.field label .req { color:var(--accent); margin-left:3px; font-size:11px; }
+.field input, .field select, .field textarea {
+  width:100%; padding:12px 14px;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:var(--radius); color:var(--text);
+  font-size:16px; font-family:inherit;
+  transition: border-color 0.2s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline:none; border-color:var(--gold);
+}
+.field input::placeholder, .field textarea::placeholder { color:#555; }
+.field select {
+  -webkit-appearance:none; appearance:none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23888' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center; padding-right:36px;
+}
+.field textarea { min-height:70px; resize:vertical; }
+.hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
+
+/* 金額行 */
+.amount-row { display:flex; gap:8px; }
+.amount-row .field:first-child { flex:1; }
+.amount-row .field:last-child { width:100px; }
+
+/* 写真アップロード */
+.photo-upload {
+  position:relative;
+  background:var(--card); border:1.5px dashed var(--border);
+  border-radius:var(--radius); padding:24px; text-align:center;
+  cursor:pointer; transition:all 0.2s;
+}
+.photo-upload:hover { border-color:var(--gold); }
+.photo-upload.has-photo { border-style:solid; border-color:var(--success); }
+.photo-upload .upload-icon { font-size:36px; margin-bottom:8px; }
+.photo-upload .upload-text { font-size:13px; color:var(--text-dim); }
+.photo-upload .upload-text.success { color:var(--success); }
+.photo-upload input[type="file"] {
+  position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+}
+.photo-preview {
+  max-width:100%; max-height:200px; border-radius:8px; margin-top:8px;
+  display:none;
+}
+.photo-preview.show { display:block; }
+
+/* 経費カード */
+.expense-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.expense-header {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:6px;
+}
+.expense-amount {
+  font-size:18px; font-weight:700; color:var(--gold);
+}
+.expense-id {
+  font-size:10px; color:var(--text-dim);
+  background:var(--bg); padding:2px 6px; border-radius:4px;
+}
+.expense-meta {
+  font-size:12px; color:var(--text-dim); line-height:1.6;
+}
+.expense-status {
+  display:inline-block; padding:2px 8px; border-radius:10px;
+  font-size:11px; font-weight:600; margin-top:4px;
+}
+.expense-status.pending { background:rgba(243,156,18,0.15); color:#f39c12; }
+.expense-status.paid { background:var(--success-bg); color:var(--success); }
+
+/* ボタン */
+.action-area {
+  position:fixed; bottom:0; left:0; right:0;
+  padding:10px 16px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background:linear-gradient(transparent, var(--bg) 20%);
+  z-index:100;
+}
+.btn {
+  width:100%; padding:14px; border:none; border-radius:var(--radius);
+  font-size:16px; font-weight:700; font-family:inherit;
+  cursor:pointer; transition:all 0.2s;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  max-width:480px; margin:0 auto;
+}
+.btn:active { transform:scale(0.98); }
+.btn:disabled { opacity:0.4; pointer-events:none; }
+.btn-primary { background:var(--accent); color:#fff; box-shadow:0 4px 16px rgba(200,16,46,0.3); }
+
+/* モーダル */
+.modal-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.7); z-index:200;
+  align-items:center; justify-content:center;
+  padding:20px; backdrop-filter:blur(4px);
+}
+.modal-overlay.show { display:flex; }
+.modal {
+  background:var(--card); border-radius:20px;
+  padding:30px 24px; text-align:center;
+  max-width:320px; width:100%;
+  animation: modalIn 0.3s ease;
+}
+@keyframes modalIn { from{transform:scale(0.9);opacity:0;} to{transform:scale(1);opacity:1;} }
+.modal h2 { font-size:18px; margin-bottom:6px; }
+.modal p { font-size:13px; color:var(--text-dim); margin-bottom:16px; white-space:pre-line; }
+.modal-btn {
+  width:100%; padding:12px; border:none; border-radius:var(--radius);
+  font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;
+  background:var(--success); color:#fff;
+}
+
+/* トースト */
+.toast {
+  position:fixed; top:80px; left:50%; transform:translateX(-50%);
+  background:#333; color:#fff; padding:10px 20px;
+  border-radius:8px; font-size:14px; z-index:999;
+  opacity:0; transition:opacity 0.3s;
+}
+.toast.show { opacity:1; }
+
+/* ローディング */
+.loading { text-align:center; padding:20px; color:var(--text-dim); font-size:14px; }
+.spinner {
+  width:24px; height:24px; border:3px solid var(--border);
+  border-top-color:var(--gold); border-radius:50%;
+  animation:spin 0.8s linear infinite; margin:0 auto 8px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.empty-state { text-align:center; padding:40px 20px; color:var(--text-dim); }
+.empty-state .empty-icon { font-size:48px; margin-bottom:12px; }
+
+/* スプレッドシートリンク */
+.sheet-link {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:12px; background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:16px;
+  color:var(--blue); text-decoration:none; font-size:13px; font-weight:600;
+}
+.sheet-link:hover { border-color:var(--blue); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo"><img src="logo.png" alt="Samurai Motors"></div>
+  <div>
+    <h1>SAMURAI MOTORS</h1>
+    <p>経費入力・管理</p>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('entry')">💰 経費入力</div>
+  <div class="tab" onclick="switchTab('history')">📋 履歴</div>
+</div>
+
+<div class="container">
+
+  <!-- ==================== 経費入力ビュー ==================== -->
+  <div class="view active" id="viewEntry">
+
+    <a class="sheet-link" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
+      📊 経費スプレッドシートを開く
+    </a>
+
+    <div class="section">
+      <div class="section-title">📸 レシート写真</div>
+      <div class="photo-upload" id="photoUpload">
+        <span class="upload-icon">📷</span>
+        <div class="upload-text" id="uploadText">タップしてレシート写真を撮影・選択</div>
+        <input type="file" accept="image/*" capture="environment" onchange="handleReceiptPhoto(this)">
+      </div>
+      <img class="photo-preview" id="photoPreview">
+      <p class="hint">写真からOCRで自動読み取りを行います</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">💰 経費情報</div>
+
+      <div class="field">
+        <label>取引日<span class="req">*</span></label>
+        <input type="date" id="expenseDate">
+      </div>
+
+      <div class="amount-row">
+        <div class="field">
+          <label>金額<span class="req">*</span></label>
+          <input type="number" id="expenseAmount" placeholder="0.00" step="0.01">
+        </div>
+        <div class="field">
+          <label>通貨</label>
+          <select id="expenseCurrency">
+            <option value="USD" selected>USD</option>
+            <option value="KHR">KHR</option>
+            <option value="JPY">JPY</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>取引先（お店の名前）</label>
+        <input type="text" id="expenseVendor" placeholder="例: AEON Sen Sok">
+      </div>
+
+      <div class="field">
+        <label>品目・摘要<span class="req">*</span></label>
+        <textarea id="expenseDescription" placeholder="例: 冷蔵庫と洗濯機を購入"></textarea>
+      </div>
+
+      <div class="field">
+        <label>勘定科目</label>
+        <select id="expenseCategory">
+          <option value="消耗品費">消耗品費</option>
+          <option value="水道光熱費">水道光熱費</option>
+          <option value="通信費">通信費</option>
+          <option value="旅費交通費">旅費交通費</option>
+          <option value="会議費">会議費</option>
+          <option value="備品・設備費">備品・設備費</option>
+          <option value="修繕費">修繕費</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>登録者</label>
+        <select id="expenseRegisteredBy">
+          <option value="" disabled selected>選択</option>
+          <option value="ロン">ロン</option>
+          <option value="飯泉">飯泉</option>
+          <option value="五木田">五木田</option>
+          <option value="鈴木">鈴木</option>
+          <option value="矢口">矢口</option>
+          <option value="木戸">木戸</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 履歴ビュー ==================== -->
+  <div class="view" id="viewHistory">
+    <a class="sheet-link" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
+      📊 経費スプレッドシートを開く
+    </a>
+    <div id="expenseList">
+      <div class="loading"><div class="spinner"></div>経費を読み込み中...</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 入力ボタン -->
+<div class="action-area" id="entryAction">
+  <button class="btn btn-primary" onclick="submitExpense()" id="submitBtn">💰 経費を登録</button>
+</div>
+
+<!-- 完了モーダル -->
+<div class="modal-overlay" id="successModal">
+  <div class="modal">
+    <h2>✅ 経費登録完了</h2>
+    <p id="successMessage"></p>
+    <button class="modal-btn" onclick="closeModal()">OK</button>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  設定
+// ═══════════════════════════════════════════
+
+// Apps Script Web App URL（デプロイ後に設定）
+var GAS_URL = '';
+
+var receiptPhotoBase64 = '';
+
+// ═══════════════════════════════════════════
+//  初期化
+// ═══════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.Telegram && Telegram.WebApp) {
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+  }
+
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
+    var startParam = Telegram.WebApp.initDataUnsafe.start_param;
+    if (startParam) {
+      GAS_URL = decodeURIComponent(startParam);
+    }
+  }
+
+  // 今日の日付をデフォルトに
+  var today = new Date().toISOString().split('T')[0];
+  document.getElementById('expenseDate').value = today;
+});
+
+// ═══════════════════════════════════════════
+//  タブ切り替え
+// ═══════════════════════════════════════════
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(function(el, idx) {
+    el.classList.toggle('active', (tab === 'entry' && idx === 0) || (tab === 'history' && idx === 1));
+  });
+  document.getElementById('viewEntry').classList.toggle('active', tab === 'entry');
+  document.getElementById('viewHistory').classList.toggle('active', tab === 'history');
+  document.getElementById('entryAction').style.display = tab === 'entry' ? 'block' : 'none';
+
+  if (tab === 'history') {
+    loadExpenses();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  レシート写真
+// ═══════════════════════════════════════════
+
+function handleReceiptPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+
+  var file = input.files[0];
+  var reader = new FileReader();
+
+  reader.onload = function(e) {
+    // プレビュー表示
+    var preview = document.getElementById('photoPreview');
+    preview.src = e.target.result;
+    preview.classList.add('show');
+
+    document.getElementById('photoUpload').classList.add('has-photo');
+    document.getElementById('uploadText').textContent = '✅ 写真を選択済み（タップで変更）';
+    document.getElementById('uploadText').classList.add('success');
+
+    // Base64を保持（圧縮）
+    compressImage(e.target.result, function(compressed) {
+      receiptPhotoBase64 = compressed;
+    });
+  };
+
+  reader.readAsDataURL(file);
+}
+
+function compressImage(dataUrl, callback) {
+  var img = new Image();
+  img.onload = function() {
+    var canvas = document.createElement('canvas');
+    var maxW = 1200;
+    var scale = Math.min(1, maxW / img.width);
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    callback(canvas.toDataURL('image/jpeg', 0.7));
+  };
+  img.src = dataUrl;
+}
+
+// ═══════════════════════════════════════════
+//  経費登録
+// ═══════════════════════════════════════════
+
+function submitExpense() {
+  var date = document.getElementById('expenseDate').value;
+  var amount = document.getElementById('expenseAmount').value;
+  var currency = document.getElementById('expenseCurrency').value;
+  var vendor = document.getElementById('expenseVendor').value.trim();
+  var description = document.getElementById('expenseDescription').value.trim();
+  var category = document.getElementById('expenseCategory').value;
+  var registeredBy = document.getElementById('expenseRegisteredBy').value;
+
+  // バリデーション
+  if (!date) { showToast('取引日を入力してください'); return; }
+  if (!amount || parseFloat(amount) <= 0) { showToast('金額を入力してください'); return; }
+  if (!description) { showToast('品目・摘要を入力してください'); return; }
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ 送信中...';
+
+  var payload = {
+    action: 'expense_create',
+    date: date,
+    amount: parseFloat(amount),
+    currency: currency,
+    vendor: vendor,
+    description: description,
+    category: category,
+    registeredBy: registeredBy || '不明',
+    receiptPhoto: receiptPhotoBase64 || ''
+  };
+
+  if (!GAS_URL) {
+    btn.disabled = false;
+    btn.innerHTML = '💰 経費を登録';
+    showToast('GAS URLが設定されていません');
+    return;
+  }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.innerHTML = '💰 経費を登録';
+
+    if (data.status === 'ok') {
+      document.getElementById('successMessage').textContent =
+        '経費ID: ' + data.expenseId + '\n金額: ' + amount + ' ' + currency + '\n品目: ' + description;
+      document.getElementById('successModal').classList.add('show');
+
+      // フォームリセット
+      document.getElementById('expenseAmount').value = '';
+      document.getElementById('expenseVendor').value = '';
+      document.getElementById('expenseDescription').value = '';
+      document.getElementById('expenseCategory').selectedIndex = 0;
+      document.getElementById('expenseRegisteredBy').selectedIndex = 0;
+      receiptPhotoBase64 = '';
+      document.getElementById('photoPreview').classList.remove('show');
+      document.getElementById('photoUpload').classList.remove('has-photo');
+      document.getElementById('uploadText').textContent = 'タップしてレシート写真を撮影・選択';
+      document.getElementById('uploadText').classList.remove('success');
+
+      // 日付は今日のまま
+      document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
+    } else {
+      showToast('エラー: ' + (data.message || '不明なエラー'));
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.innerHTML = '💰 経費を登録';
+    showToast('通信エラー: ' + err.message);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  経費履歴
+// ═══════════════════════════════════════════
+
+function loadExpenses() {
+  var listEl = document.getElementById('expenseList');
+  listEl.innerHTML = '<div class="loading"><div class="spinner"></div>経費を読み込み中...</div>';
+
+  if (!GAS_URL) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>GAS URLが設定されていません。</p></div>';
+    return;
+  }
+
+  fetch(GAS_URL + '?action=expenses')
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        renderExpenses(data.expenses || []);
+      } else {
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>読み込みエラー</p></div>';
+      }
+    })
+    .catch(function(err) {
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>通信エラー</p></div>';
+    });
+}
+
+function renderExpenses(expenses) {
+  var listEl = document.getElementById('expenseList');
+
+  if (expenses.length === 0) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>経費はまだ登録されていません</p></div>';
+    return;
+  }
+
+  // 新しい順に表示
+  expenses.reverse();
+
+  var html = '';
+  expenses.forEach(function(exp) {
+    html += '<div class="expense-card">';
+    html += '<div class="expense-header">';
+    html += '<span class="expense-amount">' + escapeHtml(String(exp.amount || 0)) + ' ' + escapeHtml(exp.currency || 'USD') + '</span>';
+    html += '<span class="expense-id">' + escapeHtml(exp.id || '') + '</span>';
+    html += '</div>';
+    html += '<div class="expense-meta">';
+    html += '📅 ' + escapeHtml(exp.date || '') + '<br>';
+    html += '🏪 ' + escapeHtml(exp.vendor || '-') + '<br>';
+    html += '📝 ' + escapeHtml(exp.description || '-') + '<br>';
+    html += '📂 ' + escapeHtml(exp.category || '-') + ' | 👤 ' + escapeHtml(exp.registeredBy || '-');
+    html += '</div>';
+    var statusClass = exp.status === '精算済み' ? 'paid' : 'pending';
+    html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || '未精算') + '</span>';
+    html += '</div>';
+  });
+
+  listEl.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+//  ユーティリティ
+// ═══════════════════════════════════════════
+
+function escapeHtml(text) {
+  var div = document.createElement('div');
+  div.appendChild(document.createTextNode(text));
+  return div.innerHTML;
+}
+
+function showToast(msg) {
+  var toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+
+function closeModal() {
+  document.getElementById('successModal').classList.remove('show');
+}
+</script>
+</body>
+</html>
