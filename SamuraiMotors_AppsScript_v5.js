@@ -115,6 +115,8 @@ function doPost(e) {
         return handleTaskCreateFromApp(data);
       case 'task_update':
         return handleTaskUpdateFromApp(data);
+      case 'task_edit':
+        return handleTaskEditFromApp(data);
       case 'expense_create':
         return handleExpenseCreateFromApp(data);
       default:
@@ -460,13 +462,15 @@ function handleTaskCreateFlow(chatId, message, state) {
 
       sendTelegramTo(chatId, msg);
 
-      // 担当者にも通知（スタッフの場合）
+      // 担当者にも通知（スタッフの場合：クメール語翻訳付き）
       if (data.assigneeChatId && data.assigneeChatId !== ADMIN_GROUP_ID && data.assigneeChatId !== chatId) {
+        var descKh = translateToKhmer(data.description);
         sendTelegramTo(data.assigneeChatId,
-          '📌 *新しいタスクが追加されました*\n'
+          '📌 *ការងារថ្មីត្រូវបានបន្ថែម*\n'
           + '━━━━━━━━━━━━━━━\n'
-          + '📅 期限: ' + (data.deadline || 'なし') + '\n'
-          + '📋 ' + data.description
+          + '📅 ថ្ងៃកំណត់: ' + (data.deadline || 'គ្មាន') + '\n'
+          + '📋 ' + descKh + '\n'
+          + '🇯🇵 ' + data.description
         );
       }
       break;
@@ -519,21 +523,24 @@ function showMyTasks(chatId, staffName) {
   });
 
   if (myTasks.length === 0) {
-    sendTelegramTo(chatId, '✅ 未完了のタスクはありません。お疲れ様です！');
+    sendTelegramTo(chatId, '✅ គ្មានការងារមិនទាន់រួច។ អរគុណ!\n（未完了のタスクはありません。お疲れ様です！）');
     return;
   }
 
-  var msg = '📋 *あなたのタスク*\n━━━━━━━━━━━━━━━\n\n';
+  var msg = '📋 *ការងាររបស់អ្នក*\n（あなたのタスク）\n━━━━━━━━━━━━━━━\n\n';
   var keyboard = [];
 
   myTasks.forEach(function(row, idx) {
     var emoji = getTaskStatusEmoji(row[4], row[6]);
-    msg += (idx + 1) + '. ' + emoji + ' ' + row[5] + '\n'
-      + '   📅 期限: ' + (row[4] || 'なし') + '\n\n';
+    var descJp = row[5];
+    var descKh = translateToKhmer(descJp);
+    msg += (idx + 1) + '. ' + emoji + ' ' + descKh + '\n'
+      + '   🇯🇵 ' + descJp + '\n'
+      + '   📅 ថ្ងៃកំណត់: ' + (row[4] || 'គ្មាន') + '\n\n';
 
     keyboard.push([
-      { text: '✅ 完了: ' + row[5].substring(0, 20), callback_data: 'task_done:' + row[0] },
-      { text: '❌ 未完了', callback_data: 'task_notdone:' + row[0] }
+      { text: '✅ ' + descKh.substring(0, 15), callback_data: 'task_done:' + row[0] },
+      { text: '❌ មិនទាន់រួច', callback_data: 'task_notdone:' + row[0] }
     ]);
   });
 
@@ -738,23 +745,27 @@ function sendMorningTaskNotification() {
 
     if (myTasks.length === 0) return;
 
-    var msg = '🌅 *おはようございます！今日のタスク*\n'
+    var msg = '🌅 *អរុណសួស្តី! ការងារថ្ងៃនេះ*\n'
+      + '（おはようございます！今日のタスク）\n'
       + '━━━━━━━━━━━━━━━━━━\n\n';
 
     var keyboard = [];
 
     myTasks.forEach(function(row, idx) {
       var emoji = getTaskStatusEmoji(row[4], row[6]);
-      msg += (idx + 1) + '. ' + emoji + ' ' + row[5] + '\n'
-        + '   📅 期限: ' + (row[4] || 'なし') + '\n\n';
+      var descJp = row[5];
+      var descKh = translateToKhmer(descJp);
+      msg += (idx + 1) + '. ' + emoji + ' ' + descKh + '\n'
+        + '   🇯🇵 ' + descJp + '\n'
+        + '   📅 ថ្ងៃកំណត់: ' + (row[4] || 'គ្មាន') + '\n\n';
 
       keyboard.push([
-        { text: '✅ ' + row[5].substring(0, 15), callback_data: 'task_done:' + row[0] },
-        { text: '❌ 未完了', callback_data: 'task_notdone:' + row[0] }
+        { text: '✅ ' + descKh.substring(0, 15), callback_data: 'task_done:' + row[0] },
+        { text: '❌ មិនទាន់រួច', callback_data: 'task_notdone:' + row[0] }
       ]);
     });
 
-    msg += '完了したらボタンを押してください 👇';
+    msg += 'សូមចុចប៊ូតុងពេលរួចរាល់ 👇\n（完了したらボタンを押してください）';
 
     sendTelegramWithKeyboard(staffId, msg, { inline_keyboard: keyboard });
   });
@@ -1374,13 +1385,15 @@ function handleTaskCreateFromApp(data) {
     ''
   );
 
-  // 担当者に通知
+  // 担当者に通知（クメール語+日本語）
   if (data.assigneeChatId && data.assigneeChatId !== ADMIN_GROUP_ID) {
+    var descKh = translateToKhmer(data.description || '');
     sendTelegramTo(data.assigneeChatId,
-      '📌 *新しいタスクが追加されました*\n'
+      '📌 *ការងារថ្មីត្រូវបានបន្ថែម*\n'
       + '━━━━━━━━━━━━━━━\n'
-      + '📅 期限: ' + (data.deadline || 'なし') + '\n'
-      + '📋 ' + (data.description || '')
+      + '📅 ថ្ងៃកំណត់: ' + (data.deadline || 'គ្មាន') + '\n'
+      + '📋 ' + descKh + '\n'
+      + '🇯🇵 ' + (data.description || '')
     );
   }
 
@@ -1428,6 +1441,65 @@ function handleTaskUpdateFromApp(data) {
   }
 
   return jsonResponse({ status: 'ok', taskId: taskId, newStatus: newStatus });
+}
+
+// ミニアプリからのタスク編集
+function handleTaskEditFromApp(data) {
+  var taskId = data.taskId;
+  if (!taskId) {
+    return jsonResponse({ status: 'error', message: 'taskId is required' });
+  }
+
+  var updates = {};
+  if (data.assignee !== undefined) updates.assignee = data.assignee;
+  if (data.assigneeChatId !== undefined) updates.assigneeChatId = data.assigneeChatId;
+  if (data.deadline !== undefined) updates.deadline = data.deadline;
+  if (data.description !== undefined) updates.description = data.description;
+
+  var success = editTaskDetails(taskId, updates);
+  if (!success) {
+    return jsonResponse({ status: 'error', message: 'Task not found: ' + taskId });
+  }
+
+  // Adminグループに編集通知
+  var parts = ['✏️ *タスク編集*\n━━━━━━━━━━━━━━━\n🆔 ' + taskId];
+  if (updates.assignee) parts.push('👤 担当: ' + updates.assignee);
+  if (updates.deadline !== undefined) parts.push('📅 期限: ' + (updates.deadline || 'なし'));
+  if (updates.description) parts.push('📋 ' + updates.description);
+  sendTelegramTo(ADMIN_GROUP_ID, parts.join('\n'));
+
+  // 担当者が変わった場合や内容が変わった場合、担当者にも通知
+  var chatId = data.assigneeChatId || '';
+  if (chatId && chatId !== ADMIN_GROUP_ID) {
+    var descKh = translateToKhmer(updates.description || data.currentDescription || '');
+    sendTelegramTo(chatId,
+      '✏️ *ការងារត្រូវបានកែប្រែ*\n'
+      + '━━━━━━━━━━━━━━━\n'
+      + '📅 ថ្ងៃកំណត់: ' + (updates.deadline !== undefined ? (updates.deadline || 'គ្មាន') : '') + '\n'
+      + '📋 ' + descKh + '\n'
+      + '🇯🇵 ' + (updates.description || data.currentDescription || '')
+    );
+  }
+
+  return jsonResponse({ status: 'ok', taskId: taskId });
+}
+
+// タスク詳細を更新する汎用関数
+function editTaskDetails(taskId, updates) {
+  var sheet = getTasksSheet();
+  var lastRow = sheet.getLastRow();
+
+  for (var r = 2; r <= lastRow; r++) {
+    if (sheet.getRange(r, 1).getValue() === taskId) {
+      // C列=担当者, D列=担当者ChatID, E列=期限, F列=やるべきこと
+      if (updates.assignee !== undefined) sheet.getRange(r, 3).setValue(updates.assignee);
+      if (updates.assigneeChatId !== undefined) sheet.getRange(r, 4).setValue(updates.assigneeChatId);
+      if (updates.deadline !== undefined) sheet.getRange(r, 5).setValue(updates.deadline);
+      if (updates.description !== undefined) sheet.getRange(r, 6).setValue(updates.description);
+      return true;
+    }
+  }
+  return false;
 }
 
 // ミニアプリからの経費登録
@@ -2051,6 +2123,17 @@ function jsonResponse(obj) {
 
 function formatCambodiaTime(date) {
   return Utilities.formatDate(date, 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
+}
+
+// 日本語→クメール語翻訳（スタッフ通知用）
+function translateToKhmer(japaneseText) {
+  if (!japaneseText) return '';
+  try {
+    return LanguageApp.translate(japaneseText, 'ja', 'km');
+  } catch (err) {
+    Logger.log('翻訳エラー: ' + err.toString());
+    return japaneseText; // 翻訳失敗時は原文を返す
+  }
 }
 
 function getOrCreateFolder(folderName) {

@@ -150,6 +150,7 @@ body {
 .task-btn:active { transform:scale(0.97); }
 .task-btn-done { background:var(--success); color:#fff; }
 .task-btn-notdone { background:var(--card); color:var(--text); border:1px solid var(--border); }
+.task-btn-edit { background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue); }
 
 /* ステータスフィルター */
 .filter-row {
@@ -367,6 +368,36 @@ body {
   </div>
 </div>
 
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="max-width:360px;text-align:left;">
+    <h2 style="text-align:center;margin-bottom:16px;">✏️ タスク編集</h2>
+    <input type="hidden" id="editTaskId">
+    <div class="field">
+      <label>担当者</label>
+      <select id="editAssignee" onchange="toggleEditOther()">
+        <option value="" disabled>担当者を選択</option>
+      </select>
+    </div>
+    <div class="field" id="editOtherField" style="display:none;">
+      <label>担当者名を入力</label>
+      <input type="text" id="editOtherAssignee" placeholder="例: 田中">
+    </div>
+    <div class="field">
+      <label>期限</label>
+      <input type="date" id="editDeadline">
+    </div>
+    <div class="field">
+      <label>やるべきこと</label>
+      <textarea id="editDescription" style="min-height:70px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" onclick="closeEditModal()">キャンセル</button>
+      <button class="modal-btn modal-btn-confirm" onclick="submitEdit()" style="background:var(--blue);">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- トースト -->
 <div class="toast" id="toast"></div>
 
@@ -549,11 +580,16 @@ function renderTasks() {
     }
     html += '</div>';
 
-    // 未完了タスクのみアクションボタン表示
+    // アクションボタン表示
     if (task.status !== '完了') {
       html += '<div class="task-actions">';
+      html += '<button class="task-btn task-btn-edit" onclick="openEditModal(\'' + task.id + '\')">✏️ 編集</button>';
       html += '<button class="task-btn task-btn-done" onclick="completeTask(\'' + task.id + '\')">✅ 完了</button>';
       html += '<button class="task-btn task-btn-notdone" onclick="openReasonModal(\'' + task.id + '\')">❌ 未完了</button>';
+      html += '</div>';
+    } else {
+      html += '<div class="task-actions">';
+      html += '<button class="task-btn task-btn-edit" onclick="openEditModal(\'' + task.id + '\')">✏️ 編集</button>';
       html += '</div>';
     }
 
@@ -744,6 +780,116 @@ function submitReason() {
   })
   .catch(function(err) {
     showToast('通信エラー');
+  });
+}
+
+// ═══════════════════════════════════════════
+//  タスク編集
+// ═══════════════════════════════════════════
+
+function initEditAssigneeSelect() {
+  var sel = document.getElementById('editAssignee');
+  if (sel.options.length > 1) return; // 初期化済み
+  STAFF_LIST.forEach(function(staff) {
+    var opt = document.createElement('option');
+    opt.value = staff.name;
+    opt.textContent = staff.name;
+    opt.dataset.chatId = staff.chatId;
+    sel.appendChild(opt);
+  });
+  var otherOpt = document.createElement('option');
+  otherOpt.value = '__other__';
+  otherOpt.textContent = 'その他（入力）';
+  sel.appendChild(otherOpt);
+}
+
+function toggleEditOther() {
+  var sel = document.getElementById('editAssignee');
+  var field = document.getElementById('editOtherField');
+  field.style.display = sel.value === '__other__' ? 'block' : 'none';
+}
+
+function openEditModal(taskId) {
+  initEditAssigneeSelect();
+  var task = allTasks.find(function(t) { return t.id === taskId; });
+  if (!task) return;
+
+  document.getElementById('editTaskId').value = taskId;
+  document.getElementById('editDeadline').value = task.deadline || '';
+  document.getElementById('editDescription').value = task.description || '';
+
+  // 担当者をセット
+  var sel = document.getElementById('editAssignee');
+  var found = false;
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === task.assignee) {
+      sel.selectedIndex = i;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    // スタッフ一覧にない場合は「その他」を選択
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === '__other__') { sel.selectedIndex = j; break; }
+    }
+    document.getElementById('editOtherAssignee').value = task.assignee || '';
+    document.getElementById('editOtherField').style.display = 'block';
+  } else {
+    document.getElementById('editOtherField').style.display = 'none';
+    document.getElementById('editOtherAssignee').value = '';
+  }
+
+  document.getElementById('editModal').classList.add('show');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('show');
+}
+
+function submitEdit() {
+  var taskId = document.getElementById('editTaskId').value;
+  var sel = document.getElementById('editAssignee');
+  var assignee = sel.value;
+  var deadline = document.getElementById('editDeadline').value;
+  var description = document.getElementById('editDescription').value.trim();
+
+  if (assignee === '__other__') {
+    assignee = document.getElementById('editOtherAssignee').value.trim();
+    if (!assignee) { showToast('担当者名を入力してください'); return; }
+  }
+  if (!description) { showToast('やるべきことを入力してください'); return; }
+
+  var selectedOpt = sel.options[sel.selectedIndex];
+  var chatId = (sel.value === '__other__') ? '' : (selectedOpt.dataset.chatId || '');
+
+  var payload = {
+    action: 'task_edit',
+    taskId: taskId,
+    assignee: assignee,
+    assigneeChatId: chatId,
+    deadline: deadline,
+    description: description
+  };
+
+  closeEditModal();
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    if (data.status === 'ok') {
+      showToast('✏️ タスクを更新しました');
+      loadTasks();
+    } else {
+      showToast('エラー: ' + (data.message || ''));
+    }
+  })
+  .catch(function(err) {
+    showToast('通信エラー: ' + err.message);
   });
 }
 
