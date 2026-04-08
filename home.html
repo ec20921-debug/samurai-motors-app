@@ -170,6 +170,15 @@ if (window.Telegram && Telegram.WebApp) {
   }
 }
 
+// URLパラメータからGAS URLを取得（Adminグループリンク用）
+if (!GAS_URL) {
+  var urlParams = new URLSearchParams(window.location.search);
+  var gasParam = urlParams.get('gas');
+  if (gasParam) {
+    GAS_URL = gasParam;
+  }
+}
+
 // 各ミニアプリのベースURL
 var BASE = window.location.href.replace(/\/[^\/]*$/, '');
 

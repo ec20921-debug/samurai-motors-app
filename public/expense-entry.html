@@ -376,6 +376,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // URLパラメータからGAS URLを取得（Adminグループリンク用）
+  if (!GAS_URL) {
+    var urlParams = new URLSearchParams(window.location.search);
+    var gasParam = urlParams.get('gas');
+    if (gasParam) {
+      GAS_URL = gasParam;
+    }
+  }
+
   // Admin向けUI表示
   if (isAdmin) {
     document.getElementById('categoryField').classList.add('show');

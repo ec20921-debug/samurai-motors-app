@@ -2608,6 +2608,8 @@ function testReceiptOCR() {
 // Adminグループにミニアプリメニューボタンを送信（ピン留め用）
 function sendAdminMenu() {
   var baseUrl = 'https://ec20921-debug.github.io/samurai-motors-app';
+  var gasUrl = ScriptApp.getService().getUrl();
+  var gasParam = '?gas=' + encodeURIComponent(gasUrl);
 
   var msg = '📱 *Admin メニュー*\n'
     + '━━━━━━━━━━━━━━━\n'
@@ -2622,16 +2624,16 @@ function sendAdminMenu() {
     reply_markup: JSON.stringify({
       inline_keyboard: [
         [
-          { text: '📋 タスク管理', web_app: { url: baseUrl + '/task-manager.html' } },
-          { text: '💰 経費管理', web_app: { url: baseUrl + '/expense-entry.html' } }
+          { text: '📋 タスク管理', url: baseUrl + '/task-manager.html' + gasParam },
+          { text: '💰 経費管理', url: baseUrl + '/expense-entry.html' + gasParam }
         ],
         [
-          { text: '🚗 洗車登録', web_app: { url: baseUrl + '/job-manager.html' } },
-          { text: '🕐 勤怠打刻', web_app: { url: baseUrl + '/attendance.html' } }
+          { text: '🚗 洗車登録', url: baseUrl + '/job-manager.html' + gasParam },
+          { text: '🕐 勤怠打刻', url: baseUrl + '/attendance.html' + gasParam }
         ],
         [
-          { text: '📝 日報入力', web_app: { url: baseUrl + '/daily-report.html' } },
-          { text: '🏠 ホーム', web_app: { url: baseUrl + '/home.html' } }
+          { text: '📝 日報入力', url: baseUrl + '/daily-report.html' + gasParam },
+          { text: '🏠 ホーム', url: baseUrl + '/home.html' + gasParam }
         ]
       ]
     })

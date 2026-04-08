@@ -443,6 +443,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // URLパラメータからGAS URLを取得（Adminグループリンク用）
+  if (!GAS_URL) {
+    var urlParams = new URLSearchParams(window.location.search);
+    var gasParam = urlParams.get('gas');
+    if (gasParam) {
+      GAS_URL = gasParam;
+    }
+  }
+
   // スタッフ選択肢を生成
   var assigneeSelect = document.getElementById('assignee');
   STAFF_LIST.forEach(function(staff) {

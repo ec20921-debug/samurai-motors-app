@@ -6,7 +6,12 @@
       "Bash(curl -s \"https://api.telegram.org/bot8248146123:AAEORbRSuqwLgZxcb-Pyc90DaDScH4W2j7w/getWebhookInfo\")",
       "Bash(curl -s \"https://api.telegram.org/bot8248146123:AAEORbRSuqwLgZxcb-Pyc90DaDScH4W2j7w/setWebhook?url=https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_RUVr6AcMuKzVpE7w3_cZoDKNewnBjKO4DO96LPA1hh/exec\")",
       "Bash(gh auth:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls \"C:/Users/drymp/OneDrive/Desktop/samurai-motors-app/\"*.html)",
+      "Bash(gh api:*)"
     ]
   }
 }

@@ -317,6 +317,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // URLパラメータからGAS URLを取得（Adminグループリンク用）
+  if (!GAS_URL) {
+    var urlParams = new URLSearchParams(window.location.search);
+    var gasParam = urlParams.get('gas');
+    if (gasParam) {
+      GAS_URL = gasParam;
+    }
+  }
+
   // 報告日を今日に設定
   var today = new Date();
   var offset = 7 * 60; // カンボジア UTC+7
