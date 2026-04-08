@@ -2607,36 +2607,30 @@ function testReceiptOCR() {
 
 // Adminグループにミニアプリメニューボタンを送信（ピン留め用）
 function sendAdminMenu() {
+  var botUsername = 'quickwash_kh_bot';
   var baseUrl = 'https://ec20921-debug.github.io/samurai-motors-app';
-  var gasUrl = ScriptApp.getService().getUrl();
-  var gasParam = '?gas=' + encodeURIComponent(gasUrl);
+
+  // t.me/bot?startapp=xxx 形式でTelegram内ミニアプリとして開く
+  function appLink(page) {
+    return 'https://t.me/' + botUsername + '/app?startapp=' + encodeURIComponent(page);
+  }
 
   var msg = '📱 *Admin メニュー*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '下のボタンからミニアプリを開けます。\n'
-    + 'このメッセージをピン留めしておくと便利です。';
+    + 'このメッセージをピン留めしておくと便利です。\n\n'
+    + '📋 [タスク管理](' + baseUrl + '/task-manager.html)\n'
+    + '💰 [経費管理](' + baseUrl + '/expense-entry.html)\n'
+    + '🚗 [洗車登録](' + baseUrl + '/job-manager.html)\n'
+    + '🕐 [勤怠打刻](' + baseUrl + '/attendance.html)\n'
+    + '📝 [日報入力](' + baseUrl + '/daily-report.html)\n'
+    + '🏠 [ホーム](' + baseUrl + '/home.html)';
 
   var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage';
   var payload = {
     chat_id: ADMIN_GROUP_ID,
     text: msg,
-    parse_mode: 'Markdown',
-    reply_markup: JSON.stringify({
-      inline_keyboard: [
-        [
-          { text: '📋 タスク管理', url: baseUrl + '/task-manager.html' + gasParam },
-          { text: '💰 経費管理', url: baseUrl + '/expense-entry.html' + gasParam }
-        ],
-        [
-          { text: '🚗 洗車登録', url: baseUrl + '/job-manager.html' + gasParam },
-          { text: '🕐 勤怠打刻', url: baseUrl + '/attendance.html' + gasParam }
-        ],
-        [
-          { text: '📝 日報入力', url: baseUrl + '/daily-report.html' + gasParam },
-          { text: '🏠 ホーム', url: baseUrl + '/home.html' + gasParam }
-        ]
-      ]
-    })
+    parse_mode: 'Markdown'
   };
 
   var response = UrlFetchApp.fetch(url, {
