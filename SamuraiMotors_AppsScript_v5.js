@@ -35,6 +35,7 @@ var RECEIPT_FOLDER_NAME = 'SamuraiMotors_Receipts';
 var INVENTORY_SHEET_NAME = 'Inventory';
 var TASKS_SHEET_NAME = 'Tasks';
 var EXPENSES_SHEET_NAME = 'Expenses';
+var DAILY_REPORTS_SHEET_NAME = 'DailyReports';
 
 // Telegram Bot設定
 var TELEGRAM_BOT_TOKEN = '8248146123:AAEORbRSuqwLgZxcb-Pyc90DaDScH4W2j7w';
@@ -119,6 +120,8 @@ function doPost(e) {
         return handleTaskEditFromApp(data);
       case 'expense_create':
         return handleExpenseCreateFromApp(data);
+      case 'daily_report':
+        return handleDailyReportFromApp(data);
       default:
         return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
     }
@@ -1339,6 +1342,10 @@ function doGet(e) {
     return handleExpensesGet();
   }
 
+  if (action === 'daily_reports') {
+    return handleDailyReportsGet(e);
+  }
+
   return ContentService
     .createTextOutput('Samurai Motors Job Manager v5 is active.')
     .setMimeType(ContentService.MimeType.TEXT);
@@ -1500,6 +1507,134 @@ function editTaskDetails(taskId, updates) {
     }
   }
   return false;
+}
+
+// ═══════════════════════════════════════════
+//  日報管理
+// ═══════════════════════════════════════════
+
+// DailyReportsシート取得（なければ作成）
+function getDailyReportsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DAILY_REPORTS_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(DAILY_REPORTS_SHEET_NAME);
+    var headers = [
+      'Report ID', '登録日時', '報告日', '報告者', '報告者ChatID',
+      '洗車以外の業務', '特記事項・連絡', 'ステータス'
+    ];
+    sheet.appendRow(headers);
+    var hdr = sheet.getRange(1, 1, 1, headers.length);
+    hdr.setFontWeight('bold');
+    hdr.setBackground('#7B1FA2');
+    hdr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidth(6, 350);
+    sheet.setColumnWidth(7, 250);
+  }
+
+  return sheet;
+}
+
+// ミニアプリからの日報登録
+function handleDailyReportFromApp(data) {
+  var sheet = getDailyReportsSheet();
+  var now = new Date();
+  var reportId = 'RPT-' + Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd-HHmmss');
+  var timestamp = formatCambodiaTime(now);
+
+  var reportDate = data.reportDate || Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  var reporter = data.reporter || '';
+  var reporterChatId = data.reporterChatId || '';
+  var otherWork = data.otherWork || '';
+  var notes = data.notes || '';
+
+  sheet.appendRow([
+    reportId, timestamp, reportDate, reporter, reporterChatId,
+    otherWork, notes, '提出済'
+  ]);
+
+  // Adminグループに通知
+  var msg = '📝 *日報提出*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + '👤 報告者: ' + reporter + '\n'
+    + '📅 日付: ' + reportDate + '\n';
+
+  if (otherWork) {
+    msg += '🔧 洗車以外の業務:\n' + otherWork + '\n';
+  }
+  if (notes) {
+    msg += '📌 特記事項:\n' + notes + '\n';
+  }
+
+  sendTelegramTo(ADMIN_GROUP_ID, msg);
+
+  return jsonResponse({ status: 'ok', reportId: reportId });
+}
+
+// 日報一覧API（ミニアプリ用）
+function handleDailyReportsGet(e) {
+  var sheet = getDailyReportsSheet();
+  var lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return jsonResponse({ status: 'ok', reports: [] });
+  }
+
+  // 日付フィルター（オプション）
+  var filterDate = (e && e.parameter && e.parameter.date) ? e.parameter.date : '';
+  var filterReporter = (e && e.parameter && e.parameter.reporter) ? e.parameter.reporter : '';
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var reports = [];
+
+  data.forEach(function(row) {
+    var report = {
+      id: row[0],
+      timestamp: row[1],
+      reportDate: row[2] ? row[2].toString().substring(0, 10) : '',
+      reporter: row[3],
+      reporterChatId: row[4],
+      otherWork: row[5],
+      notes: row[6],
+      status: row[7]
+    };
+
+    // フィルター適用
+    if (filterDate && report.reportDate !== filterDate) return;
+    if (filterReporter && report.reporter !== filterReporter) return;
+
+    reports.push(report);
+  });
+
+  return jsonResponse({ status: 'ok', reports: reports });
+}
+
+// 本日の日報サマリー取得（日次サマリー用）
+function getTodayDailyReports(today) {
+  var result = [];
+  try {
+    var sheet = getDailyReportsSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    data.forEach(function(row) {
+      var reportDate = row[2] ? row[2].toString().substring(0, 10) : '';
+      if (reportDate === today) {
+        result.push({
+          reporter: row[3],
+          otherWork: row[5],
+          notes: row[6]
+        });
+      }
+    });
+  } catch (e) {
+    Logger.log('getTodayDailyReports error: ' + e.toString());
+  }
+  return result;
 }
 
 // ミニアプリからの経費登録
@@ -2004,6 +2139,24 @@ function sendDailySummary() {
 
     msg += '📦 *プラン内訳（ការបែងចែកគម្រោង）*\n' + (planSummary || 'なし') + '\n\n';
 
+    // 日報セクション
+    var dailyReports = getTodayDailyReports(today);
+    if (dailyReports.length > 0) {
+      msg += '📝 *日報*\n';
+      dailyReports.forEach(function(report) {
+        msg += '👤 ' + report.reporter + '\n';
+        if (report.otherWork) {
+          msg += '  🔧 ' + report.otherWork + '\n';
+        }
+        if (report.notes) {
+          msg += '  📌 ' + report.notes + '\n';
+        }
+      });
+      msg += '\n';
+    } else {
+      msg += '📝 *日報*\n⚠️ 本日の日報提出なし\n\n';
+    }
+
     // 経費セクション
     if (expenseSummary.count > 0) {
       msg += '💰 *本日の経費*\n'
@@ -2200,6 +2353,7 @@ function setupV5Triggers() {
 function setupV5Sheets() {
   getTasksSheet();
   getExpensesSheet();
+  getDailyReportsSheet();
   seedRecurringTasks();
   Logger.log('v5シートと初期データを作成しました。');
 }

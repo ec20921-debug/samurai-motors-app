@@ -20,6 +20,13 @@
       "runtimeArgs": ["server.js"],
       "port": 3000,
       "urlPath": "/expense-entry.html"
+    },
+    {
+      "name": "daily-report",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/daily-report.html"
     }
   ]
 }
