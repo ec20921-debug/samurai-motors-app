@@ -2604,3 +2604,45 @@ function testTelegram() {
 function testReceiptOCR() {
   Logger.log('レシートOCRテストは実際のレシート写真で /receipt コマンドを使って実行してください。');
 }
+
+// Adminグループにミニアプリメニューボタンを送信（ピン留め用）
+function sendAdminMenu() {
+  var baseUrl = 'https://ec20921-debug.github.io/samurai-motors-app';
+
+  var msg = '📱 *Admin メニュー*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + '下のボタンからミニアプリを開けます。\n'
+    + 'このメッセージをピン留めしておくと便利です。';
+
+  var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage';
+  var payload = {
+    chat_id: ADMIN_GROUP_ID,
+    text: msg,
+    parse_mode: 'Markdown',
+    reply_markup: JSON.stringify({
+      inline_keyboard: [
+        [
+          { text: '📋 タスク管理', web_app: { url: baseUrl + '/task-manager.html' } },
+          { text: '💰 経費管理', web_app: { url: baseUrl + '/expense-entry.html' } }
+        ],
+        [
+          { text: '🚗 洗車登録', web_app: { url: baseUrl + '/job-manager.html' } },
+          { text: '🕐 勤怠打刻', web_app: { url: baseUrl + '/attendance.html' } }
+        ],
+        [
+          { text: '📝 日報入力', web_app: { url: baseUrl + '/daily-report.html' } },
+          { text: '🏠 ホーム', web_app: { url: baseUrl + '/home.html' } }
+        ]
+      ]
+    })
+  };
+
+  var response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  Logger.log('Adminメニュー送信結果: ' + response.getContentText());
+}

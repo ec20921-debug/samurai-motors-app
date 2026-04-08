@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="km">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Samurai Motors - 経費入力</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<title>Samurai Motors - 経費 / ការចំណាយ</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #0f0f0f;
@@ -23,7 +24,7 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
-  font-family: 'Noto Sans JP', sans-serif;
+  font-family: 'Noto Sans Khmer','Noto Sans JP', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -36,19 +37,12 @@ body {
   padding: 12px 16px;
   display: flex; align-items: center; gap: 12px;
 }
-.logo {
-  width:40px; height:40px; border-radius:10px; flex-shrink:0;
-  overflow:hidden;
-}
+.logo { width:40px; height:40px; border-radius:10px; flex-shrink:0; overflow:hidden; }
 .logo img { width:100%; height:100%; object-fit:cover; }
 .header h1 { font-size:15px; letter-spacing:0.5px; }
 .header p { font-size:11px; color:var(--text-dim); margin-top:1px; }
 
-/* タブ */
-.tabs {
-  display: flex; border-bottom: 1px solid var(--border);
-  padding: 0 16px;
-}
+.tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 16px; }
 .tab {
   flex:1; padding: 12px 8px; text-align:center;
   font-size:13px; font-weight:600; color:var(--text-dim);
@@ -58,7 +52,6 @@ body {
 .tab.active { color:var(--gold); border-bottom-color:var(--gold); }
 
 .container { padding:16px; max-width:480px; margin:0 auto; padding-bottom:120px; }
-
 .view { display:none; }
 .view.active { display:block; }
 
@@ -76,6 +69,7 @@ body {
   color:var(--text-label); margin-bottom:5px;
 }
 .field label .req { color:var(--accent); margin-left:3px; font-size:11px; }
+.field label .km { color:var(--text-dim); font-size:11px; margin-left:4px; }
 .field input, .field select, .field textarea {
   width:100%; padding:12px 14px;
   background:var(--card); border:1.5px solid var(--border);
@@ -83,9 +77,7 @@ body {
   font-size:16px; font-family:inherit;
   transition: border-color 0.2s;
 }
-.field input:focus, .field select:focus, .field textarea:focus {
-  outline:none; border-color:var(--gold);
-}
+.field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--gold); }
 .field input::placeholder, .field textarea::placeholder { color:#555; }
 .field select {
   -webkit-appearance:none; appearance:none;
@@ -95,12 +87,10 @@ body {
 .field textarea { min-height:70px; resize:vertical; }
 .hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
 
-/* 金額行 */
 .amount-row { display:flex; gap:8px; }
 .amount-row .field:first-child { flex:1; }
 .amount-row .field:last-child { width:100px; }
 
-/* 写真アップロード */
 .photo-upload {
   position:relative;
   background:var(--card); border:1.5px dashed var(--border);
@@ -121,7 +111,6 @@ body {
 }
 .photo-preview.show { display:block; }
 
-/* 経費カード */
 .expense-card {
   background: var(--card);
   border: 1.5px solid var(--border);
@@ -133,16 +122,12 @@ body {
   display:flex; justify-content:space-between; align-items:center;
   margin-bottom:6px;
 }
-.expense-amount {
-  font-size:18px; font-weight:700; color:var(--gold);
-}
+.expense-amount { font-size:18px; font-weight:700; color:var(--gold); }
 .expense-id {
   font-size:10px; color:var(--text-dim);
   background:var(--bg); padding:2px 6px; border-radius:4px;
 }
-.expense-meta {
-  font-size:12px; color:var(--text-dim); line-height:1.6;
-}
+.expense-meta { font-size:12px; color:var(--text-dim); line-height:1.6; }
 .expense-status {
   display:inline-block; padding:2px 8px; border-radius:10px;
   font-size:11px; font-weight:600; margin-top:4px;
@@ -150,7 +135,6 @@ body {
 .expense-status.pending { background:rgba(243,156,18,0.15); color:#f39c12; }
 .expense-status.paid { background:var(--success-bg); color:var(--success); }
 
-/* ボタン */
 .action-area {
   position:fixed; bottom:0; left:0; right:0;
   padding:10px 16px;
@@ -169,7 +153,6 @@ body {
 .btn:disabled { opacity:0.4; pointer-events:none; }
 .btn-primary { background:var(--accent); color:#fff; box-shadow:0 4px 16px rgba(200,16,46,0.3); }
 
-/* モーダル */
 .modal-overlay {
   display:none; position:fixed; inset:0;
   background:rgba(0,0,0,0.7); z-index:200;
@@ -192,7 +175,6 @@ body {
   background:var(--success); color:#fff;
 }
 
-/* トースト */
 .toast {
   position:fixed; top:80px; left:50%; transform:translateX(-50%);
   background:#333; color:#fff; padding:10px 20px;
@@ -201,7 +183,6 @@ body {
 }
 .toast.show { opacity:1; }
 
-/* ローディング */
 .loading { text-align:center; padding:20px; color:var(--text-dim); font-size:14px; }
 .spinner {
   width:24px; height:24px; border:3px solid var(--border);
@@ -213,14 +194,18 @@ body {
 .empty-state { text-align:center; padding:40px 20px; color:var(--text-dim); }
 .empty-state .empty-icon { font-size:48px; margin-bottom:12px; }
 
-/* スプレッドシートリンク */
 .sheet-link {
-  display:flex; align-items:center; justify-content:center; gap:8px;
+  display:none; align-items:center; justify-content:center; gap:8px;
   padding:12px; background:var(--card); border:1px solid var(--border);
   border-radius:var(--radius); margin-bottom:16px;
   color:var(--blue); text-decoration:none; font-size:13px; font-weight:600;
 }
 .sheet-link:hover { border-color:var(--blue); }
+.sheet-link.show { display:flex; }
+
+/* Admin専用フィールド（デフォルト非表示） */
+.admin-only { display:none; }
+.admin-only.show { display:block; }
 </style>
 </head>
 <body>
@@ -229,13 +214,13 @@ body {
   <div class="logo"><img src="logo.png" alt="Samurai Motors"></div>
   <div>
     <h1>SAMURAI MOTORS</h1>
-    <p>経費入力・管理</p>
+    <p>ការចំណាយ / 経費入力</p>
   </div>
 </div>
 
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('entry')">💰 経費入力</div>
-  <div class="tab" onclick="switchTab('history')">📋 履歴</div>
+  <div class="tab active" onclick="switchTab('entry')">💰 បញ្ចូល / 入力</div>
+  <div class="tab" onclick="switchTab('history')">📋 ប្រវត្តិ / 履歴</div>
 </div>
 
 <div class="container">
@@ -243,36 +228,35 @@ body {
   <!-- ==================== 経費入力ビュー ==================== -->
   <div class="view active" id="viewEntry">
 
-    <a class="sheet-link" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
+    <a class="sheet-link" id="sheetLink" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
       📊 経費スプレッドシートを開く
     </a>
 
     <div class="section">
-      <div class="section-title">📸 レシート写真</div>
+      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真</div>
       <div class="photo-upload" id="photoUpload">
         <span class="upload-icon">📷</span>
-        <div class="upload-text" id="uploadText">タップしてレシート写真を撮影・選択</div>
+        <div class="upload-text" id="uploadText">ចុចដើម្បីថតរូប / タップして撮影</div>
         <input type="file" accept="image/*" capture="environment" onchange="handleReceiptPhoto(this)">
       </div>
       <img class="photo-preview" id="photoPreview">
-      <p class="hint">写真からOCRで自動読み取りを行います</p>
     </div>
 
     <div class="section">
-      <div class="section-title">💰 経費情報</div>
+      <div class="section-title">💰 ព័ត៌មានការចំណាយ / 経費情報</div>
 
       <div class="field">
-        <label>取引日<span class="req">*</span></label>
+        <label>ថ្ងៃ <span class="km">取引日</span><span class="req">*</span></label>
         <input type="date" id="expenseDate">
       </div>
 
       <div class="amount-row">
         <div class="field">
-          <label>金額<span class="req">*</span></label>
+          <label>ចំនួនទឹកប្រាក់ <span class="km">金額</span><span class="req">*</span></label>
           <input type="number" id="expenseAmount" placeholder="0.00" step="0.01">
         </div>
         <div class="field">
-          <label>通貨</label>
+          <label>រូបិយប័ណ្ណ</label>
           <select id="expenseCurrency">
             <option value="USD" selected>USD</option>
             <option value="KHR">KHR</option>
@@ -282,16 +266,17 @@ body {
       </div>
 
       <div class="field">
-        <label>取引先（お店の名前）</label>
-        <input type="text" id="expenseVendor" placeholder="例: AEON Sen Sok">
+        <label>ហាង <span class="km">お店の名前</span></label>
+        <input type="text" id="expenseVendor" placeholder="ឧទាហរណ៍: AEON Sen Sok">
       </div>
 
       <div class="field">
-        <label>品目・摘要<span class="req">*</span></label>
-        <textarea id="expenseDescription" placeholder="例: 冷蔵庫と洗濯機を購入"></textarea>
+        <label>ទិញអ្វី <span class="km">何を買った？</span><span class="req">*</span></label>
+        <textarea id="expenseDescription" placeholder="ឧទាហរណ៍: ទិញសម្ភារសម្អាត&#10;例: 洗車用品を購入"></textarea>
       </div>
 
-      <div class="field">
+      <!-- Admin専用: 勘定科目 -->
+      <div class="field admin-only" id="categoryField">
         <label>勘定科目</label>
         <select id="expenseCategory">
           <option value="消耗品費">消耗品費</option>
@@ -306,15 +291,9 @@ body {
       </div>
 
       <div class="field">
-        <label>登録者</label>
+        <label>អ្នកចុះឈ្មោះ <span class="km">登録者</span></label>
         <select id="expenseRegisteredBy">
-          <option value="" disabled selected>選択</option>
-          <option value="ロン">ロン</option>
-          <option value="飯泉">飯泉</option>
-          <option value="五木田">五木田</option>
-          <option value="鈴木">鈴木</option>
-          <option value="矢口">矢口</option>
-          <option value="木戸">木戸</option>
+          <option value="" disabled selected>ជ្រើសរើស / 選択</option>
         </select>
       </div>
     </div>
@@ -322,11 +301,11 @@ body {
 
   <!-- ==================== 履歴ビュー ==================== -->
   <div class="view" id="viewHistory">
-    <a class="sheet-link" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
+    <a class="sheet-link" id="sheetLinkHistory" href="https://docs.google.com/spreadsheets/d/1zhXFgpPY90xjDcxuXgLw8Ac42fr-ZNZ8/edit?gid=569223305#gid=569223305" target="_blank">
       📊 経費スプレッドシートを開く
     </a>
     <div id="expenseList">
-      <div class="loading"><div class="spinner"></div>経費を読み込み中...</div>
+      <div class="loading"><div class="spinner"></div>កំពុងផ្ទុក... / 読み込み中...</div>
     </div>
   </div>
 
@@ -334,13 +313,13 @@ body {
 
 <!-- 入力ボタン -->
 <div class="action-area" id="entryAction">
-  <button class="btn btn-primary" onclick="submitExpense()" id="submitBtn">💰 経費を登録</button>
+  <button class="btn btn-primary" onclick="submitExpense()" id="submitBtn">💰 បញ្ជូន / 経費を登録</button>
 </div>
 
 <!-- 完了モーダル -->
 <div class="modal-overlay" id="successModal">
   <div class="modal">
-    <h2>✅ 経費登録完了</h2>
+    <h2>✅ បានចុះឈ្មោះដោយជោគជ័យ</h2>
     <p id="successMessage"></p>
     <button class="modal-btn" onclick="closeModal()">OK</button>
   </div>
@@ -354,10 +333,22 @@ body {
 //  設定
 // ═══════════════════════════════════════════
 
-// Apps Script Web App URL（デプロイ後に設定）
 var GAS_URL = '';
-
 var receiptPhotoBase64 = '';
+var isAdmin = false;
+
+// AdminのTelegram ChatID一覧
+var ADMIN_IDS = ['-5178607881'];
+
+// スタッフ一覧
+var STAFF_LIST = [
+  { name: 'ロン / រ៉ន', value: 'ロン', chatId: '7500384947' },
+  { name: '飯泉', value: '飯泉', chatId: '' },
+  { name: '五木田', value: '五木田', chatId: '' },
+  { name: '鈴木', value: '鈴木', chatId: '' },
+  { name: '矢口', value: '矢口', chatId: '' },
+  { name: '木戸', value: '木戸', chatId: '' }
+];
 
 // ═══════════════════════════════════════════
 //  初期化
@@ -374,11 +365,49 @@ document.addEventListener('DOMContentLoaded', function() {
     if (startParam) {
       GAS_URL = decodeURIComponent(startParam);
     }
+
+    // Admin判定（Telegram UserID）
+    if (Telegram.WebApp.initDataUnsafe.user) {
+      var tgUserId = Telegram.WebApp.initDataUnsafe.user.id.toString();
+      // AdminグループのChatIDまたは特定のユーザーIDで判定
+      if (ADMIN_IDS.indexOf(tgUserId) >= 0) {
+        isAdmin = true;
+      }
+    }
   }
 
-  // 今日の日付をデフォルトに
-  var today = new Date().toISOString().split('T')[0];
-  document.getElementById('expenseDate').value = today;
+  // Admin向けUI表示
+  if (isAdmin) {
+    document.getElementById('categoryField').classList.add('show');
+    document.getElementById('sheetLink').classList.add('show');
+    document.getElementById('sheetLinkHistory').classList.add('show');
+  }
+
+  // 登録者リスト生成
+  var sel = document.getElementById('expenseRegisteredBy');
+  STAFF_LIST.forEach(function(staff) {
+    var opt = document.createElement('option');
+    opt.value = staff.value;
+    opt.textContent = staff.name;
+    opt.dataset.chatId = staff.chatId;
+    sel.appendChild(opt);
+  });
+
+  // Telegramユーザー自動選択
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) {
+    var tgUserId = Telegram.WebApp.initDataUnsafe.user.id.toString();
+    STAFF_LIST.forEach(function(staff, idx) {
+      if (staff.chatId === tgUserId) {
+        sel.selectedIndex = idx + 1;
+      }
+    });
+  }
+
+  // 今日の日付（カンボジア時間）
+  var now = new Date();
+  var offset = 7 * 60;
+  var cambodia = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
+  document.getElementById('expenseDate').value = cambodia.toISOString().split('T')[0];
 });
 
 // ═══════════════════════════════════════════
@@ -409,16 +438,14 @@ function handleReceiptPhoto(input) {
   var reader = new FileReader();
 
   reader.onload = function(e) {
-    // プレビュー表示
     var preview = document.getElementById('photoPreview');
     preview.src = e.target.result;
     preview.classList.add('show');
 
     document.getElementById('photoUpload').classList.add('has-photo');
-    document.getElementById('uploadText').textContent = '✅ 写真を選択済み（タップで変更）';
+    document.getElementById('uploadText').textContent = '✅ រូបថតត្រូវបានជ្រើស / 写真選択済み';
     document.getElementById('uploadText').classList.add('success');
 
-    // Base64を保持（圧縮）
     compressImage(e.target.result, function(compressed) {
       receiptPhotoBase64 = compressed;
     });
@@ -452,17 +479,17 @@ function submitExpense() {
   var currency = document.getElementById('expenseCurrency').value;
   var vendor = document.getElementById('expenseVendor').value.trim();
   var description = document.getElementById('expenseDescription').value.trim();
-  var category = document.getElementById('expenseCategory').value;
+  var category = isAdmin ? document.getElementById('expenseCategory').value : 'その他';
   var registeredBy = document.getElementById('expenseRegisteredBy').value;
 
   // バリデーション
-  if (!date) { showToast('取引日を入力してください'); return; }
-  if (!amount || parseFloat(amount) <= 0) { showToast('金額を入力してください'); return; }
-  if (!description) { showToast('品目・摘要を入力してください'); return; }
+  if (!date) { showToast('សូមបញ្ចូលកាលបរិច្ឆេទ / 日付を入力'); return; }
+  if (!amount || parseFloat(amount) <= 0) { showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ / 金額を入力'); return; }
+  if (!description) { showToast('សូមបញ្ចូលអ្វីដែលទិញ / 内容を入力'); return; }
 
   var btn = document.getElementById('submitBtn');
   btn.disabled = true;
-  btn.innerHTML = '⏳ 送信中...';
+  btn.innerHTML = '⏳ កំពុងផ្ញើ... / 送信中...';
 
   var payload = {
     action: 'expense_create',
@@ -472,13 +499,13 @@ function submitExpense() {
     vendor: vendor,
     description: description,
     category: category,
-    registeredBy: registeredBy || '不明',
+    registeredBy: registeredBy || 'មិនស្គាល់',
     receiptPhoto: receiptPhotoBase64 || ''
   };
 
   if (!GAS_URL) {
     btn.disabled = false;
-    btn.innerHTML = '💰 経費を登録';
+    btn.innerHTML = '💰 បញ្ជូន / 経費を登録';
     showToast('GAS URLが設定されていません');
     return;
   }
@@ -491,35 +518,31 @@ function submitExpense() {
   .then(function(res) { return res.json(); })
   .then(function(data) {
     btn.disabled = false;
-    btn.innerHTML = '💰 経費を登録';
+    btn.innerHTML = '💰 បញ្ជូន / 経費を登録';
 
     if (data.status === 'ok') {
       document.getElementById('successMessage').textContent =
-        '経費ID: ' + data.expenseId + '\n金額: ' + amount + ' ' + currency + '\n品目: ' + description;
+        'ID: ' + data.expenseId + '\nចំនួន: ' + amount + ' ' + currency + '\n' + description;
       document.getElementById('successModal').classList.add('show');
 
       // フォームリセット
       document.getElementById('expenseAmount').value = '';
       document.getElementById('expenseVendor').value = '';
       document.getElementById('expenseDescription').value = '';
-      document.getElementById('expenseCategory').selectedIndex = 0;
-      document.getElementById('expenseRegisteredBy').selectedIndex = 0;
+      if (isAdmin) document.getElementById('expenseCategory').selectedIndex = 0;
       receiptPhotoBase64 = '';
       document.getElementById('photoPreview').classList.remove('show');
       document.getElementById('photoUpload').classList.remove('has-photo');
-      document.getElementById('uploadText').textContent = 'タップしてレシート写真を撮影・選択';
+      document.getElementById('uploadText').textContent = 'ចុចដើម្បីថតរូប / タップして撮影';
       document.getElementById('uploadText').classList.remove('success');
-
-      // 日付は今日のまま
-      document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
     } else {
-      showToast('エラー: ' + (data.message || '不明なエラー'));
+      showToast('កំហុស: ' + (data.message || 'エラー'));
     }
   })
   .catch(function(err) {
     btn.disabled = false;
-    btn.innerHTML = '💰 経費を登録';
-    showToast('通信エラー: ' + err.message);
+    btn.innerHTML = '💰 បញ្ជូន / 経費を登録';
+    showToast('កំហុសទំនាក់ទំនង / 通信エラー');
   });
 }
 
@@ -529,7 +552,7 @@ function submitExpense() {
 
 function loadExpenses() {
   var listEl = document.getElementById('expenseList');
-  listEl.innerHTML = '<div class="loading"><div class="spinner"></div>経費を読み込み中...</div>';
+  listEl.innerHTML = '<div class="loading"><div class="spinner"></div>កំពុងផ្ទុក... / 読み込み中...</div>';
 
   if (!GAS_URL) {
     listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>GAS URLが設定されていません。</p></div>';
@@ -542,11 +565,11 @@ function loadExpenses() {
       if (data.status === 'ok') {
         renderExpenses(data.expenses || []);
       } else {
-        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>読み込みエラー</p></div>';
+        listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>កំហុស / エラー</p></div>';
       }
     })
     .catch(function(err) {
-      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>通信エラー</p></div>';
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>កំហុសទំនាក់ទំនង / 通信エラー</p></div>';
     });
 }
 
@@ -554,11 +577,10 @@ function renderExpenses(expenses) {
   var listEl = document.getElementById('expenseList');
 
   if (expenses.length === 0) {
-    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>経費はまだ登録されていません</p></div>';
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>មិនទាន់មានការចំណាយ / 経費はまだありません</p></div>';
     return;
   }
 
-  // 新しい順に表示
   expenses.reverse();
 
   var html = '';
@@ -572,10 +594,13 @@ function renderExpenses(expenses) {
     html += '📅 ' + escapeHtml(exp.date || '') + '<br>';
     html += '🏪 ' + escapeHtml(exp.vendor || '-') + '<br>';
     html += '📝 ' + escapeHtml(exp.description || '-') + '<br>';
-    html += '📂 ' + escapeHtml(exp.category || '-') + ' | 👤 ' + escapeHtml(exp.registeredBy || '-');
+    html += '👤 ' + escapeHtml(exp.registeredBy || '-');
+    if (isAdmin) {
+      html += ' | 📂 ' + escapeHtml(exp.category || '-');
+    }
     html += '</div>';
     var statusClass = exp.status === '精算済み' ? 'paid' : 'pending';
-    html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || '未精算') + '</span>';
+    html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || 'មិនទាន់ទូទាត់') + '</span>';
     html += '</div>';
   });
 
