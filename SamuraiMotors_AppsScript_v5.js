@@ -36,6 +36,7 @@ var INVENTORY_SHEET_NAME = 'Inventory';
 var TASKS_SHEET_NAME = 'Tasks';
 var EXPENSES_SHEET_NAME = 'Expenses';
 var DAILY_REPORTS_SHEET_NAME = 'DailyReports';
+var ATTENDANCE_SHEET_NAME = 'Attendance';
 
 // Telegram Bot設定
 var TELEGRAM_BOT_TOKEN = '8248146123:AAEORbRSuqwLgZxcb-Pyc90DaDScH4W2j7w';
@@ -122,6 +123,8 @@ function doPost(e) {
         return handleExpenseCreateFromApp(data);
       case 'daily_report':
         return handleDailyReportFromApp(data);
+      case 'attendance':
+        return handleAttendanceFromApp(data);
       default:
         return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
     }
@@ -1346,6 +1349,10 @@ function doGet(e) {
     return handleDailyReportsGet(e);
   }
 
+  if (action === 'attendance') {
+    return handleAttendanceGet(e);
+  }
+
   return ContentService
     .createTextOutput('Samurai Motors Job Manager v5 is active.')
     .setMimeType(ContentService.MimeType.TEXT);
@@ -1507,6 +1514,185 @@ function editTaskDetails(taskId, updates) {
     }
   }
   return false;
+}
+
+// ═══════════════════════════════════════════
+//  勤怠管理
+// ═══════════════════════════════════════════
+
+// Attendanceシート取得（なければ作成）
+function getAttendanceSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(ATTENDANCE_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(ATTENDANCE_SHEET_NAME);
+    var headers = [
+      'Record ID', '日付', 'スタッフ名', 'ChatID',
+      '出勤時刻', '退勤時刻', '勤務時間（分）', 'メモ'
+    ];
+    sheet.appendRow(headers);
+    var hdr = sheet.getRange(1, 1, 1, headers.length);
+    hdr.setFontWeight('bold');
+    hdr.setBackground('#00695C');
+    hdr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidth(5, 140);
+    sheet.setColumnWidth(6, 140);
+  }
+
+  return sheet;
+}
+
+// ミニアプリからの勤怠打刻
+function handleAttendanceFromApp(data) {
+  var sheet = getAttendanceSheet();
+  var now = new Date();
+  var todayStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  var timeStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'HH:mm:ss');
+  var staff = data.staff || '';
+  var chatId = data.chatId || '';
+  var type = data.type || ''; // 'clock_in' or 'clock_out'
+  var memo = data.memo || '';
+
+  if (!staff || !type) {
+    return jsonResponse({ status: 'error', message: 'staff and type are required' });
+  }
+
+  var lastRow = sheet.getLastRow();
+
+  if (type === 'clock_in') {
+    // 既に今日出勤済みか確認
+    var existing = findTodayAttendance(sheet, todayStr, staff, lastRow);
+    if (existing > 0) {
+      return jsonResponse({ status: 'error', message: '本日すでに出勤打刻済みです' });
+    }
+
+    var recordId = 'ATT-' + Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd-HHmmss');
+    sheet.appendRow([recordId, todayStr, staff, chatId, timeStr, '', '', memo]);
+
+    // Admin通知
+    sendTelegramTo(ADMIN_GROUP_ID,
+      '🟢 *出勤打刻*\n'
+      + '━━━━━━━━━━━━━━━\n'
+      + '👤 ' + staff + '\n'
+      + '⏰ ' + timeStr + '\n'
+      + '📅 ' + todayStr
+    );
+
+    return jsonResponse({ status: 'ok', type: 'clock_in', time: timeStr, recordId: recordId });
+
+  } else if (type === 'clock_out') {
+    // 今日の出勤レコードを探す
+    var row = findTodayAttendance(sheet, todayStr, staff, lastRow);
+    if (row <= 0) {
+      return jsonResponse({ status: 'error', message: '本日の出勤記録がありません' });
+    }
+
+    // 既に退勤済みか確認
+    var existingOut = sheet.getRange(row, 6).getValue();
+    if (existingOut) {
+      return jsonResponse({ status: 'error', message: '本日すでに退勤打刻済みです' });
+    }
+
+    sheet.getRange(row, 6).setValue(timeStr);
+    if (memo) sheet.getRange(row, 8).setValue(memo);
+
+    // 勤務時間を計算
+    var clockInStr = sheet.getRange(row, 5).getValue().toString();
+    var inParts = clockInStr.split(':');
+    var outParts = timeStr.split(':');
+    var inMin = parseInt(inParts[0]) * 60 + parseInt(inParts[1]);
+    var outMin = parseInt(outParts[0]) * 60 + parseInt(outParts[1]);
+    var workMin = outMin - inMin;
+    if (workMin < 0) workMin += 1440; // 日跨ぎ対応
+    sheet.getRange(row, 7).setValue(workMin);
+
+    var hours = Math.floor(workMin / 60);
+    var mins = workMin % 60;
+
+    // Admin通知
+    sendTelegramTo(ADMIN_GROUP_ID,
+      '🔴 *退勤打刻*\n'
+      + '━━━━━━━━━━━━━━━\n'
+      + '👤 ' + staff + '\n'
+      + '⏰ ' + timeStr + '\n'
+      + '📅 ' + todayStr + '\n'
+      + '⏱ 勤務時間: ' + hours + '時間' + mins + '分'
+    );
+
+    return jsonResponse({ status: 'ok', type: 'clock_out', time: timeStr, workMinutes: workMin });
+  }
+
+  return jsonResponse({ status: 'error', message: 'Invalid type: ' + type });
+}
+
+// 今日の出勤レコード行を探す
+function findTodayAttendance(sheet, todayStr, staff, lastRow) {
+  for (var r = 2; r <= lastRow; r++) {
+    var date = sheet.getRange(r, 2).getValue().toString();
+    var name = sheet.getRange(r, 3).getValue().toString();
+    if (date === todayStr && name === staff) {
+      return r;
+    }
+  }
+  return -1;
+}
+
+// 勤怠一覧API（ミニアプリ用）
+function handleAttendanceGet(e) {
+  var sheet = getAttendanceSheet();
+  var lastRow = sheet.getLastRow();
+
+  if (lastRow <= 1) {
+    return jsonResponse({ status: 'ok', records: [] });
+  }
+
+  var filterStaff = (e && e.parameter && e.parameter.staff) ? e.parameter.staff : '';
+  var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var records = [];
+
+  data.forEach(function(row) {
+    if (filterStaff && row[2] !== filterStaff) return;
+    records.push({
+      id: row[0],
+      date: row[1],
+      staff: row[2],
+      chatId: row[3],
+      clockIn: row[4],
+      clockOut: row[5],
+      workMinutes: row[6],
+      memo: row[7]
+    });
+  });
+
+  return jsonResponse({ status: 'ok', records: records });
+}
+
+// 本日の勤怠サマリー取得（日次サマリー用）
+function getTodayAttendance(today) {
+  var result = [];
+  try {
+    var sheet = getAttendanceSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    data.forEach(function(row) {
+      if (row[1].toString() === today) {
+        result.push({
+          staff: row[2],
+          clockIn: row[4],
+          clockOut: row[5],
+          workMinutes: row[6]
+        });
+      }
+    });
+  } catch (e) {
+    Logger.log('getTodayAttendance error: ' + e.toString());
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════
@@ -2139,6 +2325,22 @@ function sendDailySummary() {
 
     msg += '📦 *プラン内訳（ការបែងចែកគម្រោង）*\n' + (planSummary || 'なし') + '\n\n';
 
+    // 勤怠セクション
+    var attendance = getTodayAttendance(today);
+    if (attendance.length > 0) {
+      msg += '🕐 *勤怠*\n';
+      attendance.forEach(function(a) {
+        var hours = Math.floor((a.workMinutes || 0) / 60);
+        var mins = (a.workMinutes || 0) % 60;
+        var workStr = a.clockOut ? hours + 'h' + mins + 'm' : '勤務中';
+        msg += '👤 ' + a.staff
+          + ' | 出勤 ' + a.clockIn
+          + (a.clockOut ? ' | 退勤 ' + a.clockOut : '')
+          + ' | ' + workStr + '\n';
+      });
+      msg += '\n';
+    }
+
     // 日報セクション
     var dailyReports = getTodayDailyReports(today);
     if (dailyReports.length > 0) {
@@ -2354,6 +2556,7 @@ function setupV5Sheets() {
   getTasksSheet();
   getExpensesSheet();
   getDailyReportsSheet();
+  getAttendanceSheet();
   seedRecurringTasks();
   Logger.log('v5シートと初期データを作成しました。');
 }
