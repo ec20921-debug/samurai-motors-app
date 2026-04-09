@@ -4,7 +4,7 @@
 // ╠══════════════════════════════════════════════════════════════╣
 // ║                                                              ║
 // ║  【v4 → v5 変更点】                                          ║
-// ║  ① 日次サマリー配信時間をJST 20:00に変更                      ║
+// ║  ① 日次サマリー: JST 9:00に前日分レポート配信                   ║
 // ║  ② 日次サマリーから在庫セクション削除                          ║
 // ║  ③ タスク管理機能追加（Admin→現場への指示・進捗管理）           ║
 // ║  ④ 経費管理機能追加（レシートOCR→スプレッドシート記録）         ║
@@ -2226,7 +2226,10 @@ function sendDailySummary() {
     return;
   }
 
-  var today = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  // 前日の日付を対象にする（朝9時配信で前日分を報告）
+  var now = new Date();
+  var yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  var today = Utilities.formatDate(yesterday, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
 
   var data = sheet.getRange(2, 1, lastRow - 1, 23).getValues();
 
@@ -2305,7 +2308,7 @@ function sendDailySummary() {
   if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
     var sheetUrl = ss.getUrl();
 
-    var msg = '📊 *' + today + ' 日次サマリー（សង្ខេបប្រចាំថ្ងៃ）*\n'
+    var msg = '📊 *' + today + ' 前日レポート（របាយការណ៍ម្សិលមិញ）*\n'
       + '━━━━━━━━━━━━━━━━━━\n\n'
       + '🚗 総ジョブ数（ការងារសរុប）: *' + todayJobs.length + '件*\n'
       + '⏱ 総所要時間（ពេលវេលាសរុប）: *' + totalDuration + '分*\n'
@@ -2377,12 +2380,31 @@ function sendDailySummary() {
       msg += '\n';
     }
 
+    // タスク状況セクション
+    var taskSummary = getTaskSummaryForReport();
+    if (taskSummary.total > 0) {
+      msg += '📋 *タスク状況*\n';
+      msg += '  完了: ' + taskSummary.done + '件 / 未完了: ' + taskSummary.open + '件\n';
+      if (taskSummary.overdue > 0) {
+        msg += '  ⚠️ 期限超過: ' + taskSummary.overdue + '件\n';
+      }
+      if (taskSummary.details.length > 0) {
+        msg += '\n  *未完了タスク一覧:*\n';
+        taskSummary.details.forEach(function(t) {
+          msg += '  ' + t.emoji + ' ' + t.assignee + ': ' + t.desc;
+          if (t.deadline) msg += '（期限: ' + t.deadline + '）';
+          msg += '\n';
+        });
+      }
+      msg += '\n';
+    }
+
     msg += '📄 [スプレッドシートを開く（បើកសៀវភៅបញ្ជី）](' + sheetUrl + ')';
 
     sendTelegram(msg);
   }
 
-  Logger.log('日次サマリー生成完了: ' + today + ' / ' + todayJobs.length + '件');
+  Logger.log('日次サマリー（前日分）生成完了: ' + today + ' / ' + todayJobs.length + '件');
   return todayJobs.length;
 }
 
@@ -2414,6 +2436,45 @@ function getTodayExpenseSummary(today) {
     });
   } catch (e) {
     Logger.log('getTodayExpenseSummary error: ' + e.toString());
+  }
+
+  return result;
+}
+
+// タスク状況サマリー取得（日次レポート用）
+function getTaskSummaryForReport() {
+  var result = { total: 0, done: 0, open: 0, overdue: 0, details: [] };
+
+  try {
+    var sheet = getTasksSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    var today = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+
+    data.forEach(function(row) {
+      var status = row[6] || '';
+      result.total++;
+
+      if (status === '完了') {
+        result.done++;
+      } else {
+        result.open++;
+        var deadline = row[4] ? Utilities.formatDate(new Date(row[4]), 'Asia/Phnom_Penh', 'yyyy-MM-dd') : '';
+        var isOverdue = deadline && deadline < today;
+        if (isOverdue) result.overdue++;
+
+        result.details.push({
+          assignee: row[2] || '未定',
+          desc: row[5] || '',
+          deadline: deadline,
+          emoji: isOverdue ? '🔴' : (deadline === today ? '🟡' : '🟢')
+        });
+      }
+    });
+  } catch (e) {
+    Logger.log('getTaskSummaryForReport error: ' + e.toString());
   }
 
   return result;
@@ -2524,31 +2585,31 @@ function setupV5Triggers() {
     ScriptApp.deleteTrigger(triggers[i]);
   }
 
-  // 1. 繰返しタスク生成: 毎日 UTC 0:00 (JST 9:00, カンボジア 7:00)
+  // 1. 日次サマリー（前日レポート）: 毎日 UTC 0:00 (JST 9:00, カンボジア 7:00)
+  ScriptApp.newTrigger('sendDailySummary')
+    .timeBased()
+    .everyDays(1)
+    .atHour(0)
+    .create();
+
+  // 2. 繰返しタスク生成: 毎日 UTC 0:00 (JST 9:00, カンボジア 7:00)
   ScriptApp.newTrigger('generateRecurringTasks')
     .timeBased()
     .everyDays(1)
     .atHour(0)
     .create();
 
-  // 2. 朝タスク通知: 毎日 UTC 1:00 (JST 10:00, カンボジア 8:00)
+  // 3. 朝タスク通知（スタッフ向け）: 毎日 UTC 1:00 (JST 10:00, カンボジア 8:00)
   ScriptApp.newTrigger('sendMorningTaskNotification')
     .timeBased()
     .everyDays(1)
     .atHour(1)
     .create();
 
-  // 3. 日次サマリー: 毎日 UTC 11:00 (JST 20:00, カンボジア 18:00)
-  ScriptApp.newTrigger('sendDailySummary')
-    .timeBased()
-    .everyDays(1)
-    .atHour(11)
-    .create();
-
   Logger.log('v5トリガーを設定しました:');
+  Logger.log('  日次サマリー: 毎日 JST 9:00（前日分レポート）');
   Logger.log('  繰返しタスク生成: 毎日 JST 9:00');
   Logger.log('  朝タスク通知: 毎日 JST 10:00 / カンボジア 8:00');
-  Logger.log('  日次サマリー: 毎日 JST 20:00 / カンボジア 18:00');
 }
 
 // v5シート・初期データ一括セットアップ
