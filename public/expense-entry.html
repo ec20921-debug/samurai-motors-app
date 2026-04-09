@@ -194,6 +194,56 @@ body {
 .empty-state { text-align:center; padding:40px 20px; color:var(--text-dim); }
 .empty-state .empty-icon { font-size:48px; margin-bottom:12px; }
 
+.expense-btn-edit {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:6px 12px; margin-top:8px;
+  background:rgba(201,168,76,0.15); color:var(--gold);
+  border:1px solid var(--gold); border-radius:8px;
+  font-size:12px; font-weight:600; cursor:pointer; font-family:inherit;
+}
+.expense-btn-edit:active { opacity:0.7; }
+
+.expense-photo-thumb {
+  width:60px; height:60px; border-radius:8px; object-fit:cover;
+  margin-top:6px; border:1px solid var(--border); cursor:pointer;
+}
+
+.edit-modal-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.8); z-index:300;
+  overflow-y:auto; padding:20px;
+  backdrop-filter:blur(4px);
+}
+.edit-modal-overlay.show { display:block; }
+.edit-modal {
+  background:var(--card); border-radius:16px;
+  padding:20px; max-width:480px; margin:20px auto;
+  animation: modalIn 0.3s ease;
+}
+.edit-modal h2 { font-size:16px; margin-bottom:16px; color:var(--gold); }
+.edit-modal .field { margin-bottom:12px; }
+.edit-modal .field label { font-size:12px; color:var(--text-label); margin-bottom:4px; display:block; }
+.edit-modal .field input,
+.edit-modal .field select,
+.edit-modal .field textarea {
+  width:100%; padding:10px 12px;
+  background:var(--bg); border:1.5px solid var(--border);
+  border-radius:8px; color:var(--text); font-size:14px; font-family:inherit;
+}
+.edit-modal .field textarea { min-height:60px; resize:vertical; }
+.edit-modal-actions { display:flex; gap:8px; margin-top:16px; }
+.edit-modal-actions button {
+  flex:1; padding:12px; border:none; border-radius:8px;
+  font-size:14px; font-weight:700; cursor:pointer; font-family:inherit;
+}
+.edit-btn-save { background:var(--success); color:#fff; }
+.edit-btn-cancel { background:var(--border); color:var(--text); }
+.edit-photo-preview {
+  max-width:100%; max-height:150px; border-radius:8px; margin-top:8px;
+  display:none;
+}
+.edit-photo-preview.show { display:block; }
+
 .sheet-link {
   display:none; align-items:center; justify-content:center; gap:8px;
   padding:12px; background:var(--card); border:1px solid var(--border);
@@ -322,6 +372,56 @@ body {
     <h2>✅ បានចុះឈ្មោះដោយជោគជ័យ</h2>
     <p id="successMessage"></p>
     <button class="modal-btn" onclick="closeModal()">OK</button>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="edit-modal-overlay" id="editExpenseModal">
+  <div class="edit-modal">
+    <h2>✏️ ការចំណាយកែសម្រួល / 経費を編集</h2>
+    <input type="hidden" id="editExpenseId">
+
+    <div class="section">
+      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真</div>
+      <div class="photo-upload" id="editPhotoUpload">
+        <span class="upload-icon">📷</span>
+        <div class="upload-text" id="editUploadText">ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択</div>
+        <input type="file" accept="image/*" onchange="handleEditPhoto(this)">
+      </div>
+      <img class="edit-photo-preview" id="editPhotoPreview">
+    </div>
+
+    <div class="field">
+      <label>ថ្ងៃ 取引日</label>
+      <input type="date" id="editDate">
+    </div>
+    <div class="amount-row">
+      <div class="field">
+        <label>ចំនួនទឹកប្រាក់ 金額</label>
+        <input type="number" id="editAmount" step="0.01">
+      </div>
+      <div class="field" style="width:100px">
+        <label>រូបិយប័ណ្ណ</label>
+        <select id="editCurrency">
+          <option value="USD">USD</option>
+          <option value="KHR">KHR</option>
+          <option value="JPY">JPY</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>ហាង お店の名前</label>
+      <input type="text" id="editVendor">
+    </div>
+    <div class="field">
+      <label>ទិញអ្វី 何を買った？</label>
+      <textarea id="editDescription"></textarea>
+    </div>
+
+    <div class="edit-modal-actions">
+      <button class="edit-btn-cancel" onclick="closeEditExpense()">បោះបង់ / キャンセル</button>
+      <button class="edit-btn-save" onclick="submitExpenseEdit()">💾 រក្សាទុក / 保存</button>
+    </div>
   </div>
 </div>
 
@@ -608,8 +708,12 @@ function renderExpenses(expenses) {
       html += ' | 📂 ' + escapeHtml(exp.category || '-');
     }
     html += '</div>';
+    if (exp.photoUrl) {
+      html += '<img class="expense-photo-thumb" src="' + escapeHtml(exp.photoUrl) + '" onclick="window.open(\'' + escapeHtml(exp.photoUrl) + '\')">';
+    }
     var statusClass = exp.status === '精算済み' ? 'paid' : 'pending';
     html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || 'មិនទាន់ទូទាត់') + '</span>';
+    html += ' <button class="expense-btn-edit" onclick="openEditExpense(\'' + escapeHtml(exp.id || '') + '\',\'' + escapeHtml(exp.date || '') + '\',' + (exp.amount || 0) + ',\'' + escapeHtml(exp.currency || 'USD') + '\',\'' + escapeHtml(exp.vendor || '') + '\',\'' + escapeHtml((exp.description || '').replace(/'/g, "\\'")) + '\',\'' + escapeHtml(exp.photoUrl || '') + '\')">✏️ កែ / 編集</button>';
     html += '</div>';
   });
 
@@ -635,6 +739,120 @@ function showToast(msg) {
 
 function closeModal() {
   document.getElementById('successModal').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════
+//  経費編集
+// ═══════════════════════════════════════════
+
+var editPhotoBase64 = '';
+
+function openEditExpense(id, date, amount, currency, vendor, description, photoUrl) {
+  document.getElementById('editExpenseId').value = id;
+  document.getElementById('editDate').value = date;
+  document.getElementById('editAmount').value = amount;
+  document.getElementById('editCurrency').value = currency;
+  document.getElementById('editVendor').value = vendor;
+  document.getElementById('editDescription').value = description;
+
+  // 既存写真の表示
+  editPhotoBase64 = '';
+  var preview = document.getElementById('editPhotoPreview');
+  var uploadEl = document.getElementById('editPhotoUpload');
+  var uploadText = document.getElementById('editUploadText');
+
+  if (photoUrl) {
+    preview.src = photoUrl;
+    preview.classList.add('show');
+    uploadEl.classList.add('has-photo');
+    uploadText.textContent = '✅ រូបថតមានរួចហើយ / 写真あり（変更可）';
+    uploadText.classList.add('success');
+  } else {
+    preview.classList.remove('show');
+    preview.src = '';
+    uploadEl.classList.remove('has-photo');
+    uploadText.textContent = 'ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択';
+    uploadText.classList.remove('success');
+  }
+
+  document.getElementById('editExpenseModal').classList.add('show');
+}
+
+function closeEditExpense() {
+  document.getElementById('editExpenseModal').classList.remove('show');
+  editPhotoBase64 = '';
+}
+
+function handleEditPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var preview = document.getElementById('editPhotoPreview');
+    preview.src = e.target.result;
+    preview.classList.add('show');
+    document.getElementById('editPhotoUpload').classList.add('has-photo');
+    document.getElementById('editUploadText').textContent = '✅ រូបថតថ្មីត្រូវបានជ្រើស / 新しい写真を選択済み';
+    document.getElementById('editUploadText').classList.add('success');
+    compressImage(e.target.result, function(compressed) {
+      editPhotoBase64 = compressed;
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function submitExpenseEdit() {
+  var id = document.getElementById('editExpenseId').value;
+  var date = document.getElementById('editDate').value;
+  var amount = document.getElementById('editAmount').value;
+  var currency = document.getElementById('editCurrency').value;
+  var vendor = document.getElementById('editVendor').value.trim();
+  var description = document.getElementById('editDescription').value.trim();
+
+  if (!amount || parseFloat(amount) <= 0) { showToast('សូមបញ្ចូលចំនួនទឹកប្រាក់ / 金額を入力'); return; }
+  if (!description) { showToast('សូមបញ្ចូលអ្វីដែលទិញ / 内容を入力'); return; }
+
+  var saveBtn = document.querySelector('.edit-btn-save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ កំពុងរក្សា... / 保存中...';
+
+  var payload = {
+    action: 'expense_edit',
+    expenseId: id,
+    date: date,
+    amount: parseFloat(amount),
+    currency: currency,
+    vendor: vendor,
+    description: description
+  };
+
+  // 新しい写真がある場合のみ送信
+  if (editPhotoBase64) {
+    payload.receiptPhoto = editPhotoBase64;
+  }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 រក្សាទុក / 保存';
+
+    if (data.status === 'ok') {
+      showToast('✅ បានរក្សាទុក / 保存しました');
+      closeEditExpense();
+      loadExpenses();
+    } else {
+      showToast('កំហុស: ' + (data.message || 'エラー'));
+    }
+  })
+  .catch(function(err) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 រក្សាទុក / 保存';
+    showToast('កំហុសទំនាក់ទំនង / 通信エラー');
+  });
 }
 </script>
 </body>

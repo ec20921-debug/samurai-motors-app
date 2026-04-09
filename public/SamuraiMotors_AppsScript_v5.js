@@ -121,6 +121,8 @@ function doPost(e) {
         return handleTaskEditFromApp(data);
       case 'expense_create':
         return handleExpenseCreateFromApp(data);
+      case 'expense_edit':
+        return handleExpenseEditFromApp(data);
       case 'daily_report':
         return handleDailyReportFromApp(data);
       case 'attendance':
@@ -1867,6 +1869,54 @@ function handleExpenseCreateFromApp(data) {
   );
 
   return jsonResponse({ status: 'ok', expenseId: expenseId });
+}
+
+// 経費編集（ミニアプリ用）
+function handleExpenseEditFromApp(data) {
+  var sheet = getExpensesSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return jsonResponse({ status: 'error', message: '経費データが見つかりません' });
+  }
+
+  // Expense IDで行を検索
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var targetRow = -1;
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0].toString() === data.expenseId) {
+      targetRow = i + 2;
+      break;
+    }
+  }
+
+  if (targetRow < 0) {
+    return jsonResponse({ status: 'error', message: 'ID not found: ' + data.expenseId });
+  }
+
+  // 写真の処理（新しい写真がある場合のみ更新）
+  var photoUrl = sheet.getRange(targetRow, 10).getValue();
+  if (data.receiptPhoto) {
+    try {
+      var receiptFolder = getOrCreateFolder(RECEIPT_FOLDER_NAME);
+      var now = new Date();
+      var dateStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
+      var fileName = 'receipt_edit_' + dateStr;
+      var link = saveBase64Image(receiptFolder, data.receiptPhoto, fileName);
+      photoUrl = link;
+    } catch (photoErr) {
+      Logger.log('handleExpenseEditFromApp photo error: ' + photoErr.toString());
+    }
+  }
+
+  // 各フィールドを更新（列: 3=日付, 4=説明, 5=金額, 6=通貨, 7=店名, 10=写真URL）
+  if (data.date) sheet.getRange(targetRow, 3).setValue(data.date);
+  if (data.description) sheet.getRange(targetRow, 4).setValue(data.description);
+  if (data.amount) sheet.getRange(targetRow, 5).setValue(data.amount);
+  if (data.currency) sheet.getRange(targetRow, 6).setValue(data.currency);
+  if (data.vendor !== undefined) sheet.getRange(targetRow, 7).setValue(data.vendor);
+  sheet.getRange(targetRow, 10).setValue(photoUrl);
+
+  return jsonResponse({ status: 'ok', expenseId: data.expenseId });
 }
 
 // 経費一覧API（ミニアプリ用）
