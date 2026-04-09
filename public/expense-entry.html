@@ -436,6 +436,7 @@ body {
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_RUVr6AcMuKzVpE7w3_cZoDKNewnBjKO4DO96LPA1hh/exec';
 var receiptPhotoBase64 = '';
 var isAdmin = false;
+var expenseDataCache = [];
 
 // AdminのTelegram ChatID一覧
 var ADMIN_IDS = ['-5178607881'];
@@ -691,9 +692,10 @@ function renderExpenses(expenses) {
   }
 
   expenses.reverse();
+  expenseDataCache = expenses;
 
   var html = '';
-  expenses.forEach(function(exp) {
+  expenses.forEach(function(exp, idx) {
     html += '<div class="expense-card">';
     html += '<div class="expense-header">';
     html += '<span class="expense-amount">' + escapeHtml(String(exp.amount || 0)) + ' ' + escapeHtml(exp.currency || 'USD') + '</span>';
@@ -709,11 +711,11 @@ function renderExpenses(expenses) {
     }
     html += '</div>';
     if (exp.photoUrl) {
-      html += '<img class="expense-photo-thumb" src="' + escapeHtml(exp.photoUrl) + '" onclick="window.open(\'' + escapeHtml(exp.photoUrl) + '\')">';
+      html += '<img class="expense-photo-thumb" src="' + escapeHtml(exp.photoUrl) + '" onclick="window.open(expenseDataCache[' + idx + '].photoUrl)">';
     }
     var statusClass = exp.status === '精算済み' ? 'paid' : 'pending';
     html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || 'មិនទាន់ទូទាត់') + '</span>';
-    html += ' <button class="expense-btn-edit" onclick="openEditExpense(\'' + escapeHtml(exp.id || '') + '\',\'' + escapeHtml(exp.date || '') + '\',' + (exp.amount || 0) + ',\'' + escapeHtml(exp.currency || 'USD') + '\',\'' + escapeHtml(exp.vendor || '') + '\',\'' + escapeHtml((exp.description || '').replace(/'/g, "\\'")) + '\',\'' + escapeHtml(exp.photoUrl || '') + '\')">✏️ កែ / 編集</button>';
+    html += ' <button class="expense-btn-edit" onclick="openEditExpenseByIndex(' + idx + ')">✏️ កែ / 編集</button>';
     html += '</div>';
   });
 
@@ -746,6 +748,12 @@ function closeModal() {
 // ═══════════════════════════════════════════
 
 var editPhotoBase64 = '';
+
+function openEditExpenseByIndex(idx) {
+  var exp = expenseDataCache[idx];
+  if (!exp) return;
+  openEditExpense(exp.id || '', exp.date || '', exp.amount || 0, exp.currency || 'USD', exp.vendor || '', exp.description || '', exp.photoUrl || '');
+}
 
 function openEditExpense(id, date, amount, currency, vendor, description, photoUrl) {
   document.getElementById('editExpenseId').value = id;
