@@ -92,13 +92,19 @@ var CORRECT_HEADERS = [
 ];
 
 // プラン別の標準価格（USD）。Plan_Pricesシートで上書き可能
+// 料金は [セダン価格, SUV価格] の2値で管理。
+// 出張料は特別行として扱い、全プランに加算される。
+// キャンペーン時はこのシートの数字だけ書き換えれば即反映。
 var DEFAULT_PLAN_PRICES = {
-  'スタンダード': 15,
-  'プレミアム': 25,
-  'デラックス': 40,
-  'ミニ洗車': 8,
-  'その他': 0
+  'PLAN A': [12, 15],
+  'PLAN B': [17, 20],
+  'PLAN C': [20, 23],
+  'PLAN D': [32, 35],
+  '出張料': [2, 2]  // 全プラン共通で加算される特別行
 };
+
+// 出張料の行名（Plan_Pricesシートでの識別用）
+var DISPATCH_FEE_ROW = '出張料';
 
 // ═══════════════════════════════════════════
 //  メインルーター：action で処理を振り分け
@@ -749,48 +755,140 @@ function handlePendingReasonFlow(chatId, message, state) {
 
 // Expensesシート取得（なければ作成）
 // プラン価格マスター（Plan_Prices シート）
+// 構造: プラン名 / セダン価格USD / SUV価格USD / 備考
+// - 価格変更やキャンペーン時はこのシートの数字を書き換えるだけで即反映
+// - 出張料は特別行として扱われ、全プランに加算される
 function getPlanPricesSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Plan_Prices');
   if (!sheet) {
     sheet = ss.insertSheet('Plan_Prices');
-    var headers = ['プラン名', '価格（USD）', '備考'];
+    var headers = ['プラン名', 'セダン（USD）', 'SUV（USD）', '備考'];
     sheet.appendRow(headers);
     var hdr = sheet.getRange(1, 1, 1, headers.length);
     hdr.setFontWeight('bold');
     hdr.setBackground('#1a5276');
     hdr.setFontColor('#ffffff');
     sheet.setFrozenRows(1);
-    sheet.setColumnWidth(1, 200);
-    sheet.setColumnWidth(2, 120);
-    sheet.setColumnWidth(3, 300);
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidth(2, 140);
+    sheet.setColumnWidth(3, 140);
+    sheet.setColumnWidth(4, 380);
 
     // デフォルト値を流し込み
+    var defaultNotes = {
+      'PLAN A': '無水洗車+タイヤワックス+エアチェック',
+      'PLAN B': 'A+前3面ガラス撥水（簡易）',
+      'PLAN C': 'A+全面ガラス撥水（簡易）',
+      'PLAN D': 'A+全面油膜落とし+全面ガラス撥水',
+      '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
+    };
     Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
-      sheet.appendRow([plan, DEFAULT_PLAN_PRICES[plan], '']);
+      var prices = DEFAULT_PLAN_PRICES[plan];
+      sheet.appendRow([plan, prices[0], prices[1], defaultNotes[plan] || '']);
     });
+  } else {
+    // 既存シートが旧構造（2列）の場合は新構造へマイグレーション
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 4) {
+      // 旧データを一旦クリアして新構造で作り直す
+      sheet.clear();
+      var headers = ['プラン名', 'セダン（USD）', 'SUV（USD）', '備考'];
+      sheet.appendRow(headers);
+      var hdr = sheet.getRange(1, 1, 1, headers.length);
+      hdr.setFontWeight('bold');
+      hdr.setBackground('#1a5276');
+      hdr.setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+      sheet.setColumnWidth(1, 180);
+      sheet.setColumnWidth(2, 140);
+      sheet.setColumnWidth(3, 140);
+      sheet.setColumnWidth(4, 380);
+
+      var defaultNotes2 = {
+        'PLAN A': '無水洗車+タイヤワックス+エアチェック',
+        'PLAN B': 'A+前3面ガラス撥水（簡易）',
+        'PLAN C': 'A+全面ガラス撥水（簡易）',
+        'PLAN D': 'A+全面油膜落とし+全面ガラス撥水',
+        '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
+      };
+      Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
+        var prices = DEFAULT_PLAN_PRICES[plan];
+        sheet.appendRow([plan, prices[0], prices[1], defaultNotes2[plan] || '']);
+      });
+    }
   }
   return sheet;
 }
 
-// プラン名から単価を取得（マスターシート優先、なければデフォルト）
-function getPlanPrice(planName) {
-  if (!planName) return 0;
+// 出張料を取得（シート優先、なければデフォルト）
+function getDispatchFee(vehicleType) {
   try {
     var sheet = getPlanPricesSheet();
     var lastRow = sheet.getLastRow();
     if (lastRow >= 2) {
-      var data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      var data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
       for (var i = 0; i < data.length; i++) {
-        if (data[i][0] && data[i][0].toString() === planName) {
-          return parseFloat(data[i][1]) || 0;
+        if (data[i][0] && data[i][0].toString() === DISPATCH_FEE_ROW) {
+          var col = (vehicleType === 'SUV') ? 2 : 1;
+          return parseFloat(data[i][col]) || 0;
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('getDispatchFee error: ' + e.toString());
+  }
+  var fallback = DEFAULT_PLAN_PRICES[DISPATCH_FEE_ROW] || [0, 0];
+  return (vehicleType === 'SUV') ? fallback[1] : fallback[0];
+}
+
+// プラン名＋車両タイプから売上金額（出張料込み）を取得
+// vehicleType: 'セダン' または 'SUV'（未指定はセダン扱い）
+function getPlanPrice(planName, vehicleType) {
+  if (!planName) return 0;
+  // プラン名から実際のキー（"PLAN A" 等）を抽出
+  // 旧フォーマット「清 KIYOME (A) ($12/$15)」などにも対応する
+  var normalizedPlan = normalizePlanName(planName);
+  var basePrice = 0;
+  try {
+    var sheet = getPlanPricesSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][0] && data[i][0].toString() === normalizedPlan) {
+          var col = (vehicleType === 'SUV') ? 2 : 1;
+          basePrice = parseFloat(data[i][col]) || 0;
+          break;
         }
       }
     }
   } catch (e) {
     Logger.log('getPlanPrice error: ' + e.toString());
   }
-  return DEFAULT_PLAN_PRICES[planName] || 0;
+  if (basePrice === 0) {
+    var fallback = DEFAULT_PLAN_PRICES[normalizedPlan];
+    if (fallback) {
+      basePrice = (vehicleType === 'SUV') ? fallback[1] : fallback[0];
+    }
+  }
+  // 出張料を加算
+  var dispatchFee = getDispatchFee(vehicleType);
+  return basePrice + dispatchFee;
+}
+
+// プラン名を正規化：「PLAN A」「planA」「清 KIYOME (A) ($12/$15)」などから "PLAN A" を抽出
+function normalizePlanName(planName) {
+  if (!planName) return '';
+  var s = planName.toString().toUpperCase();
+  // "PLAN A"〜"PLAN D" が含まれていればそれを返す
+  var m = s.match(/PLAN\s*[ABCD]/);
+  if (m) return 'PLAN ' + m[0].replace(/[^ABCD]/g, '');
+  // 旧フォーマット対応: "(A)"〜"(D)" を検出
+  var m2 = s.match(/\(([ABCD])\)/);
+  if (m2) return 'PLAN ' + m2[1];
+  // そのまま返す
+  return planName.toString();
 }
 
 function getExpensesSheet() {
@@ -2038,15 +2136,23 @@ function handleJobSubmit(data) {
 
   var newRow = sheet.getLastRow() + 1;
 
-  // 売上金額（プランから自動。data.priceで上書き可能）
-  var priceUSD = (data.price !== undefined && data.price !== '') ? parseFloat(data.price) : getPlanPrice(data.plan);
+  // 売上金額（プラン＋車両タイプから自動算出。data.priceで上書き可能）
+  // vehicleType: 'セダン' または 'SUV'（未指定はセダン扱い）
+  var vehicleType = data.vehicleType || 'セダン';
+  var priceUSD = (data.price !== undefined && data.price !== '') ? parseFloat(data.price) : getPlanPrice(data.plan, vehicleType);
+
+  // プラン名に車両タイプを併記してシートに保存（例: "PLAN A (セダン)"）
+  var planLabel = data.plan || '';
+  if (planLabel && vehicleType) {
+    planLabel = planLabel + ' (' + vehicleType + ')';
+  }
 
   sheet.appendRow([
     jobId, registered,
     data.name || '', data.phone || '',
     data.building || '', data.room || '',
     data.carModel || '', data.plate || '',
-    data.plan || '', data.mapUrl || '',
+    planLabel, data.mapUrl || '',
     data.notes || '', data.scheduled || '',
     startTime, endTime, duration,
     '', '', '', '',
