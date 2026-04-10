@@ -117,19 +117,18 @@ body {
 }
 .plan-option input:checked + label.plan-card { border-color:var(--gold); background:var(--gold-soft); }
 .plan-name-jp { font-size:16px; font-weight:700; color:var(--gold); }
-.plan-desc { font-size:10px; color:var(--text-dim); margin-top:2px; text-align:center; line-height:1.3; }
-.plan-price { font-size:12px; color:var(--gold); margin-top:4px; font-weight:600; }
+.plan-price { font-size:11px; color:var(--text-dim); margin-top:2px; }
 
-/* Vehicle type selector */
-.vehicle-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+/* Vehicle type selector（最小限のシンプルな2択） */
+.vehicle-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
 .vehicle-option { position:relative; }
 .vehicle-option input[type="radio"] { position:absolute; opacity:0; width:0; height:0; }
 .vehicle-option label.vehicle-card {
   display:flex; align-items:center; justify-content:center; gap:6px;
-  padding:14px 8px; background:var(--card);
+  padding:10px 8px; background:var(--card);
   border:1.5px solid var(--border); border-radius:var(--radius);
   cursor:pointer; transition:all 0.2s; margin:0;
-  font-size:15px; font-weight:600;
+  font-size:13px; font-weight:600;
 }
 .vehicle-option input:checked + label.vehicle-card { border-color:var(--gold); background:var(--gold-soft); color:var(--gold); }
 
@@ -355,53 +354,36 @@ body {
       </div>
     </div>
     <div class="section">
-      <div class="section-title">🚗 ប្រភេទរថយន្ត（車両タイプ）</div>
+      <div class="section-title">⭐ គម្រោងសេវាកម្ម（サービスプラン）</div>
       <div class="vehicle-grid">
         <div class="vehicle-option">
           <input type="radio" name="vehicleType" id="vehSedan" value="セダン" checked>
-          <label class="vehicle-card" for="vehSedan">🚙 Sedan / セダン</label>
+          <label class="vehicle-card" for="vehSedan">🚙 Sedan</label>
         </div>
         <div class="vehicle-option">
           <input type="radio" name="vehicleType" id="vehSuv" value="SUV">
           <label class="vehicle-card" for="vehSuv">🚘 SUV</label>
         </div>
       </div>
-      <div class="section-title">⭐ គម្រោងសេវាកម្ម（サービスプラン）</div>
       <div class="plan-grid">
         <div class="plan-option">
-          <input type="radio" name="plan" id="planA" value="PLAN A">
-          <label class="plan-card" for="planA">
-            <span class="plan-name-jp">PLAN A</span>
-            <span class="plan-desc">無水洗車+タイヤ<br>ワックス+エア</span>
-            <span class="plan-price">$12 / $15</span>
-          </label>
+          <input type="radio" name="plan" id="planA" value="清 KIYOME (A)">
+          <label class="plan-card" for="planA"><span class="plan-name-jp">清 KIYOME (A)</span><span class="plan-price">$12 / $15</span></label>
         </div>
         <div class="plan-option">
-          <input type="radio" name="plan" id="planB" value="PLAN B">
-          <label class="plan-card" for="planB">
-            <span class="plan-name-jp">PLAN B</span>
-            <span class="plan-desc">A+前3面<br>ガラス撥水</span>
-            <span class="plan-price">$17 / $20</span>
-          </label>
+          <input type="radio" name="plan" id="planB" value="鏡 KAGAMI (B)">
+          <label class="plan-card" for="planB"><span class="plan-name-jp">鏡 KAGAMI (B)</span><span class="plan-price">$17 / $20</span></label>
         </div>
         <div class="plan-option">
-          <input type="radio" name="plan" id="planC" value="PLAN C">
-          <label class="plan-card" for="planC">
-            <span class="plan-name-jp">PLAN C</span>
-            <span class="plan-desc">A+全面<br>ガラス撥水</span>
-            <span class="plan-price">$20 / $23</span>
-          </label>
+          <input type="radio" name="plan" id="planC" value="匠 TAKUMI (C)">
+          <label class="plan-card" for="planC"><span class="plan-name-jp">匠 TAKUMI (C)</span><span class="plan-price">$20 / $23</span></label>
         </div>
         <div class="plan-option">
-          <input type="radio" name="plan" id="planD" value="PLAN D">
-          <label class="plan-card" for="planD">
-            <span class="plan-name-jp">PLAN D</span>
-            <span class="plan-desc">A+全面油膜落<br>+全面ガラス撥水</span>
-            <span class="plan-price">$32 / $35</span>
-          </label>
+          <input type="radio" name="plan" id="planD" value="将軍 SHOGUN (D)">
+          <label class="plan-card" for="planD"><span class="plan-name-jp">将軍 SHOGUN (D)</span><span class="plan-price">$32 / $35</span></label>
         </div>
       </div>
-      <p class="hint" style="margin-top:6px;">💰 + $2 ថ្លៃធ្វើដំណើរ（＋$2 出張費・自動加算）</p>
+      <p class="hint" style="margin-top:6px;">💰 + $2 ថ្លៃធ្វើដំណើរ（＋$2 出張費別途）</p>
     </div>
     <div class="section">
       <div class="section-title">📝 កំណត់សម្គាល់（備考）</div>

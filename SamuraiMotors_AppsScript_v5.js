@@ -96,10 +96,10 @@ var CORRECT_HEADERS = [
 // 出張料は特別行として扱い、全プランに加算される。
 // キャンペーン時はこのシートの数字だけ書き換えれば即反映。
 var DEFAULT_PLAN_PRICES = {
-  'PLAN A': [12, 15],
-  'PLAN B': [17, 20],
-  'PLAN C': [20, 23],
-  'PLAN D': [32, 35],
+  '清 KIYOME (A)': [12, 15],
+  '鏡 KAGAMI (B)': [17, 20],
+  '匠 TAKUMI (C)': [20, 23],
+  '将軍 SHOGUN (D)': [32, 35],
   '出張料': [2, 2]  // 全プラン共通で加算される特別行
 };
 
@@ -777,10 +777,10 @@ function getPlanPricesSheet() {
 
     // デフォルト値を流し込み
     var defaultNotes = {
-      'PLAN A': '無水洗車+タイヤワックス+エアチェック',
-      'PLAN B': 'A+前3面ガラス撥水（簡易）',
-      'PLAN C': 'A+全面ガラス撥水（簡易）',
-      'PLAN D': 'A+全面油膜落とし+全面ガラス撥水',
+      '清 KIYOME (A)': '無水洗車+タイヤワックス+エアチェック',
+      '鏡 KAGAMI (B)': 'A+前3面ガラス撥水（簡易）',
+      '匠 TAKUMI (C)': 'A+全面ガラス撥水（簡易）',
+      '将軍 SHOGUN (D)': 'A+全面油膜落とし+全面ガラス撥水',
       '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
     };
     Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
@@ -806,10 +806,10 @@ function getPlanPricesSheet() {
       sheet.setColumnWidth(4, 380);
 
       var defaultNotes2 = {
-        'PLAN A': '無水洗車+タイヤワックス+エアチェック',
-        'PLAN B': 'A+前3面ガラス撥水（簡易）',
-        'PLAN C': 'A+全面ガラス撥水（簡易）',
-        'PLAN D': 'A+全面油膜落とし+全面ガラス撥水',
+        '清 KIYOME (A)': '無水洗車+タイヤワックス+エアチェック',
+        '鏡 KAGAMI (B)': 'A+前3面ガラス撥水（簡易）',
+        '匠 TAKUMI (C)': 'A+全面ガラス撥水（簡易）',
+        '将軍 SHOGUN (D)': 'A+全面油膜落とし+全面ガラス撥水',
         '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
       };
       Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
@@ -844,11 +844,10 @@ function getDispatchFee(vehicleType) {
 
 // プラン名＋車両タイプから売上金額（出張料込み）を取得
 // vehicleType: 'セダン' または 'SUV'（未指定はセダン扱い）
+// プラン名は (A)〜(D) のラベルだけ見て照合するので、ブランド名表記が変わってもOK
 function getPlanPrice(planName, vehicleType) {
   if (!planName) return 0;
-  // プラン名から実際のキー（"PLAN A" 等）を抽出
-  // 旧フォーマット「清 KIYOME (A) ($12/$15)」などにも対応する
-  var normalizedPlan = normalizePlanName(planName);
+  var letter = getPlanLetter(planName);  // 'A'/'B'/'C'/'D' または ''
   var basePrice = 0;
   try {
     var sheet = getPlanPricesSheet();
@@ -856,7 +855,14 @@ function getPlanPrice(planName, vehicleType) {
     if (lastRow >= 2) {
       var data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
       for (var i = 0; i < data.length; i++) {
-        if (data[i][0] && data[i][0].toString() === normalizedPlan) {
+        var rowName = data[i][0] ? data[i][0].toString() : '';
+        if (!rowName) continue;
+        // 行名が (A)〜(D) を含むか、プラン名そのものと一致するかで判定
+        var rowLetter = getPlanLetter(rowName);
+        var matched = false;
+        if (letter && rowLetter === letter) matched = true;
+        else if (rowName === planName.toString()) matched = true;
+        if (matched) {
           var col = (vehicleType === 'SUV') ? 2 : 1;
           basePrice = parseFloat(data[i][col]) || 0;
           break;
@@ -866,29 +872,32 @@ function getPlanPrice(planName, vehicleType) {
   } catch (e) {
     Logger.log('getPlanPrice error: ' + e.toString());
   }
-  if (basePrice === 0) {
-    var fallback = DEFAULT_PLAN_PRICES[normalizedPlan];
-    if (fallback) {
-      basePrice = (vehicleType === 'SUV') ? fallback[1] : fallback[0];
-    }
+  // フォールバック：DEFAULT_PLAN_PRICES から (A)〜(D) で検索
+  if (basePrice === 0 && letter) {
+    Object.keys(DEFAULT_PLAN_PRICES).forEach(function(key) {
+      if (basePrice === 0 && getPlanLetter(key) === letter) {
+        var fallback = DEFAULT_PLAN_PRICES[key];
+        basePrice = (vehicleType === 'SUV') ? fallback[1] : fallback[0];
+      }
+    });
   }
   // 出張料を加算
   var dispatchFee = getDispatchFee(vehicleType);
   return basePrice + dispatchFee;
 }
 
-// プラン名を正規化：「PLAN A」「planA」「清 KIYOME (A) ($12/$15)」などから "PLAN A" を抽出
-function normalizePlanName(planName) {
+// プラン名から (A)〜(D) のレターを抽出
+// 「清 KIYOME (A)」「PLAN A」「planA」「(B)」など色々な表記に対応
+function getPlanLetter(planName) {
   if (!planName) return '';
   var s = planName.toString().toUpperCase();
-  // "PLAN A"〜"PLAN D" が含まれていればそれを返す
-  var m = s.match(/PLAN\s*[ABCD]/);
-  if (m) return 'PLAN ' + m[0].replace(/[^ABCD]/g, '');
-  // 旧フォーマット対応: "(A)"〜"(D)" を検出
-  var m2 = s.match(/\(([ABCD])\)/);
-  if (m2) return 'PLAN ' + m2[1];
-  // そのまま返す
-  return planName.toString();
+  // "(A)" 形式
+  var m = s.match(/\(([ABCD])\)/);
+  if (m) return m[1];
+  // "PLAN A" 形式
+  m = s.match(/PLAN\s*([ABCD])/);
+  if (m) return m[1];
+  return '';
 }
 
 function getExpensesSheet() {
