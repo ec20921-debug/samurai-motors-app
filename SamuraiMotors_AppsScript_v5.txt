@@ -87,8 +87,18 @@ var CORRECT_HEADERS = [
   'ក្រោយ 1（アフター1）',
   'ក្រោយ 2（アフター2）',
   'ក្រោយ 3（アフター3）',
-  'ក្រោយ 4（アフター4）'
+  'ក្រោយ 4（アフター4）',
+  'តម្លៃ USD（売上金額USD）'
 ];
+
+// プラン別の標準価格（USD）。Plan_Pricesシートで上書き可能
+var DEFAULT_PLAN_PRICES = {
+  'スタンダード': 15,
+  'プレミアム': 25,
+  'デラックス': 40,
+  'ミニ洗車': 8,
+  'その他': 0
+};
 
 // ═══════════════════════════════════════════
 //  メインルーター：action で処理を振り分け
@@ -729,83 +739,60 @@ function handlePendingReasonFlow(chatId, message, state) {
   );
 }
 
-// 朝タスク通知（毎朝カンボジア8:00 AM）
-function sendMorningTaskNotification() {
-  var sheet = getTasksSheet();
-  var lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return;
-
-  var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
-  var today = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
-
-  // スタッフごとにタスクを抽出して通知
-  FIELD_STAFF_IDS.forEach(function(staffId) {
-    var staffName = STAFF_REGISTRY[staffId].name;
-
-    var myTasks = data.filter(function(row) {
-      if (row[6] === '完了') return false;  // 完了済みは除外
-      if (row[2] !== staffName) return false;  // 他人のタスクは除外
-      // 期限が今日以前、または期限なしのタスク
-      var deadline = row[4] ? row[4].toString() : '';
-      if (!deadline) return true;
-      return deadline <= today;
-    });
-
-    if (myTasks.length === 0) return;
-
-    var msg = '🌅 *អរុណសួស្តី! ការងារថ្ងៃនេះ*\n'
-      + '（おはようございます！今日のタスク）\n'
-      + '━━━━━━━━━━━━━━━━━━\n\n';
-
-    var keyboard = [];
-
-    myTasks.forEach(function(row, idx) {
-      var emoji = getTaskStatusEmoji(row[4], row[6]);
-      var descJp = row[5];
-      var descKh = translateToKhmer(descJp);
-      msg += (idx + 1) + '. ' + emoji + ' ' + descKh + '\n'
-        + '   🇯🇵 ' + descJp + '\n'
-        + '   📅 ថ្ងៃកំណត់: ' + (row[4] || 'គ្មាន') + '\n\n';
-
-      keyboard.push([
-        { text: '✅ ' + descKh.substring(0, 15), callback_data: 'task_done:' + row[0] },
-        { text: '❌ មិនទាន់រួច', callback_data: 'task_notdone:' + row[0] }
-      ]);
-    });
-
-    msg += 'សូមចុចប៊ូតុងពេលរួចរាល់ 👇\n（完了したらボタンを押してください）';
-
-    sendTelegramWithKeyboard(staffId, msg, { inline_keyboard: keyboard });
-  });
-
-  // 飯泉さん宛のタスクもAdminグループに通知
-  var iizumiTasks = data.filter(function(row) {
-    if (row[6] === '完了') return false;
-    if (row[2] !== '飯泉') return false;
-    var deadline = row[4] ? row[4].toString() : '';
-    if (!deadline) return true;
-    return deadline <= today;
-  });
-
-  if (iizumiTasks.length > 0) {
-    var adminMsg = '🌅 *飯泉さんの今日のタスク*\n'
-      + '━━━━━━━━━━━━━━━━━━\n\n';
-
-    iizumiTasks.forEach(function(row, idx) {
-      var emoji = getTaskStatusEmoji(row[4], row[6]);
-      adminMsg += (idx + 1) + '. ' + emoji + ' ' + row[5] + '\n'
-        + '   📅 期限: ' + (row[4] || 'なし') + '\n\n';
-    });
-
-    sendTelegramTo(ADMIN_GROUP_ID, adminMsg);
-  }
-}
+// 旧: sendMorningTaskNotification()
+// v5.1以降は sendDailySummary() → sendStaffMorningTasks() に統合されたため削除。
+// トリガーは sendDailySummary だけで Admin通知とスタッフ通知の両方が送信される。
 
 // ═══════════════════════════════════════════
 //  経費管理（レシートOCR）
 // ═══════════════════════════════════════════
 
 // Expensesシート取得（なければ作成）
+// プラン価格マスター（Plan_Prices シート）
+function getPlanPricesSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Plan_Prices');
+  if (!sheet) {
+    sheet = ss.insertSheet('Plan_Prices');
+    var headers = ['プラン名', '価格（USD）', '備考'];
+    sheet.appendRow(headers);
+    var hdr = sheet.getRange(1, 1, 1, headers.length);
+    hdr.setFontWeight('bold');
+    hdr.setBackground('#1a5276');
+    hdr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 200);
+    sheet.setColumnWidth(2, 120);
+    sheet.setColumnWidth(3, 300);
+
+    // デフォルト値を流し込み
+    Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
+      sheet.appendRow([plan, DEFAULT_PLAN_PRICES[plan], '']);
+    });
+  }
+  return sheet;
+}
+
+// プラン名から単価を取得（マスターシート優先、なければデフォルト）
+function getPlanPrice(planName) {
+  if (!planName) return 0;
+  try {
+    var sheet = getPlanPricesSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][0] && data[i][0].toString() === planName) {
+          return parseFloat(data[i][1]) || 0;
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('getPlanPrice error: ' + e.toString());
+  }
+  return DEFAULT_PLAN_PRICES[planName] || 0;
+}
+
 function getExpensesSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
@@ -1065,15 +1052,8 @@ function createExpenseRecord(data) {
   }
   var expenseId = 'EXP-' + dateStr + '-' + String(count).padStart(3, '0');
 
-  // 精算タスクを作成（飯泉さん宛）
-  var taskId = createTask(
-    '飯泉',
-    ADMIN_GROUP_ID,
-    '', // 期限は明示しない
-    '精算: ' + (data.vendor || '不明') + ' ' + (data.amount || '?') + ' ' + (data.currency || 'USD') + ' (' + expenseId + ')',
-    '',
-    expenseId
-  );
+  // 精算ステータス（デフォルトは未精算。data.settlementStatusで上書き可能）
+  var settlementStatus = data.settlementStatus || '未精算';
 
   // レシート写真をHYPERLINK形式に
   var photoFormula = data.photoUrl
@@ -1092,8 +1072,8 @@ function createExpenseRecord(data) {
     data.registeredBy || '',
     '',  // レシート写真（HYPERLINK式で後書き）
     data.ocrText || '',
-    '未精算',
-    taskId
+    settlementStatus,
+    ''  // 関連タスクID（自動生成廃止）
   ]);
 
   // HYPERLINK式をセルに書き込み
@@ -1843,6 +1823,8 @@ function handleExpenseCreateFromApp(data) {
     }
   }
 
+  var settlementStatus = data.settlementStatus || '未精算';
+
   var expenseId = createExpenseRecord({
     date: data.date || '',
     description: data.description || '',
@@ -1852,10 +1834,12 @@ function handleExpenseCreateFromApp(data) {
     category: data.category || '消耗品費',
     registeredBy: data.registeredBy || '',
     photoUrl: photoUrl,
-    ocrText: ''
+    ocrText: '',
+    settlementStatus: settlementStatus
   });
 
   // Adminグループに通知
+  var statusLabel = settlementStatus === '未精算' ? '⚠️ 未精算（立替え）' : '✅ 精算済み';
   sendTelegramTo(ADMIN_GROUP_ID,
     '💰 *新規経費登録（ミニアプリ）*\n'
     + '━━━━━━━━━━━━━━━\n'
@@ -1864,7 +1848,8 @@ function handleExpenseCreateFromApp(data) {
     + '📅 ' + (data.date || '-') + '\n'
     + '🏪 ' + (data.vendor || '-') + '\n'
     + '📝 ' + (data.description || '-') + '\n'
-    + '💰 ' + (data.amount || '?') + ' ' + (data.currency || 'USD')
+    + '💰 ' + (data.amount || '?') + ' ' + (data.currency || 'USD') + '\n'
+    + '💳 ' + statusLabel
     + (photoUrl ? '\n📷 [レシート](' + photoUrl + ')' : '')
   );
 
@@ -1908,13 +1893,16 @@ function handleExpenseEditFromApp(data) {
     }
   }
 
-  // 各フィールドを更新（列: 3=日付, 4=説明, 5=金額, 6=通貨, 7=店名, 10=写真URL）
+  // 各フィールドを更新（列: 3=日付, 4=説明, 5=金額, 6=通貨, 7=店名, 10=写真URL, 12=ステータス）
   if (data.date) sheet.getRange(targetRow, 3).setValue(data.date);
   if (data.description) sheet.getRange(targetRow, 4).setValue(data.description);
   if (data.amount) sheet.getRange(targetRow, 5).setValue(data.amount);
   if (data.currency) sheet.getRange(targetRow, 6).setValue(data.currency);
   if (data.vendor !== undefined) sheet.getRange(targetRow, 7).setValue(data.vendor);
-  sheet.getRange(targetRow, 10).setValue(photoUrl);
+  if (photoUrl) {
+    sheet.getRange(targetRow, 10).setFormula('=HYPERLINK("' + photoUrl + '","📷 レシート")');
+  }
+  if (data.settlementStatus) sheet.getRange(targetRow, 12).setValue(data.settlementStatus);
 
   return jsonResponse({ status: 'ok', expenseId: data.expenseId });
 }
@@ -1968,6 +1956,7 @@ function fixHeaders() {
   for (var c = 2; c <= 14; c++) sheet.setColumnWidth(c, 160);
   sheet.setColumnWidth(15, 100);
   for (var c = 16; c <= 23; c++) sheet.setColumnWidth(c, 200);
+  sheet.setColumnWidth(24, 130);  // 売上金額USD
 
   Logger.log('ヘッダーを23列に修正しました。');
 }
@@ -2048,6 +2037,10 @@ function handleJobSubmit(data) {
   }
 
   var newRow = sheet.getLastRow() + 1;
+
+  // 売上金額（プランから自動。data.priceで上書き可能）
+  var priceUSD = (data.price !== undefined && data.price !== '') ? parseFloat(data.price) : getPlanPrice(data.plan);
+
   sheet.appendRow([
     jobId, registered,
     data.name || '', data.phone || '',
@@ -2057,7 +2050,8 @@ function handleJobSubmit(data) {
     data.notes || '', data.scheduled || '',
     startTime, endTime, duration,
     '', '', '', '',
-    '', '', '', ''
+    '', '', '', '',
+    priceUSD || 0
   ]);
 
   setPhotoHyperlinks(sheet, newRow, beforeLinks, afterLinks);
@@ -2266,33 +2260,310 @@ function setPhotoHyperlinks(sheet, row, beforeLinks, afterLinks) {
 //  日次サマリー（v5: 時間変更、在庫削除、経費追加）
 // ═══════════════════════════════════════════
 
+// ════════════════════════════════════════════
+//  毎朝 JST 9:00 配信（メインエントリポイント）
+//  Admin向けレポート + 各スタッフ向け個別タスク通知
+// ════════════════════════════════════════════
 function sendDailySummary() {
+  // カンボジア時間の「今日」と「昨日」を取得
+  var now = new Date();
+  var todayKh = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  var tomorrowKh = Utilities.formatDate(new Date(now.getTime() + 24 * 3600 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  // 前日を文字列ベースで計算（タイムゾーンずれ防止）
+  var todayParts = todayKh.split('-');
+  var todayDateObj = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]));
+  var yesterdayDateObj = new Date(todayDateObj.getTime() - 24 * 3600 * 1000);
+  var yesterdayKh = Utilities.formatDate(yesterdayDateObj, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+
+  Logger.log('sendDailySummary: today=' + todayKh + ', yesterday=' + yesterdayKh);
+
+  // ① Admin向けレポート送信
+  sendAdminReport(yesterdayKh, todayKh, tomorrowKh);
+
+  // ② 各フィールドスタッフ向け個別タスク通知
+  sendStaffMorningTasks(todayKh, tomorrowKh, yesterdayKh);
+}
+
+// ════════════════════════════════════════════
+//  Admin向け：昨日の業績 + 今日/明日のアクション
+// ════════════════════════════════════════════
+function sendAdminReport(yesterday, today, tomorrow) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheets()[0];
+  var sheetUrl = ss.getUrl();
+
+  // === 昨日の洗車実績 ===
+  var jobsResult = getJobsForDate(yesterday);
+  var yesterdayJobs = jobsResult.jobs;
+  var totalRevenue = jobsResult.revenue;
+  var totalDuration = jobsResult.duration;
+
+  // === 昨日の経費 ===
+  var expenseSummary = getExpenseSummaryForDate(yesterday);
+
+  // === 昨日の勤怠 ===
+  var attendance = getTodayAttendance(yesterday);
+
+  // === 昨日の日報 ===
+  var dailyReports = getTodayDailyReports(yesterday);
+
+  // === 今日アクションが必要なタスク（今日期限・明日期限・期限超過） ===
+  var actionTasks = getActionableTasks(today, tomorrow);
+
+  // === 未精算の立替え経費（飯泉さん向けアラート） ===
+  var unpaidExpenses = getUnpaidExpenses();
+
+  // === メッセージ組み立て ===
+  var msg = '☀️ *' + today + ' 朝のレポート*\n';
+  msg += '━━━━━━━━━━━━━━━━━━\n\n';
+
+  // 昨日の実績ヘッダー
+  msg += '📅 *' + yesterday + ' の実績*\n\n';
+
+  // 売上
+  msg += '💵 *売上・稼働*\n';
+  msg += '  洗車件数: *' + yesterdayJobs.length + '件*\n';
+  if (yesterdayJobs.length > 0) {
+    msg += '  売上合計: *' + formatMoney(totalRevenue) + ' USD*\n';
+    msg += '  稼働時間: ' + totalDuration + '分\n';
+  }
+  msg += '\n';
+
+  // 経費
+  if (expenseSummary.count > 0) {
+    msg += '💸 *経費*\n';
+    msg += '  件数: ' + expenseSummary.count + '件\n';
+    msg += '  合計: *' + formatMoney(expenseSummary.totalUSD) + ' USD*';
+    if (expenseSummary.totalKHR > 0) {
+      msg += ' / ' + formatMoney(expenseSummary.totalKHR) + ' KHR';
+    }
+    msg += '\n';
+    if (expenseSummary.unpaidUSD > 0) {
+      msg += '  ⚠️ 未精算（要支払）: ' + formatMoney(expenseSummary.unpaidUSD) + ' USD\n';
+    }
+    msg += '\n';
+  }
+
+  // 利益（粗）
+  if (yesterdayJobs.length > 0 || expenseSummary.count > 0) {
+    var profit = totalRevenue - expenseSummary.totalUSD;
+    msg += '📈 *差引: ' + formatMoney(profit) + ' USD*\n\n';
+  }
+
+  // 勤怠
+  if (attendance.length > 0) {
+    msg += '👥 *スタッフ勤怠*\n';
+    attendance.forEach(function(a) {
+      var hours = Math.floor((a.workMinutes || 0) / 60);
+      var mins = (a.workMinutes || 0) % 60;
+      var workStr = a.clockOut ? hours + 'h' + mins + 'm' : '勤務中';
+      msg += '  ' + a.staff
+        + ' ' + a.clockIn
+        + (a.clockOut ? '〜' + a.clockOut : '〜')
+        + ' (' + workStr + ')\n';
+    });
+    msg += '\n';
+  }
+
+  // 日報
+  if (dailyReports.length > 0) {
+    msg += '📝 *日報*\n';
+    dailyReports.forEach(function(report) {
+      msg += '  👤 ' + report.reporter + '\n';
+      if (report.otherWork) msg += '    🔧 ' + report.otherWork + '\n';
+      if (report.notes) msg += '    📌 ' + report.notes + '\n';
+    });
+    msg += '\n';
+  }
+
+  // 区切り
+  msg += '━━━━━━━━━━━━━━━━━━\n';
+  msg += '⚡ *今日アクション必要*\n\n';
+
+  // 期限超過タスク
+  if (actionTasks.overdue.length > 0) {
+    msg += '🔴 *期限超過 (' + actionTasks.overdue.length + '件)*\n';
+    actionTasks.overdue.forEach(function(t) {
+      msg += '  ' + t.assignee + ': ' + t.desc + '（' + t.deadline + '）\n';
+    });
+    msg += '\n';
+  }
+
+  // 今日が期限
+  if (actionTasks.today.length > 0) {
+    msg += '🟡 *今日まで (' + actionTasks.today.length + '件)*\n';
+    actionTasks.today.forEach(function(t) {
+      msg += '  ' + t.assignee + ': ' + t.desc + '\n';
+    });
+    msg += '\n';
+  }
+
+  // 明日が期限（1日前アラート）
+  if (actionTasks.tomorrow.length > 0) {
+    msg += '🟢 *明日まで (' + actionTasks.tomorrow.length + '件)*\n';
+    actionTasks.tomorrow.forEach(function(t) {
+      msg += '  ' + t.assignee + ': ' + t.desc + '\n';
+    });
+    msg += '\n';
+  }
+
+  // アクションがない場合
+  if (actionTasks.overdue.length === 0 && actionTasks.today.length === 0 && actionTasks.tomorrow.length === 0) {
+    msg += '✅ 期限が迫っているタスクはありません\n\n';
+  }
+
+  // 未精算の立替えアラート（飯泉さん宛）
+  if (unpaidExpenses.length > 0) {
+    msg += '💳 *未精算の立替え (' + unpaidExpenses.length + '件)*\n';
+    msg += '  → 飯泉さん要対応\n';
+    var unpaidTotal = 0;
+    unpaidExpenses.forEach(function(e) {
+      msg += '  ' + e.id + ' / ' + e.registeredBy + ' / ' + formatMoney(e.amount) + ' ' + e.currency + '\n';
+      if (e.currency === 'USD') unpaidTotal += e.amount;
+    });
+    msg += '  合計: *' + formatMoney(unpaidTotal) + ' USD*\n\n';
+  }
+
+  // フッター
+  msg += '━━━━━━━━━━━━━━━━━━\n';
+  msg += '📄 [スプレッドシートを開く](' + sheetUrl + ')';
+
+  sendTelegramTo(ADMIN_GROUP_ID, msg);
+  Logger.log('Admin朝レポート送信完了: ' + yesterday);
+}
+
+// ════════════════════════════════════════════
+//  各フィールドスタッフ向け：個別タスク通知
+//  クメール語挨拶 + 自分のタスクのみ
+// ════════════════════════════════════════════
+function sendStaffMorningTasks(today, tomorrow, yesterday) {
+  var sheet = getTasksSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+
+  FIELD_STAFF_IDS.forEach(function(staffId) {
+    var staffInfo = STAFF_REGISTRY[staffId];
+    var staffName = staffInfo.name;
+    var staffNameKh = staffInfo.nameKh || staffName;
+
+    // このスタッフの「今日まで・明日まで・期限超過」のタスクのみ抽出
+    var myTasks = [];
+    data.forEach(function(row) {
+      if (row[6] === '完了') return;
+      if (row[2] !== staffName) return;
+      var deadline = row[4] ? Utilities.formatDate(new Date(row[4]), 'Asia/Phnom_Penh', 'yyyy-MM-dd') : '';
+      if (!deadline) return; // 期限なしは通知しない
+      if (deadline > tomorrow) return; // 明日より先のタスクは通知しない
+
+      var status;
+      var emoji;
+      if (deadline < today) { status = 'overdue'; emoji = '🔴'; }
+      else if (deadline === today) { status = 'today'; emoji = '🟡'; }
+      else { status = 'tomorrow'; emoji = '🟢'; }
+
+      myTasks.push({
+        id: row[0],
+        descJp: row[5] || '',
+        deadline: deadline,
+        status: status,
+        emoji: emoji
+      });
+    });
+
+    // 昨日の勤怠データを取得して労いメッセージに使う
+    var yesterdayWork = '';
+    try {
+      var att = getTodayAttendance(yesterday);
+      att.forEach(function(a) {
+        if (a.staff === staffName && a.workMinutes) {
+          var h = Math.floor(a.workMinutes / 60);
+          var m = a.workMinutes % 60;
+          yesterdayWork = h + 'h' + m + 'm';
+        }
+      });
+    } catch (e) {}
+
+    // クメール語挨拶
+    var msg = '🌅 *អរុណសួស្តី ' + staffNameKh + '!*\n';
+    msg += '（おはようございます、' + staffName + 'さん！）\n';
+    msg += '━━━━━━━━━━━━━━━━━━\n\n';
+
+    // 昨日の労い
+    if (yesterdayWork) {
+      msg += '✨ ម្សិលមិញធ្វើការ ' + yesterdayWork + '\n';
+      msg += '  អរគុណច្រើន! / 昨日もお疲れ様でした！\n\n';
+    }
+
+    if (myTasks.length === 0) {
+      msg += '🎉 *ថ្ងៃនេះមិនមានការងារបន្ទាន់ទេ*\n';
+      msg += '  今日は急ぎの仕事はありません。\n';
+      msg += '  通常の洗車業務を続けてください 💪\n';
+    } else {
+      msg += '🎯 *ការងារថ្ងៃនេះ / 今日のタスク*\n\n';
+
+      var keyboard = [];
+      myTasks.forEach(function(t, idx) {
+        var descKh = translateToKhmer(t.descJp);
+        var deadlineLabel;
+        if (t.status === 'overdue') {
+          deadlineLabel = '⚠️ ហួសកាលកំណត់ / 期限超過';
+        } else if (t.status === 'today') {
+          deadlineLabel = '📅 ថ្ងៃនេះ / 今日まで';
+        } else {
+          deadlineLabel = '📅 ស្អែក / 明日まで';
+        }
+
+        msg += (idx + 1) + '. ' + t.emoji + ' ' + descKh + '\n';
+        msg += '   🇯🇵 ' + t.descJp + '\n';
+        msg += '   ' + deadlineLabel + '\n\n';
+
+        keyboard.push([
+          { text: '✅ ' + descKh.substring(0, 20), callback_data: 'task_done:' + t.id },
+          { text: '❌ មិនទាន់រួច', callback_data: 'task_notdone:' + t.id }
+        ]);
+      });
+
+      msg += 'សូមចុចប៊ូតុងពេលរួចរាល់ 👇\n（完了したらボタンを押してください）';
+
+      sendTelegramWithKeyboard(staffId, msg, { inline_keyboard: keyboard });
+      Logger.log('スタッフ朝通知送信: ' + staffName + ' / ' + myTasks.length + '件');
+      return;
+    }
+
+    // タスクがない場合はキーボードなしで送信
+    sendTelegramTo(staffId, msg);
+    Logger.log('スタッフ朝通知送信: ' + staffName + ' / 0件');
+  });
+}
+
+// ════════════════════════════════════════════
+//  集計ヘルパー
+// ════════════════════════════════════════════
+
+// 指定日のジョブと売上を取得
+function getJobsForDate(dateStr) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheets()[0];
   var lastRow = sheet.getLastRow();
+  var result = { jobs: [], revenue: 0, duration: 0 };
 
-  if (lastRow <= 1) {
-    Logger.log('データがありません');
-    return;
-  }
+  if (lastRow <= 1) return result;
 
-  // 前日の日付を対象にする（朝9時配信で前日分を報告）
-  var now = new Date();
-  var yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  var today = Utilities.formatDate(yesterday, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+  // 24列目（売上）まで取得
+  var lastCol = sheet.getLastColumn();
+  var colCount = Math.max(24, lastCol);
+  var data = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 23).getValues();
-
-  var todayJobs = [];
-  var totalDuration = 0;
-
-  for (var i = 0; i < data.length; i++) {
-    var row = data[i];
-    var regDate = row[1].toString();
-    if (regDate.indexOf(today) === 0) {
+  data.forEach(function(row) {
+    var regDate = row[1] ? row[1].toString() : '';
+    if (regDate.indexOf(dateStr) === 0) {
       var duration = parseInt(row[14]) || 0;
-      totalDuration += duration;
-      todayJobs.push({
+      var price = parseFloat(row[23]) || 0;
+      result.duration += duration;
+      result.revenue += price;
+      result.jobs.push({
         jobId: row[0],
         name: row[2],
         building: row[4],
@@ -2300,162 +2571,121 @@ function sendDailySummary() {
         carModel: row[6],
         plate: row[7],
         plan: row[8],
-        start: row[12],
-        end: row[13],
-        duration: duration
+        duration: duration,
+        price: price
       });
     }
-  }
-
-  // DailySummaryシートに書き込み
-  var summarySheet = ss.getSheetByName('DailySummary');
-  if (!summarySheet) {
-    summarySheet = ss.insertSheet('DailySummary');
-    summarySheet.appendRow([
-      '日付', '総ジョブ数', '総所要時間（分）', '平均所要時間（分）',
-      '使用プラン内訳'
-    ]);
-    var hdr = summarySheet.getRange(1, 1, 1, 5);
-    hdr.setFontWeight('bold');
-    hdr.setBackground('#1a5276');
-    hdr.setFontColor('#ffffff');
-    summarySheet.setFrozenRows(1);
-  }
-
-  // プラン別集計
-  var planCount = {};
-  todayJobs.forEach(function(job) {
-    var plan = job.plan || 'その他';
-    planCount[plan] = (planCount[plan] || 0) + 1;
   });
-  var planSummary = Object.keys(planCount).map(function(k) {
-    return k + ': ' + planCount[k] + '件';
-  }).join(' / ');
 
-  var avgDuration = todayJobs.length > 0 ? Math.round(totalDuration / todayJobs.length) : 0;
+  return result;
+}
 
-  // 既存の同日行を探す
-  var summaryLastRow = summarySheet.getLastRow();
-  var existingRow = -1;
-  for (var r = 2; r <= summaryLastRow; r++) {
-    if (summarySheet.getRange(r, 1).getValue().toString() === today) {
-      existingRow = r;
-      break;
-    }
-  }
+// 指定日の経費サマリー（精算ステータスも含む）
+function getExpenseSummaryForDate(dateStr) {
+  var result = { count: 0, totalUSD: 0, totalKHR: 0, unpaidUSD: 0 };
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
+    if (!sheet) return result;
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
 
-  var summaryData = [today, todayJobs.length, totalDuration, avgDuration, planSummary];
-  if (existingRow > 0) {
-    summarySheet.getRange(existingRow, 1, 1, 5).setValues([summaryData]);
-  } else {
-    summarySheet.appendRow(summaryData);
-  }
+    var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    data.forEach(function(row) {
+      var transactionDate = row[2] ? row[2].toString().substring(0, 10) : '';
+      if (transactionDate === dateStr) {
+        result.count++;
+        var amount = parseFloat(row[4]) || 0;
+        var currency = row[5] || 'USD';
+        var status = row[11] || '未精算';
 
-  // 経費サマリー取得
-  var expenseSummary = getTodayExpenseSummary(today);
-
-  // Telegram送信
-  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_IDS && TELEGRAM_CHAT_IDS.length > 0) {
-    var sheetUrl = ss.getUrl();
-
-    var msg = '📊 *' + today + ' 前日レポート（របាយការណ៍ម្សិលមិញ）*\n'
-      + '━━━━━━━━━━━━━━━━━━\n\n'
-      + '🚗 総ジョブ数（ការងារសរុប）: *' + todayJobs.length + '件*\n'
-      + '⏱ 総所要時間（ពេលវេលាសរុប）: *' + totalDuration + '分*\n'
-      + '📐 平均所要時間（មធ្យមក្នុងមួយគ្រឿង）: *' + avgDuration + '分/台*\n\n';
-
-    if (todayJobs.length > 0) {
-      msg += '📋 *ジョブ詳細（ព័ត៌មានលម្អិត）*\n';
-      todayJobs.forEach(function(job, idx) {
-        msg += (idx + 1) + '. ' + (job.name || '-')
-          + ' | ' + (job.building || '') + ' ' + (job.room || '')
-          + ' | ' + (job.carModel || '-')
-          + ' | ' + job.duration + '分'
-          + ' | ' + (job.plan || '-') + '\n';
-      });
-      msg += '\n';
-    }
-
-    msg += '📦 *プラン内訳（ការបែងចែកគម្រោង）*\n' + (planSummary || 'なし') + '\n\n';
-
-    // 勤怠セクション
-    var attendance = getTodayAttendance(today);
-    if (attendance.length > 0) {
-      msg += '🕐 *勤怠*\n';
-      attendance.forEach(function(a) {
-        var hours = Math.floor((a.workMinutes || 0) / 60);
-        var mins = (a.workMinutes || 0) % 60;
-        var workStr = a.clockOut ? hours + 'h' + mins + 'm' : '勤務中';
-        msg += '👤 ' + a.staff
-          + ' | 出勤 ' + a.clockIn
-          + (a.clockOut ? ' | 退勤 ' + a.clockOut : '')
-          + ' | ' + workStr + '\n';
-      });
-      msg += '\n';
-    }
-
-    // 日報セクション
-    var dailyReports = getTodayDailyReports(today);
-    if (dailyReports.length > 0) {
-      msg += '📝 *日報*\n';
-      dailyReports.forEach(function(report) {
-        msg += '👤 ' + report.reporter + '\n';
-        if (report.otherWork) {
-          msg += '  🔧 ' + report.otherWork + '\n';
+        if (currency === 'KHR') {
+          result.totalKHR += amount;
+        } else {
+          result.totalUSD += amount;
+          if (status === '未精算') result.unpaidUSD += amount;
         }
-        if (report.notes) {
-          msg += '  📌 ' + report.notes + '\n';
-        }
-      });
-      msg += '\n';
-    } else {
-      msg += '📝 *日報*\n⚠️ 本日の日報提出なし\n\n';
-    }
-
-    // 経費セクション
-    if (expenseSummary.count > 0) {
-      msg += '💰 *本日の経費*\n'
-        + '件数: ' + expenseSummary.count + '件\n'
-        + '合計: ' + expenseSummary.totalUSD + ' USD';
-      if (expenseSummary.totalKHR > 0) {
-        msg += ' / ' + expenseSummary.totalKHR + ' KHR';
       }
-      msg += '\n';
+    });
+  } catch (e) {
+    Logger.log('getExpenseSummaryForDate error: ' + e.toString());
+  }
+  return result;
+}
 
-      // Expensesシートへのリンク
-      var expensesSheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
-      if (expensesSheet) {
-        msg += '📄 [経費詳細を開く](' + sheetUrl + '#gid=' + expensesSheet.getSheetId() + ')\n';
-      }
-      msg += '\n';
-    }
+// 未精算の立替え経費一覧を取得
+function getUnpaidExpenses() {
+  var result = [];
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(EXPENSES_SHEET_NAME);
+    if (!sheet) return result;
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
 
-    // タスク状況セクション
-    var taskSummary = getTaskSummaryForReport();
-    if (taskSummary.total > 0) {
-      msg += '📋 *タスク状況*\n';
-      msg += '  完了: ' + taskSummary.done + '件 / 未完了: ' + taskSummary.open + '件\n';
-      if (taskSummary.overdue > 0) {
-        msg += '  ⚠️ 期限超過: ' + taskSummary.overdue + '件\n';
-      }
-      if (taskSummary.details.length > 0) {
-        msg += '\n  *未完了タスク一覧:*\n';
-        taskSummary.details.forEach(function(t) {
-          msg += '  ' + t.emoji + ' ' + t.assignee + ': ' + t.desc;
-          if (t.deadline) msg += '（期限: ' + t.deadline + '）';
-          msg += '\n';
+    var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    data.forEach(function(row) {
+      var status = row[11] || '';
+      if (status === '未精算') {
+        result.push({
+          id: row[0],
+          date: row[2] ? row[2].toString().substring(0, 10) : '',
+          description: row[3],
+          amount: parseFloat(row[4]) || 0,
+          currency: row[5] || 'USD',
+          vendor: row[6],
+          registeredBy: row[8]
         });
       }
-      msg += '\n';
-    }
-
-    msg += '📄 [スプレッドシートを開く（បើកសៀវភៅបញ្ជី）](' + sheetUrl + ')';
-
-    sendTelegram(msg);
+    });
+  } catch (e) {
+    Logger.log('getUnpaidExpenses error: ' + e.toString());
   }
+  return result;
+}
 
-  Logger.log('日次サマリー（前日分）生成完了: ' + today + ' / ' + todayJobs.length + '件');
-  return todayJobs.length;
+// 今日アクションが必要なタスク（今日・明日期限 + 期限超過）を取得
+// 期限超過は1日前のものから（つまり昨日まで）
+function getActionableTasks(today, tomorrow) {
+  var result = { overdue: [], today: [], tomorrow: [] };
+  try {
+    var sheet = getTasksSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return result;
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    data.forEach(function(row) {
+      var status = row[6] || '';
+      if (status === '完了') return;
+
+      var deadline = row[4] ? Utilities.formatDate(new Date(row[4]), 'Asia/Phnom_Penh', 'yyyy-MM-dd') : '';
+      if (!deadline) return; // 期限なしはアクション通知に出さない
+
+      var taskInfo = {
+        id: row[0],
+        assignee: row[2] || '未定',
+        desc: row[5] || '',
+        deadline: deadline
+      };
+
+      if (deadline < today) {
+        result.overdue.push(taskInfo);
+      } else if (deadline === today) {
+        result.today.push(taskInfo);
+      } else if (deadline === tomorrow) {
+        result.tomorrow.push(taskInfo);
+      }
+    });
+  } catch (e) {
+    Logger.log('getActionableTasks error: ' + e.toString());
+  }
+  return result;
+}
+
+// 金額フォーマット（カンマ区切り、小数2桁）
+function formatMoney(amount) {
+  var n = parseFloat(amount) || 0;
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 // 本日の経費サマリー取得
@@ -2491,44 +2721,8 @@ function getTodayExpenseSummary(today) {
   return result;
 }
 
-// タスク状況サマリー取得（日次レポート用）
-function getTaskSummaryForReport() {
-  var result = { total: 0, done: 0, open: 0, overdue: 0, details: [] };
-
-  try {
-    var sheet = getTasksSheet();
-    var lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return result;
-
-    var data = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
-    var today = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
-
-    data.forEach(function(row) {
-      var status = row[6] || '';
-      result.total++;
-
-      if (status === '完了') {
-        result.done++;
-      } else {
-        result.open++;
-        var deadline = row[4] ? Utilities.formatDate(new Date(row[4]), 'Asia/Phnom_Penh', 'yyyy-MM-dd') : '';
-        var isOverdue = deadline && deadline < today;
-        if (isOverdue) result.overdue++;
-
-        result.details.push({
-          assignee: row[2] || '未定',
-          desc: row[5] || '',
-          deadline: deadline,
-          emoji: isOverdue ? '🔴' : (deadline === today ? '🟡' : '🟢')
-        });
-      }
-    });
-  } catch (e) {
-    Logger.log('getTaskSummaryForReport error: ' + e.toString());
-  }
-
-  return result;
-}
+// 旧: getTaskSummaryForReport()
+// v5.1以降は getActionableTasks(today, tomorrow) に置き換えられたため削除。
 
 // ═══════════════════════════════════════════
 //  在庫管理（v4から継承・参照用に残す）
@@ -2628,6 +2822,8 @@ function saveBase64Image(folder, base64Data, filename) {
 // ═══════════════════════════════════════════
 
 // v5トリガー一括設定
+// sendDailySummary が Admin向けレポート と スタッフ向け朝タスク通知 の両方を行うため、
+// トリガーは sendDailySummary だけにする（両者が同時刻に送信される）
 function setupV5Triggers() {
   // 既存トリガーを全削除
   var triggers = ScriptApp.getProjectTriggers();
@@ -2635,31 +2831,26 @@ function setupV5Triggers() {
     ScriptApp.deleteTrigger(triggers[i]);
   }
 
-  // 1. 日次サマリー（前日レポート）: 毎日 UTC 0:00 (JST 9:00, カンボジア 7:00)
+  // 1. 朝のレポート（Admin + スタッフ一括配信）: 毎日 JST 9:00（=カンボジア 7:00）
+  //    inTimezone で Asia/Tokyo を指定し、スクリプトのタイムゾーン設定に依存しないようにする
   ScriptApp.newTrigger('sendDailySummary')
     .timeBased()
     .everyDays(1)
-    .atHour(0)
+    .inTimezone('Asia/Tokyo')
+    .atHour(9)
     .create();
 
-  // 2. 繰返しタスク生成: 毎日 UTC 0:00 (JST 9:00, カンボジア 7:00)
+  // 2. 繰返しタスク生成: 毎日 JST 9:00 に実行（レポート送信前に生成されるように）
   ScriptApp.newTrigger('generateRecurringTasks')
     .timeBased()
     .everyDays(1)
-    .atHour(0)
-    .create();
-
-  // 3. 朝タスク通知（スタッフ向け）: 毎日 UTC 1:00 (JST 10:00, カンボジア 8:00)
-  ScriptApp.newTrigger('sendMorningTaskNotification')
-    .timeBased()
-    .everyDays(1)
-    .atHour(1)
+    .inTimezone('Asia/Tokyo')
+    .atHour(8)
     .create();
 
   Logger.log('v5トリガーを設定しました:');
-  Logger.log('  日次サマリー: 毎日 JST 9:00（前日分レポート）');
-  Logger.log('  繰返しタスク生成: 毎日 JST 9:00');
-  Logger.log('  朝タスク通知: 毎日 JST 10:00 / カンボジア 8:00');
+  Logger.log('  繰返しタスク生成: 毎日 JST 8:00');
+  Logger.log('  朝のレポート（Admin+スタッフ）: 毎日 JST 9:00 / カンボジア 7:00');
 }
 
 // v5シート・初期データ一括セットアップ
@@ -2704,9 +2895,8 @@ function testCreateTask() {
   Logger.log('テストタスク作成: ' + taskId);
 }
 
-function testMorningNotification() {
-  sendMorningTaskNotification();
-}
+// testMorningNotification() は sendDailySummary() に統合済みのため削除
+// 朝のレポート（Admin+スタッフ）の動作確認は testDailySummary() を使ってください
 
 function testTelegram() {
   sendTelegram('🧪 テスト通知\nSamurai Motors v5 Telegram連携テストです。');

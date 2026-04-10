@@ -256,6 +256,23 @@ body {
 /* Admin専用フィールド（デフォルト非表示） */
 .admin-only { display:none; }
 .admin-only.show { display:block; }
+
+/* 精算ステータス切替 */
+.status-toggle {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+}
+.status-option {
+  background:var(--card); border:2px solid var(--border);
+  border-radius:var(--radius); padding:14px 10px; text-align:center;
+  cursor:pointer; transition:all 0.2s;
+}
+.status-option.active {
+  border-color:var(--gold); background:var(--gold-soft);
+}
+.status-option .status-emoji { font-size:28px; margin-bottom:4px; }
+.status-option .status-label-km { font-size:12px; font-weight:600; color:var(--text); }
+.status-option .status-label-jp { font-size:11px; color:var(--text-label); margin-top:2px; }
+.status-option .status-hint { font-size:10px; color:var(--text-dim); margin-top:4px; }
 </style>
 </head>
 <body>
@@ -346,6 +363,25 @@ body {
           <option value="" disabled selected>ជ្រើសរើស / 選択</option>
         </select>
       </div>
+
+      <!-- 精算ステータス（立替え or 精算済み） -->
+      <div class="field">
+        <label>💳 ស្ថានភាពទូទាត់ <span class="km">精算ステータス</span><span class="req">*</span></label>
+        <div class="status-toggle">
+          <div class="status-option active" id="statusUnpaid" onclick="selectSettlementStatus('未精算')">
+            <div class="status-emoji">💰</div>
+            <div class="status-label-km">បានបង់ជំនួស</div>
+            <div class="status-label-jp">立替え（未精算）</div>
+            <div class="status-hint">後で飯泉さんが支払う</div>
+          </div>
+          <div class="status-option" id="statusPaid" onclick="selectSettlementStatus('精算済み')">
+            <div class="status-emoji">✅</div>
+            <div class="status-label-km">បានទូទាត់រួច</div>
+            <div class="status-label-jp">精算済み</div>
+            <div class="status-hint">すでに支払い済み</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -418,6 +454,20 @@ body {
       <textarea id="editDescription"></textarea>
     </div>
 
+    <div class="field">
+      <label>💳 ស្ថានភាពទូទាត់ 精算ステータス</label>
+      <div class="status-toggle">
+        <div class="status-option active" id="editStatusUnpaid" onclick="selectEditSettlementStatus('未精算')">
+          <div class="status-emoji">💰</div>
+          <div class="status-label-jp">未精算</div>
+        </div>
+        <div class="status-option" id="editStatusPaid" onclick="selectEditSettlementStatus('精算済み')">
+          <div class="status-emoji">✅</div>
+          <div class="status-label-jp">精算済み</div>
+        </div>
+      </div>
+    </div>
+
     <div class="edit-modal-actions">
       <button class="edit-btn-cancel" onclick="closeEditExpense()">បោះបង់ / キャンセル</button>
       <button class="edit-btn-save" onclick="submitExpenseEdit()">💾 រក្សាទុក / 保存</button>
@@ -437,6 +487,7 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_
 var receiptPhotoBase64 = '';
 var isAdmin = false;
 var expenseDataCache = [];
+var currentSettlementStatus = '未精算';
 
 // AdminのTelegram ChatID一覧
 var ADMIN_IDS = ['-5178607881'];
@@ -583,6 +634,12 @@ function compressImage(dataUrl, callback) {
 //  経費登録
 // ═══════════════════════════════════════════
 
+function selectSettlementStatus(status) {
+  currentSettlementStatus = status;
+  document.getElementById('statusUnpaid').classList.toggle('active', status === '未精算');
+  document.getElementById('statusPaid').classList.toggle('active', status === '精算済み');
+}
+
 function submitExpense() {
   var date = document.getElementById('expenseDate').value;
   var amount = document.getElementById('expenseAmount').value;
@@ -591,6 +648,7 @@ function submitExpense() {
   var description = document.getElementById('expenseDescription').value.trim();
   var category = isAdmin ? document.getElementById('expenseCategory').value : 'その他';
   var registeredBy = document.getElementById('expenseRegisteredBy').value;
+  var settlementStatus = currentSettlementStatus;
 
   // バリデーション
   if (!date) { showToast('សូមបញ្ចូលកាលបរិច្ឆេទ / 日付を入力'); return; }
@@ -610,6 +668,7 @@ function submitExpense() {
     description: description,
     category: category,
     registeredBy: registeredBy || 'មិនស្គាល់',
+    settlementStatus: settlementStatus,
     receiptPhoto: receiptPhotoBase64 || ''
   };
 
@@ -643,8 +702,9 @@ function submitExpense() {
       receiptPhotoBase64 = '';
       document.getElementById('photoPreview').classList.remove('show');
       document.getElementById('photoUpload').classList.remove('has-photo');
-      document.getElementById('uploadText').textContent = 'ចុចដើម្បីថតរូប / タップして撮影';
+      document.getElementById('uploadText').textContent = 'ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択';
       document.getElementById('uploadText').classList.remove('success');
+      selectSettlementStatus('未精算');
     } else {
       showToast('កំហុស: ' + (data.message || 'エラー'));
     }
@@ -748,10 +808,18 @@ function closeModal() {
 // ═══════════════════════════════════════════
 
 var editPhotoBase64 = '';
+var editSettlementStatus = '未精算';
+
+function selectEditSettlementStatus(status) {
+  editSettlementStatus = status;
+  document.getElementById('editStatusUnpaid').classList.toggle('active', status === '未精算');
+  document.getElementById('editStatusPaid').classList.toggle('active', status === '精算済み');
+}
 
 function openEditExpenseByIndex(idx) {
   var exp = expenseDataCache[idx];
   if (!exp) return;
+  selectEditSettlementStatus(exp.status === '精算済み' ? '精算済み' : '未精算');
   openEditExpense(exp.id || '', exp.date || '', exp.amount || 0, exp.currency || 'USD', exp.vendor || '', exp.description || '', exp.photoUrl || '');
 }
 
@@ -831,7 +899,8 @@ function submitExpenseEdit() {
     amount: parseFloat(amount),
     currency: currency,
     vendor: vendor,
-    description: description
+    description: description,
+    settlementStatus: editSettlementStatus
   };
 
   // 新しい写真がある場合のみ送信
