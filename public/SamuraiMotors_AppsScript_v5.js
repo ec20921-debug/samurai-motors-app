@@ -2344,12 +2344,6 @@ function sendAdminReport(yesterday, today, tomorrow) {
     msg += '\n';
   }
 
-  // 利益（粗）
-  if (yesterdayJobs.length > 0 || expenseSummary.count > 0) {
-    var profit = totalRevenue - expenseSummary.totalUSD;
-    msg += '📈 *差引: ' + formatMoney(profit) + ' USD*\n\n';
-  }
-
   // 勤怠
   if (attendance.length > 0) {
     msg += '👥 *スタッフ勤怠*\n';
