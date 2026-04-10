@@ -119,18 +119,20 @@ body {
 .plan-name-jp { font-size:16px; font-weight:700; color:var(--gold); }
 .plan-price { font-size:11px; color:var(--text-dim); margin-top:2px; }
 
-/* Vehicle type selector（最小限のシンプルな2択） */
+/* Vehicle type selector（クメール語＋日本語、サイズ感が分かる） */
 .vehicle-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
 .vehicle-option { position:relative; }
 .vehicle-option input[type="radio"] { position:absolute; opacity:0; width:0; height:0; }
 .vehicle-option label.vehicle-card {
-  display:flex; align-items:center; justify-content:center; gap:6px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
   padding:10px 8px; background:var(--card);
   border:1.5px solid var(--border); border-radius:var(--radius);
   cursor:pointer; transition:all 0.2s; margin:0;
-  font-size:13px; font-weight:600;
+  text-align:center; line-height:1.25;
 }
 .vehicle-option input:checked + label.vehicle-card { border-color:var(--gold); background:var(--gold-soft); color:var(--gold); }
+.vehicle-name-km { font-size:13px; font-weight:700; }
+.vehicle-name-jp { font-size:11px; color:var(--text-dim); }
 
 /* GPS row */
 .gps-row { display:flex; gap:8px; }
@@ -358,11 +360,17 @@ body {
       <div class="vehicle-grid">
         <div class="vehicle-option">
           <input type="radio" name="vehicleType" id="vehSedan" value="セダン" checked>
-          <label class="vehicle-card" for="vehSedan">🚙 Sedan</label>
+          <label class="vehicle-card" for="vehSedan">
+            <span class="vehicle-name-km">🚙 សេដាន ឬ តូចជាង</span>
+            <span class="vehicle-name-jp">セダン以下（小型）</span>
+          </label>
         </div>
         <div class="vehicle-option">
           <input type="radio" name="vehicleType" id="vehSuv" value="SUV">
-          <label class="vehicle-card" for="vehSuv">🚘 SUV</label>
+          <label class="vehicle-card" for="vehSuv">
+            <span class="vehicle-name-km">🚘 SUV ឬ ធំជាង</span>
+            <span class="vehicle-name-jp">SUV以上（大型）</span>
+          </label>
         </div>
       </div>
       <div class="plan-grid">

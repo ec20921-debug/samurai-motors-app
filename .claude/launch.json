@@ -34,6 +34,13 @@
       "runtimeArgs": ["server.js"],
       "port": 3000,
       "urlPath": "/attendance.html"
+    },
+    {
+      "name": "job-manager",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/job-manager.html"
     }
   ]
 }
