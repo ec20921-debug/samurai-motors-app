@@ -194,6 +194,14 @@ function doPost(e) {
 
     // Telegram Webhookからのメッセージ（update_idがある場合）
     if (data.update_id) {
+      // 重複排除：同じ update_id を2度処理しない（Telegramのリトライ対策）
+      var cache = CacheService.getScriptCache();
+      var cacheKey = 'tg_upd_' + data.update_id;
+      if (cache.get(cacheKey)) {
+        return ContentService.createTextOutput('ok');
+      }
+      cache.put(cacheKey, '1', 120); // 2分間キャッシュ
+
       // どのBotから来たwebhookか? URLパラメータ ?bot=admin|field|booking で識別
       var botType = (e.parameter && e.parameter.bot) ? e.parameter.bot : 'admin';
       if (botType === 'booking') {
