@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Samurai Motors - Booking</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #0f0f0f;
@@ -26,11 +26,11 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 body {
-  font-family: 'Noto Sans Khmer','Noto Sans JP', sans-serif;
+  font-family: 'Noto Sans','Noto Sans Khmer', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  -webkit-font-smoothing:antialiased;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ───────── ヘッダー ───────── */
@@ -67,122 +67,9 @@ body {
 }
 .progress-step.done { background: var(--gold); }
 .progress-step.current { background: var(--accent); }
-
-/* ───────── タブナビゲーション ───────── */
-.tabs {
-  display:flex; gap:0;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  padding: 0 8px;
-  position: sticky; top: 61px; z-index: 90;
-}
-.tab {
-  flex:1; padding: 12px 6px;
-  text-align:center; cursor:pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-.tab .tab-label {
-  display:block; font-size:13px; font-weight:600;
-  color: var(--text-dim);
-}
-.tab .tab-km {
-  display:block; font-size:10px;
-  color: var(--text-dim); margin-top:2px;
-}
-.tab.active { border-bottom-color: var(--gold); }
-.tab.active .tab-label { color: var(--gold); }
-.tab:active { background: var(--card); }
-
-/* ───────── 予約履歴カード ───────── */
-.history-empty {
-  text-align:center; padding: 48px 24px;
-  color: var(--text-dim);
-}
-.history-empty .empty-icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
-.history-empty .empty-text { font-size:14px; line-height:1.6; }
-
-.history-card {
-  background: var(--card);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 10px;
-}
-.history-card.active-booking { border-color: var(--gold); background: var(--gold-soft); }
-.history-card.done-booking { opacity: 0.7; }
-.history-card.cancelled-booking { opacity: 0.5; }
-
-.hc-row {
-  display:flex; justify-content:space-between;
-  align-items:center; margin-bottom: 6px;
-}
-.hc-id { font-size:11px; color: var(--text-dim); font-family: monospace; }
-.hc-status {
-  display:inline-block; padding: 2px 10px;
-  border-radius: 10px; font-size:10px; font-weight:700;
-}
-.hc-status.pending { background: rgba(52,152,219,0.2); color: var(--blue); }
-.hc-status.driving { background: rgba(230,126,34,0.2); color: #e67e22; }
-.hc-status.working { background: rgba(46,204,113,0.2); color: var(--success); }
-.hc-status.done { background: var(--success-bg); color: var(--success); }
-.hc-status.cancelled { background: rgba(200,16,46,0.2); color: var(--accent); }
-
-.hc-date { font-size:16px; font-weight:700; color: var(--gold); margin-bottom:4px; }
-.hc-plan { font-size:14px; color: var(--text); margin-bottom:4px; }
-.hc-meta { font-size:12px; color: var(--text-dim); line-height:1.5; }
-.hc-amount { font-size:14px; font-weight:700; color: var(--success); margin-top:4px; }
-.hc-payment { font-size:11px; color: var(--text-dim); margin-top:2px; }
-
-.history-note {
-  background: var(--card);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--text-dim);
-  line-height: 1.6;
-}
-.history-note strong { color: var(--gold); display:block; margin-bottom: 4px; font-size:13px; }
-
-/* ───────── お問い合わせフォーム ───────── */
-.contact-intro {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.6;
-}
-.contact-intro strong { color: var(--gold); display:block; margin-bottom: 6px; font-size: 14px; }
-.contact-hint-list { list-style: none; padding: 0; margin: 8px 0 0 0; }
-.contact-hint-list li {
-  padding: 4px 0; padding-left: 18px;
-  position: relative; font-size: 12px;
-}
-.contact-hint-list li::before {
-  content: '•'; color: var(--gold);
-  position: absolute; left: 6px;
-}
-
-.booking-ref-select {
-  margin-bottom: 14px;
-}
-
-.message-sent-icon {
-  text-align: center; font-size: 64px; color: var(--success);
-  margin: 40px 0 16px;
-}
-.message-sent-title {
-  text-align: center; font-size: 18px; font-weight: 700;
-  color: var(--success); margin-bottom: 8px;
-}
-.message-sent-desc {
-  text-align: center; font-size: 13px; color: var(--text-dim);
-  line-height: 1.6; padding: 0 16px;
+.progress-label {
+  display:flex; justify-content:space-between; padding: 2px 16px 0;
+  font-size:9px; color:var(--text-dim);
 }
 
 /* ───────── コンテナ ───────── */
@@ -206,32 +93,17 @@ body {
   margin-bottom: 16px;
 }
 
-/* ───────── フィールド共通 ───────── */
-.field { margin-bottom:14px; }
-.field label {
-  display:block; font-size:13px; font-weight:600;
-  color:var(--text-label); margin-bottom:6px;
+/* ───────── セクションタイトル ───────── */
+.section-title {
+  font-size:13px; font-weight:700; color:var(--text-label);
+  margin: 20px 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-.field label .req { color:var(--accent); margin-left:3px; font-size:11px; }
-.field label .km { color:var(--text-dim); font-size:11px; margin-left:4px; font-weight:400; }
-.field input, .field select, .field textarea {
-  width:100%; padding:13px 14px;
-  background:var(--card); border:1.5px solid var(--border);
-  border-radius:var(--radius); color:var(--text);
-  font-size:16px; font-family:inherit;
-  transition: border-color 0.2s;
-}
-.field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--gold); }
-.field input::placeholder, .field textarea::placeholder { color:#555; }
-.field textarea { min-height:80px; resize:vertical; }
-.field select {
-  -webkit-appearance:none; appearance:none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23888' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-  background-repeat:no-repeat; background-position:right 12px center; padding-right:36px;
-}
-.hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
+.section-title:first-child { margin-top: 0; }
+.section-title .km { font-size:11px; color:var(--text-dim); font-weight:400; text-transform:none; letter-spacing:0; margin-left:6px; }
 
-/* ───────── プラン・車両カード ───────── */
+/* ───────── プランカード ───────── */
 .card-list { display:flex; flex-direction:column; gap:10px; }
 .choice-card {
   background: var(--card);
@@ -281,67 +153,65 @@ body {
   font-size:11px; color:var(--text-dim);
 }
 
-.vehicle-card .v-icon {
-  display:inline-block;
-  width:36px; height:36px; line-height:36px; text-align:center;
-  background: var(--gold-soft); color: var(--gold);
-  border-radius:8px; font-size:18px;
-  margin-right:10px; vertical-align:middle;
+/* ───────── 車種サイズカード ───────── */
+.size-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
-.vehicle-card .v-name {
-  display:inline-block; vertical-align:middle;
-  font-size:15px; font-weight:700;
-}
-.vehicle-card .v-meta {
-  font-size:12px; color:var(--text-dim);
-  margin-top:6px; line-height:1.5;
-}
-.vehicle-card.add-new {
-  border-style:dashed;
-  text-align:center;
-  color: var(--text-dim);
-}
-.vehicle-card.add-new .v-icon { background:transparent; }
-.vehicle-card.add-new:hover { color: var(--gold); }
-
-/* ───────── オプション ───────── */
-.option-list { display:flex; flex-direction:column; gap:8px; }
-.option-row {
-  display:flex; align-items:center; gap:12px;
+.size-card {
   background: var(--card);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 14px;
+  padding: 16px 12px;
+  text-align: center;
   cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
 }
-.option-row:active { transform:scale(0.99); }
-.option-row.selected { border-color: var(--gold); background: var(--gold-soft); }
-.option-checkbox {
-  width:22px; height:22px; flex-shrink:0;
-  border-radius:6px; border:2px solid var(--border);
+.size-card:active { transform:scale(0.97); }
+.size-card.selected { border-color: var(--gold); background: var(--gold-soft); }
+.size-card.selected::after {
+  content: '✓';
+  position: absolute; top:8px; right:8px;
+  width:22px; height:22px; border-radius:50%;
+  background: var(--gold); color:#000;
   display:flex; align-items:center; justify-content:center;
-  font-size:14px; color:transparent;
+  font-weight:700; font-size:12px;
 }
-.option-row.selected .option-checkbox {
-  background: var(--gold); border-color: var(--gold); color:#000;
+.size-card .size-icon { font-size: 36px; margin-bottom: 8px; }
+.size-card .size-label {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  margin-bottom: 2px;
 }
-.option-info { flex:1; min-width:0; }
-.option-name { font-size:14px; font-weight:600; }
-.option-name .km { display:block; font-size:11px; color:var(--text-dim); font-weight:400; margin-top:1px; }
-.option-duration {
-  font-size:11px; color:var(--gold);
-  flex-shrink:0;
+.size-card .size-km {
+  font-size: 11px; color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.size-card .size-examples {
+  font-size: 10px; color: var(--text-dim);
+  line-height: 1.5;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+.size-card .size-hint {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px; font-weight: 600;
+  color: var(--gold);
+  background: var(--gold-soft);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 /* ───────── 日付ピッカー ───────── */
 .date-grid {
-  display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;
 }
 .date-cell {
   background: var(--card);
   border: 1.5px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 6px;
+  padding: 10px 4px;
   text-align:center;
   cursor:pointer;
   transition: all 0.2s;
@@ -349,13 +219,14 @@ body {
 .date-cell:active { transform:scale(0.96); }
 .date-cell.selected { border-color: var(--gold); background: var(--gold-soft); }
 .date-cell .d-day { font-size:11px; color:var(--text-dim); }
-.date-cell .d-num { font-size:22px; font-weight:700; color:var(--text); margin-top:2px; }
+.date-cell .d-num { font-size:20px; font-weight:700; color:var(--text); margin-top:2px; }
 .date-cell .d-month { font-size:10px; color:var(--text-dim); margin-top:1px; }
 .date-cell.today { border-color: var(--accent); }
 .date-cell.selected .d-day, .date-cell.selected .d-month { color: var(--gold); }
 .date-cell.selected .d-num { color: var(--gold); }
 
 /* ───────── 時間スロット ───────── */
+.time-section { margin-top: 20px; }
 .slot-grid {
   display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
 }
@@ -373,9 +244,35 @@ body {
 .slot-cell:active { transform:scale(0.96); }
 .slot-cell.selected { border-color: var(--gold); background: var(--gold-soft); color:var(--gold); }
 .slot-empty {
-  text-align:center; padding:30px 10px;
+  text-align:center; padding:24px 10px;
   color: var(--text-dim); font-size:13px;
+  line-height: 1.6;
 }
+.duration-info {
+  text-align:center; font-size:12px; color:var(--gold);
+  margin-bottom: 12px; padding: 6px;
+  background: var(--gold-soft); border-radius: 8px;
+}
+
+/* ───────── 場所入力 ───────── */
+.field { margin-bottom:14px; }
+.field label {
+  display:block; font-size:13px; font-weight:600;
+  color:var(--text-label); margin-bottom:6px;
+}
+.field label .req { color:var(--accent); margin-left:3px; font-size:11px; }
+.field label .km { color:var(--text-dim); font-size:11px; margin-left:4px; font-weight:400; }
+.field textarea {
+  width:100%; padding:13px 14px;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:var(--radius); color:var(--text);
+  font-size:16px; font-family:inherit;
+  transition: border-color 0.2s;
+  min-height:80px; resize:vertical;
+}
+.field textarea:focus { outline:none; border-color:var(--gold); }
+.field textarea::placeholder { color:#555; }
+.hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
 
 /* ───────── 確認画面 ───────── */
 .summary-card {
@@ -433,7 +330,7 @@ body {
 }
 .success-subtitle {
   text-align:center; font-size:13px; color:var(--text-dim);
-  margin-bottom:24px;
+  margin-bottom:24px; line-height:1.6;
 }
 
 /* ───────── トースト ───────── */
@@ -471,45 +368,26 @@ body {
 </head>
 <body>
 
-<!-- ───────── ヘッダー ───────── -->
+<!-- ヘッダー -->
 <div class="header">
-  <button class="back-btn" id="backBtn" onclick="goBack()">‹</button>
+  <button class="back-btn hidden" id="backBtn" onclick="goBack()">‹</button>
   <div class="header-title">
-    <h1 id="headerTitle">Booking / កក់</h1>
-    <p id="headerSub">Samurai Motors</p>
+    <h1 id="headerTitle">Samurai Motors</h1>
+    <p>Japanese-style Mobile Car Wash / សេវាលាងឡានបែបជប៉ុន</p>
   </div>
 </div>
 
-<!-- ───────── タブナビゲーション ───────── -->
-<div class="tabs" id="tabs" style="display:none;">
-  <div class="tab" data-tab="new" onclick="selectTab('new')">
-    <span class="tab-label">🚗 New Booking</span>
-    <span class="tab-km">កក់ថ្មី</span>
-  </div>
-  <div class="tab" data-tab="history" onclick="selectTab('history')">
-    <span class="tab-label">📋 History</span>
-    <span class="tab-km">ប្រវត្តិ</span>
-  </div>
-  <div class="tab" data-tab="contact" onclick="selectTab('contact')">
-    <span class="tab-label">💬 Contact</span>
-    <span class="tab-km">សារ</span>
-  </div>
-</div>
-
-<!-- ───────── プログレスバー ───────── -->
-<div class="progress" id="progress">
-  <div class="progress-step" data-step="plan"></div>
-  <div class="progress-step" data-step="vehicle"></div>
-  <div class="progress-step" data-step="options"></div>
-  <div class="progress-step" data-step="date"></div>
-  <div class="progress-step" data-step="time"></div>
-  <div class="progress-step" data-step="location"></div>
-  <div class="progress-step" data-step="confirm"></div>
+<!-- プログレスバー（4ステップ） -->
+<div class="progress" id="progress" style="display:none;">
+  <div class="progress-step" data-step="1"></div>
+  <div class="progress-step" data-step="2"></div>
+  <div class="progress-step" data-step="3"></div>
+  <div class="progress-step" data-step="4"></div>
 </div>
 
 <div class="container">
 
-  <!-- ───────── 初期ローディング ───────── -->
+  <!-- ローディング -->
   <div class="view active" id="view-loading">
     <div class="loader">
       <div class="spinner"></div>
@@ -517,208 +395,97 @@ body {
     </div>
   </div>
 
-  <!-- ───────── 1. 名前入力（新規顧客） ───────── -->
-  <div class="view" id="view-name">
-    <div class="view-title">
-      Your Name
-      <span class="km">សូមប្រាប់ឈ្មោះអ្នក</span>
-    </div>
-    <div class="view-desc">First time? Please register your name.</div>
-    <div class="field">
-      <label>Name <span class="km">/ ឈ្មោះ</span> <span class="req">*</span></label>
-      <input type="text" id="customerName" placeholder="e.g. Mr. Sok / John">
-    </div>
-  </div>
-
-  <!-- ───────── 2. プラン選択 ───────── -->
+  <!-- Step 1: プラン + 車種サイズ -->
   <div class="view" id="view-plan">
     <div class="view-title">
-      Select Plan
-      <span class="km">ជ្រើសរើសកម្មវិធី</span>
+      Book Your Wash
+      <span class="km">កក់លាងឡានរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Choose your preferred car care plan.</div>
+    <div class="view-desc">Choose a plan and your vehicle size.</div>
+
+    <div class="section-title">Plan <span class="km">កម្មវិធី</span></div>
     <div class="card-list" id="planList"></div>
-  </div>
 
-  <!-- ───────── 3. 車両選択 ───────── -->
-  <div class="view" id="view-vehicle">
-    <div class="view-title">
-      Select Vehicle
-      <span class="km">ជ្រើសរើសឡានរបស់អ្នក</span>
-    </div>
-    <div class="view-desc">Which vehicle would you like serviced?</div>
-    <div class="card-list" id="vehicleList"></div>
-  </div>
-
-  <!-- ───────── 3b. 新規車両追加 ───────── -->
-  <div class="view" id="view-vehicle-form">
-    <div class="view-title">
-      Register Vehicle
-      <span class="km">ចុះឈ្មោះឡានថ្មី</span>
-    </div>
-    <div class="field">
-      <label>Nickname <span class="km">/ ឈ្មោះហៅក្រៅ</span></label>
-      <input type="text" id="vNickname" placeholder="e.g. My white sedan">
-      <div class="hint">Easy-to-identify name (optional)</div>
-    </div>
-    <div class="field">
-      <label>Vehicle Type <span class="km">/ ប្រភេទឡាន</span> <span class="req">*</span></label>
-      <select id="vType">
-        <option value="セダン以下">Sedan or smaller / រថយន្តតូច</option>
-        <option value="SUV以上">SUV or larger / SUV ឬធំ</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Make <span class="km">/ ម៉ាក</span></label>
-      <input type="text" id="vMaker" placeholder="e.g. Toyota, Honda, Lexus">
-    </div>
-    <div class="field">
-      <label>Model <span class="km">/ ម៉ូដែល</span></label>
-      <input type="text" id="vModel" placeholder="e.g. Camry, Highlander">
-    </div>
-    <div class="field">
-      <label>Color <span class="km">/ ពណ៌</span></label>
-      <input type="text" id="vColor" placeholder="e.g. White / ស">
-    </div>
-    <div class="field">
-      <label>Plate Number <span class="km">/ ផ្លាកលេខ</span></label>
-      <input type="text" id="vPlate" placeholder="e.g. 2AB-1234">
+    <div class="section-title">Vehicle Size <span class="km">ទំហំឡាន</span></div>
+    <div class="size-grid">
+      <div class="size-card" id="sizeSedan" onclick="selectSize('セダン以下')">
+        <div class="size-icon">🚗</div>
+        <div class="size-label">Sedan & smaller</div>
+        <div class="size-km">រថយន្តតូច និង តូចជាង</div>
+        <div class="size-examples">
+          Camry, Civic, Corolla,<br>Vios, Prius, March...
+        </div>
+        <div class="size-hint">↓ Smaller</div>
+      </div>
+      <div class="size-card" id="sizeSuv" onclick="selectSize('SUV以上')">
+        <div class="size-icon">🚙</div>
+        <div class="size-label">SUV & larger</div>
+        <div class="size-km">SUV និង ធំជាង</div>
+        <div class="size-examples">
+          Highlander, CRV, RAV4,<br>Fortuner, Alphard, Pickup...
+        </div>
+        <div class="size-hint">↑ Larger</div>
+      </div>
     </div>
   </div>
 
-  <!-- ───────── 4. オプション ───────── -->
-  <div class="view" id="view-options">
+  <!-- Step 2: 日付 + 時間 -->
+  <div class="view" id="view-datetime">
     <div class="view-title">
-      Additional Options
-      <span class="km">ជម្រើសបន្ថែម</span>
+      Select Date & Time
+      <span class="km">ជ្រើសរើសកាលបរិច្ឆេទ និង ម៉ោង</span>
     </div>
-    <div class="view-desc">Select any additional options (multiple OK)</div>
-    <div class="option-list" id="optionList"></div>
-  </div>
+    <div class="view-desc">Pick a date, then choose a time slot.</div>
 
-  <!-- ───────── 5. 日付選択 ───────── -->
-  <div class="view" id="view-date">
-    <div class="view-title">
-      Select Date
-      <span class="km">ជ្រើសរើសកាលបរិច្ឆេទ</span>
-    </div>
-    <div class="view-desc">Choose your preferred date.</div>
+    <div class="section-title">Date <span class="km">កាលបរិច្ឆេទ</span></div>
     <div class="date-grid" id="dateGrid"></div>
-  </div>
 
-  <!-- ───────── 6. 時間選択 ───────── -->
-  <div class="view" id="view-time">
-    <div class="view-title">
-      Select Time
-      <span class="km">ជ្រើសរើសម៉ោង</span>
-    </div>
-    <div class="view-desc" id="timeDesc">Loading available times...</div>
-    <div id="slotContainer">
-      <div class="loader"><div class="spinner"></div><div>Loading times...</div></div>
+    <div class="time-section" id="timeSection" style="display:none;">
+      <div class="section-title">Time <span class="km">ម៉ោង</span></div>
+      <div id="slotContainer"></div>
     </div>
   </div>
 
-  <!-- ───────── 7. 場所入力 ───────── -->
+  <!-- Step 3: 場所 -->
   <div class="view" id="view-location">
     <div class="view-title">
       Your Location
-      <span class="km">សូមប្រាប់ទីតាំង</span>
+      <span class="km">ទីតាំងរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Enter the location of your vehicle.</div>
+    <div class="view-desc">Where should we come to wash your car?</div>
     <div class="field">
-      <label>Address / Building <span class="km">/ អាសយដ្ឋាន</span> <span class="req">*</span></label>
+      <label>Address / Building <span class="km">អាសយដ្ឋាន</span> <span class="req">*</span></label>
       <textarea id="bookingLocation" placeholder="e.g. BKK1, Street 240, Olympia City Tower B, Parking B2"></textarea>
-      <div class="hint">Please include building name, street, parking level etc.</div>
+      <div class="hint">Building name, street, parking level, etc.</div>
     </div>
   </div>
 
-  <!-- ───────── 8. 確認 ───────── -->
+  <!-- Step 4: 確認 -->
   <div class="view" id="view-confirm">
     <div class="view-title">
       Confirm Booking
       <span class="km">បញ្ជាក់ការកក់</span>
     </div>
-    <div class="view-desc">Please review and confirm your booking.</div>
+    <div class="view-desc">Please review and confirm.</div>
     <div class="summary-card" id="summaryCard"></div>
   </div>
 
-  <!-- ───────── 9. 完了 ───────── -->
+  <!-- 完了 -->
   <div class="view" id="view-success">
     <div class="success-icon">✓</div>
-    <div class="success-title">Booking Complete / កក់ដោយជោគជ័យ</div>
-    <div class="success-subtitle">Thank you for your booking!<br>បានទទួលការកក់របស់អ្នកហើយ</div>
+    <div class="success-title">Booking Complete!</div>
+    <div class="success-subtitle">Thank you! We'll see you soon.<br>អរគុណ! យើងនឹងជួបអ្នកឆាប់ៗ។</div>
     <div class="summary-card" id="successSummary"></div>
   </div>
 
-  <!-- ───────── 予約履歴タブ ───────── -->
-  <div class="view" id="view-history">
-    <div class="view-title">
-      Booking History
-      <span class="km">ប្រវត្តិការកក់</span>
-    </div>
-    <div class="view-desc">Your past and upcoming bookings.</div>
-    <div id="historyList">
-      <div class="history-empty">
-        <div class="empty-icon">⏳</div>
-        <div class="empty-text">Loading... / កំពុងផ្ទុក...</div>
-      </div>
-    </div>
-    <div class="history-note">
-      <strong>💬 Need to cancel or change?</strong>
-      Please send a message from the "Contact" tab. Our staff will assist you.<br>
-      សម្រាប់ការបោះបង់ ឬ ផ្លាស់ប្តូរ សូមផ្ញើសារពីផ្ទាំង "សារ"។
-    </div>
-  </div>
-
-  <!-- ───────── お問い合わせタブ ───────── -->
-  <div class="view" id="view-contact">
-    <div class="view-title">
-      Contact Us
-      <span class="km">ផ្ញើសារទៅយើងខ្ញុំ</span>
-    </div>
-    <div class="view-desc">Send us your questions or requests.</div>
-    <div class="contact-intro">
-      <strong>📞 You can use this for</strong>
-      <ul class="contact-hint-list">
-        <li>Cancel or change a booking / បោះបង់ ឬ ផ្លាស់ប្តូរ</li>
-        <li>Questions about plans / សំណួរអំពីកម្មវិធី</li>
-        <li>Service requests / សំណើសុំសេវាកម្ម</li>
-        <li>Other inquiries / សំណួរផ្សេងៗ</li>
-      </ul>
-    </div>
-    <div class="field booking-ref-select">
-      <label>Related Booking <span class="km">/ ការកក់ដែលពាក់ព័ន្ធ</span></label>
-      <select id="contactBookingRef">
-        <option value="">(Not related to a booking / គ្មានការកក់ពាក់ព័ន្ធ)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Message <span class="km">/ សារ</span> <span class="req">*</span></label>
-      <textarea id="contactMessage" placeholder="e.g. I'd like to cancel my 10am booking tomorrow / ឧទាហរណ៍: ចង់បោះបង់ការកក់ម៉ោង 10 ថ្ងៃស្អែក" style="min-height:140px;"></textarea>
-      <div class="hint">Max 2000 characters</div>
-    </div>
-  </div>
-
-  <!-- ───────── メッセージ送信完了 ───────── -->
-  <div class="view" id="view-message-sent">
-    <div class="message-sent-icon">✓</div>
-    <div class="message-sent-title">Message Sent / បានផ្ញើ</div>
-    <div class="message-sent-desc">
-      Your message has been received.<br>
-      Our staff will reply shortly.<br><br>
-      សារត្រូវបានផ្ញើរួចរាល់។<br>
-      សូមរង់ចាំការឆ្លើយតបពីបុគ្គលិក។
-    </div>
-  </div>
-
 </div>
 
-<!-- ───────── アクションボタン ───────── -->
-<div class="action-area" id="actionArea">
+<!-- アクションボタン -->
+<div class="action-area" id="actionArea" style="display:none;">
   <button class="btn btn-primary" id="actionBtn" onclick="handleNext()">Next / បន្ទាប់</button>
 </div>
 
-<!-- ───────── トースト ───────── -->
+<!-- トースト -->
 <div class="toast" id="toast"></div>
 
 <script>
@@ -733,55 +500,22 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_
 // ═══════════════════════════════════════════
 
 var state = {
-  // 顧客情報
   chatId: '',
   username: '',
-  customer: null,         // { customerId, name, ... } or null
   customerName: '',
-  // マスタ
+  customer: null,
   plans: [],
-  options: [],
-  vehicles: [],
-  // 選択結果
-  selectedPlan: null,     // plan letter 'A'/'B'/'C'/'D'
-  selectedVehicle: null,  // vehicle object
-  selectedOptions: [],    // [optionId, ...]
-  selectedDate: '',       // 'yyyy-MM-dd'
-  selectedSlot: '',       // 'HH:mm'
-  selectedDuration: 0,    // 分
+  selectedPlan: null,
+  selectedSize: '',
+  selectedDate: '',
+  selectedSlot: '',
+  selectedDuration: 0,
   selectedLocation: '',
-  // ナビ
   currentView: 'view-loading',
-  history: [],
-  isNewCustomer: false,
-  // タブ
-  currentTab: 'new',       // 'new' | 'history' | 'contact'
-  bookingHistory: []       // 予約履歴キャッシュ
+  history: []
 };
 
-// タブのルートview（このviewのときだけタブバーを表示）
-var TAB_ROOT_VIEWS = {
-  'view-plan':         'new',
-  'view-name':         'new',
-  'view-history':      'history',
-  'view-contact':      'contact',
-  'view-message-sent': 'contact'
-};
-
-// 各viewのプログレスマッピング
-var STEP_FOR_VIEW = {
-  'view-name':         null,
-  'view-plan':         'plan',
-  'view-vehicle':      'vehicle',
-  'view-vehicle-form': 'vehicle',
-  'view-options':      'options',
-  'view-date':         'date',
-  'view-time':         'time',
-  'view-location':     'location',
-  'view-confirm':      'confirm',
-  'view-success':      'confirm'
-};
-var STEP_ORDER = ['plan','vehicle','options','date','time','location','confirm'];
+var STEPS = ['view-plan', 'view-datetime', 'view-location', 'view-confirm'];
 
 // ═══════════════════════════════════════════
 //  初期化
@@ -792,44 +526,32 @@ document.addEventListener('DOMContentLoaded', function() {
     Telegram.WebApp.ready();
     Telegram.WebApp.expand();
     if (Telegram.WebApp.initDataUnsafe) {
-      var startParam = Telegram.WebApp.initDataUnsafe.start_param;
-      if (startParam) {
-        // 開発用: gas URLが渡された場合
-        try {
-          var dec = decodeURIComponent(startParam);
-          if (dec.indexOf('https://') === 0) GAS_URL = dec;
-        } catch(e) {}
-      }
-      // ユーザー情報
       var u = Telegram.WebApp.initDataUnsafe.user;
       if (u) {
         state.chatId = u.id.toString();
         state.username = u.username || '';
-        state.customerName = [u.first_name||'', u.last_name||''].join(' ').trim();
+        state.customerName = [u.first_name || '', u.last_name || ''].join(' ').trim();
       }
     }
   }
 
-  // URLパラメータからGAS URLを取得（開発時）
+  // 開発用パラメータ
   var urlParams = new URLSearchParams(window.location.search);
   var gasParam = urlParams.get('gas');
   if (gasParam) GAS_URL = gasParam;
-  // 開発用: ?chatId=test123
   var devChatId = urlParams.get('chatId');
   if (devChatId && !state.chatId) state.chatId = devChatId;
 
   if (!state.chatId) {
-    // Telegram外で開かれた場合
     showToast('Please open from Telegram', true);
     return;
   }
 
-  // 初期化API呼び出し
   loadInit();
 });
 
 // ═══════════════════════════════════════════
-//  API呼び出し
+//  API
 // ═══════════════════════════════════════════
 
 function loadInit() {
@@ -837,137 +559,98 @@ function loadInit() {
           + '&name=' + encodeURIComponent(state.customerName)
           + '&username=' + encodeURIComponent(state.username);
   fetch(url)
-    .then(function(r){ return r.json(); })
+    .then(function(r) { return r.json(); })
     .then(function(res) {
-      if (res.status !== 'ok') { throw new Error(res.message || 'Init failed'); }
+      if (res.status !== 'ok') throw new Error(res.message || 'Init failed');
       state.customer = res.customer;
-      state.vehicles = res.vehicles || [];
       state.plans = res.plans || [];
-      state.options = res.options || [];
-
-      if (!state.customer) {
-        // 新規顧客 → 名前入力から
-        state.isNewCustomer = true;
-        showView('view-name');
-      } else {
-        // 既存顧客 → プラン選択から
-        state.customerName = state.customer.name;
-        showView('view-plan');
+      // 新規顧客の場合、自動登録
+      if (!state.customer && state.customerName) {
+        return autoRegister().then(function() { showView('view-plan'); });
       }
+      if (!state.customer) state.customerName = 'Guest';
+      else state.customerName = state.customer.name;
+      showView('view-plan');
     })
     .catch(function(err) {
       showToast('Loading error: ' + err.message, true);
     });
 }
 
+function autoRegister() {
+  return postJson('booking_register_customer', {
+    chatId: state.chatId,
+    name: state.customerName,
+    username: state.username
+  }).then(function(res) {
+    if (res.status === 'ok') state.customer = res.customer;
+  }).catch(function() {});
+}
+
 function postJson(action, data) {
   return fetch(GAS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // CORS回避
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(Object.assign({ action: action }, data))
-  })
-  .then(function(r){ return r.json(); });
+  }).then(function(r) { return r.json(); });
 }
 
 // ═══════════════════════════════════════════
 //  ナビゲーション
 // ═══════════════════════════════════════════
 
-function showView(viewId, fromBack) {
-  // 履歴管理
-  if (!fromBack && state.currentView && state.currentView !== viewId && state.currentView !== 'view-loading') {
+function showView(viewId) {
+  if (state.currentView && state.currentView !== viewId && state.currentView !== 'view-loading') {
     state.history.push(state.currentView);
   }
 
-  document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+  document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
   document.getElementById(viewId).classList.add('active');
   state.currentView = viewId;
 
-  // 戻るボタン表示
-  document.getElementById('backBtn').classList.toggle('hidden', state.history.length === 0 || viewId === 'view-success' || viewId === 'view-loading');
+  // 戻るボタン
+  document.getElementById('backBtn').classList.toggle('hidden',
+    state.history.length === 0 || viewId === 'view-success' || viewId === 'view-loading');
 
-  // タブバー表示制御
-  updateTabBar(viewId);
-
-  // プログレスバー更新
+  // プログレスバー
   updateProgress(viewId);
 
-  // 各viewごとの初期化
-  if (viewId === 'view-plan')         renderPlans();
-  if (viewId === 'view-vehicle')      renderVehicles();
-  if (viewId === 'view-options')      renderOptions();
-  if (viewId === 'view-date')         renderDates();
-  if (viewId === 'view-time')         loadTimeSlots();
-  if (viewId === 'view-confirm')      renderSummary();
-  if (viewId === 'view-history')      loadBookingHistory();
-  if (viewId === 'view-contact')      prepareContactForm();
+  // 各viewの初期化
+  if (viewId === 'view-plan') renderPlans();
+  if (viewId === 'view-datetime') renderDates();
+  if (viewId === 'view-confirm') renderSummary();
 
-  // アクションボタン更新
+  // ボタン更新
   updateActionButton();
 
-  // スクロール先頭へ
   window.scrollTo(0, 0);
-}
-
-// タブバーの表示/非表示と現在タブのハイライト
-function updateTabBar(viewId) {
-  var tabs = document.getElementById('tabs');
-  var rootTab = TAB_ROOT_VIEWS[viewId];
-  if (rootTab) {
-    tabs.style.display = 'flex';
-    state.currentTab = rootTab;
-    document.querySelectorAll('.tab').forEach(function(el) {
-      el.classList.toggle('active', el.getAttribute('data-tab') === rootTab);
-    });
-  } else {
-    tabs.style.display = 'none';
-  }
-}
-
-// タブ選択
-function selectTab(tabName) {
-  if (state.currentTab === tabName) return;
-
-  // 予約フローの途中状態をクリア
-  state.history = [];
-
-  // 遷移先を決定
-  var targetView;
-  if (tabName === 'new') {
-    // 新規顧客なら名前入力から、そうでなければプラン選択
-    targetView = (state.isNewCustomer && !state.customer) ? 'view-name' : 'view-plan';
-  } else if (tabName === 'history') {
-    targetView = 'view-history';
-  } else if (tabName === 'contact') {
-    targetView = 'view-contact';
-  }
-
-  // fromBack=true で履歴に積まないように（戻るボタン非表示を保つ）
-  if (targetView) {
-    showView(targetView, true);
-    state.history = []; // 念のため再度クリア
-  }
 }
 
 function goBack() {
   if (state.history.length === 0) return;
   var prev = state.history.pop();
-  showView(prev, true);
+  // 直接表示（履歴に積まない）
+  document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+  document.getElementById(prev).classList.add('active');
+  state.currentView = prev;
+  document.getElementById('backBtn').classList.toggle('hidden', state.history.length === 0);
+  updateProgress(prev);
+  updateActionButton();
+  window.scrollTo(0, 0);
 }
 
 function updateProgress(viewId) {
   var progressDiv = document.getElementById('progress');
-  var step = STEP_FOR_VIEW[viewId];
-  if (!step) {
+  var stepIdx = STEPS.indexOf(viewId);
+  if (stepIdx < 0) {
     progressDiv.style.display = 'none';
     return;
   }
   progressDiv.style.display = 'flex';
-  var idx = STEP_ORDER.indexOf(step);
   document.querySelectorAll('.progress-step').forEach(function(el, i) {
     el.classList.remove('done', 'current');
-    if (i < idx) el.classList.add('done');
-    else if (i === idx) el.classList.add('current');
+    if (i < stepIdx) el.classList.add('done');
+    else if (i === stepIdx) el.classList.add('current');
   });
 }
 
@@ -978,69 +661,26 @@ function updateActionButton() {
   btn.classList.remove('btn-primary', 'btn-gold', 'btn-secondary');
 
   switch (state.currentView) {
-    case 'view-name':
-      btn.textContent = 'Next / បន្ទាប់';
-      btn.classList.add('btn-primary');
-      break;
     case 'view-plan':
       btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = !state.selectedPlan;
+      btn.disabled = !state.selectedPlan || !state.selectedSize;
       btn.classList.add('btn-primary');
       break;
-    case 'view-vehicle':
+    case 'view-datetime':
       btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = !state.selectedVehicle;
-      btn.classList.add('btn-primary');
-      break;
-    case 'view-vehicle-form':
-      btn.textContent = 'Save Vehicle / រក្សាទុក';
-      btn.disabled = false;
-      btn.classList.add('btn-primary');
-      break;
-    case 'view-options':
-      btn.textContent = state.selectedOptions.length > 0
-        ? ('Next (' + state.selectedOptions.length + ') / បន្ទាប់')
-        : 'Skip options / គ្មានជម្រើស';
-      btn.disabled = false;
-      btn.classList.add('btn-primary');
-      break;
-    case 'view-date':
-      btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = !state.selectedDate;
-      btn.classList.add('btn-primary');
-      break;
-    case 'view-time':
-      btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = !state.selectedSlot;
+      btn.disabled = !state.selectedDate || !state.selectedSlot;
       btn.classList.add('btn-primary');
       break;
     case 'view-location':
       btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = false;
       btn.classList.add('btn-primary');
       break;
     case 'view-confirm':
-      btn.textContent = '✓ Confirm Booking / បញ្ជាក់';
-      btn.disabled = false;
+      btn.textContent = '✓ Confirm Booking / បញ្ជាក់ការកក់';
       btn.classList.add('btn-gold');
       break;
     case 'view-success':
       btn.textContent = 'Close / បិទ';
-      btn.disabled = false;
-      btn.classList.add('btn-secondary');
-      break;
-    case 'view-history':
-      // 履歴タブはボタン非表示
-      area.style.display = 'none';
-      break;
-    case 'view-contact':
-      btn.textContent = '📤 Send / ផ្ញើ';
-      btn.disabled = false;
-      btn.classList.add('btn-primary');
-      break;
-    case 'view-message-sent':
-      btn.textContent = 'Close / បិទ';
-      btn.disabled = false;
       btn.classList.add('btn-secondary');
       break;
     default:
@@ -1049,7 +689,7 @@ function updateActionButton() {
 }
 
 // ═══════════════════════════════════════════
-//  各viewのレンダリング
+//  Step 1: プラン + 車種サイズ
 // ═══════════════════════════════════════════
 
 function renderPlans() {
@@ -1059,15 +699,26 @@ function renderPlans() {
     var card = document.createElement('div');
     card.className = 'choice-card plan-card';
     if (state.selectedPlan === plan.letter) card.classList.add('selected');
+    // 車種サイズに応じて価格表示を変える
+    var priceDisplay = state.selectedSize === 'SUV以上'
+      ? '$' + plan.priceSuv
+      : state.selectedSize === 'セダン以下'
+        ? '$' + plan.priceSedan
+        : '$' + plan.priceSedan + ' ~ $' + plan.priceSuv;
+    var durationDisplay = state.selectedSize === 'SUV以上'
+      ? plan.durationSuv + 'min'
+      : state.selectedSize === 'セダン以下'
+        ? plan.durationSedan + 'min'
+        : plan.durationSedan + '~' + plan.durationSuv + 'min';
     card.innerHTML =
       '<div>'
       + '<span class="plan-letter">' + plan.letter + '</span>'
       + '<span class="plan-name">' + escapeHtml(plan.name) + '</span>'
       + '</div>'
-      + '<div class="plan-desc">' + escapeHtml(plan.jp) + '</div>'
+      + '<div class="plan-desc">' + escapeHtml(plan.desc || plan.jp || '') + '</div>'
       + '<div class="plan-meta">'
-      + '<div class="plan-duration">⏱ ' + plan.durationSedan + 'min (Sedan) / ' + plan.durationSuv + 'min (SUV)</div>'
-      + '<div class="plan-price">from $' + plan.priceSedan + '</div>'
+      + '<div class="plan-duration">⏱ ' + durationDisplay + '</div>'
+      + '<div class="plan-price">' + priceDisplay + '</div>'
       + '</div>';
     card.onclick = function() { selectPlan(plan.letter); };
     container.appendChild(card);
@@ -1080,94 +731,33 @@ function selectPlan(letter) {
   updateActionButton();
 }
 
-function renderVehicles() {
-  var container = document.getElementById('vehicleList');
-  container.innerHTML = '';
-  state.vehicles.forEach(function(v) {
-    var card = document.createElement('div');
-    card.className = 'choice-card vehicle-card';
-    if (state.selectedVehicle && state.selectedVehicle.vehicleId === v.vehicleId) {
-      card.classList.add('selected');
-    }
-    var label = v.nickname || (v.maker + ' ' + v.model).trim() || v.plate || v.vehicleId;
-    var meta = [];
-    if (v.maker || v.model) meta.push((v.maker + ' ' + v.model).trim());
-    if (v.color) meta.push(v.color);
-    if (v.plate) meta.push(v.plate);
-    meta.push('[' + v.vehicleType + ']');
-    card.innerHTML =
-      '<div>'
-      + '<span class="v-icon">🚗</span>'
-      + '<span class="v-name">' + escapeHtml(label) + '</span>'
-      + '</div>'
-      + '<div class="v-meta">' + escapeHtml(meta.join(' / ')) + '</div>';
-    card.onclick = (function(veh){
-      return function() { selectVehicle(veh); };
-    })(v);
-    container.appendChild(card);
-  });
-
-  // 「+ 新しい車両を追加」
-  var addCard = document.createElement('div');
-  addCard.className = 'choice-card vehicle-card add-new';
-  addCard.innerHTML =
-    '<div><span class="v-icon">＋</span><span class="v-name">Add New Vehicle / បន្ថែមឡានថ្មី</span></div>';
-  addCard.onclick = function() {
-    state.selectedVehicle = null;
-    showView('view-vehicle-form');
-  };
-  container.appendChild(addCard);
-}
-
-function selectVehicle(v) {
-  state.selectedVehicle = v;
-  renderVehicles();
+function selectSize(size) {
+  state.selectedSize = size;
+  // UIの更新
+  document.getElementById('sizeSedan').classList.toggle('selected', size === 'セダン以下');
+  document.getElementById('sizeSuv').classList.toggle('selected', size === 'SUV以上');
+  // 価格をプランに反映
+  renderPlans();
   updateActionButton();
 }
 
-function renderOptions() {
-  var container = document.getElementById('optionList');
-  container.innerHTML = '';
-  state.options.forEach(function(opt) {
-    var row = document.createElement('div');
-    row.className = 'option-row';
-    if (state.selectedOptions.indexOf(opt.id) >= 0) row.classList.add('selected');
-    row.innerHTML =
-      '<div class="option-checkbox">✓</div>'
-      + '<div class="option-info">'
-      + '<div class="option-name">' + escapeHtml(opt.name)
-      + '<span class="km">' + escapeHtml(opt.nameKm || '') + '</span>'
-      + '</div>'
-      + '</div>'
-      + '<div class="option-duration">+' + opt.durationMin + 'min</div>';
-    row.onclick = (function(id){
-      return function() { toggleOption(id); };
-    })(opt.id);
-    container.appendChild(row);
-  });
-}
-
-function toggleOption(id) {
-  var idx = state.selectedOptions.indexOf(id);
-  if (idx >= 0) state.selectedOptions.splice(idx, 1);
-  else state.selectedOptions.push(id);
-  renderOptions();
-  updateActionButton();
-}
+// ═══════════════════════════════════════════
+//  Step 2: 日付 + 時間
+// ═══════════════════════════════════════════
 
 function renderDates() {
   var container = document.getElementById('dateGrid');
   container.innerHTML = '';
-  // カンボジア時間で今日
+  // カンボジア時間(UTC+7)
   var now = new Date();
   var offset = 7 * 60;
   var today = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
   today.setHours(0, 0, 0, 0);
 
-  var dayKm = ['ច័ន្ទ','អង្គារ','ពុធ','ព្រហ','សុក្រ','សៅរ៍','អាទិត្យ'];
   var dayEn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var monthEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  for (var i = 0; i < 14; i++) {
+  for (var i = 0; i < 12; i++) {
     var d = new Date(today.getTime() + i * 86400000);
     var dateStr = formatDate(d);
     var cell = document.createElement('div');
@@ -1177,17 +767,25 @@ function renderDates() {
     cell.innerHTML =
       '<div class="d-day">' + dayEn[d.getDay()] + '</div>'
       + '<div class="d-num">' + d.getDate() + '</div>'
-      + '<div class="d-month">' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + '</div>';
-    cell.onclick = (function(ds){
+      + '<div class="d-month">' + monthEn[d.getMonth()] + '</div>';
+    cell.onclick = (function(ds) {
       return function() { selectDate(ds); };
     })(dateStr);
     container.appendChild(cell);
+  }
+
+  // 時間セクション表示
+  if (state.selectedDate) {
+    document.getElementById('timeSection').style.display = '';
+    loadTimeSlots();
+  } else {
+    document.getElementById('timeSection').style.display = 'none';
   }
 }
 
 function selectDate(dateStr) {
   state.selectedDate = dateStr;
-  state.selectedSlot = ''; // 日付変えたら時間リセット
+  state.selectedSlot = '';
   renderDates();
   updateActionButton();
 }
@@ -1196,78 +794,65 @@ function loadTimeSlots() {
   var container = document.getElementById('slotContainer');
   container.innerHTML = '<div class="loader"><div class="spinner"></div><div>Loading times...</div></div>';
 
-  if (!state.selectedDate || !state.selectedPlan || !state.selectedVehicle) {
-    container.innerHTML = '<div class="slot-empty">Please complete the previous steps</div>';
-    return;
-  }
-
   var url = GAS_URL + '?action=booking_slots'
     + '&date=' + encodeURIComponent(state.selectedDate)
     + '&plan=' + encodeURIComponent(state.selectedPlan)
-    + '&vehicleType=' + encodeURIComponent(state.selectedVehicle.vehicleType)
-    + '&options=' + encodeURIComponent(state.selectedOptions.join(','));
+    + '&vehicleType=' + encodeURIComponent(state.selectedSize)
+    + '&options=';
 
   fetch(url)
-    .then(function(r){ return r.json(); })
+    .then(function(r) { return r.json(); })
     .then(function(res) {
-      if (res.status !== 'ok') throw new Error(res.message || 'Failed to load slots');
+      if (res.status !== 'ok') throw new Error(res.message || 'Failed to load');
       state.selectedDuration = res.durationMin;
-      document.getElementById('timeDesc').textContent =
-        'Duration: ~' + res.durationMin + 'min / រយៈពេល ប្រហែល ' + res.durationMin + ' នាទី';
-      renderSlots(res.slots);
+      renderSlots(res.slots, res.durationMin);
     })
     .catch(function(err) {
       container.innerHTML = '<div class="slot-empty">Error: ' + escapeHtml(err.message) + '</div>';
     });
 }
 
-function renderSlots(slots) {
+function renderSlots(slots, durationMin) {
   var container = document.getElementById('slotContainer');
   if (!slots || slots.length === 0) {
     container.innerHTML = '<div class="slot-empty">No availability on this date<br>គ្មានទំនេរទេ<br><br>Please select another date</div>';
     return;
   }
-  var grid = document.createElement('div');
-  grid.className = 'slot-grid';
-  slots.forEach(function(s) {
-    var cell = document.createElement('div');
-    cell.className = 'slot-cell';
-    if (state.selectedSlot === s) cell.classList.add('selected');
-    cell.textContent = s;
-    cell.onclick = (function(time){
-      return function() { selectSlot(time); };
-    })(s);
-    grid.appendChild(cell);
-  });
-  container.innerHTML = '';
-  container.appendChild(grid);
+
+  var html = '';
+  if (durationMin) {
+    html += '<div class="duration-info">⏱ Duration: ~' + durationMin + 'min / រយៈពេល ~' + durationMin + ' នាទី</div>';
+  }
+  html += '<div class="slot-grid">';
+  for (var i = 0; i < slots.length; i++) {
+    var s = slots[i];
+    var sel = state.selectedSlot === s ? ' selected' : '';
+    html += '<div class="slot-cell' + sel + '" onclick="selectSlot(\'' + s + '\')">' + s + '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 function selectSlot(time) {
   state.selectedSlot = time;
-  // 再描画
-  document.querySelectorAll('.slot-cell').forEach(function(c){
+  document.querySelectorAll('.slot-cell').forEach(function(c) {
     c.classList.toggle('selected', c.textContent === time);
   });
   updateActionButton();
 }
 
-function renderSummary() {
-  var plan = state.plans.find(function(p){ return p.letter === state.selectedPlan; });
-  var v = state.selectedVehicle;
-  var amount = (v.vehicleType === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
+// ═══════════════════════════════════════════
+//  Step 4: 確認画面
+// ═══════════════════════════════════════════
 
-  var optionNames = state.selectedOptions.map(function(id) {
-    var o = state.options.find(function(x){ return x.id === id; });
-    return o ? o.name : id;
-  }).join(', ');
+function renderSummary() {
+  var plan = state.plans.find(function(p) { return p.letter === state.selectedPlan; });
+  var amount = (state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
+  var sizeLabel = (state.selectedSize === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
 
   var html = '';
-  html += summaryRow('Name', escapeHtml(state.customerName));
   html += summaryRow('Plan', plan.letter + ' ' + escapeHtml(plan.name));
-  html += summaryRow('Vehicle', escapeHtml(v.nickname || (v.maker + ' ' + v.model).trim() || v.plate));
-  html += summaryRow('Type', escapeHtml(v.vehicleType));
-  if (optionNames) html += summaryRow('Options', escapeHtml(optionNames));
+  html += summaryRow('Vehicle', sizeLabel);
   html += summaryRow('Date', state.selectedDate);
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
@@ -1286,51 +871,28 @@ function summaryRow(label, value) {
 
 function handleNext() {
   switch (state.currentView) {
-    case 'view-name':
-      var name = document.getElementById('customerName').value.trim();
-      if (!name) { showToast('Please enter your name', true); return; }
-      state.customerName = name;
-      // 顧客登録
-      postJson('booking_register_customer', {
-        chatId: state.chatId,
-        name: name,
-        username: state.username
-      }).then(function(res){
-        if (res.status !== 'ok') { showToast(res.message || 'Registration failed', true); return; }
-        state.customer = res.customer;
-        showView('view-plan');
-      }).catch(function(err){
-        showToast('Registration error: ' + err.message, true);
-      });
-      break;
-
     case 'view-plan':
-      showView('view-vehicle');
+      if (!state.selectedPlan || !state.selectedSize) {
+        showToast('Please select a plan and vehicle size', true);
+        return;
+      }
+      showView('view-datetime');
       break;
 
-    case 'view-vehicle':
-      showView('view-options');
-      break;
-
-    case 'view-vehicle-form':
-      submitNewVehicle();
-      break;
-
-    case 'view-options':
-      showView('view-date');
-      break;
-
-    case 'view-date':
-      showView('view-time');
-      break;
-
-    case 'view-time':
+    case 'view-datetime':
+      if (!state.selectedDate || !state.selectedSlot) {
+        showToast('Please select date and time', true);
+        return;
+      }
       showView('view-location');
       break;
 
     case 'view-location':
       var loc = document.getElementById('bookingLocation').value.trim();
-      if (!loc) { showToast('Please enter a location', true); return; }
+      if (!loc) {
+        showToast('Please enter your location', true);
+        return;
+      }
       state.selectedLocation = loc;
       showView('view-confirm');
       break;
@@ -1342,266 +904,48 @@ function handleNext() {
     case 'view-success':
       if (window.Telegram && Telegram.WebApp) Telegram.WebApp.close();
       break;
-
-    case 'view-contact':
-      sendContactMessage();
-      break;
-
-    case 'view-message-sent':
-      // 送信完了 → 新規予約タブへ戻す
-      state.history = [];
-      showView('view-plan');
-      break;
   }
 }
 
-function submitNewVehicle() {
-  var payload = {
-    customerId: state.customer.customerId,
-    nickname: document.getElementById('vNickname').value.trim(),
-    maker: document.getElementById('vMaker').value.trim(),
-    model: document.getElementById('vModel').value.trim(),
-    color: document.getElementById('vColor').value.trim(),
-    plate: document.getElementById('vPlate').value.trim(),
-    vehicleType: document.getElementById('vType').value
-  };
-
-  setBtnLoading(true);
-  postJson('booking_add_vehicle', payload).then(function(res){
-    setBtnLoading(false);
-    if (res.status !== 'ok') { showToast(res.message || 'Registration failed', true); return; }
-    state.vehicles.push(res.vehicle);
-    state.selectedVehicle = res.vehicle;
-    state.history.pop();
-    showView('view-vehicle');
-    showToast('Vehicle registered!');
-  }).catch(function(err){
-    setBtnLoading(false);
-    showToast('Registration error: ' + err.message, true);
-  });
-}
-
 function submitBooking() {
+  // 顧客未登録の場合の簡易対応
+  var customerId = state.customer ? state.customer.customerId : state.chatId;
+
   var payload = {
     chatId: state.chatId,
     name: state.customerName,
     username: state.username,
-    customerId: state.customer.customerId,
-    vehicleId: state.selectedVehicle.vehicleId,
+    customerId: customerId,
+    vehicleId: '',
+    vehicleType: state.selectedSize,
     planLetter: state.selectedPlan,
-    optionIds: state.selectedOptions,
+    optionIds: [],
     date: state.selectedDate,
     startTime: state.selectedSlot,
     location: state.selectedLocation
   };
 
   setBtnLoading(true);
-  postJson('booking_create', payload).then(function(res){
+  postJson('booking_create', payload).then(function(res) {
     setBtnLoading(false);
     if (res.status !== 'ok') {
       showToast(res.message || 'Booking failed', true);
-      // スロット競合の場合は時間選択に戻る
       if (res.slots) {
         state.selectedSlot = '';
-        showView('view-time');
+        showView('view-datetime');
         renderSlots(res.slots);
       }
       return;
     }
-    // 完了画面表示
     document.getElementById('successSummary').innerHTML =
-      '<div class="summary-row"><div class="label">Booking ID</div><div class="value">' + res.bookingId + '</div></div>'
-      + '<div class="summary-row"><div class="label">Date & Time</div><div class="value">' + state.selectedDate + ' ' + state.selectedSlot + ' - ' + res.endTime + '</div></div>'
+      summaryRow('Booking ID', res.bookingId)
+      + summaryRow('Date & Time', state.selectedDate + ' ' + state.selectedSlot + ' - ' + res.endTime)
       + '<div class="summary-row total"><div class="label">Total</div><div class="value">$' + res.amount + '</div></div>';
-    state.history = []; // 戻れないように
+    state.history = [];
     showView('view-success');
-  }).catch(function(err){
+  }).catch(function(err) {
     setBtnLoading(false);
     showToast('Booking error: ' + err.message, true);
-  });
-}
-
-// ═══════════════════════════════════════════
-//  予約履歴タブ
-// ═══════════════════════════════════════════
-
-function loadBookingHistory() {
-  var container = document.getElementById('historyList');
-  // ローディング表示
-  container.innerHTML =
-    '<div class="history-empty">'
-    + '<div class="empty-icon">⏳</div>'
-    + '<div class="empty-text">Loading... / កំពុងផ្ទុក...</div>'
-    + '</div>';
-
-  var url = GAS_URL + '?action=booking_history&chatId=' + encodeURIComponent(state.chatId);
-  fetch(url)
-    .then(function(r){ return r.json(); })
-    .then(function(res) {
-      if (res.status !== 'ok') {
-        throw new Error(res.message || 'Failed to load history');
-      }
-      state.bookingHistory = res.bookings || [];
-      renderBookingHistory();
-    })
-    .catch(function(err) {
-      container.innerHTML =
-        '<div class="history-empty">'
-        + '<div class="empty-icon">⚠️</div>'
-        + '<div class="empty-text">Loading error<br>' + escapeHtml(err.message) + '</div>'
-        + '</div>';
-    });
-}
-
-// ステータス → (CSSクラス, 表示ラベル)
-function getStatusBadge(status) {
-  var s = (status || '').toString();
-  if (s === '仮予約')   return { cls: 'pending',   label: 'Pending / កំពុងពិនិត្យ' };
-  if (s === '確定')     return { cls: 'pending',   label: 'Confirmed / បានបញ្ជាក់' };
-  if (s === '出発')     return { cls: 'driving',   label: 'On the way / កំពុងធ្វើដំណើរ' };
-  if (s === '作業中')   return { cls: 'working',   label: 'In progress / កំពុងលាងសំអាត' };
-  if (s === '作業完了') return { cls: 'done',      label: 'Completed / រួចរាល់' };
-  if (s === '完了')     return { cls: 'done',      label: 'Completed / រួចរាល់' };
-  if (s === 'キャンセル') return { cls: 'cancelled', label: 'Cancelled / បោះបង់' };
-  return { cls: 'pending', label: s || '—' };
-}
-
-// 予約がアクティブ（=これから/進行中）か判定
-function isActiveBooking(status) {
-  var s = (status || '').toString();
-  return s === '仮予約' || s === '確定' || s === '出発' || s === '作業中';
-}
-
-function renderBookingHistory() {
-  var container = document.getElementById('historyList');
-  var list = state.bookingHistory || [];
-
-  if (list.length === 0) {
-    container.innerHTML =
-      '<div class="history-empty">'
-      + '<div class="empty-icon">📭</div>'
-      + '<div class="empty-text">No bookings yet<br>មិនទាន់មានការកក់</div>'
-      + '</div>';
-    return;
-  }
-
-  var html = '';
-  for (var i = 0; i < list.length; i++) {
-    var b = list[i];
-    var badge = getStatusBadge(b.status);
-    var cardClass = 'history-card';
-    if (isActiveBooking(b.status)) cardClass += ' active-booking';
-    else if (b.status === '作業完了' || b.status === '完了') cardClass += ' done-booking';
-    else if (b.status === 'キャンセル') cardClass += ' cancelled-booking';
-
-    var time = (b.startTime || '') + (b.endTime ? ('〜' + b.endTime) : '');
-    var planStr = b.planLetter ? ('Plan ' + b.planLetter) : '';
-    if (b.vehicleType) planStr += ' / ' + b.vehicleType;
-
-    var metaParts = [];
-    if (b.vehicleInfo) metaParts.push('🚗 ' + escapeHtml(b.vehicleInfo));
-    if (b.location)    metaParts.push('📍 ' + escapeHtml(b.location));
-    var metaHtml = metaParts.length ? '<div class="hc-meta">' + metaParts.join('<br>') + '</div>' : '';
-
-    var amountHtml = b.amount ? '<div class="hc-amount">$' + b.amount + '</div>' : '';
-    var paymentHtml = b.paymentStatus ? '<div class="hc-payment">💳 ' + escapeHtml(b.paymentStatus) + '</div>' : '';
-
-    html +=
-      '<div class="' + cardClass + '">'
-      + '<div class="hc-row">'
-      +   '<div class="hc-id">' + escapeHtml(b.bookingId || '') + '</div>'
-      +   '<div class="hc-status ' + badge.cls + '">' + escapeHtml(badge.label) + '</div>'
-      + '</div>'
-      + '<div class="hc-date">📅 ' + escapeHtml(b.date || '') + ' ' + escapeHtml(time) + '</div>'
-      + '<div class="hc-plan">' + escapeHtml(planStr) + '</div>'
-      + metaHtml
-      + amountHtml
-      + paymentHtml
-      + '</div>';
-  }
-  container.innerHTML = html;
-}
-
-// ═══════════════════════════════════════════
-//  お問い合わせタブ
-// ═══════════════════════════════════════════
-
-function prepareContactForm() {
-  var select = document.getElementById('contactBookingRef');
-  // 既存のオプションをクリア（最初の1つは残す）
-  select.innerHTML = '<option value="">(Not related to a booking / គ្មានការកក់ពាក់ព័ន្ធ)</option>';
-
-  // 予約履歴が未取得なら先に取得してから埋める
-  if (!state.bookingHistory || state.bookingHistory.length === 0) {
-    var url = GAS_URL + '?action=booking_history&chatId=' + encodeURIComponent(state.chatId);
-    fetch(url)
-      .then(function(r){ return r.json(); })
-      .then(function(res) {
-        if (res.status === 'ok') {
-          state.bookingHistory = res.bookings || [];
-          fillContactBookingOptions();
-        }
-      })
-      .catch(function(){ /* 失敗しても送信自体はできる */ });
-  } else {
-    fillContactBookingOptions();
-  }
-
-  // メッセージ欄をクリア
-  var ta = document.getElementById('contactMessage');
-  if (ta) ta.value = '';
-}
-
-function fillContactBookingOptions() {
-  var select = document.getElementById('contactBookingRef');
-  if (!select) return;
-  var list = state.bookingHistory || [];
-  // アクティブな予約のみを選択肢に
-  for (var i = 0; i < list.length; i++) {
-    var b = list[i];
-    if (!isActiveBooking(b.status)) continue;
-    var label = (b.date || '') + ' ' + (b.startTime || '')
-              + ' (Plan ' + (b.planLetter || '') + ') - ' + (b.bookingId || '');
-    var opt = document.createElement('option');
-    opt.value = b.bookingId || '';
-    opt.textContent = label;
-    select.appendChild(opt);
-  }
-}
-
-function sendContactMessage() {
-  var ta = document.getElementById('contactMessage');
-  var msg = (ta.value || '').trim();
-  if (!msg) {
-    showToast('Please enter a message / សូមវាយសារ', true);
-    return;
-  }
-  if (msg.length > 2000) {
-    showToast('Max 2000 characters', true);
-    return;
-  }
-  var bookingRef = document.getElementById('contactBookingRef').value || '';
-
-  setBtnLoading(true);
-  postJson('booking_message', {
-    chatId: state.chatId,
-    customerName: state.customerName || (state.customer && state.customer.name) || '',
-    bookingId: bookingRef,
-    message: msg
-  }).then(function(res){
-    setBtnLoading(false);
-    if (res.status !== 'ok') {
-      showToast(res.message || 'Send failed', true);
-      return;
-    }
-    // 入力クリア
-    ta.value = '';
-    document.getElementById('contactBookingRef').value = '';
-    // 送信完了画面へ
-    showView('view-message-sent');
-  }).catch(function(err){
-    setBtnLoading(false);
-    showToast('Send error: ' + err.message, true);
   });
 }
 
@@ -1626,17 +970,12 @@ function showToast(msg, isError) {
   t.textContent = msg;
   t.classList.toggle('error', !!isError);
   t.classList.add('show');
-  setTimeout(function(){ t.classList.remove('show'); }, 3500);
+  setTimeout(function() { t.classList.remove('show'); }, 3500);
 }
 
 function escapeHtml(s) {
   if (s === null || s === undefined) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function formatDate(d) {
