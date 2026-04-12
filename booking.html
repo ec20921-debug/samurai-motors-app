@@ -6,6 +6,8 @@
 <title>Samurai Motors - Booking</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
   --bg: #0f0f0f;
@@ -452,20 +454,17 @@ body {
       Your Location
       <span class="km">ទីតាំងរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Where should we come to wash your car?</div>
+    <div class="view-desc">Tap the map to set your car wash location<br><span class="km">ចុចផែនទីដើម្បីកំណត់ទីតាំង</span></div>
 
-    <button class="btn btn-secondary" id="gpsBtn" onclick="shareLocation()" style="margin-bottom:16px; font-size:14px;">
-      📍 Share My Location / ចែករំលែកទីតាំង
+    <div id="leafletMap" style="width:100%; height:250px; border-radius:var(--radius); border:1.5px solid var(--border); margin-bottom:8px;"></div>
+    <div style="font-size:11px; color:var(--text-dim); margin-bottom:12px; text-align:center;" id="coordsText">📍 Tap the map or use the button below</div>
+
+    <button class="btn btn-secondary" id="gpsBtn" onclick="shareLocation()" style="margin-bottom:16px; font-size:13px;">
+      📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន
     </button>
-    <div id="mapPreview" style="display:none; margin-bottom:16px; border-radius:var(--radius); overflow:hidden;">
-      <a id="mapLink" href="#" target="_blank">
-        <img id="mapImg" src="" alt="Map" style="width:100%; height:180px; object-fit:cover; border:1.5px solid var(--border); border-radius:var(--radius);">
-      </a>
-      <div style="font-size:11px; color:var(--text-dim); margin-top:4px; text-align:center;" id="coordsText"></div>
-    </div>
 
     <div class="field">
-      <label>Address / Building Details <span class="km">អាសយដ្ឋាន</span> <span class="req">*</span></label>
+      <label>Address / Building Details <span class="km">អាសយដ្ឋាន</span> <span style="color:var(--text-dim); font-size:12px;">(optional)</span></label>
       <textarea id="bookingLocation" placeholder="e.g. BKK1, Street 240, Olympia City Tower B, Parking B2"></textarea>
       <div class="hint">Building name, street, parking level, etc.</div>
     </div>
@@ -629,6 +628,9 @@ function showView(viewId) {
   // 各viewの初期化
   if (viewId === 'view-plan') renderPlans();
   if (viewId === 'view-datetime') renderDates();
+  if (viewId === 'view-location') {
+    setTimeout(function() { initLocationMap(); }, 100);
+  }
   if (viewId === 'view-confirm') renderSummary();
 
   // ボタン更新
@@ -901,17 +903,13 @@ function handleNext() {
 
     case 'view-location':
       var loc = document.getElementById('bookingLocation').value.trim();
-      if (!loc && !savedCoords) {
-        showToast('Please share location or enter address', true);
+      if (!savedCoords) {
+        showToast('Please set your location on the map', true);
         return;
       }
-      // GPS座標がある場合はアドレスに追加
-      if (savedCoords) {
-        var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
-        state.selectedLocation = (loc ? loc + '\n' : '') + '📍 ' + mapsUrl;
-      } else {
-        state.selectedLocation = loc;
-      }
+      // GPS座標＋任意のアドレスを組み合わせ
+      var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
+      state.selectedLocation = (loc ? loc + '\n' : '') + '📍 ' + mapsUrl;
       showView('view-confirm');
       break;
 
@@ -973,6 +971,56 @@ function submitBooking() {
 
 var savedCoords = null;
 
+// Leafletマップ関連
+var leafletMap = null;
+var leafletMarker = null;
+
+function initLocationMap() {
+  if (leafletMap) return; // 初期化済み
+  var el = document.getElementById('leafletMap');
+  if (!el) return;
+
+  // プノンペン中心で初期化
+  leafletMap = L.map(el, { zoomControl: false }).setView([11.5564, 104.9282], 13);
+  L.control.zoom({ position: 'topright' }).addTo(leafletMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(leafletMap);
+
+  // タップで場所を指定
+  leafletMap.on('click', function(e) {
+    setMapPin(e.latlng.lat, e.latlng.lng);
+  });
+
+  // 少し遅延してサイズ修正（表示切替時の問題対策）
+  setTimeout(function() { leafletMap.invalidateSize(); }, 300);
+}
+
+function setMapPin(lat, lng) {
+  savedCoords = { lat: lat.toFixed(6), lng: lng.toFixed(6) };
+  if (leafletMarker) {
+    leafletMarker.setLatLng([lat, lng]);
+  } else {
+    leafletMarker = L.marker([lat, lng], { draggable: true }).addTo(leafletMap);
+    // ピンをドラッグで移動可能
+    leafletMarker.on('dragend', function(e) {
+      var pos = e.target.getLatLng();
+      savedCoords = { lat: pos.lat.toFixed(6), lng: pos.lng.toFixed(6) };
+      updateCoordsText();
+    });
+  }
+  leafletMap.setView([lat, lng], 16);
+  updateCoordsText();
+}
+
+function updateCoordsText() {
+  if (!savedCoords) return;
+  var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
+  document.getElementById('coordsText').innerHTML = '📍 ' + savedCoords.lat + ', ' + savedCoords.lng
+    + ' — <a href="' + mapsUrl + '" target="_blank" style="color:var(--blue)">Open in Google Maps</a>';
+}
+
 function shareLocation() {
   var btn = document.getElementById('gpsBtn');
   btn.textContent = '📍 Getting location... / កំពុងរកទីតាំង...';
@@ -980,47 +1028,25 @@ function shareLocation() {
 
   if (!navigator.geolocation) {
     showToast('GPS not supported on this device', true);
-    btn.textContent = '📍 Share My Location / ចែករំលែកទីតាំង';
+    btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
     btn.disabled = false;
     return;
   }
 
   navigator.geolocation.getCurrentPosition(
     function(pos) {
-      var lat = pos.coords.latitude.toFixed(6);
-      var lng = pos.coords.longitude.toFixed(6);
-      savedCoords = { lat: lat, lng: lng };
-
-      // Google Mapsプレビュー表示
-      var mapUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
-      var staticImg = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng
-        + '&zoom=16&size=400x200&markers=color:red%7C' + lat + ',' + lng
-        + '&key=';  // 静的マップはキーなしでも表示可能な場合がある
-
-      document.getElementById('mapLink').href = mapUrl;
-      // OpenStreetMapの静的タイルを使用（APIキー不要）
-      var osmImg = 'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng
-        + '&zoom=16&size=400x200&markers=' + lat + ',' + lng + ',red-pushpin';
-      document.getElementById('mapImg').src = osmImg;
-      document.getElementById('mapImg').onerror = function() {
-        // フォールバック: マップ画像なしでリンクだけ表示
-        this.style.display = 'none';
-      };
-      document.getElementById('coordsText').textContent = '📍 ' + lat + ', ' + lng + ' — Tap map to open Google Maps';
-      document.getElementById('mapPreview').style.display = 'block';
-
-      btn.textContent = '✅ Location saved! / ទីតាំងបានរក្សាទុក!';
+      setMapPin(pos.coords.latitude, pos.coords.longitude);
+      btn.textContent = '✅ Location set! / ទីតាំងបានកំណត់!';
       btn.disabled = false;
-
-      showToast('📍 Location shared successfully!');
+      showToast('📍 Location set successfully!');
     },
     function(err) {
-      btn.textContent = '📍 Share My Location / ចែករំលែកទីតាំង';
+      btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
       btn.disabled = false;
       if (err.code === 1) {
         showToast('Please allow location access', true);
       } else {
-        showToast('Could not get location. Please type your address.', true);
+        showToast('Could not get location. Please tap the map.', true);
       }
     },
     { enableHighAccuracy: true, timeout: 10000 }
