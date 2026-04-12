@@ -453,8 +453,19 @@ body {
       <span class="km">ទីតាំងរបស់អ្នក</span>
     </div>
     <div class="view-desc">Where should we come to wash your car?</div>
+
+    <button class="btn btn-secondary" id="gpsBtn" onclick="shareLocation()" style="margin-bottom:16px; font-size:14px;">
+      📍 Share My Location / ចែករំលែកទីតាំង
+    </button>
+    <div id="mapPreview" style="display:none; margin-bottom:16px; border-radius:var(--radius); overflow:hidden;">
+      <a id="mapLink" href="#" target="_blank">
+        <img id="mapImg" src="" alt="Map" style="width:100%; height:180px; object-fit:cover; border:1.5px solid var(--border); border-radius:var(--radius);">
+      </a>
+      <div style="font-size:11px; color:var(--text-dim); margin-top:4px; text-align:center;" id="coordsText"></div>
+    </div>
+
     <div class="field">
-      <label>Address / Building <span class="km">អាសយដ្ឋាន</span> <span class="req">*</span></label>
+      <label>Address / Building Details <span class="km">អាសយដ្ឋាន</span> <span class="req">*</span></label>
       <textarea id="bookingLocation" placeholder="e.g. BKK1, Street 240, Olympia City Tower B, Parking B2"></textarea>
       <div class="hint">Building name, street, parking level, etc.</div>
     </div>
@@ -889,11 +900,17 @@ function handleNext() {
 
     case 'view-location':
       var loc = document.getElementById('bookingLocation').value.trim();
-      if (!loc) {
-        showToast('Please enter your location', true);
+      if (!loc && !savedCoords) {
+        showToast('Please share location or enter address', true);
         return;
       }
-      state.selectedLocation = loc;
+      // GPS座標がある場合はアドレスに追加
+      if (savedCoords) {
+        var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
+        state.selectedLocation = (loc ? loc + '\n' : '') + '📍 ' + mapsUrl;
+      } else {
+        state.selectedLocation = loc;
+      }
       showView('view-confirm');
       break;
 
@@ -947,6 +964,66 @@ function submitBooking() {
     setBtnLoading(false);
     showToast('Booking error: ' + err.message, true);
   });
+}
+
+// ═══════════════════════════════════════════
+//  GPS位置情報
+// ═══════════════════════════════════════════
+
+var savedCoords = null;
+
+function shareLocation() {
+  var btn = document.getElementById('gpsBtn');
+  btn.textContent = '📍 Getting location... / កំពុងរកទីតាំង...';
+  btn.disabled = true;
+
+  if (!navigator.geolocation) {
+    showToast('GPS not supported on this device', true);
+    btn.textContent = '📍 Share My Location / ចែករំលែកទីតាំង';
+    btn.disabled = false;
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      var lat = pos.coords.latitude.toFixed(6);
+      var lng = pos.coords.longitude.toFixed(6);
+      savedCoords = { lat: lat, lng: lng };
+
+      // Google Mapsプレビュー表示
+      var mapUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+      var staticImg = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng
+        + '&zoom=16&size=400x200&markers=color:red%7C' + lat + ',' + lng
+        + '&key=';  // 静的マップはキーなしでも表示可能な場合がある
+
+      document.getElementById('mapLink').href = mapUrl;
+      // OpenStreetMapの静的タイルを使用（APIキー不要）
+      var osmImg = 'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng
+        + '&zoom=16&size=400x200&markers=' + lat + ',' + lng + ',red-pushpin';
+      document.getElementById('mapImg').src = osmImg;
+      document.getElementById('mapImg').onerror = function() {
+        // フォールバック: マップ画像なしでリンクだけ表示
+        this.style.display = 'none';
+      };
+      document.getElementById('coordsText').textContent = '📍 ' + lat + ', ' + lng + ' — Tap map to open Google Maps';
+      document.getElementById('mapPreview').style.display = 'block';
+
+      btn.textContent = '✅ Location saved! / ទីតាំងបានរក្សាទុក!';
+      btn.disabled = false;
+
+      showToast('📍 Location shared successfully!');
+    },
+    function(err) {
+      btn.textContent = '📍 Share My Location / ចែករំលែកទីតាំង';
+      btn.disabled = false;
+      if (err.code === 1) {
+        showToast('Please allow location access', true);
+      } else {
+        showToast('Could not get location. Please type your address.', true);
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
 }
 
 // ═══════════════════════════════════════════

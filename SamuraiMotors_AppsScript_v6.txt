@@ -670,22 +670,23 @@ function requestParkingInfo(chatId, bookingId) {
     bookingId: bookingId
   });
   sendBookingBotMessage(chatId,
-    '✅ *ご予約ありがとうございます！*\n'
+    '✅ *Thank you for your booking!*\n'
     + '✅ *សូមអរគុណចំពោះការកក់!*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '🆔 ' + bookingId + '\n\n'
-    + '当日のスムーズな作業のため、以下をお願いします:\n'
-    + 'សូមផ្ញើព័ត៌មានខាងក្រោម៖\n\n'
-    + '📸 *お車の駐車場の写真を1枚送ってください*\n'
-    + '📸 *សូមផ្ញើរូបថតកន្លែងចតឡាន ១សន្លឹក*\n\n'
-    + '（あとで駐車階数もお聞きします / បន្ទាប់មកនឹងសួរជាន់ចត）'
+    + 'To help us find your car on the day:\n'
+    + 'ដើម្បីឱ្យយើងរកឡានរបស់អ្នកបាន៖\n\n'
+    + '📸 *Please send 1 photo of your parked car (front view)*\n'
+    + '📸 *សូមផ្ញើរូបថតឡានចតរបស់អ្នក ១សន្លឹក (ថតពីមុខ)*\n\n'
+    + '(We will also ask your parking floor next)\n'
+    + '(បន្ទាប់មកនឹងសួរជាន់ចត)'
   );
 }
 
 // 駐車写真受信
 function handleParkingPhotoFlow(chatId, message, state) {
   if (!message.photo || message.photo.length === 0) {
-    sendBookingBotMessage(chatId, '📸 写真を送ってください。\n📸 សូមផ្ញើរូបថត។');
+    sendBookingBotMessage(chatId, '📸 Please send a photo.\n📸 សូមផ្ញើរូបថត។');
     return;
   }
 
@@ -693,7 +694,7 @@ function handleParkingPhotoFlow(chatId, message, state) {
     var largestPhoto = message.photo[message.photo.length - 1];
     var fileInfo = getBookingBotFile(largestPhoto.file_id);
     if (!fileInfo || !fileInfo.result || !fileInfo.result.file_path) {
-      sendBookingBotMessage(chatId, '❌ 写真の取得に失敗しました。もう一度お送りください。');
+      sendBookingBotMessage(chatId, '❌ Failed to get the photo. Please try again.\n❌ បានបរាជ័យ។ សូមព្យាយាមម្តងទៀត។');
       return;
     }
 
@@ -716,10 +717,10 @@ function handleParkingPhotoFlow(chatId, message, state) {
       bookingId: state.bookingId
     });
     sendBookingBotMessage(chatId,
-      '✅ 写真を受け取りました。\n✅ បានទទួល!\n\n'
-      + '🏢 *駐車階数を教えてください*\n'
+      '✅ Photo received!\n✅ បានទទួលរូបថត!\n\n'
+      + '🏢 *What floor is your car parked on?*\n'
       + '🏢 *សូមប្រាប់ជាន់ចតរបស់អ្នក*\n\n'
-      + '例: B2 / 1階 / Ground Floor / Outdoor');
+      + 'e.g. B2, Ground Floor, 3rd Floor, Outdoor');
   } catch (err) {
     Logger.log('handleParkingPhotoFlow error: ' + err.toString());
     sendBookingBotMessage(chatId, '❌ エラー: ' + err.toString());
@@ -730,7 +731,7 @@ function handleParkingPhotoFlow(chatId, message, state) {
 function handleParkingFloorFlow(chatId, message, state) {
   var floor = (message.text || '').trim();
   if (!floor) {
-    sendBookingBotMessage(chatId, '🏢 駐車階数を文字で入力してください。\n例: B2');
+    sendBookingBotMessage(chatId, '🏢 Please type the parking floor.\ne.g. B2, Ground Floor');
     return;
   }
   // Bookingsシート T列(駐車階数)に保存
@@ -738,14 +739,14 @@ function handleParkingFloorFlow(chatId, message, state) {
   clearBookingConvState(chatId);
 
   sendBookingBotMessage(chatId,
-    '✅ *予約情報が完了しました*\n'
-    + '✅ *ព័ត៌មានកក់បានបញ្ចប់*\n'
+    '✅ *Booking info complete!*\n'
+    + '✅ *ព័ត៌មានកក់បានបញ្ចប់!*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '🆔 ' + state.bookingId + '\n'
-    + '🏢 駐車階: ' + floor + '\n\n'
-    + '当日は予約時刻の少し前にお伺いします。\n'
+    + '🏢 Floor: ' + floor + '\n\n'
+    + 'We will arrive shortly before your booking time.\n'
     + 'យើងនឹងទៅដល់មុនម៉ោងបន្តិច។\n\n'
-    + 'ありがとうございます！🚗✨\n'
+    + 'Thank you! 🚗✨\n'
     + 'អរគុណច្រើន! 🚗✨'
   );
 
@@ -4926,26 +4927,30 @@ function handleBookingAddVehicleFromApp(data) {
 // POST action=booking_create
 // data: { chatId, name, customerId, vehicleId, planLetter, optionIds, date, startTime, location }
 function handleBookingCreateFromApp(data) {
-  if (!data.chatId || !data.planLetter || !data.date || !data.startTime || !data.vehicleId) {
+  if (!data.chatId || !data.planLetter || !data.date || !data.startTime) {
     return jsonResponse({ status: 'error', message: 'Missing required fields' });
   }
 
   // 顧客取得（無ければ作成）
   var customer = findOrCreateCustomer(data.chatId, data.name || '', data.username || '');
-  // 車両取得（typeを車両マスタから引く）
-  var vehicle = getVehicleById(data.vehicleId);
-  if (!vehicle) {
-    return jsonResponse({ status: 'error', message: 'Vehicle not found: ' + data.vehicleId });
+
+  // 車両取得: vehicleIdがあればマスタから、なければvehicleTypeを直接使用
+  var vehicle = null;
+  var vehicleType = data.vehicleType || 'セダン以下';
+  if (data.vehicleId) {
+    vehicle = getVehicleById(data.vehicleId);
+    if (vehicle) vehicleType = vehicle.vehicleType;
   }
 
   // 直前の二重チェック: その日時にまだ空きがあるか
-  var durationMin = calcBookingDuration(data.planLetter, vehicle.vehicleType, data.optionIds || []);
+  var durationMin = calcBookingDuration(data.planLetter, vehicleType, data.optionIds || []);
   var slots = findAvailableSlots(data.date, durationMin);
   if (slots.indexOf(data.startTime) < 0) {
-    return jsonResponse({ status: 'error', message: '選択した時間帯はすでに埋まっています。別の時間を選択してください。', slots: slots });
+    return jsonResponse({ status: 'error', message: 'This time slot is no longer available. Please select another time.', slots: slots });
   }
 
-  var amount = calcBookingAmount(data.planLetter, vehicle.vehicleType);
+  var amount = calcBookingAmount(data.planLetter, vehicleType);
+  var vehicleInfo = vehicle ? formatVehicleInfo(vehicle) : vehicleType;
   var result = createBookingRecord({
     customerId: customer.customerId,
     customerName: customer.name,
@@ -4953,27 +4958,24 @@ function handleBookingCreateFromApp(data) {
     date: data.date,
     startTime: data.startTime,
     planLetter: data.planLetter,
-    vehicleType: vehicle.vehicleType,
+    vehicleType: vehicleType,
     optionIds: data.optionIds || [],
     location: data.location || '',
-    vehicleId: data.vehicleId,
-    vehicleInfo: formatVehicleInfo(vehicle),
+    vehicleId: data.vehicleId || '',
+    vehicleInfo: vehicleInfo,
     amount: amount
   });
 
   // Adminグループに通知
-  var optionNames = (data.optionIds || []).map(function(id) {
-    return BOOKING_OPTIONS[id] ? BOOKING_OPTIONS[id].name : id;
-  }).join(', ');
+  var sizeLabel = (vehicleType === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
   sendTelegramTo(ADMIN_GROUP_ID,
-    '🎉 *新規予約*\n'
+    '🎉 *New Booking*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '🆔 ' + result.bookingId + '\n'
-    + '👤 ' + customer.name + ' (' + customer.customerId + ')\n'
-    + '📅 ' + data.date + ' ' + data.startTime + '〜' + result.endTime + '\n'
-    + '🚙 ' + formatVehicleInfo(vehicle) + ' [' + vehicle.vehicleType + ']\n'
-    + '✨ プラン' + data.planLetter + ' (' + result.durationMin + '分)\n'
-    + (optionNames ? '➕ ' + optionNames + '\n' : '')
+    + '👤 ' + customer.name + '\n'
+    + '📅 ' + data.date + ' ' + data.startTime + ' - ' + result.endTime + '\n'
+    + '🚙 ' + sizeLabel + '\n'
+    + '✨ Plan ' + data.planLetter + ' (' + result.durationMin + 'min)\n'
     + '📍 ' + (data.location || '-') + '\n'
     + '💰 $' + amount
   );
