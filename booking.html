@@ -766,7 +766,7 @@ function renderDates() {
   today.setHours(0, 0, 0, 0);
 
   var dayEn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  var monthEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var monthEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   for (var i = 0; i < 12; i++) {
     var d = new Date(today.getTime() + i * 86400000);
@@ -816,17 +816,18 @@ function loadTimeSlots() {
     .then(function(res) {
       if (res.status !== 'ok') throw new Error(res.message || 'Failed to load');
       state.selectedDuration = res.durationMin;
-      renderSlots(res.slots, res.durationMin);
+      renderSlots(res.slots, res.durationMin, res.debug);
     })
     .catch(function(err) {
       container.innerHTML = '<div class="slot-empty">Error: ' + escapeHtml(err.message) + '</div>';
     });
 }
 
-function renderSlots(slots, durationMin) {
+function renderSlots(slots, durationMin, debug) {
   var container = document.getElementById('slotContainer');
   if (!slots || slots.length === 0) {
-    container.innerHTML = '<div class="slot-empty">No availability on this date<br>គ្មានទំនេរទេ<br><br>Please select another date</div>';
+    var debugInfo = debug ? '<br><small style="color:#999">[' + debug + ']</small>' : '';
+    container.innerHTML = '<div class="slot-empty">No availability on this date<br>គ្មានទំនេរទេ<br><br>Please select another date' + debugInfo + '</div>';
     return;
   }
 

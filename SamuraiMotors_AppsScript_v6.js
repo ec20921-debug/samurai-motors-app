@@ -4439,11 +4439,11 @@ function findAvailableSlots(dateStr, durationMin) {
     calendar = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
     if (!calendar) {
       Logger.log('findAvailableSlots: Calendar not found: ' + BOOKING_CALENDAR_ID);
-      return [];
+      return { slots: [], debug: 'Calendar not found: ' + BOOKING_CALENDAR_ID };
     }
   } catch (e) {
     Logger.log('findAvailableSlots calendar error: ' + e.toString());
-    return [];
+    return { slots: [], debug: 'Calendar error: ' + e.toString() };
   }
 
   // 営業時間の範囲をDateで構築
@@ -4488,7 +4488,7 @@ function findAvailableSlots(dateStr, durationMin) {
     // 次の30分刻み
     slotStart = new Date(slotStart.getTime() + 30 * 60 * 1000);
   }
-  return slots;
+  return { slots: slots, debug: 'OK, events=' + busyRanges.length + ', calendarId=' + BOOKING_CALENDAR_ID };
 }
 
 // Calendarに予約イベントを作成
@@ -4693,8 +4693,9 @@ function testFindSlots() {
   var tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   var dateStr = Utilities.formatDate(tomorrow, BOOKING_TIMEZONE, 'yyyy-MM-dd');
-  var slots = findAvailableSlots(dateStr, 90);
-  Logger.log('明日の空き枠 (90分): ' + slots.join(', '));
+  var result = findAvailableSlots(dateStr, 90);
+  var slots = result.slots || result;
+  Logger.log('明日の空き枠 (90分): ' + JSON.stringify(slots) + ' debug: ' + (result.debug || ''));
 }
 
 function testCreateDummyBooking() {
@@ -4837,12 +4838,13 @@ function handleBookingSlotsGet(e) {
     return jsonResponse({ status: 'error', message: 'Invalid plan: ' + planLetter });
   }
 
-  var slots = findAvailableSlots(dateStr, durationMin);
+  var result = findAvailableSlots(dateStr, durationMin);
   return jsonResponse({
     status: 'ok',
     date: dateStr,
     durationMin: durationMin,
-    slots: slots
+    slots: result.slots || result,
+    debug: result.debug || ''
   });
 }
 
@@ -4944,7 +4946,8 @@ function handleBookingCreateFromApp(data) {
 
   // 直前の二重チェック: その日時にまだ空きがあるか
   var durationMin = calcBookingDuration(data.planLetter, vehicleType, data.optionIds || []);
-  var slots = findAvailableSlots(data.date, durationMin);
+  var slotResult = findAvailableSlots(data.date, durationMin);
+  var slots = slotResult.slots || slotResult;
   if (slots.indexOf(data.startTime) < 0) {
     return jsonResponse({ status: 'error', message: 'This time slot is no longer available. Please select another time.', slots: slots });
   }
