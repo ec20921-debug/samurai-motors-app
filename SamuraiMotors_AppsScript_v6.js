@@ -47,6 +47,10 @@ var CUSTOMERS_SHEET_NAME = 'Customers';
 var BOOKINGS_SHEET_NAME = 'Bookings';
 var VEHICLES_SHEET_NAME = 'Vehicles';
 
+// デプロイ済みWebアプリURL（Webhook設定用）
+// ※ 新しいデプロイを作成したらこのURLを更新すること
+var DEPLOYED_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_RUVr6AcMuKzVpE7w3_cZoDKNewnBjKO4DO96LPA1hh/exec';
+
 // Telegram Bot設定
 // v6 から 3 Bot構成（同じトークンを共有しても動くが、本番では別々のトークンを推奨）
 var BOT_TOKENS = {
@@ -4216,7 +4220,7 @@ function setupV5Sheets() {
 
 // Telegram Webhook設定（後方互換: Adminのみ）
 function setupWebhook() {
-  var gasUrl = ScriptApp.getService().getUrl();
+  var gasUrl = DEPLOYED_WEBAPP_URL;
   var url = 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/setWebhook?url=' + encodeURIComponent(gasUrl + '?bot=admin');
 
   var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
@@ -4233,7 +4237,8 @@ function removeWebhook() {
 // Admin / Field / Booking それぞれ別Tokenの場合、bot=パラメータで識別
 // 同一Tokenの場合はAdmin Webhookのみ設定（重複登録を避ける）
 function setupAllWebhooks() {
-  var gasUrl = ScriptApp.getService().getUrl();
+  // DEPLOYED_WEBAPP_URL を使用（エディタ実行時 ScriptApp.getService().getUrl() は /dev を返すため）
+  var gasUrl = DEPLOYED_WEBAPP_URL;
   var results = {};
 
   var bots = [
