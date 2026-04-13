@@ -90,6 +90,7 @@ body {
 .icon-report { background: linear-gradient(135deg, #6A1B9A, #8E24AA); }
 .icon-task { background: linear-gradient(135deg, #E65100, #F57C00); }
 .icon-expense { background: linear-gradient(135deg, #2E7D32, #43A047); }
+.icon-admin { background: linear-gradient(135deg, #37474F, #546E7A); }
 
 .section-label {
   font-size:11px; font-weight:600; color:var(--text-dim);
@@ -166,6 +167,15 @@ body {
     <span class="menu-arrow">›</span>
   </a>
 
+  <a class="menu-item" id="menuAdmin">
+    <div class="menu-icon icon-admin">⚙️</div>
+    <div class="menu-info">
+      <div class="menu-title">管理コンソール / ផ្ទាំងគ្រប់គ្រង</div>
+      <div class="menu-desc">全体ダッシュボード・レポート確認</div>
+    </div>
+    <span class="menu-arrow">›</span>
+  </a>
+
 </div>
 
 <script>
@@ -207,6 +217,7 @@ document.getElementById('menuAttendance').href = buildUrl('attendance.html');
 document.getElementById('menuReport').href = buildUrl('daily-report.html');
 document.getElementById('menuTask').href = buildUrl('task-manager.html');
 document.getElementById('menuExpense').href = buildUrl('expense-entry.html');
+document.getElementById('menuAdmin').href = buildUrl('admin-console.html');
 </script>
 </body>
 </html>

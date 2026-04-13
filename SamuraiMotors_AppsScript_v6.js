@@ -3760,7 +3760,26 @@ function sendAdminReport(yesterday, today, tomorrow) {
   msg += '━━━━━━━━━━━━━━━━━━\n';
   msg += '📄 [スプレッドシートを開く](' + sheetUrl + ')';
 
-  sendTelegramTo(ADMIN_GROUP_ID, msg);
+  // インラインキーボード: 管理コンソールの各セクションへのリンク
+  var consoleBase = 'https://ec20921-debug.github.io/samurai-motors-app/admin-console.html';
+  var gasParam = encodeURIComponent(ScriptApp.getService().getUrl());
+  var replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: '📋 タスク', url: consoleBase + '?tab=tasks&gas=' + gasParam },
+        { text: '💰 経費', url: consoleBase + '?tab=expenses&gas=' + gasParam }
+      ],
+      [
+        { text: '🕐 勤怠', url: consoleBase + '?tab=attendance&gas=' + gasParam },
+        { text: '💬 問合せ', url: consoleBase + '?tab=inquiries&gas=' + gasParam }
+      ],
+      [
+        { text: '📊 ダッシュボード', url: consoleBase + '?tab=dashboard&gas=' + gasParam }
+      ]
+    ]
+  };
+
+  sendTelegramWithKeyboard(ADMIN_GROUP_ID, msg, replyMarkup);
   Logger.log('Admin朝レポート送信完了: ' + yesterday);
 }
 
