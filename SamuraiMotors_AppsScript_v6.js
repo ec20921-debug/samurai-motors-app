@@ -195,12 +195,14 @@ function doPost(e) {
     // Telegram Webhookからのメッセージ（update_idがある場合）
     if (data.update_id) {
       // 重複排除：同じ update_id を2度処理しない（Telegramのリトライ対策）
+      // GAS処理が遅い場合Telegramが60秒後にリトライするため、300秒キャッシュ
       var cache = CacheService.getScriptCache();
       var cacheKey = 'tg_upd_' + data.update_id;
       if (cache.get(cacheKey)) {
+        Logger.log('Duplicate webhook blocked: update_id=' + data.update_id);
         return ContentService.createTextOutput('ok');
       }
-      cache.put(cacheKey, '1', 120); // 2分間キャッシュ
+      cache.put(cacheKey, '1', 300); // 5分間キャッシュ
 
       // どのBotから来たwebhookか? URLパラメータ ?bot=admin|field|booking で識別
       var botType = (e.parameter && e.parameter.bot) ? e.parameter.bot : 'admin';
@@ -663,20 +665,36 @@ function handleBookingConversation(chatId, message, state) {
 }
 
 // ─── 1. 駐車情報依頼（予約完了直後） ───────────
+// ① 予約サマリーを送信 → ② 写真依頼
 
 function requestParkingInfo(chatId, bookingId) {
+  // ① 予約サマリーメッセージ
+  var booking = getBookingById(bookingId);
+  var summaryMsg = '✅ *Booking Confirmed!*\n'
+    + '✅ *ការកក់បានបញ្ជាក់!*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + '🆔 ' + bookingId + '\n';
+  if (booking) {
+    var sizeLabel = (booking.vehicleType === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
+    summaryMsg += '📅 ' + booking.date + ' ' + booking.startTime + ' - ' + booking.endTime + '\n'
+      + '🚙 ' + sizeLabel + '\n'
+      + '✨ Plan ' + booking.planLetter + ' (' + booking.durationMin + 'min)\n'
+      + '📍 ' + (booking.location || '-') + '\n'
+      + '💰 $' + booking.amount + '\n';
+  }
+  summaryMsg += '\nWe will arrive shortly before your booking time.\n'
+    + 'យើងនឹងទៅដល់មុនម៉ោងបន្តិច។\n\n'
+    + 'Thank you! 🚗✨\n'
+    + 'អរគុណច្រើន! 🚗✨';
+  sendBookingBotMessage(chatId, summaryMsg);
+
+  // ② 写真依頼メッセージ
   setBookingConvState(chatId, {
     type: 'parking_photo',
     bookingId: bookingId
   });
   sendBookingBotMessage(chatId,
-    '✅ *Thank you for your booking!*\n'
-    + '✅ *សូមអរគុណចំពោះការកក់!*\n'
-    + '━━━━━━━━━━━━━━━\n'
-    + '🆔 ' + bookingId + '\n\n'
-    + 'To help us find your car on the day:\n'
-    + 'ដើម្បីឱ្យយើងរកឡានរបស់អ្នកបាន៖\n\n'
-    + '📸 *Please send 1 photo of your parked car (front view)*\n'
+    '📸 *Please send 1 photo of your parked car (front view)*\n'
     + '📸 *សូមផ្ញើរូបថតឡានចតរបស់អ្នក ១សន្លឹក (ថតពីមុខ)*\n\n'
     + '(We will also ask your parking floor next)\n'
     + '(បន្ទាប់មកនឹងសួរជាន់ចត)'
@@ -686,7 +704,14 @@ function requestParkingInfo(chatId, bookingId) {
 // 駐車写真受信
 function handleParkingPhotoFlow(chatId, message, state) {
   if (!message.photo || message.photo.length === 0) {
+    // テキストメッセージが来た場合は無視（写真を待っている状態）
     sendBookingBotMessage(chatId, '📸 Please send a photo.\n📸 សូមផ្ញើរូបថត។');
+    return;
+  }
+
+  // 重複処理防止: すでに写真を保存済みならスキップ
+  if (state.photoSaved) {
+    Logger.log('handleParkingPhotoFlow: photo already saved for ' + state.bookingId);
     return;
   }
 
@@ -711,7 +736,7 @@ function handleParkingPhotoFlow(chatId, message, state) {
     // Bookingsシート S列(駐車写真URL)に保存
     updateBookingField(state.bookingId, 19, photoUrl);
 
-    // 次のステップ: 駐車階数
+    // 次のステップ: 駐車階数（状態を即座に切り替え）
     setBookingConvState(chatId, {
       type: 'parking_floor',
       bookingId: state.bookingId
@@ -729,6 +754,10 @@ function handleParkingPhotoFlow(chatId, message, state) {
 
 // 駐車階数受信
 function handleParkingFloorFlow(chatId, message, state) {
+  // 写真・スタンプ・音声など、テキスト以外のメッセージは無視（リトライ対策）
+  if (message.photo || message.sticker || message.document || message.voice || message.video) {
+    return;
+  }
   var floor = (message.text || '').trim();
   if (!floor) {
     sendBookingBotMessage(chatId, '🏢 Please type the parking floor.\ne.g. B2, Ground Floor');
@@ -739,15 +768,13 @@ function handleParkingFloorFlow(chatId, message, state) {
   clearBookingConvState(chatId);
 
   sendBookingBotMessage(chatId,
-    '✅ *Booking info complete!*\n'
-    + '✅ *ព័ត៌មានកក់បានបញ្ចប់!*\n'
+    '✅ *Parking info received!*\n'
+    + '✅ *ព័ត៌មានចតឡានបានទទួល!*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '🆔 ' + state.bookingId + '\n'
     + '🏢 Floor: ' + floor + '\n\n'
-    + 'We will arrive shortly before your booking time.\n'
-    + 'យើងនឹងទៅដល់មុនម៉ោងបន្តិច។\n\n'
-    + 'Thank you! 🚗✨\n'
-    + 'អរគុណច្រើន! 🚗✨'
+    + 'See you soon! 🚗✨\n'
+    + 'ជួបគ្នាឆាប់ៗ! 🚗✨'
   );
 
   // Adminグループにも通知
@@ -4398,19 +4425,30 @@ function formatVehicleInfo(vehicle) {
 
 // 累計予約回数 +1, 最終利用日更新
 function incrementCustomerBooking(customerId, lastUsedDate) {
+  if (!customerId) {
+    Logger.log('incrementCustomerBooking: customerId is empty');
+    return;
+  }
   var sheet = getCustomersSheet();
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
+  if (lastRow < 2) {
+    Logger.log('incrementCustomerBooking: no data rows in Customers sheet');
+    return;
+  }
   var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  var customerIdStr = customerId.toString();
   for (var i = 0; i < data.length; i++) {
-    if (data[i][0] && data[i][0].toString() === customerId) {
+    if (data[i][0] && data[i][0].toString() === customerIdStr) {
       var rowNum = i + 2;
       var current = parseInt(data[i][4], 10) || 0;
-      sheet.getRange(rowNum, 5).setValue(current + 1);
+      var newCount = current + 1;
+      sheet.getRange(rowNum, 5).setValue(newCount);
       sheet.getRange(rowNum, 6).setValue(lastUsedDate || '');
+      Logger.log('incrementCustomerBooking: ' + customerIdStr + ' → ' + newCount + '回目');
       return;
     }
   }
+  Logger.log('incrementCustomerBooking: customer not found: ' + customerIdStr);
 }
 
 // ─── 所要時間計算 ───────────────────────────
