@@ -85,6 +85,7 @@ body {
 
 /* アイコン背景色 */
 .icon-wash { background: linear-gradient(135deg, #1565C0, #1E88E5); }
+.icon-chat { background: linear-gradient(135deg, #AD1457, #D81B60); }
 .icon-attendance { background: linear-gradient(135deg, #00695C, #00897B); }
 .icon-report { background: linear-gradient(135deg, #6A1B9A, #8E24AA); }
 .icon-task { background: linear-gradient(135deg, #E65100, #F57C00); }
@@ -114,6 +115,15 @@ body {
     <div class="menu-info">
       <div class="menu-title">洗車登録 / ចុះឈ្មោះលាងឡាន</div>
       <div class="menu-desc">顧客情報・写真・プラン登録</div>
+    </div>
+    <span class="menu-arrow">›</span>
+  </a>
+
+  <a class="menu-item" id="menuChat">
+    <div class="menu-icon icon-chat">💬</div>
+    <div class="menu-info">
+      <div class="menu-title">顧客メッセージ / សារអតិថិជន</div>
+      <div class="menu-desc">問い合わせ確認・返信</div>
     </div>
     <span class="menu-arrow">›</span>
   </a>
@@ -192,6 +202,7 @@ function buildUrl(page) {
 }
 
 document.getElementById('menuWash').href = buildUrl('job-manager.html');
+document.getElementById('menuChat').href = buildUrl('customer-chat.html');
 document.getElementById('menuAttendance').href = buildUrl('attendance.html');
 document.getElementById('menuReport').href = buildUrl('daily-report.html');
 document.getElementById('menuTask').href = buildUrl('task-manager.html');

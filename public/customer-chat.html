@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Samurai Motors - 顧客メッセージ / សារអតិថិជន</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f0f0f;
+  --card: #1a1a1a;
+  --border: #2a2a2a;
+  --accent: #c8102e;
+  --gold: #c9a84c;
+  --gold-soft: rgba(201,168,76,0.12);
+  --text: #e8e8e8;
+  --text-dim: #888;
+  --text-label: #bbb;
+  --success: #2ecc71;
+  --success-bg: rgba(46,204,113,0.12);
+  --danger: #e74c3c;
+  --danger-bg: rgba(231,76,60,0.12);
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Noto Sans Khmer','Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ヘッダー */
+.header {
+  position: sticky; top:0; z-index:100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.header h1 { font-size: 16px; letter-spacing: 0.3px; }
+.header p { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* 戻るボタン */
+.back-btn {
+  background: none; border: none; color: var(--gold);
+  font-size: 22px; cursor: pointer; padding: 4px 8px 4px 0;
+  display: none;
+}
+.back-btn.visible { display: block; }
+
+/* タブフィルター */
+.tab-bar {
+  display: flex; gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tab-pill {
+  padding: 7px 16px;
+  border-radius: 20px;
+  font-size: 12px; font-weight: 600;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.tab-pill.active {
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+}
+
+/* コンテナ */
+.container { max-width: 480px; margin: 0 auto; }
+
+/* ビュー切り替え */
+.view { display: none; }
+.view.active { display: block; }
+
+/* 問い合わせカード */
+.inquiry-list { padding: 8px 16px 120px; }
+.inquiry-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.1s;
+}
+.inquiry-card:active { transform: scale(0.98); }
+.inquiry-card:hover { border-color: var(--gold); }
+.inquiry-card-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.inquiry-name {
+  font-size: 14px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 60%;
+}
+.inquiry-time {
+  font-size: 11px; color: var(--text-dim);
+  white-space: nowrap;
+}
+.inquiry-preview {
+  font-size: 13px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 8px;
+}
+.inquiry-footer {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-pending {
+  background: var(--danger-bg); color: var(--danger);
+}
+.badge-replied {
+  background: var(--success-bg); color: var(--success);
+}
+.msg-type-icon { font-size: 13px; }
+
+/* 詳細ビュー */
+.detail-view { padding: 0 16px 160px; }
+.detail-customer {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.detail-customer-name { font-size: 18px; font-weight: 700; }
+.detail-customer-id { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+.detail-message-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.detail-msg-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.detail-msg-type { font-size: 20px; }
+.detail-msg-time { font-size: 12px; color: var(--text-dim); }
+.detail-msg-text {
+  font-size: 14px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* 返信表示 */
+.reply-card {
+  background: var(--gold-soft);
+  border: 1px solid rgba(201,168,76,0.25);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.reply-label {
+  font-size: 12px; font-weight: 600; color: var(--gold);
+  margin-bottom: 6px;
+}
+.reply-text {
+  font-size: 14px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+.reply-meta {
+  font-size: 11px; color: var(--text-dim);
+  margin-top: 8px;
+}
+
+/* 返信入力エリア */
+.reply-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  z-index: 100;
+  display: none;
+}
+.reply-bar.visible { display: block; }
+.reply-bar-inner {
+  max-width: 480px; margin: 0 auto;
+  display: flex; gap: 10px; align-items: flex-end;
+}
+.reply-bar textarea {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+  transition: border-color 0.2s;
+}
+.reply-bar textarea:focus { outline: none; border-color: var(--gold); }
+.send-btn {
+  padding: 10px 20px;
+  background: var(--gold);
+  color: #000;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px; font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.send-btn:active:not(:disabled) { opacity: 0.8; }
+
+/* ローディング */
+.loading {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 空状態 */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* エラーメッセージ */
+.error-toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--danger); color: #fff;
+  padding: 10px 20px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 600;
+  z-index: 200;
+  opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.error-toast.show { opacity: 1; }
+
+/* 成功メッセージ */
+.success-toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--success); color: #fff;
+  padding: 10px 20px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 600;
+  z-index: 200;
+  opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.success-toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- エラー/成功トースト -->
+<div class="error-toast" id="errorToast"></div>
+<div class="success-toast" id="successToast"></div>
+
+<!-- ヘッダー -->
+<div class="header">
+  <button class="back-btn" id="backBtn" onclick="showListView()">&#8592;</button>
+  <div>
+    <h1 id="headerTitle">&#128172; 顧客メッセージ / សារអតិថិជន</h1>
+    <p id="headerSub">Samurai Motors</p>
+  </div>
+</div>
+
+<!-- リストビュー -->
+<div class="view active" id="listView">
+  <!-- タブフィルター -->
+  <div class="tab-bar">
+    <div class="tab-pill active" data-filter="pending" onclick="setFilter('pending')">未対応 / មិនទាន់ឆ្លើយ</div>
+    <div class="tab-pill" data-filter="replied" onclick="setFilter('replied')">対応済み / បានឆ្លើយ</div>
+    <div class="tab-pill" data-filter="all" onclick="setFilter('all')">すべて / ទាំងអស់</div>
+  </div>
+
+  <!-- ローディング -->
+  <div class="loading" id="listLoading">
+    <div class="spinner"></div>
+    <span>読み込み中...</span>
+  </div>
+
+  <!-- 空状態 -->
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <div class="icon">&#128172;</div>
+    <p>メッセージはありません<br>គ្មានសារទេ</p>
+  </div>
+
+  <!-- カード一覧 -->
+  <div class="inquiry-list" id="inquiryList"></div>
+</div>
+
+<!-- 詳細ビュー -->
+<div class="view" id="detailView">
+  <div class="detail-view" id="detailContent"></div>
+</div>
+
+<!-- 返信バー -->
+<div class="reply-bar" id="replyBar">
+  <div class="reply-bar-inner">
+    <textarea id="replyInput" rows="1" placeholder="返信を入力 / វាយបញ្ចូលការឆ្លើយតប..." oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendReply()" disabled>返信<br><span style="font-size:10px">ឆ្លើយតប</span></button>
+  </div>
+</div>
+
+<script>
+// === 状態管理 ===
+var state = {
+  inquiries: [],
+  filter: 'pending',
+  selectedInquiry: null
+};
+
+// GAS URLをクエリパラメータから取得
+var GAS_URL = '';
+var urlParams = new URLSearchParams(window.location.search);
+GAS_URL = urlParams.get('gas') || '';
+
+// Telegram WebApp初期化
+if (window.Telegram && Telegram.WebApp) {
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+}
+
+// 自動リフレッシュ用タイマー
+var refreshTimer = null;
+
+// === 初期化 ===
+document.addEventListener('DOMContentLoaded', function() {
+  loadInquiries();
+  startAutoRefresh();
+  // 返信入力監視
+  document.getElementById('replyInput').addEventListener('input', function() {
+    document.getElementById('sendBtn').disabled = !this.value.trim();
+  });
+});
+
+// === 自動リフレッシュ（30秒） ===
+function startAutoRefresh() {
+  stopAutoRefresh();
+  refreshTimer = setInterval(function() {
+    // リストビューが表示中のときだけリフレッシュ
+    if (document.getElementById('listView').classList.contains('active')) {
+      loadInquiries(true);
+    }
+  }, 30000);
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+// === API: 問い合わせ一覧取得 ===
+function loadInquiries(silent) {
+  if (!GAS_URL) {
+    showError('GAS URLが設定されていません');
+    return;
+  }
+  if (!silent) {
+    document.getElementById('listLoading').style.display = 'flex';
+    document.getElementById('inquiryList').innerHTML = '';
+    document.getElementById('emptyState').style.display = 'none';
+  }
+  fetch(GAS_URL + '?action=inquiries')
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        state.inquiries = data.inquiries || [];
+        renderList();
+      } else {
+        showError('データ取得に失敗しました');
+      }
+    })
+    .catch(function(err) {
+      console.error('問い合わせ取得エラー:', err);
+      showError('通信エラーが発生しました / កំហុសក្នុងការទំនាក់ទំនង');
+    })
+    .finally(function() {
+      document.getElementById('listLoading').style.display = 'none';
+    });
+}
+
+// === リスト描画 ===
+function renderList() {
+  var filtered = state.inquiries.filter(function(inq) {
+    if (state.filter === 'pending') return !inq.replied;
+    if (state.filter === 'replied') return inq.replied;
+    return true;
+  });
+
+  var listEl = document.getElementById('inquiryList');
+  var emptyEl = document.getElementById('emptyState');
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  var html = '';
+  filtered.forEach(function(inq) {
+    var typeIcon = getTypeIcon(inq.type);
+    var statusBadge = inq.replied
+      ? '<span class="badge badge-replied">&#x1F7E2; 対応済み</span>'
+      : '<span class="badge badge-pending">&#x1F534; 未対応</span>';
+    var preview = inq.message || '';
+    if (preview.length > 50) preview = preview.substring(0, 50) + '...';
+
+    html += '<div class="inquiry-card" onclick="showDetail(\'' + inq.id + '\')">'
+      + '<div class="inquiry-card-top">'
+      + '<div class="inquiry-name">' + escapeHtml(inq.customerName || '不明') + '</div>'
+      + '<div class="inquiry-time">' + relativeTime(inq.timestamp) + '</div>'
+      + '</div>'
+      + '<div class="inquiry-preview">' + typeIcon + ' ' + escapeHtml(preview) + '</div>'
+      + '<div class="inquiry-footer">'
+      + statusBadge
+      + '</div>'
+      + '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+// === 詳細ビュー表示 ===
+function showDetail(inquiryId) {
+  var inq = null;
+  for (var i = 0; i < state.inquiries.length; i++) {
+    if (state.inquiries[i].id === inquiryId) {
+      inq = state.inquiries[i];
+      break;
+    }
+  }
+  if (!inq) return;
+
+  state.selectedInquiry = inq;
+
+  var typeIcon = getTypeIcon(inq.type);
+  var typeName = getTypeName(inq.type);
+
+  var html = '<div class="detail-customer">'
+    + '<div class="detail-customer-name">' + escapeHtml(inq.customerName || '不明') + '</div>'
+    + '<div class="detail-customer-id">Chat ID: ' + escapeHtml(inq.chatId || '-') + '</div>'
+    + '</div>';
+
+  // メッセージ本文
+  html += '<div class="detail-message-card">'
+    + '<div class="detail-msg-header">'
+    + '<span class="detail-msg-type">' + typeIcon + '</span>'
+    + '<span style="font-size:13px;font-weight:600;color:var(--text-label)">' + typeName + '</span>'
+    + '<span class="detail-msg-time">' + formatTimestamp(inq.timestamp) + '</span>'
+    + '</div>'
+    + '<div class="detail-msg-text">' + escapeHtml(inq.message || '') + '</div>'
+    + '</div>';
+
+  // 返信済みの場合
+  if (inq.replied && inq.replyContent) {
+    html += '<div class="reply-card">'
+      + '<div class="reply-label">&#9989; 返信済み / បានឆ្លើយតបរួចហើយ</div>'
+      + '<div class="reply-text">' + escapeHtml(inq.replyContent) + '</div>'
+      + '<div class="reply-meta">'
+      + (inq.replyBy ? escapeHtml(inq.replyBy) + ' ・ ' : '')
+      + (inq.replyTime ? formatTimestamp(inq.replyTime) : '')
+      + '</div>'
+      + '</div>';
+  }
+
+  document.getElementById('detailContent').innerHTML = html;
+
+  // ビュー切り替え
+  document.getElementById('listView').classList.remove('active');
+  document.getElementById('detailView').classList.add('active');
+  document.getElementById('backBtn').classList.add('visible');
+  document.getElementById('headerTitle').textContent = escapeHtml(inq.customerName || '顧客詳細');
+  document.getElementById('headerSub').textContent = 'メッセージ詳細 / ព័ត៌មានលម្អិតសារ';
+
+  // 返信バー表示（未返信の場合のみ入力可能、返信済みでも表示）
+  document.getElementById('replyBar').classList.add('visible');
+  var replyInput = document.getElementById('replyInput');
+  var sendBtnEl = document.getElementById('sendBtn');
+  if (inq.replied) {
+    replyInput.disabled = true;
+    replyInput.placeholder = '返信済み / បានឆ្លើយតបរួចហើយ';
+    sendBtnEl.disabled = true;
+  } else {
+    replyInput.disabled = false;
+    replyInput.placeholder = '返信を入力 / វាយបញ្ចូលការឆ្លើយតប...';
+    sendBtnEl.disabled = !replyInput.value.trim();
+  }
+  replyInput.value = '';
+
+  // 上にスクロール
+  window.scrollTo(0, 0);
+}
+
+// === リストビューに戻る ===
+function showListView() {
+  state.selectedInquiry = null;
+  document.getElementById('detailView').classList.remove('active');
+  document.getElementById('listView').classList.add('active');
+  document.getElementById('backBtn').classList.remove('visible');
+  document.getElementById('headerTitle').innerHTML = '&#128172; 顧客メッセージ / សារអតិថិជន';
+  document.getElementById('headerSub').textContent = 'Samurai Motors';
+  document.getElementById('replyBar').classList.remove('visible');
+  // リスト再読み込み
+  loadInquiries(true);
+}
+
+// === タブフィルター切り替え ===
+function setFilter(filter) {
+  state.filter = filter;
+  var pills = document.querySelectorAll('.tab-pill');
+  pills.forEach(function(pill) {
+    pill.classList.toggle('active', pill.getAttribute('data-filter') === filter);
+  });
+  renderList();
+}
+
+// === 返信送信 ===
+function sendReply() {
+  if (!state.selectedInquiry) return;
+  var replyText = document.getElementById('replyInput').value.trim();
+  if (!replyText) return;
+
+  var sendBtnEl = document.getElementById('sendBtn');
+  var replyInput = document.getElementById('replyInput');
+  sendBtnEl.disabled = true;
+  replyInput.disabled = true;
+
+  // 返信者名（Telegram WebAppから取得）
+  var replyBy = '不明';
+  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) {
+    var u = Telegram.WebApp.initDataUnsafe.user;
+    replyBy = u.first_name + (u.last_name ? ' ' + u.last_name : '');
+  }
+
+  var payload = {
+    action: 'inquiry_reply',
+    inquiryId: state.selectedInquiry.id,
+    reply: replyText,
+    replyBy: replyBy
+  };
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        showSuccess('返信を送信しました / បានផ្ញើការឆ្លើយតប');
+        // ローカル状態を更新
+        state.selectedInquiry.replied = true;
+        state.selectedInquiry.replyContent = replyText;
+        state.selectedInquiry.replyBy = replyBy;
+        state.selectedInquiry.replyTime = new Date().toISOString();
+        // 詳細を再描画
+        showDetail(state.selectedInquiry.id);
+      } else {
+        showError('送信に失敗しました / ការផ្ញើបានបរាជ័យ');
+        sendBtnEl.disabled = false;
+        replyInput.disabled = false;
+      }
+    })
+    .catch(function(err) {
+      console.error('返信送信エラー:', err);
+      showError('通信エラー / កំហុសក្នុងការទំនាក់ទំនង');
+      sendBtnEl.disabled = false;
+      replyInput.disabled = false;
+    });
+}
+
+// === ユーティリティ ===
+
+// 相対時間表示
+function relativeTime(dateStr) {
+  if (!dateStr) return '';
+  var now = new Date();
+  var then = new Date(dateStr);
+  var diffMs = now - then;
+  var diffSec = Math.floor(diffMs / 1000);
+  var diffMin = Math.floor(diffSec / 60);
+  var diffHour = Math.floor(diffMin / 60);
+  var diffDay = Math.floor(diffHour / 24);
+
+  if (diffMin < 1) return 'たった今';
+  if (diffMin < 60) return diffMin + '分前';
+  if (diffHour < 24) return diffHour + '時間前';
+  if (diffDay === 1) return '昨日';
+  if (diffDay < 7) return diffDay + '日前';
+  // それ以上は日付表示
+  return (then.getMonth() + 1) + '/' + then.getDate();
+}
+
+// タイムスタンプフォーマット
+function formatTimestamp(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr);
+  var month = d.getMonth() + 1;
+  var day = d.getDate();
+  var hours = ('0' + d.getHours()).slice(-2);
+  var mins = ('0' + d.getMinutes()).slice(-2);
+  return month + '/' + day + ' ' + hours + ':' + mins;
+}
+
+// メッセージタイプアイコン
+function getTypeIcon(type) {
+  if (type === 'voice') return '&#127908;';
+  if (type === 'photo') return '&#128247;';
+  return '&#128172;';
+}
+
+// メッセージタイプ名
+function getTypeName(type) {
+  if (type === 'voice') return '音声 / សំឡេង';
+  if (type === 'photo') return '写真 / រូបថត';
+  return 'テキスト / អត្ថបទ';
+}
+
+// HTMLエスケープ
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+// テキストエリア自動リサイズ
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// エラートースト表示
+function showError(msg) {
+  var toast = document.getElementById('errorToast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+
+// 成功トースト表示
+function showSuccess(msg) {
+  var toast = document.getElementById('successToast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>

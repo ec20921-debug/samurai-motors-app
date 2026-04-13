@@ -268,6 +268,9 @@ function doPost(e) {
         return handleBookingSetStatusFromApp(data);
       case 'booking_message':
         return handleBookingMessageFromApp(data);
+      // --- v6 Phase2: 顧客問い合わせ ---
+      case 'inquiry_reply':
+        return handleInquiryReplyFromApp(data);
       default:
         return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
     }
@@ -481,8 +484,95 @@ function handleBookingBotWebhook(update) {
     return ContentService.createTextOutput('ok');
   }
 
-  // それ以外: ミニアプリへの誘導
-  sendBookingBotWelcome(chatId, firstName);
+  // それ以外: 顧客からの問い合わせとして保存＋スタッフに通知
+  var msgType = 'text';
+  var msgContent = text;
+  var mediaUrl = '';
+
+  // テキストメッセージ
+  if (text) {
+    msgType = 'text';
+    msgContent = text;
+  }
+  // 写真
+  else if (message.photo && message.photo.length > 0) {
+    msgType = 'photo';
+    msgContent = message.caption || '（写真）';
+    try {
+      var photo = message.photo[message.photo.length - 1];
+      var fi = getBookingBotFile(photo.file_id);
+      if (fi && fi.result && fi.result.file_path) {
+        var pUrl = 'https://api.telegram.org/file/bot' + BOT_TOKENS.booking + '/' + fi.result.file_path;
+        var blob = UrlFetchApp.fetch(pUrl).getBlob();
+        var folder = getOrCreateFolder('SamuraiMotors_Inquiries');
+        var dateStr = Utilities.formatDate(new Date(), BOOKING_TIMEZONE, 'yyyyMMdd_HHmmss');
+        blob.setName('inquiry_photo_' + chatId + '_' + dateStr + '.jpg');
+        var saved = folder.createFile(blob);
+        saved.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        mediaUrl = saved.getUrl();
+      }
+    } catch (e) { Logger.log('Inquiry photo save error: ' + e); }
+  }
+  // ボイスメモ（テキスト変換なし、Driveに保存して履歴として残す）
+  else if (message.voice) {
+    msgType = 'voice';
+    msgContent = '（ボイスメモ ' + (message.voice.duration || 0) + '秒）';
+    try {
+      var vfi = getBookingBotFile(message.voice.file_id);
+      if (vfi && vfi.result && vfi.result.file_path) {
+        var vUrl = 'https://api.telegram.org/file/bot' + BOT_TOKENS.booking + '/' + vfi.result.file_path;
+        var vBlob = UrlFetchApp.fetch(vUrl).getBlob();
+        var vFolder = getOrCreateFolder('SamuraiMotors_Inquiries');
+        var vDateStr = Utilities.formatDate(new Date(), BOOKING_TIMEZONE, 'yyyyMMdd_HHmmss');
+        vBlob.setName('inquiry_voice_' + chatId + '_' + vDateStr + '.ogg');
+        var vSaved = vFolder.createFile(vBlob);
+        vSaved.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        mediaUrl = vSaved.getUrl();
+      }
+    } catch (e) { Logger.log('Inquiry voice save error: ' + e); }
+  }
+  // ドキュメント
+  else if (message.document) {
+    msgType = 'document';
+    msgContent = message.caption || '（ファイル: ' + (message.document.file_name || '不明') + '）';
+  }
+  // スタンプ等
+  else if (message.sticker) {
+    msgType = 'sticker';
+    msgContent = '（スタンプ: ' + (message.sticker.emoji || '') + '）';
+  }
+  // 何も判定できない場合はスキップ
+  else {
+    return ContentService.createTextOutput('ok');
+  }
+
+  // Inquiriesシートに保存
+  var inquiryId = createInquiry(chatId, firstName, msgContent, msgType, mediaUrl);
+
+  // 顧客に受領メッセージ
+  sendBookingBotMessage(chatId,
+    '✅ *Message received!*\n'
+    + '✅ *សារបានទទួល!*\n\n'
+    + 'We will reply shortly.\n'
+    + 'យើងនឹងឆ្លើយតបក្នុងពេលឆាប់ៗ។'
+  );
+
+  // フィールドスタッフ＋Adminに通知
+  var typeIcon = { text: '💬', photo: '📷', voice: '🎤', document: '📎', sticker: '🏷️' };
+  var notifyMsg = '📩 *新規問い合わせ / សារថ្មីពីអតិថិជន*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + '🆔 ' + inquiryId + '\n'
+    + '👤 ' + firstName + '\n'
+    + (typeIcon[msgType] || '💬') + ' ' + msgContent
+    + (mediaUrl ? '\n🔗 ' + mediaUrl : '');
+
+  // Adminグループに通知
+  sendTelegramTo(ADMIN_GROUP_ID, notifyMsg);
+  // 各フィールドスタッフに通知
+  FIELD_STAFF_IDS.forEach(function(staffId) {
+    sendTelegramTo(staffId, notifyMsg);
+  });
+
   return ContentService.createTextOutput('ok');
 }
 
@@ -2419,6 +2509,11 @@ function doGet(e) {
   }
   if (action === 'booking_today') {
     return handleBookingTodayGet(e);
+  }
+
+  // --- Phase2: 顧客問い合わせ ---
+  if (action === 'inquiries') {
+    return handleInquiriesGet(e);
   }
 
   return ContentService
@@ -4876,6 +4971,164 @@ function testBookingSheets() {
   var b = getBookingsSheet();
   Logger.log('Customers列数: ' + c.getLastColumn());
   Logger.log('Bookings列数: ' + b.getLastColumn());
+}
+
+// ═══════════════════════════════════════════
+//  Phase 2: 顧客問い合わせ（Inquiries）
+// ═══════════════════════════════════════════
+
+var INQUIRIES_SHEET_NAME = 'Inquiries';
+
+function getInquiriesSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(INQUIRIES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(INQUIRIES_SHEET_NAME);
+    var headers = [
+      'Inquiry ID',    // A
+      '日時',          // B
+      '顧客名',        // C
+      'Chat ID',       // D
+      'メッセージ',     // E
+      '種別',          // F: text/voice/photo/document/sticker
+      'メディアURL',    // G: Drive保存先（写真・ボイス等）
+      'ステータス',     // H: 未対応/対応済み
+      '返信内容',       // I
+      '返信者',        // J
+      '返信日時'        // K
+    ];
+    sheet.appendRow(headers);
+    var hdr = sheet.getRange(1, 1, 1, headers.length);
+    hdr.setFontWeight('bold');
+    hdr.setBackground('#5B2C6F');
+    hdr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 180);
+    sheet.setColumnWidth(3, 120);
+    sheet.setColumnWidth(5, 300);
+    sheet.setColumnWidth(7, 200);
+    sheet.setColumnWidth(9, 300);
+  }
+  return sheet;
+}
+
+// 問い合わせIDを生成: INQ-YYYYMMDD-NNN
+function generateInquiryId() {
+  var sheet = getInquiriesSheet();
+  var now = new Date();
+  var dateStr = Utilities.formatDate(now, BOOKING_TIMEZONE, 'yyyyMMdd');
+  var lastRow = sheet.getLastRow();
+  var count = 0;
+  if (lastRow >= 2) {
+    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    ids.forEach(function(row) {
+      if (row[0] && row[0].toString().indexOf('INQ-' + dateStr) === 0) count++;
+    });
+  }
+  return 'INQ-' + dateStr + '-' + String(count + 1).padStart(3, '0');
+}
+
+// 問い合わせを保存
+function createInquiry(chatId, customerName, message, msgType, mediaUrl) {
+  var sheet = getInquiriesSheet();
+  var inquiryId = generateInquiryId();
+  var now = formatCambodiaTime(new Date());
+
+  sheet.appendRow([
+    inquiryId,              // A
+    now,                    // B
+    customerName || '',     // C
+    chatId.toString(),      // D
+    message || '',          // E
+    msgType || 'text',      // F
+    mediaUrl || '',         // G
+    '未対応',               // H
+    '',                     // I
+    '',                     // J
+    ''                      // K
+  ]);
+  return inquiryId;
+}
+
+// 問い合わせ一覧を取得（API用）
+function handleInquiriesGet(e) {
+  var sheet = getInquiriesSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonResponse({ status: 'ok', inquiries: [] });
+  }
+  var data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  var inquiries = [];
+  for (var i = 0; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    inquiries.push({
+      inquiryId: data[i][0],
+      created: data[i][1],
+      customerName: data[i][2],
+      chatId: data[i][3] ? data[i][3].toString() : '',
+      message: data[i][4],
+      msgType: data[i][5] || 'text',
+      mediaUrl: data[i][6] || '',
+      status: data[i][7] || '未対応',
+      reply: data[i][8] || '',
+      replyBy: data[i][9] || '',
+      replyAt: data[i][10] || ''
+    });
+  }
+  // 新しい順
+  inquiries.reverse();
+  return jsonResponse({ status: 'ok', inquiries: inquiries });
+}
+
+// 問い合わせに返信（ミニアプリから）
+function handleInquiryReplyFromApp(data) {
+  if (!data.inquiryId || !data.reply) {
+    return jsonResponse({ status: 'error', message: 'inquiryId and reply required' });
+  }
+
+  var sheet = getInquiriesSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonResponse({ status: 'error', message: 'Inquiry not found' });
+  }
+
+  var ids = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0] && ids[i][0].toString() === data.inquiryId) {
+      var rowNum = i + 2;
+      var chatId = ids[i][3] ? ids[i][3].toString() : '';
+      var replyBy = data.replyBy || 'Staff';
+      var replyAt = formatCambodiaTime(new Date());
+
+      // シートを更新
+      sheet.getRange(rowNum, 8).setValue('対応済み');     // H: ステータス
+      sheet.getRange(rowNum, 9).setValue(data.reply);     // I: 返信内容
+      sheet.getRange(rowNum, 10).setValue(replyBy);       // J: 返信者
+      sheet.getRange(rowNum, 11).setValue(replyAt);       // K: 返信日時
+
+      // Booking Botから顧客に返信メッセージを送信
+      if (chatId) {
+        sendBookingBotMessage(chatId,
+          '💬 *Reply from Samurai Motors*\n'
+          + '💬 *ការឆ្លើយតបពី Samurai Motors*\n'
+          + '━━━━━━━━━━━━━━━\n'
+          + data.reply
+        );
+      }
+
+      // Adminグループにも通知
+      sendTelegramTo(ADMIN_GROUP_ID,
+        '✅ *問い合わせ返信済み*\n'
+        + '━━━━━━━━━━━━━━━\n'
+        + '🆔 ' + data.inquiryId + '\n'
+        + '👤 返信者: ' + replyBy + '\n'
+        + '💬 ' + data.reply
+      );
+
+      return jsonResponse({ status: 'ok', inquiryId: data.inquiryId });
+    }
+  }
+  return jsonResponse({ status: 'error', message: 'Inquiry not found: ' + data.inquiryId });
 }
 
 function testCalcDuration() {
