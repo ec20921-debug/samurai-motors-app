@@ -569,6 +569,7 @@ function loadInit() {
       if (res.status !== 'ok') throw new Error(res.message || 'Init failed');
       state.customer = res.customer;
       state.plans = res.plans || [];
+      state.dispatchFee = res.dispatchFee || { sedan: 2, suv: 2 };
       // 新規顧客の場合、自動登録
       if (!state.customer && state.customerName) {
         return autoRegister().then(function() { showView('view-plan'); });
@@ -866,6 +867,8 @@ function renderSummary() {
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
   html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + amount + '</div></div>';
+  var fee = (state.selectedSize === 'SUV以上') ? state.dispatchFee.suv : state.dispatchFee.sedan;
+  html += '<div style="text-align:right;font-size:11px;color:#999;margin-top:2px;">Incl. $' + fee + ' dispatch fee / រួមថ្លៃដឹកជញ្ជូន $' + fee + '</div>';
 
   document.getElementById('summaryCard').innerHTML = html;
 }

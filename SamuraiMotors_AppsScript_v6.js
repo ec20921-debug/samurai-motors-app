@@ -5027,7 +5027,8 @@ function handleBookingInitGet(e) {
     plans: plans,
     options: options,
     businessHours: { start: config.businessHourStart, end: config.businessHourEnd },
-    bufferMin: config.bufferMin
+    bufferMin: config.bufferMin,
+    dispatchFee: config.dispatchFee
   });
 }
 
