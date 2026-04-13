@@ -916,7 +916,15 @@ function handleNext() {
   }
 }
 
+var bookingSubmitted = false; // 二重送信防止フラグ
+
 function submitBooking() {
+  // 二重送信防止
+  if (bookingSubmitted) {
+    showToast('Booking already submitted', false);
+    return;
+  }
+
   // 顧客未登録の場合の簡易対応
   var customerId = state.customer ? state.customer.customerId : state.chatId;
 
@@ -934,10 +942,12 @@ function submitBooking() {
     location: state.selectedLocation
   };
 
+  bookingSubmitted = true; // 送信開始で即座にフラグを立てる
   setBtnLoading(true);
   postJson('booking_create', payload).then(function(res) {
     setBtnLoading(false);
     if (res.status !== 'ok') {
+      bookingSubmitted = false; // エラー時はリセット
       showToast(res.message || 'Booking failed', true);
       if (res.slots) {
         state.selectedSlot = '';
@@ -946,6 +956,7 @@ function submitBooking() {
       }
       return;
     }
+    // 重複送信だった場合もOKとして処理（サーバー側で既存予約を返す）
     document.getElementById('successSummary').innerHTML =
       summaryRow('Booking ID', res.bookingId)
       + summaryRow('Date & Time', state.selectedDate + ' ' + state.selectedSlot + ' - ' + res.endTime)
@@ -954,6 +965,7 @@ function submitBooking() {
     showView('view-success');
   }).catch(function(err) {
     setBtnLoading(false);
+    bookingSubmitted = false; // エラー時はリセット
     showToast('Booking error: ' + err.message, true);
   });
 }

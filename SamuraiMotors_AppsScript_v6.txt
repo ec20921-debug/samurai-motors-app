@@ -1551,71 +1551,98 @@ function handlePendingReasonFlow(chatId, message, state) {
 // ═══════════════════════════════════════════
 
 // Expensesシート取得（なければ作成）
-// プラン価格マスター（Plan_Prices シート）
-// 構造: プラン名 / セダン価格USD / SUV価格USD / 備考
-// - 価格変更やキャンペーン時はこのシートの数字を書き換えるだけで即反映
+// プラン価格・所要時間マスター（Plan_Prices シート）
+// 構造: プラン名 / セダン価格USD / SUV価格USD / セダン所要時間(分) / SUV所要時間(分) / 備考
+// 設定行: 【設定】で始まる行にバッファ・営業時間を格納
+// - 価格・時間・バッファの変更はこのシートの数字を書き換えるだけで即反映
 // - 出張料は特別行として扱われ、全プランに加算される
 function getPlanPricesSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Plan_Prices');
   if (!sheet) {
     sheet = ss.insertSheet('Plan_Prices');
-    var headers = ['プラン名', 'セダン（USD）', 'SUV（USD）', '備考'];
-    sheet.appendRow(headers);
-    var hdr = sheet.getRange(1, 1, 1, headers.length);
-    hdr.setFontWeight('bold');
-    hdr.setBackground('#1a5276');
-    hdr.setFontColor('#ffffff');
-    sheet.setFrozenRows(1);
-    sheet.setColumnWidth(1, 180);
-    sheet.setColumnWidth(2, 140);
-    sheet.setColumnWidth(3, 140);
-    sheet.setColumnWidth(4, 380);
-
-    // デフォルト値を流し込み
-    var defaultNotes = {
-      '清 KIYOME (A)': '無水洗車+タイヤワックス+エアチェック',
-      '鏡 KAGAMI (B)': 'A+前3面ガラス撥水（簡易）',
-      '匠 TAKUMI (C)': 'A+全面ガラス撥水（簡易）',
-      '将軍 SHOGUN (D)': 'A+全面油膜落とし+全面ガラス撥水',
-      '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
-    };
-    Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
-      var prices = DEFAULT_PLAN_PRICES[plan];
-      sheet.appendRow([plan, prices[0], prices[1], defaultNotes[plan] || '']);
-    });
+    initPlanPricesSheet6Col(sheet);
   } else {
-    // 既存シートが旧構造（2列）の場合は新構造へマイグレーション
+    // 既存シートが旧構造（4列以下）の場合は6列構造へマイグレーション
     var lastCol = sheet.getLastColumn();
-    if (lastCol < 4) {
-      // 旧データを一旦クリアして新構造で作り直す
-      sheet.clear();
-      var headers = ['プラン名', 'セダン（USD）', 'SUV（USD）', '備考'];
-      sheet.appendRow(headers);
-      var hdr = sheet.getRange(1, 1, 1, headers.length);
-      hdr.setFontWeight('bold');
-      hdr.setBackground('#1a5276');
-      hdr.setFontColor('#ffffff');
-      sheet.setFrozenRows(1);
-      sheet.setColumnWidth(1, 180);
-      sheet.setColumnWidth(2, 140);
-      sheet.setColumnWidth(3, 140);
-      sheet.setColumnWidth(4, 380);
-
-      var defaultNotes2 = {
-        '清 KIYOME (A)': '無水洗車+タイヤワックス+エアチェック',
-        '鏡 KAGAMI (B)': 'A+前3面ガラス撥水（簡易）',
-        '匠 TAKUMI (C)': 'A+全面ガラス撥水（簡易）',
-        '将軍 SHOGUN (D)': 'A+全面油膜落とし+全面ガラス撥水',
-        '出張料': '全プラン共通で加算（キャンペーン時はここを変更）'
-      };
-      Object.keys(DEFAULT_PLAN_PRICES).forEach(function(plan) {
-        var prices = DEFAULT_PLAN_PRICES[plan];
-        sheet.appendRow([plan, prices[0], prices[1], defaultNotes2[plan] || '']);
-      });
+    if (lastCol < 6) {
+      migratePlanPricesTo6Col(sheet, lastCol);
     }
   }
   return sheet;
+}
+
+// 6列構造で新規作成
+function initPlanPricesSheet6Col(sheet) {
+  var headers = ['プラン名', 'セダン価格(USD)', 'SUV価格(USD)', 'セダン所要時間(分)', 'SUV所要時間(分)', '備考'];
+  sheet.appendRow(headers);
+  var hdr = sheet.getRange(1, 1, 1, headers.length);
+  hdr.setFontWeight('bold');
+  hdr.setBackground('#1a5276');
+  hdr.setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+  sheet.setColumnWidth(1, 220);
+  sheet.setColumnWidth(2, 140);
+  sheet.setColumnWidth(3, 140);
+  sheet.setColumnWidth(4, 160);
+  sheet.setColumnWidth(5, 160);
+  sheet.setColumnWidth(6, 380);
+
+  var rows = [
+    ['清 KIYOME (A)',   12, 15, 30, 45, '無水洗車+タイヤワックス+エアチェック'],
+    ['鏡 KAGAMI (B)',   17, 20, 40, 55, 'A+前3面ガラス撥水（簡易）'],
+    ['匠 TAKUMI (C)',   20, 23, 50, 65, 'A+全面ガラス撥水（簡易）'],
+    ['将軍 SHOGUN (D)', 32, 35, 80, 95, 'A+全面油膜落とし+全面ガラス撥水'],
+    ['出張料',            2,  2, '',  '', '全プラン共通で加算（キャンペーン時はここを変更）'],
+    ['', '', '', '', '', ''],
+    ['【設定】移動バッファ(分)',  30, '', '', '', '洗車と洗車の間の移動時間'],
+    ['【設定】営業開始時刻',       9, '', '', '', '例: 9 = 9:00'],
+    ['【設定】営業終了時刻',      18, '', '', '', '例: 18 = 18:00']
+  ];
+  rows.forEach(function(row) { sheet.appendRow(row); });
+}
+
+// 旧4列以下 → 6列構造へマイグレーション
+function migratePlanPricesTo6Col(sheet, lastCol) {
+  var lastRow = sheet.getLastRow();
+
+  // 既存データを読み込み（備考は旧D列=4列目）
+  var existingData = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, Math.min(lastCol, 4)).getValues() : [];
+
+  // シートをクリアして6列で再構築
+  sheet.clear();
+  initPlanPricesSheet6Col(sheet);
+
+  // 既存の価格データを上書き（設定行はデフォルト値のまま）
+  if (existingData.length > 0) {
+    var planPricesSheet = sheet;
+    var lastNewRow = planPricesSheet.getLastRow();
+    var newData = planPricesSheet.getRange(2, 1, lastNewRow - 1, 6).getValues();
+
+    for (var e = 0; e < existingData.length; e++) {
+      var oldName = (existingData[e][0] || '').toString().trim();
+      if (!oldName) continue;
+      // 新シートの対応行を見つけて価格を上書き
+      for (var n = 0; n < newData.length; n++) {
+        var newName = (newData[n][0] || '').toString().trim();
+        if (newName === oldName || (getPlanLetter(newName) && getPlanLetter(newName) === getPlanLetter(oldName))) {
+          // セダン価格・SUV価格を復元
+          if (existingData[e][1] !== '' && existingData[e][1] !== undefined) {
+            planPricesSheet.getRange(n + 2, 2).setValue(existingData[e][1]);
+          }
+          if (lastCol >= 3 && existingData[e][2] !== '' && existingData[e][2] !== undefined) {
+            planPricesSheet.getRange(n + 2, 3).setValue(existingData[e][2]);
+          }
+          // 備考を復元（旧D列→新F列）
+          if (lastCol >= 4 && existingData[e][3]) {
+            planPricesSheet.getRange(n + 2, 6).setValue(existingData[e][3]);
+          }
+          break;
+        }
+      }
+    }
+  }
+  Logger.log('Plan_Prices シートを6列構造にマイグレーション完了');
 }
 
 // 出張料を取得（シート優先、なければデフォルト）
@@ -1695,6 +1722,84 @@ function getPlanLetter(planName) {
   m = s.match(/PLAN\s*([ABCD])/);
   if (m) return m[1];
   return '';
+}
+
+// ─── Plan_Pricesシートから全設定を一括読み込み（キャッシュ付き） ───
+// 料金・所要時間・バッファ・営業時間をGSSで管理し、即座に反映
+function getBookingConfig() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('booking_config_v2');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
+
+  var config = {
+    planDurations: {},     // { 'A': { sedan: 30, suv: 45 }, ... }
+    planPrices: {},        // { 'A': { sedan: 12, suv: 15 }, ... }
+    planDescriptions: {},  // { 'A': '無水洗車+...', ... }
+    planNames: {},         // { 'A': '清 KIYOME', ... }
+    dispatchFee: { sedan: 2, suv: 2 },
+    bufferMin: BOOKING_BUFFER_MIN,
+    businessHourStart: BUSINESS_HOUR_START,
+    businessHourEnd: BUSINESS_HOUR_END
+  };
+
+  try {
+    var sheet = getPlanPricesSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      cache.put('booking_config_v2', JSON.stringify(config), 60);
+      return config;
+    }
+    var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+
+    for (var i = 0; i < data.length; i++) {
+      var name = (data[i][0] || '').toString().trim();
+      if (!name) continue;
+
+      if (name === '出張料' || name === DISPATCH_FEE_ROW) {
+        config.dispatchFee.sedan = parseFloat(data[i][1]) || 0;
+        config.dispatchFee.suv   = parseFloat(data[i][2]) || 0;
+      } else if (name.indexOf('【設定】') === 0) {
+        // 設定行
+        if (name.indexOf('バッファ') >= 0) {
+          config.bufferMin = parseInt(data[i][1], 10) || BOOKING_BUFFER_MIN;
+        } else if (name.indexOf('開始') >= 0) {
+          config.businessHourStart = parseInt(data[i][1], 10) || BUSINESS_HOUR_START;
+        } else if (name.indexOf('終了') >= 0) {
+          config.businessHourEnd = parseInt(data[i][1], 10) || BUSINESS_HOUR_END;
+        }
+      } else {
+        // プラン行
+        var letter = getPlanLetter(name);
+        if (letter) {
+          // プラン名から表示名を抽出（例: "清 KIYOME (A)" → "清 KIYOME"）
+          var displayName = name.replace(/\s*\([ABCD]\)\s*$/, '').trim();
+          config.planNames[letter] = displayName;
+          config.planPrices[letter] = {
+            sedan: parseFloat(data[i][1]) || 0,
+            suv:   parseFloat(data[i][2]) || 0
+          };
+          // 所要時間: シート値があればそちらを使い、なければハードコードのフォールバック
+          var sedanDur = parseInt(data[i][3], 10);
+          var suvDur   = parseInt(data[i][4], 10);
+          var fallbackSedan = PLAN_DURATIONS[letter] || 0;
+          var fallbackSuv   = fallbackSedan + SUV_EXTRA_MIN;
+          config.planDurations[letter] = {
+            sedan: isNaN(sedanDur) ? fallbackSedan : sedanDur,
+            suv:   isNaN(suvDur)   ? fallbackSuv   : suvDur
+          };
+          config.planDescriptions[letter] = (data[i][5] || '').toString();
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('getBookingConfig error: ' + e.toString());
+  }
+
+  // 60秒キャッシュ（シート変更は最大60秒後に反映）
+  cache.put('booking_config_v2', JSON.stringify(config), 60);
+  return config;
 }
 
 function getExpensesSheet() {
@@ -4454,16 +4559,27 @@ function incrementCustomerBooking(customerId, lastUsedDate) {
 // ─── 所要時間計算 ───────────────────────────
 
 // プラン文字（A/B/C/D）+ 車種 + オプション配列 → 合計分
+// Plan_Pricesシートの値を優先、なければハードコードのフォールバック
 function calcBookingDuration(planLetter, vehicleType, optionIds) {
-  var base = PLAN_DURATIONS[planLetter] || 0;
-  var suvExtra = (vehicleType === 'SUV以上' || vehicleType === 'SUV') ? SUV_EXTRA_MIN : 0;
+  var config = getBookingConfig();
+  var isSuv = (vehicleType === 'SUV以上' || vehicleType === 'SUV');
+  var base = 0;
+
+  if (config.planDurations[planLetter]) {
+    base = isSuv ? config.planDurations[planLetter].suv : config.planDurations[planLetter].sedan;
+  } else {
+    // フォールバック: ハードコード値
+    base = PLAN_DURATIONS[planLetter] || 0;
+    if (isSuv) base += SUV_EXTRA_MIN;
+  }
+
   var optTotal = 0;
   if (optionIds && optionIds.length > 0) {
     optionIds.forEach(function(id) {
       if (BOOKING_OPTIONS[id]) optTotal += BOOKING_OPTIONS[id].durationMin;
     });
   }
-  return base + suvExtra + optTotal;
+  return base + optTotal;
 }
 
 // ─── Calendar連携 ───────────────────────────
@@ -4484,14 +4600,20 @@ function findAvailableSlots(dateStr, durationMin) {
     return { slots: [], debug: 'Calendar error: ' + e.toString() };
   }
 
+  // Plan_Pricesシートから営業時間・バッファを取得
+  var config = getBookingConfig();
+  var hourStart = config.businessHourStart;
+  var hourEnd   = config.businessHourEnd;
+  var bufferMin = config.bufferMin;
+
   // 営業時間の範囲をDateで構築
   var parts = dateStr.split('-');
   var year = parseInt(parts[0], 10);
   var month = parseInt(parts[1], 10) - 1;
   var day = parseInt(parts[2], 10);
 
-  var dayStart = new Date(year, month, day, BUSINESS_HOUR_START, 0, 0);
-  var dayEnd   = new Date(year, month, day, BUSINESS_HOUR_END, 0, 0);
+  var dayStart = new Date(year, month, day, hourStart, 0, 0);
+  var dayEnd   = new Date(year, month, day, hourEnd, 0, 0);
 
   // 既存イベントを取得
   var events = calendar.getEvents(dayStart, dayEnd);
@@ -4501,7 +4623,6 @@ function findAvailableSlots(dateStr, durationMin) {
 
   var slots = [];
   var slotStart = new Date(dayStart);
-  var totalNeededMs = (durationMin + BOOKING_BUFFER_MIN) * 60 * 1000;
   // バッファは予約の「後」に必要なので、最終予約は dayEnd - durationMin まで
   var lastPossible = new Date(dayEnd.getTime() - durationMin * 60 * 1000);
 
@@ -4511,9 +4632,9 @@ function findAvailableSlots(dateStr, durationMin) {
     var conflict = false;
     for (var i = 0; i < busyRanges.length; i++) {
       var b = busyRanges[i];
-      // 既存イベントの後ろにもバッファを設ける
-      var bufferedStart = b.start - BOOKING_BUFFER_MIN * 60 * 1000;
-      var bufferedEnd   = b.end   + BOOKING_BUFFER_MIN * 60 * 1000;
+      // 既存イベントの前後にバッファを設ける
+      var bufferedStart = b.start - bufferMin * 60 * 1000;
+      var bufferedEnd   = b.end   + bufferMin * 60 * 1000;
       if (slotStart.getTime() < bufferedEnd && slotEnd.getTime() > bufferedStart) {
         conflict = true;
         break;
@@ -4526,7 +4647,7 @@ function findAvailableSlots(dateStr, durationMin) {
     // 次の30分刻み
     slotStart = new Date(slotStart.getTime() + 30 * 60 * 1000);
   }
-  return { slots: slots, debug: 'OK, events=' + busyRanges.length + ', calendarId=' + BOOKING_CALENDAR_ID };
+  return { slots: slots, debug: 'OK, events=' + busyRanges.length + ', buffer=' + bufferMin + 'min, hours=' + hourStart + '-' + hourEnd };
 }
 
 // Calendarに予約イベントを作成
@@ -4691,8 +4812,45 @@ function getBookingById(bookingId) {
   return null;
 }
 
+// 重複予約チェック: 同一chatId + 同日 + 同時刻の予約が既にあるか
+// キャンセル済みは除外
+function findDuplicateBooking(chatId, date, startTime) {
+  var sheet = getBookingsSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var chatIdStr = chatId.toString();
+  var data = sheet.getRange(2, 1, lastRow - 1, 25).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    var rowChatId = (data[i][4] || '').toString();
+    var rowStatus = (data[i][16] || '').toString();
+    if (rowChatId !== chatIdStr) continue;
+    if (rowStatus === 'キャンセル') continue;
+
+    // 日付比較（Date型とString型の両方に対応）
+    var rowDate = data[i][5];
+    var rowDateStr = '';
+    if (rowDate instanceof Date) {
+      rowDateStr = Utilities.formatDate(rowDate, BOOKING_TIMEZONE, 'yyyy-MM-dd');
+    } else {
+      rowDateStr = (rowDate || '').toString();
+    }
+    var rowTime = (data[i][6] || '').toString();
+
+    if (rowDateStr === date && rowTime === startTime) {
+      return {
+        bookingId: data[i][0],
+        durationMin: data[i][8],
+        endTime: data[i][7],
+        amount: data[i][15]
+      };
+    }
+  }
+  return null;
+}
+
 // ─── 価格計算（プラン基本料金 + 出張料 + オプション） ───
-// オプション価格はPlan_Pricesシートの拡張を待つので、Phase 1では基本+出張のみ
 function calcBookingAmount(planLetter, vehicleType) {
   // プラン名はジョブ管理と統一
   var planNames = {
@@ -4820,17 +4978,28 @@ function handleBookingInitGet(e) {
     }
   }
 
-  // プラン定義（フロント表示用）
-  var plans = [
-    { letter: 'A', name: '清 KIYOME',  jp: '無水洗車 + タイヤワックス + エアチェック',           durationSedan: PLAN_DURATIONS.A, durationSuv: PLAN_DURATIONS.A + SUV_EXTRA_MIN },
-    { letter: 'B', name: '鏡 KAGAMI',  jp: 'A + 前3面ガラス撥水（簡易）',                       durationSedan: PLAN_DURATIONS.B, durationSuv: PLAN_DURATIONS.B + SUV_EXTRA_MIN },
-    { letter: 'C', name: '匠 TAKUMI',  jp: 'A + 全面ガラス撥水（簡易）',                        durationSedan: PLAN_DURATIONS.C, durationSuv: PLAN_DURATIONS.C + SUV_EXTRA_MIN },
-    { letter: 'D', name: '将軍 SHOGUN', jp: 'A + 全面油膜落とし + 全面ガラス撥水',                durationSedan: PLAN_DURATIONS.D, durationSuv: PLAN_DURATIONS.D + SUV_EXTRA_MIN }
-  ];
-  // 価格を埋め込む
-  plans.forEach(function(plan) {
-    plan.priceSedan = calcBookingAmount(plan.letter, 'セダン以下');
-    plan.priceSuv   = calcBookingAmount(plan.letter, 'SUV以上');
+  // Plan_Pricesシートから設定を取得
+  var config = getBookingConfig();
+
+  // プラン定義（フロント表示用）- シートの値を使用
+  var planLetters = ['A', 'B', 'C', 'D'];
+  var defaultPlanNames = { 'A': '清 KIYOME', 'B': '鏡 KAGAMI', 'C': '匠 TAKUMI', 'D': '将軍 SHOGUN' };
+  var plans = [];
+  planLetters.forEach(function(letter) {
+    var dur = config.planDurations[letter] || { sedan: PLAN_DURATIONS[letter] || 0, suv: (PLAN_DURATIONS[letter] || 0) + SUV_EXTRA_MIN };
+    var price = config.planPrices[letter] || { sedan: 0, suv: 0 };
+    var desc = config.planDescriptions[letter] || '';
+    var dispatchSedan = config.dispatchFee.sedan || 0;
+    var dispatchSuv   = config.dispatchFee.suv || 0;
+    plans.push({
+      letter: letter,
+      name: config.planNames[letter] || defaultPlanNames[letter] || '',
+      jp: desc,
+      durationSedan: dur.sedan,
+      durationSuv: dur.suv,
+      priceSedan: price.sedan + dispatchSedan,
+      priceSuv: price.suv + dispatchSuv
+    });
   });
 
   // オプション定義
@@ -4854,8 +5023,8 @@ function handleBookingInitGet(e) {
     vehicles: vehicles,
     plans: plans,
     options: options,
-    businessHours: { start: BUSINESS_HOUR_START, end: BUSINESS_HOUR_END },
-    bufferMin: BOOKING_BUFFER_MIN
+    businessHours: { start: config.businessHourStart, end: config.businessHourEnd },
+    bufferMin: config.bufferMin
   });
 }
 
@@ -4969,6 +5138,20 @@ function handleBookingAddVehicleFromApp(data) {
 function handleBookingCreateFromApp(data) {
   if (!data.chatId || !data.planLetter || !data.date || !data.startTime) {
     return jsonResponse({ status: 'error', message: 'Missing required fields' });
+  }
+
+  // 重複予約防止: 同一ユーザーが同日同時刻に既に予約済みでないか確認
+  var existingBooking = findDuplicateBooking(data.chatId, data.date, data.startTime);
+  if (existingBooking) {
+    Logger.log('Duplicate booking blocked: ' + existingBooking.bookingId + ' for chatId=' + data.chatId);
+    return jsonResponse({
+      status: 'ok',
+      bookingId: existingBooking.bookingId,
+      durationMin: existingBooking.durationMin,
+      endTime: existingBooking.endTime,
+      amount: existingBooking.amount,
+      duplicate: true
+    });
   }
 
   // 顧客取得（無ければ作成）
