@@ -283,6 +283,96 @@ body {
 
 .hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
 
+/* Booking integration */
+.booking-banner {
+  display:flex; align-items:center; gap:10px;
+  padding:14px 16px; margin-bottom:18px;
+  background:var(--gold-soft); border:1.5px solid var(--gold);
+  border-radius:var(--radius); cursor:pointer;
+  transition:all 0.2s;
+}
+.booking-banner:active { transform:scale(0.98); }
+.booking-banner .bb-icon { font-size:22px; }
+.booking-banner .bb-text { flex:1; font-size:14px; font-weight:600; color:var(--gold); }
+.booking-banner .bb-arrow { font-size:18px; color:var(--gold); }
+
+.booking-linked {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px; margin-bottom:18px;
+  background:var(--success-bg); border:1.5px solid var(--success);
+  border-radius:var(--radius);
+}
+.booking-linked .bl-icon { font-size:18px; }
+.booking-linked .bl-info { flex:1; font-size:12px; line-height:1.4; }
+.booking-linked .bl-info strong { color:var(--success); font-size:13px; display:block; margin-bottom:2px; }
+.booking-linked .bl-clear {
+  background:transparent; border:none; color:var(--text-dim);
+  font-size:18px; cursor:pointer; padding:4px 8px;
+}
+
+/* Booking picker modal */
+.bp-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.85); z-index:300;
+  padding:20px; backdrop-filter:blur(6px);
+  overflow-y:auto;
+}
+.bp-overlay.show { display:block; }
+.bp-modal {
+  max-width:480px; margin:20px auto;
+  background:var(--card); border-radius:16px;
+  border:1px solid var(--border);
+  overflow:hidden;
+}
+.bp-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 18px; border-bottom:1px solid var(--border);
+  position:sticky; top:0; background:var(--card); z-index:1;
+}
+.bp-header h2 { font-size:16px; color:var(--gold); }
+.bp-close {
+  background:transparent; border:none; color:var(--text-dim);
+  font-size:24px; cursor:pointer; padding:0 4px;
+}
+.bp-body { padding:14px 16px; }
+.bp-empty {
+  text-align:center; padding:40px 20px;
+  color:var(--text-dim); font-size:13px;
+}
+.bp-empty .be-icon { font-size:36px; margin-bottom:10px; opacity:0.5; }
+.bp-day-label {
+  font-size:12px; font-weight:700; color:var(--gold);
+  margin:14px 0 8px; padding-left:4px;
+}
+.bp-day-label:first-child { margin-top:0; }
+.bp-card {
+  background:var(--bg); border:1.5px solid var(--border);
+  border-radius:var(--radius); padding:12px 14px;
+  margin-bottom:8px; cursor:pointer;
+  transition:all 0.2s;
+}
+.bp-card:active { transform:scale(0.98); }
+.bp-card.linked { border-color:var(--gold); background:var(--gold-soft); }
+.bp-card.done { opacity:0.5; }
+.bp-card-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.bp-time { font-size:15px; font-weight:700; color:var(--gold); }
+.bp-amount { font-size:13px; font-weight:700; color:var(--success); }
+.bp-name { font-size:14px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.bp-info { font-size:12px; color:var(--text-dim); line-height:1.4; }
+.bp-status {
+  display:inline-block; padding:2px 8px; border-radius:10px;
+  font-size:10px; font-weight:700; margin-top:6px;
+}
+.bp-status.pending { background:rgba(52,152,219,0.2); color:var(--blue); }
+.bp-status.done { background:var(--success-bg); color:var(--success); }
+.bp-status.driving { background:rgba(230,126,34,0.2); color:#e67e22; }
+.bp-loading { text-align:center; padding:30px; color:var(--text-dim); font-size:13px; }
+.bp-refresh {
+  background:var(--card); border:1px solid var(--border);
+  color:var(--gold); padding:6px 12px; border-radius:8px;
+  font-size:12px; cursor:pointer; font-family:inherit;
+}
+
 </style>
 </head>
 <body>
@@ -302,6 +392,21 @@ body {
 
   <!-- ==================== STEP 1: Customer Info ==================== -->
   <div class="step" id="step1">
+    <!-- 予約から自動入力するバナー -->
+    <div id="bookingBanner" class="booking-banner" onclick="openBookingPicker()">
+      <span class="bb-icon">📅</span>
+      <span class="bb-text">ចាប់ផ្តើមពីការកក់（予約から開始）</span>
+      <span class="bb-arrow">›</span>
+    </div>
+    <!-- 紐付け中の予約表示 -->
+    <div id="bookingLinked" class="booking-linked" style="display:none;">
+      <span class="bl-icon">🔗</span>
+      <div class="bl-info">
+        <strong id="blTitle">予約紐付け中</strong>
+        <span id="blDetail"></span>
+      </div>
+      <button type="button" class="bl-clear" onclick="clearBookingSelection()" title="解除">×</button>
+    </div>
     <div class="section">
       <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客情報）</div>
       <div class="field">
@@ -491,6 +596,24 @@ body {
   </div>
 </div>
 
+<!-- 予約ピッカー モーダル -->
+<div class="bp-overlay" id="bookingPicker">
+  <div class="bp-modal">
+    <div class="bp-header">
+      <h2>📅 ការកក់（今日・明日の予約）</h2>
+      <button class="bp-close" onclick="closeBookingPicker()">×</button>
+    </div>
+    <div class="bp-body" id="bpBody">
+      <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
+    </div>
+    <div class="bp-footer" style="padding:12px 16px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeBookingPicker()" style="width:100%;font-size:14px;">
+        ✍️ មិនមានការកក់ បញ្ចូលដោយដៃ（予約なし・手動入力）
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -504,6 +627,10 @@ var photos = { before: [null,null,null,null], after: [null,null,null,null] };
 var timestamps = { registered: null, scheduled: null, start: null, end: null };
 var timerInterval = null;
 var SESSION_KEY = 'samurai_active_job';
+
+// 予約連携: 紐付け中の予約ID（null = 通常モード）
+var selectedBookingId = null;
+var selectedBookingInfo = null;
 
 // ===== セッション保存・復元 =====
 // 画面を閉じてもデータが残るようにlocalStorageに保存
@@ -536,6 +663,11 @@ function saveSession() {
       photosExist: {
         before: photos.before.map(function(p){ return p !== null; }),
         after: photos.after.map(function(p){ return p !== null; })
+      },
+      // 予約紐付け情報
+      booking: {
+        id: selectedBookingId,
+        info: selectedBookingInfo
       },
       savedAt: new Date().toISOString()
     };
@@ -598,6 +730,13 @@ function restoreSession() {
       if (state.form.schedTime) document.getElementById('schedTime').value = state.form.schedTime;
     }
 
+    // 予約紐付け復元
+    if (state.booking && state.booking.id) {
+      selectedBookingId = state.booking.id;
+      selectedBookingInfo = state.booking.info || null;
+      renderBookingLink();
+    }
+
     // ステップ復元
     currentStep = state.currentStep || 1;
 
@@ -658,6 +797,8 @@ document.addEventListener('DOMContentLoaded', function() {
   var restored = restoreSession();
   if (!restored) {
     renderStep();
+    // 新規開始時は予約ピッカーを自動表示（予約があれば選択、なければ手動入力）
+    setTimeout(function() { openBookingPicker(); }, 300);
   }
 });
 
@@ -790,7 +931,8 @@ function startWork() {
     plan: planEl ? planEl.value : '',
     vehicleType: vehicleEl ? vehicleEl.value : '',
     startTime: timestamps.start.toISOString(),
-    beforePhotos: photos.before.filter(function(p){return p !== null;})
+    beforePhotos: photos.before.filter(function(p){return p !== null;}),
+    bookingId: selectedBookingId || ''
   };
   if (APPS_SCRIPT_URL) {
     fetch(APPS_SCRIPT_URL, {
@@ -800,6 +942,9 @@ function startWork() {
       body: JSON.stringify(startData)
     }).catch(function(){});
   }
+
+  // 予約と紐付け（job_id 生成は GAS 側で行うため、ここでは booking_link_job を呼ばずに
+  // job_start 内で予約紐付けまで完結させる方針。将来 jobId を返すなら拡張する）
 
   currentStep = 4;
   renderStep();
@@ -838,7 +983,8 @@ function endWork() {
     vehicleType: vehicleEl ? vehicleEl.value : '',
     endTime: timestamps.end.toISOString(),
     duration: Math.round((timestamps.end - timestamps.start) / 60000),
-    afterPhotos: photos.after.filter(function(p){return p !== null;})
+    afterPhotos: photos.after.filter(function(p){return p !== null;}),
+    bookingId: selectedBookingId || ''
   };
   if (APPS_SCRIPT_URL) {
     fetch(APPS_SCRIPT_URL, {
@@ -962,7 +1108,8 @@ function submitAll() {
     endTime: timestamps.end ? timestamps.end.toISOString() : '',
     duration: duration,
     beforePhotos: photos.before.filter(function(p){return p !== null;}),
-    afterPhotos: photos.after.filter(function(p){return p !== null;})
+    afterPhotos: photos.after.filter(function(p){return p !== null;}),
+    bookingId: selectedBookingId || ''
   };
 
   if (APPS_SCRIPT_URL) {
@@ -1059,7 +1206,224 @@ function resetAll() {
     }
   });
   document.getElementById('timerValue').textContent = '00:00:00';
+  // 予約紐付けもクリア
+  clearBookingSelection();
   renderStep();
+}
+
+// ===== 予約ピッカー =====
+function openBookingPicker() {
+  var overlay = document.getElementById('bookingPicker');
+  overlay.classList.add('show');
+  loadTodayBookings();
+}
+
+function closeBookingPicker() {
+  document.getElementById('bookingPicker').classList.remove('show');
+}
+
+function loadTodayBookings() {
+  var body = document.getElementById('bpBody');
+  body.innerHTML = '<div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>';
+
+  if (!APPS_SCRIPT_URL) {
+    body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>APPS_SCRIPT_URL が未設定です</div>';
+    return;
+  }
+
+  fetch(APPS_SCRIPT_URL + '?action=booking_today')
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      if (!data || data.status !== 'ok') {
+        body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>取得に失敗しました</div>';
+        return;
+      }
+      renderBookingList(data.bookings || []);
+    })
+    .catch(function(err){
+      body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>通信エラー: ' + err.message + '</div>';
+    });
+}
+
+function renderBookingList(bookings) {
+  var body = document.getElementById('bpBody');
+  if (!bookings.length) {
+    body.innerHTML = '<div class="bp-empty"><div class="be-icon">📭</div>មិនមានការកក់（予約がありません）</div>';
+    return;
+  }
+
+  // 今日と明日でグループ化
+  var today = new Date();
+  var todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  var tomorrow = new Date(today.getTime() + 24*60*60*1000);
+  var tomorrowStr = tomorrow.getFullYear() + '-' + String(tomorrow.getMonth()+1).padStart(2,'0') + '-' + String(tomorrow.getDate()).padStart(2,'0');
+
+  var grouped = { today: [], tomorrow: [], other: [] };
+  bookings.forEach(function(b){
+    if (b.date === todayStr) grouped.today.push(b);
+    else if (b.date === tomorrowStr) grouped.tomorrow.push(b);
+    else grouped.other.push(b);
+  });
+
+  var html = '';
+  if (grouped.today.length) {
+    html += '<div class="bp-day-label">📍 ថ្ងៃនេះ（今日）' + todayStr + '</div>';
+    grouped.today.forEach(function(b, i){ html += renderBookingCard(b, 'today_' + i); });
+  }
+  if (grouped.tomorrow.length) {
+    html += '<div class="bp-day-label">📅 ថ្ងៃស្អែក（明日）' + tomorrowStr + '</div>';
+    grouped.tomorrow.forEach(function(b, i){ html += renderBookingCard(b, 'tomorrow_' + i); });
+  }
+  if (grouped.other.length) {
+    html += '<div class="bp-day-label">⏭ ពេលក្រោយ（その他）</div>';
+    grouped.other.forEach(function(b, i){ html += renderBookingCard(b, 'other_' + i); });
+  }
+
+  body.innerHTML = html;
+
+  // クリックハンドラを bookings 配列インデックスで紐付け
+  var cards = body.querySelectorAll('.bp-card');
+  for (var i = 0; i < cards.length; i++) {
+    (function(idx){
+      cards[idx].addEventListener('click', function(){
+        // bp-card の data-id 属性から予約を検索
+        var id = cards[idx].getAttribute('data-id');
+        var found = bookings.find(function(b){ return b.bookingId === id; });
+        if (found) selectBooking(found);
+      });
+    })(i);
+  }
+}
+
+function renderBookingCard(b, key) {
+  var statusCls = 'pending';
+  var statusText = '予約中';
+  if (b.status === '作業完了') { statusCls = 'done'; statusText = '✅ 完了'; }
+  else if (b.status === '駐車情報受領済み') { statusCls = 'driving'; statusText = '🚗 出発OK'; }
+
+  var linkedCls = (selectedBookingId && selectedBookingId === b.bookingId) ? ' linked' : '';
+  var doneCls = (b.status === '作業完了') ? ' done' : '';
+  var amountStr = b.amount ? '$' + b.amount : '';
+
+  return '<div class="bp-card' + linkedCls + doneCls + '" data-id="' + b.bookingId + '">' +
+    '<div class="bp-card-row">' +
+      '<div class="bp-time">' + (b.startTime || '--:--') + ' - ' + (b.endTime || '--:--') + '</div>' +
+      '<div class="bp-amount">' + amountStr + '</div>' +
+    '</div>' +
+    '<div class="bp-name">' + (b.customerName || '名無し') + '</div>' +
+    '<div class="bp-info">' +
+      '🅿️ ' + (b.location || '-') + '<br>' +
+      '🚗 ' + (b.vehicleInfo || b.vehicleType || '-') + ' / ' + (b.planLetter || '?') +
+    '</div>' +
+    '<span class="bp-status ' + statusCls + '">' + statusText + '</span>' +
+  '</div>';
+}
+
+function selectBooking(b) {
+  if (b.status === '作業完了') {
+    showToast('この予約は既に完了しています');
+    return;
+  }
+
+  selectedBookingId = b.bookingId;
+  selectedBookingInfo = b;
+
+  // フォームに自動入力
+  if (b.customerName) document.getElementById('name').value = b.customerName;
+
+  // 場所を建物名とその他に分解
+  if (b.location) {
+    var buildingSel = document.getElementById('building');
+    var matched = false;
+    for (var i = 0; i < buildingSel.options.length; i++) {
+      var optVal = buildingSel.options[i].value;
+      if (!optVal || optVal === 'other') continue;
+      if (b.location.indexOf(optVal) === 0) {
+        buildingSel.value = optVal;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      buildingSel.value = 'other';
+      document.getElementById('buildingOtherField').style.display = 'block';
+      document.getElementById('buildingOther').value = b.location;
+    } else {
+      document.getElementById('buildingOtherField').style.display = 'none';
+    }
+  }
+
+  // 階数情報があれば部屋番号にセット
+  if (b.floor) {
+    document.getElementById('room').value = b.floor;
+  }
+
+  // 車両情報をプレートに（"Toyota Camry / 2A-1234" 形式想定）
+  if (b.vehicleInfo) {
+    var parts = b.vehicleInfo.split('/');
+    if (parts.length >= 2) {
+      document.getElementById('carModel').value = parts[0].trim();
+      document.getElementById('plate').value = parts[1].trim();
+    } else {
+      document.getElementById('carModel').value = b.vehicleInfo;
+    }
+  }
+
+  // 車種選択
+  if (b.vehicleType) {
+    var vradios = document.querySelectorAll('input[name="vehicleType"]');
+    for (var vi = 0; vi < vradios.length; vi++) {
+      if (vradios[vi].value === b.vehicleType) {
+        vradios[vi].checked = true;
+        break;
+      }
+    }
+  }
+
+  // プラン選択（A/B/C/D）
+  if (b.planLetter) {
+    var planMap = { 'A': 'planA', 'B': 'planB', 'C': 'planC', 'D': 'planD' };
+    var planRadioId = planMap[b.planLetter];
+    if (planRadioId) {
+      var planRadio = document.getElementById(planRadioId);
+      if (planRadio) planRadio.checked = true;
+    }
+  }
+
+  // 予約日時を schedule にセット
+  if (b.date) document.getElementById('schedDate').value = b.date;
+  if (b.startTime) document.getElementById('schedTime').value = b.startTime;
+
+  renderBookingLink();
+  saveSession();
+  closeBookingPicker();
+  showToast('✅ 予約を紐付けました: ' + b.bookingId);
+}
+
+function renderBookingLink() {
+  var banner = document.getElementById('bookingBanner');
+  var linked = document.getElementById('bookingLinked');
+  if (!selectedBookingId) {
+    banner.style.display = 'flex';
+    linked.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'none';
+  linked.style.display = 'flex';
+  document.getElementById('blTitle').textContent = selectedBookingId;
+  if (selectedBookingInfo) {
+    var detail = (selectedBookingInfo.customerName || '') + ' / ' +
+                 (selectedBookingInfo.startTime || '') + ' / $' +
+                 (selectedBookingInfo.amount || '?');
+    document.getElementById('blDetail').textContent = detail;
+  }
+}
+
+function clearBookingSelection() {
+  selectedBookingId = null;
+  selectedBookingInfo = null;
+  renderBookingLink();
+  saveSession();
 }
 
 </script>
