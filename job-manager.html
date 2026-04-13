@@ -1305,18 +1305,46 @@ function renderBookingCard(b, key) {
   var doneCls = (b.status === '作業完了') ? ' done' : '';
   var amountStr = b.amount ? '$' + b.amount : '';
 
+  // 時刻表示: Date文字列の場合はHH:mm部分を抽出
+  var st = formatTimeDisplay(b.startTime);
+  var et = formatTimeDisplay(b.endTime);
+
+  // プラン名マップ
+  var planNames = { 'A': '清 KIYOME', 'B': '輝 KAGAYAKI', 'C': '極 KIWAMI', 'D': '匠 TAKUMI' };
+  var planName = planNames[b.planLetter] || b.planLetter || '?';
+
+  // 場所表示: Google Maps URLなら短縮
+  var loc = b.location || '-';
+  if (loc.indexOf('google.com/maps') >= 0) loc = '📍 地図リンクあり';
+
   return '<div class="bp-card' + linkedCls + doneCls + '" data-id="' + b.bookingId + '">' +
     '<div class="bp-card-row">' +
-      '<div class="bp-time">' + (b.startTime || '--:--') + ' - ' + (b.endTime || '--:--') + '</div>' +
-      '<div class="bp-amount">' + amountStr + '</div>' +
+      '<div class="bp-time" style="font-size:18px;font-weight:700">🕐 ' + st + ' - ' + et + '</div>' +
+      '<div class="bp-amount" style="font-size:16px;font-weight:700">' + amountStr + '</div>' +
     '</div>' +
-    '<div class="bp-name">' + (b.customerName || '名無し') + '</div>' +
-    '<div class="bp-info">' +
-      '🅿️ ' + (b.location || '-') + '<br>' +
-      '🚗 ' + (b.vehicleInfo || b.vehicleType || '-') + ' / ' + (b.planLetter || '?') +
+    '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">' +
+      '<div style="font-size:14px">👤 <b>' + (b.customerName || '名無し') + '</b></div>' +
+      '<div style="font-size:13px;color:var(--text-dim)">📍 ' + loc + '</div>' +
+      '<div style="font-size:13px;color:var(--text-dim)">🚗 ' + (b.vehicleType || '-') + ' ・ ✨ プラン' + b.planLetter + '（' + planName + '）</div>' +
     '</div>' +
     '<span class="bp-status ' + statusCls + '">' + statusText + '</span>' +
   '</div>';
+}
+
+function formatTimeDisplay(t) {
+  if (!t) return '--:--';
+  // 既にHH:mm形式ならそのまま
+  if (/^\d{1,2}:\d{2}$/.test(t)) return t;
+  // ISO Date文字列（1899-...T23:00:00.000Z）からHH:mm抽出
+  if (typeof t === 'string' && t.indexOf('T') >= 0) {
+    var m = t.match(/T(\d{2}):(\d{2})/);
+    if (m) {
+      var h = parseInt(m[1], 10) + 7; // UTC→カンボジア時間(+7)
+      if (h >= 24) h -= 24;
+      return String(h).padStart(2, '0') + ':' + m[2];
+    }
+  }
+  return t.toString();
 }
 
 function selectBooking(b) {

@@ -5533,13 +5533,21 @@ function handleBookingTodayGet(e) {
     if (targetDates.indexOf(dateStr) < 0) continue;
     if (data[i][16] === 'キャンセル') continue;
 
+    // 時刻フォーマット: DateオブジェクトならHH:mm文字列に変換
+    var startTime = data[i][6];
+    var endTime = data[i][7];
+    if (startTime instanceof Date) startTime = Utilities.formatDate(startTime, ssTz, 'HH:mm');
+    else if (startTime) startTime = startTime.toString();
+    if (endTime instanceof Date) endTime = Utilities.formatDate(endTime, ssTz, 'HH:mm');
+    else if (endTime) endTime = endTime.toString();
+
     bookings.push({
       bookingId:    data[i][0],
       customerName: data[i][3],
       chatId:       data[i][4],
       date:         dateStr,
-      startTime:    data[i][6],
-      endTime:      data[i][7],
+      startTime:    startTime || '',
+      endTime:      endTime || '',
       planLetter:   data[i][9],
       vehicleType:  data[i][10],
       location:     data[i][12],
