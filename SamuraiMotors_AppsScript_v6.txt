@@ -634,7 +634,7 @@ function showCustomerBookingHistory(chatId) {
   mine.reverse();
   var msg = '📋 *予約履歴 / ប្រវត្តិកក់*\n━━━━━━━━━━━━━━━\n\n';
   mine.slice(0, 10).forEach(function(row, idx) {
-    var dateStr = row[5] ? Utilities.formatDate(new Date(row[5]), BOOKING_TIMEZONE, 'yyyy-MM-dd') : '-';
+    var dateStr = row[5] instanceof Date ? Utilities.formatDate(row[5], SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd') : (row[5] ? row[5].toString().substring(0, 10) : '-');
     msg += (idx + 1) + '. 🆔 ' + row[0] + '\n'
         + '   📅 ' + dateStr + ' ' + (row[6] || '') + '\n'
         + '   ✨ プラン' + (row[9] || '') + ' / ' + (row[10] || '') + '\n'
@@ -1043,7 +1043,7 @@ function checkUnpaidBookings() {
     if (now.getTime() - createdMs < thresholdMs) continue;
 
     // 通知
-    var dateStr = bookingDate ? Utilities.formatDate(new Date(bookingDate), BOOKING_TIMEZONE, 'yyyy-MM-dd') : '';
+    var dateStr = bookingDate instanceof Date ? Utilities.formatDate(bookingDate, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd') : (bookingDate ? bookingDate.toString().substring(0, 10) : '');
     var msg = '⚠️ *未払い催促アラート（24h超過）*\n'
       + '━━━━━━━━━━━━━━━\n'
       + '🆔 ' + bookingId + '\n'
@@ -5368,7 +5368,7 @@ function handleBookingHistoryGet(e) {
     if (data[i][4] && data[i][4].toString() === chatId.toString()) {
       bookings.push({
         bookingId: data[i][0],
-        date: data[i][5] ? Utilities.formatDate(new Date(data[i][5]), BOOKING_TIMEZONE, 'yyyy-MM-dd') : '',
+        date: data[i][5] instanceof Date ? Utilities.formatDate(data[i][5], SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), 'yyyy-MM-dd') : (data[i][5] ? data[i][5].toString().substring(0, 10) : ''),
         startTime: data[i][6],
         endTime: data[i][7],
         planLetter: data[i][9],
@@ -5520,9 +5520,16 @@ function handleBookingTodayGet(e) {
   var targetDates = p.date ? [p.date] : [todayStr, tomorrowStr];
 
   var bookings = [];
+  var ssTz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   for (var i = 0; i < data.length; i++) {
     var dateValue = data[i][5];
-    var dateStr = dateValue ? Utilities.formatDate(new Date(dateValue), BOOKING_TIMEZONE, 'yyyy-MM-dd') : '';
+    // 日付文字列の取得: Dateオブジェクトの場合はスプレッドシートのTZで読み取る
+    var dateStr = '';
+    if (dateValue instanceof Date) {
+      dateStr = Utilities.formatDate(dateValue, ssTz, 'yyyy-MM-dd');
+    } else if (dateValue) {
+      dateStr = dateValue.toString().substring(0, 10);
+    }
     if (targetDates.indexOf(dateStr) < 0) continue;
     if (data[i][16] === 'キャンセル') continue;
 
