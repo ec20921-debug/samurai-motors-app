@@ -115,6 +115,21 @@ var BOOKING_BUFFER_MIN = 30;
 
 // 予約タイムゾーン
 var BOOKING_TIMEZONE = 'Asia/Phnom_Penh';
+var CAMBODIA_UTC_OFFSET = 7; // カンボジアはUTC+7固定（DST無し）
+
+// カンボジア時間で指定した日時を正しいDate型に変換
+// GASスクリプトのタイムゾーン（日本時間等）に関わらず正しく動作
+function toCambodiaDate(dateStr, hour, min) {
+  var parts = dateStr.split('-');
+  return new Date(Date.UTC(
+    parseInt(parts[0], 10),
+    parseInt(parts[1], 10) - 1,
+    parseInt(parts[2], 10),
+    hour - CAMBODIA_UTC_OFFSET, // UTC変換: カンボジア9時 = UTC2時
+    min || 0,
+    0
+  ));
+}
 
 // プラン基本所要時間（分） - セダン以下の値
 // SUV以上は +15分
@@ -4606,14 +4621,9 @@ function findAvailableSlots(dateStr, durationMin) {
   var hourEnd   = config.businessHourEnd;
   var bufferMin = config.bufferMin;
 
-  // 営業時間の範囲をDateで構築
-  var parts = dateStr.split('-');
-  var year = parseInt(parts[0], 10);
-  var month = parseInt(parts[1], 10) - 1;
-  var day = parseInt(parts[2], 10);
-
-  var dayStart = new Date(year, month, day, hourStart, 0, 0);
-  var dayEnd   = new Date(year, month, day, hourEnd, 0, 0);
+  // 営業時間の範囲をカンボジア時間で構築
+  var dayStart = toCambodiaDate(dateStr, hourStart, 0);
+  var dayEnd   = toCambodiaDate(dateStr, hourEnd, 0);
 
   // 既存イベントを取得
   var events = calendar.getEvents(dayStart, dayEnd);
@@ -4658,16 +4668,9 @@ function createBookingCalendarEvent(booking) {
       Logger.log('createBookingCalendarEvent: Calendar not found');
       return '';
     }
-    var parts = booking.date.split('-');
+    // カンボジア時間で正しくイベントを作成
     var timeParts = booking.startTime.split(':');
-    var startDate = new Date(
-      parseInt(parts[0], 10),
-      parseInt(parts[1], 10) - 1,
-      parseInt(parts[2], 10),
-      parseInt(timeParts[0], 10),
-      parseInt(timeParts[1], 10),
-      0
-    );
+    var startDate = toCambodiaDate(booking.date, parseInt(timeParts[0], 10), parseInt(timeParts[1], 10));
     var endDate = new Date(startDate.getTime() + booking.durationMin * 60 * 1000);
 
     var title = '【' + booking.bookingId + '】' + booking.customerName + ' / プラン' + booking.planLetter + ' (' + booking.vehicleType + ')';
