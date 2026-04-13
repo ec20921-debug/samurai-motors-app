@@ -812,22 +812,34 @@ function requestParkingInfo(chatId, bookingId) {
 
 // 駐車写真受信
 function handleParkingPhotoFlow(chatId, message, state) {
-  if (!message.photo || message.photo.length === 0) {
-    // テキストメッセージが来た場合は無視（写真を待っている状態）
-    sendBookingBotMessage(chatId, '📸 Please send a photo.\n📸 សូមផ្ញើរូបថត។');
-    return;
-  }
-
-  // 重複処理防止: すでに写真を保存済みならスキップ
+  // 重複処理防止: すでに写真を保存済みならスキップ（リトライ対策）
   if (state.photoSaved) {
     Logger.log('handleParkingPhotoFlow: photo already saved for ' + state.bookingId);
     return;
   }
 
+  if (!message.photo || message.photo.length === 0) {
+    // テキストメッセージが来た場合 — 写真を待っている状態だが、
+    // リトライによる重複送信を防ぐため、最初の1回のみ案内を送る
+    if (!state.photoPrompted) {
+      state.photoPrompted = true;
+      setBookingConvState(chatId, state);
+      sendBookingBotMessage(chatId, '📸 Please send a photo.\n📸 សូមផ្ញើរូបថត។');
+    }
+    return;
+  }
+
+  // 写真保存済みフラグを即座にセット（リトライによる重複処理防止）
+  state.photoSaved = true;
+  setBookingConvState(chatId, state);
+
   try {
     var largestPhoto = message.photo[message.photo.length - 1];
     var fileInfo = getBookingBotFile(largestPhoto.file_id);
     if (!fileInfo || !fileInfo.result || !fileInfo.result.file_path) {
+      // 失敗時はフラグをリセットして再試行可能にする
+      state.photoSaved = false;
+      setBookingConvState(chatId, state);
       sendBookingBotMessage(chatId, '❌ Failed to get the photo. Please try again.\n❌ បានបរាជ័យ។ សូមព្យាយាមម្តងទៀត។');
       return;
     }
@@ -877,11 +889,13 @@ function handleParkingFloorFlow(chatId, message, state) {
   clearBookingConvState(chatId);
 
   sendBookingBotMessage(chatId,
-    '✅ *Parking info received!*\n'
-    + '✅ *ព័ត៌មានចតឡានបានទទួល!*\n'
+    '✅ *Thank you for your response!*\n'
+    + '✅ *សូមអរគុណសម្រាប់ការឆ្លើយតប!*\n'
     + '━━━━━━━━━━━━━━━\n'
     + '🆔 ' + state.bookingId + '\n'
     + '🏢 Floor: ' + floor + '\n\n'
+    + 'We have received your parking info.\n'
+    + 'យើងបានទទួលព័ត៌មានចតឡានរបស់អ្នក។\n\n'
     + 'See you soon! 🚗✨\n'
     + 'ជួបគ្នាឆាប់ៗ! 🚗✨'
   );

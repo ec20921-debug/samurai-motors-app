@@ -373,6 +373,49 @@ body {
   font-size:12px; cursor:pointer; font-family:inherit;
 }
 
+/* Step 0: ダッシュボード（顧客一覧） */
+.dashboard-header {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:16px;
+}
+.dashboard-header h2 { font-size:16px; color:var(--gold); }
+.dash-refresh-btn {
+  background:var(--card); border:1px solid var(--border);
+  color:var(--gold); padding:6px 14px; border-radius:8px;
+  font-size:12px; cursor:pointer; font-family:inherit;
+}
+.dash-manual-btn {
+  display:block; width:100%; padding:14px;
+  background:var(--card); border:1.5px dashed var(--border);
+  border-radius:var(--radius); color:var(--text-dim);
+  font-size:14px; font-family:inherit; cursor:pointer;
+  text-align:center; margin-top:12px;
+  transition:all 0.2s;
+}
+.dash-manual-btn:active { border-color:var(--gold); color:var(--gold); transform:scale(0.98); }
+.dash-stat-row {
+  display:flex; gap:8px; margin-bottom:16px;
+}
+.dash-stat {
+  flex:1; background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:12px; text-align:center;
+}
+.dash-stat .ds-num { font-size:22px; font-weight:700; color:var(--gold); }
+.dash-stat .ds-label { font-size:10px; color:var(--text-dim); margin-top:2px; }
+.dash-empty {
+  text-align:center; padding:60px 20px; color:var(--text-dim);
+}
+.dash-empty .de-icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
+.dash-empty p { font-size:13px; }
+.back-to-list-btn {
+  display:inline-flex; align-items:center; gap:6px;
+  background:transparent; border:1px solid var(--border);
+  color:var(--text-dim); padding:6px 12px; border-radius:8px;
+  font-size:12px; cursor:pointer; font-family:inherit;
+  margin-bottom:14px;
+}
+.back-to-list-btn:active { border-color:var(--gold); color:var(--gold); }
+
 </style>
 </head>
 <body>
@@ -390,14 +433,30 @@ body {
 
 <div class="container">
 
+  <!-- ==================== STEP 0: ダッシュボード（顧客一覧） ==================== -->
+  <div class="step" id="step0">
+    <div class="dashboard-header">
+      <h2>📋 ការកក់ថ្ងៃនេះ（今日の予約）</h2>
+      <button class="dash-refresh-btn" onclick="loadDashboardBookings()">🔄 更新</button>
+    </div>
+    <div class="dash-stat-row" id="dashStats">
+      <div class="dash-stat"><div class="ds-num" id="statTotal">-</div><div class="ds-label">合計</div></div>
+      <div class="dash-stat"><div class="ds-num" id="statPending">-</div><div class="ds-label">待機中</div></div>
+      <div class="dash-stat"><div class="ds-num" id="statDone">-</div><div class="ds-label">完了</div></div>
+    </div>
+    <div id="dashboardBody">
+      <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
+    </div>
+    <button class="dash-manual-btn" onclick="startManualEntry()">
+      ✍️ បញ្ចូលដោយដៃ（手動で新規登録）
+    </button>
+  </div>
+
   <!-- ==================== STEP 1: Customer Info ==================== -->
   <div class="step" id="step1">
-    <!-- 予約から自動入力するバナー -->
-    <div id="bookingBanner" class="booking-banner" onclick="openBookingPicker()">
-      <span class="bb-icon">📅</span>
-      <span class="bb-text">ចាប់ផ្តើមពីការកក់（予約から開始）</span>
-      <span class="bb-arrow">›</span>
-    </div>
+    <!-- 一覧に戻るボタン -->
+    <button class="back-to-list-btn" onclick="backToList()">‹ ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
+    <!-- 紐付け中の予約表示（予約選択時のみ表示） -->
     <!-- 紐付け中の予約表示 -->
     <div id="bookingLinked" class="booking-linked" style="display:none;">
       <span class="bl-icon">🔗</span>
@@ -414,7 +473,7 @@ body {
         <input type="text" id="name" placeholder="ឧ. Sok Chanthy">
       </div>
       <div class="field">
-        <label>លេខទូរស័ព្ទ <span class="jp">（電話番号）</span><span class="req">*</span></label>
+        <label>លេខទូរស័ព្ទ <span class="jp">（電話番号）</span></label>
         <input type="tel" id="phone" placeholder="ឧ. 012 345 678">
       </div>
     </div>
@@ -592,7 +651,7 @@ body {
     <div style="font-size:48px;margin-bottom:12px;">✅</div>
     <h2>បានបញ្ចប់ហើយ！</h2>
     <p>（作業完了・データ保存済み！）</p>
-    <button onclick="resetAll()">ការងារថ្មី（次のジョブ）</button>
+    <button onclick="resetAll(); loadDashboardBookings();">ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
   </div>
 </div>
 
@@ -621,8 +680,9 @@ body {
 var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_RUVr6AcMuKzVpE7w3_cZoDKNewnBjKO4DO96LPA1hh/exec';
 
 // ===== STATE =====
-var currentStep = 1;
+var currentStep = 0;  // 0 = ダッシュボード（顧客一覧）
 var totalSteps = 5;
+var dashboardBookings = []; // ダッシュボードに表示する予約一覧
 var photos = { before: [null,null,null,null], after: [null,null,null,null] };
 var timestamps = { registered: null, scheduled: null, start: null, end: null };
 var timerInterval = null;
@@ -737,8 +797,8 @@ function restoreSession() {
       renderBookingLink();
     }
 
-    // ステップ復元
-    currentStep = state.currentStep || 1;
+    // ステップ復元（Step 0はダッシュボードなので1以上のみ復元）
+    currentStep = (state.currentStep && state.currentStep >= 1) ? state.currentStep : 0;
 
     // タイマー復元（作業中の場合）
     if (currentStep === 4 && timestamps.start && !timestamps.end) {
@@ -762,7 +822,7 @@ function clearSession() {
 }
 
 var stepNames = [
-  '',
+  'បញ្ជីការកក់（予約ダッシュボード）',
   'ចុះបញ្ជី（顧客登録）',
   'កាលវិភាគ（予約設定）',
   'រូបថតមុន + ចាប់ផ្តើម（ビフォー + スタート）',
@@ -796,23 +856,35 @@ document.addEventListener('DOMContentLoaded', function() {
   // セッション復元（前回閉じた状態から再開）
   var restored = restoreSession();
   if (!restored) {
+    // 新規: ダッシュボード（Step 0）を表示して予約一覧を読み込む
+    currentStep = 0;
     renderStep();
-    // 新規開始時は予約ピッカーを自動表示（予約があれば選択、なければ手動入力）
-    setTimeout(function() { openBookingPicker(); }, 300);
+    loadDashboardBookings();
   }
 });
 
 // ===== NAVIGATION =====
 function renderStep() {
-  // Hide all steps
-  for (var i = 1; i <= totalSteps; i++) {
+  // Hide all steps（Step 0 ダッシュボードを含む）
+  for (var i = 0; i <= totalSteps; i++) {
     var el = document.getElementById('step'+i);
     if (el) el.classList.remove('active');
   }
   var active = document.getElementById('step'+currentStep);
   if (active) active.classList.add('active');
 
-  // Progress dots
+  // Step 0ではプログレスバーとステップラベルを非表示
+  var progressBar = document.getElementById('progressBar');
+  var stepLabel = document.getElementById('stepLabel');
+  if (currentStep === 0) {
+    progressBar.style.display = 'none';
+    stepLabel.style.display = 'none';
+  } else {
+    progressBar.style.display = 'flex';
+    stepLabel.style.display = 'block';
+  }
+
+  // Progress dots（Step 1-5のみ）
   var dots = '';
   for (var i = 1; i <= totalSteps; i++) {
     var cls = 'progress-dot';
@@ -833,6 +905,9 @@ function renderStep() {
 function renderButtons() {
   var area = document.getElementById('actionButtons');
   switch(currentStep) {
+    case 0:
+      area.innerHTML = ''; // ダッシュボードでは下部ボタンなし
+      break;
     case 1:
       area.innerHTML = '<button class="btn btn-primary" onclick="goNext()">បន្ទាប់（次へ）→</button>';
       break;
@@ -858,7 +933,6 @@ function goNext() {
     var phone = document.getElementById('phone').value.trim();
     var building = document.getElementById('building').value;
     if (!name) { showToast('ឈ្មោះអតិថិជន（顧客名）を入力してください'); return; }
-    if (!phone) { showToast('លេខទូរស័ព្ទ（電話番号）を入力してください'); return; }
     if (!building) { showToast('អគារ（建物）を選択してください'); return; }
     timestamps.registered = new Date();
   }
@@ -1179,7 +1253,7 @@ function showToast(msg) {
 
 function resetAll() {
   document.getElementById('successModal').classList.remove('show');
-  currentStep = 1;
+  currentStep = 0;  // ダッシュボードに戻る
   photos = { before:[null,null,null,null], after:[null,null,null,null] };
   timestamps = { registered:null, scheduled:null, start:null, end:null };
   if (timerInterval) clearInterval(timerInterval);
@@ -1209,6 +1283,150 @@ function resetAll() {
   // 予約紐付けもクリア
   clearBookingSelection();
   renderStep();
+}
+
+// ===== ダッシュボード（Step 0: 顧客一覧） =====
+function loadDashboardBookings() {
+  var body = document.getElementById('dashboardBody');
+  body.innerHTML = '<div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>';
+
+  if (!APPS_SCRIPT_URL) {
+    body.innerHTML = '<div class="dash-empty"><div class="de-icon">⚠️</div><p>APPS_SCRIPT_URL が未設定です</p></div>';
+    return;
+  }
+
+  fetch(APPS_SCRIPT_URL + '?action=booking_today')
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      if (!data || data.status !== 'ok') {
+        body.innerHTML = '<div class="dash-empty"><div class="de-icon">⚠️</div><p>取得に失敗しました</p></div>';
+        return;
+      }
+      dashboardBookings = data.bookings || [];
+      renderDashboard(dashboardBookings);
+    })
+    .catch(function(err){
+      body.innerHTML = '<div class="dash-empty"><div class="de-icon">⚠️</div><p>通信エラー: ' + err.message + '</p></div>';
+    });
+}
+
+function renderDashboard(bookings) {
+  // 統計を更新
+  var total = bookings.length;
+  var done = bookings.filter(function(b){ return b.status === '作業完了'; }).length;
+  var pending = total - done;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statDone').textContent = done;
+
+  var body = document.getElementById('dashboardBody');
+  if (!bookings.length) {
+    body.innerHTML = '<div class="dash-empty"><div class="de-icon">📭</div><p>មិនមានការកក់ថ្ងៃនេះ<br>（今日の予約はありません）</p></div>';
+    return;
+  }
+
+  // 今日と明日でグループ化
+  var today = new Date();
+  var todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  var tomorrow = new Date(today.getTime() + 24*60*60*1000);
+  var tomorrowStr = tomorrow.getFullYear() + '-' + String(tomorrow.getMonth()+1).padStart(2,'0') + '-' + String(tomorrow.getDate()).padStart(2,'0');
+
+  var grouped = { today: [], tomorrow: [], other: [] };
+  bookings.forEach(function(b){
+    if (b.date === todayStr) grouped.today.push(b);
+    else if (b.date === tomorrowStr) grouped.tomorrow.push(b);
+    else grouped.other.push(b);
+  });
+
+  var html = '';
+  if (grouped.today.length) {
+    html += '<div class="bp-day-label">📍 ថ្ងៃនេះ（今日）' + todayStr + '</div>';
+    grouped.today.forEach(function(b){ html += renderDashboardCard(b); });
+  }
+  if (grouped.tomorrow.length) {
+    html += '<div class="bp-day-label">📅 ថ្ងៃស្អែក（明日）' + tomorrowStr + '</div>';
+    grouped.tomorrow.forEach(function(b){ html += renderDashboardCard(b); });
+  }
+  if (grouped.other.length) {
+    html += '<div class="bp-day-label">⏭ ពេលក្រោយ（その他）</div>';
+    grouped.other.forEach(function(b){ html += renderDashboardCard(b); });
+  }
+
+  body.innerHTML = html;
+
+  // クリックハンドラ
+  var cards = body.querySelectorAll('.bp-card');
+  for (var i = 0; i < cards.length; i++) {
+    (function(card){
+      card.addEventListener('click', function(){
+        var id = card.getAttribute('data-id');
+        var found = bookings.find(function(b){ return b.bookingId === id; });
+        if (found) openBookingJob(found);
+      });
+    })(cards[i]);
+  }
+}
+
+function renderDashboardCard(b) {
+  var statusCls = 'pending';
+  var statusText = '⏳ 待機中';
+  if (b.status === '作業完了') { statusCls = 'done'; statusText = '✅ 完了'; }
+  else if (b.status === '駐車情報受領済み') { statusCls = 'driving'; statusText = '🚗 出発OK'; }
+
+  var doneCls = (b.status === '作業完了') ? ' done' : '';
+  var amountStr = b.amount ? '$' + b.amount : '';
+  var st = formatTimeDisplay(b.startTime);
+  var et = formatTimeDisplay(b.endTime);
+  var planNames = { 'A': '清 KIYOME', 'B': '輝 KAGAYAKI', 'C': '極 KIWAMI', 'D': '匠 TAKUMI' };
+  var planName = planNames[b.planLetter] || b.planLetter || '?';
+  var loc = b.location || '-';
+  if (loc.indexOf('google.com/maps') >= 0) loc = '📍 地図リンクあり';
+
+  return '<div class="bp-card' + doneCls + '" data-id="' + b.bookingId + '">' +
+    '<div class="bp-card-row">' +
+      '<div class="bp-time" style="font-size:18px;font-weight:700">🕐 ' + st + ' - ' + et + '</div>' +
+      '<div class="bp-amount" style="font-size:16px;font-weight:700">' + amountStr + '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">' +
+      '<div style="font-size:15px;font-weight:700">👤 ' + (b.customerName || '名無し') + '</div>' +
+      '<div style="font-size:13px;color:var(--text-dim)">📍 ' + loc + '</div>' +
+      '<div style="font-size:13px;color:var(--text-dim)">🚗 ' + (b.vehicleType || '-') + ' ・ ✨ プラン' + b.planLetter + '（' + planName + '）</div>' +
+    '</div>' +
+    '<span class="bp-status ' + statusCls + '">' + statusText + '</span>' +
+  '</div>';
+}
+
+// 予約カードタップ → ジョブフォームへ
+function openBookingJob(b) {
+  if (b.status === '作業完了') {
+    showToast('この予約は既に完了しています');
+    return;
+  }
+  // 予約データをフォームに自動入力
+  selectBooking(b);
+  // Step 1 へ遷移（selectBookingが closeBookingPickerも呼ぶが、Step0からならStep遷移が必要）
+  currentStep = 1;
+  renderStep();
+  saveSession();
+}
+
+// 手動入力ボタン
+function startManualEntry() {
+  clearBookingSelection();
+  currentStep = 1;
+  renderStep();
+}
+
+// 一覧に戻る
+function backToList() {
+  // フォームをリセットしてダッシュボードに戻る
+  if (currentStep > 1) {
+    if (!confirm('一覧に戻ると入力内容がクリアされます。よろしいですか？')) return;
+  }
+  resetAll();
+  currentStep = 0;
+  renderStep();
+  loadDashboardBookings();
 }
 
 // ===== 予約ピッカー =====
@@ -1424,19 +1642,20 @@ function selectBooking(b) {
 
   renderBookingLink();
   saveSession();
-  closeBookingPicker();
+  // モーダルから呼ばれた場合のみ閉じる（ダッシュボードからは openBookingJob が遷移を処理）
+  var pickerOverlay = document.getElementById('bookingPicker');
+  if (pickerOverlay.classList.contains('show')) {
+    closeBookingPicker();
+  }
   showToast('✅ 予約を紐付けました: ' + b.bookingId);
 }
 
 function renderBookingLink() {
-  var banner = document.getElementById('bookingBanner');
   var linked = document.getElementById('bookingLinked');
   if (!selectedBookingId) {
-    banner.style.display = 'flex';
     linked.style.display = 'none';
     return;
   }
-  banner.style.display = 'none';
   linked.style.display = 'flex';
   document.getElementById('blTitle').textContent = selectedBookingId;
   if (selectedBookingInfo) {
