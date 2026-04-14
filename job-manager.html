@@ -373,10 +373,10 @@ body {
   font-size:12px; cursor:pointer; font-family:inherit;
 }
 
-/* Step 0: ダッシュボード（顧客一覧） */
+/* Step 0: ダッシュボード（チャットリスト風） */
 .dashboard-header {
   display:flex; justify-content:space-between; align-items:center;
-  margin-bottom:16px;
+  margin-bottom:12px;
 }
 .dashboard-header h2 { font-size:16px; color:var(--gold); }
 .dash-refresh-btn {
@@ -385,28 +385,70 @@ body {
   font-size:12px; cursor:pointer; font-family:inherit;
 }
 .dash-manual-btn {
-  display:block; width:100%; padding:14px;
+  display:flex; align-items:center; gap:12px;
+  width:100%; padding:14px 16px;
   background:var(--card); border:1.5px dashed var(--border);
   border-radius:var(--radius); color:var(--text-dim);
   font-size:14px; font-family:inherit; cursor:pointer;
-  text-align:center; margin-top:12px;
+  text-align:left; margin-top:4px;
   transition:all 0.2s;
 }
 .dash-manual-btn:active { border-color:var(--gold); color:var(--gold); transform:scale(0.98); }
 .dash-stat-row {
-  display:flex; gap:8px; margin-bottom:16px;
+  display:flex; gap:8px; margin-bottom:12px;
 }
 .dash-stat {
   flex:1; background:var(--card); border:1px solid var(--border);
-  border-radius:var(--radius); padding:12px; text-align:center;
+  border-radius:var(--radius); padding:10px 8px; text-align:center;
 }
-.dash-stat .ds-num { font-size:22px; font-weight:700; color:var(--gold); }
+.dash-stat .ds-num { font-size:20px; font-weight:700; color:var(--gold); }
 .dash-stat .ds-label { font-size:10px; color:var(--text-dim); margin-top:2px; }
 .dash-empty {
   text-align:center; padding:60px 20px; color:var(--text-dim);
 }
 .dash-empty .de-icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
 .dash-empty p { font-size:13px; }
+
+/* チャットリストアイテム */
+.chat-item {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 14px; margin-bottom:4px;
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); cursor:pointer;
+  transition:all 0.2s;
+}
+.chat-item:active { transform:scale(0.98); border-color:var(--gold); }
+.chat-item.done { opacity:0.5; }
+.chat-avatar {
+  width:48px; height:48px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; font-weight:700; color:#fff; flex-shrink:0;
+  text-transform:uppercase;
+}
+.chat-body { flex:1; min-width:0; }
+.chat-name {
+  font-size:14px; font-weight:700; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.chat-preview {
+  font-size:12px; color:var(--text-dim); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.chat-meta {
+  display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;
+}
+.chat-time { font-size:11px; color:var(--text-dim); }
+.chat-badge {
+  display:inline-block; min-width:20px; padding:1px 6px;
+  border-radius:10px; font-size:10px; font-weight:700;
+  text-align:center;
+}
+.chat-badge.pending { background:rgba(52,152,219,0.25); color:var(--blue); }
+.chat-badge.driving { background:rgba(230,126,34,0.25); color:#e67e22; }
+.chat-badge.done { background:var(--success-bg); color:var(--success); }
+.chat-amount { font-size:13px; font-weight:700; color:var(--success); }
+
+/* 戻るボタン */
 .back-to-list-btn {
   display:inline-flex; align-items:center; gap:6px;
   background:transparent; border:1px solid var(--border);
@@ -415,6 +457,78 @@ body {
   margin-bottom:14px;
 }
 .back-to-list-btn:active { border-color:var(--gold); color:var(--gold); }
+
+/* 顧客スレッドページ */
+.thread-booking-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px 16px; margin-bottom:12px;
+}
+.thread-booking-row {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:6px;
+}
+.thread-booking-id { font-size:11px; color:var(--text-dim); }
+.thread-booking-amount { font-size:16px; font-weight:700; color:var(--success); }
+.thread-booking-detail { font-size:13px; color:var(--text-dim); line-height:1.6; }
+.thread-start-job-btn {
+  display:block; width:100%; padding:12px;
+  background:var(--gold); color:#000; border:none;
+  border-radius:var(--radius); font-size:14px; font-weight:700;
+  font-family:inherit; cursor:pointer; text-align:center;
+  margin-top:10px;
+}
+.thread-start-job-btn:active { opacity:0.8; transform:scale(0.98); }
+
+/* チャットエリア */
+.chat-area {
+  display:flex; flex-direction:column; gap:6px;
+  margin-bottom:12px; min-height:100px;
+}
+.chat-bubble {
+  max-width:80%; padding:10px 14px;
+  border-radius:14px; font-size:13px; line-height:1.5;
+  word-break:break-word;
+}
+.chat-bubble.incoming {
+  background:var(--card); border:1px solid var(--border);
+  align-self:flex-start;
+  border-bottom-left-radius:4px;
+}
+.chat-bubble.outgoing {
+  background:rgba(201,168,76,0.15); border:1px solid rgba(201,168,76,0.3);
+  align-self:flex-end;
+  border-bottom-right-radius:4px;
+}
+.chat-bubble .cb-time {
+  font-size:10px; color:var(--text-dim); margin-top:4px;
+  text-align:right;
+}
+.chat-bubble .cb-sender {
+  font-size:10px; color:var(--gold); margin-bottom:2px; font-weight:600;
+}
+.chat-input-row {
+  display:flex; gap:8px; padding:10px 0;
+  position:sticky; bottom:0; background:var(--bg);
+  border-top:1px solid var(--border); margin-top:auto;
+}
+.chat-input {
+  flex:1; padding:10px 14px;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:20px; color:var(--text);
+  font-size:14px; font-family:inherit;
+  outline:none;
+}
+.chat-input:focus { border-color:var(--gold); }
+.chat-send-btn {
+  width:42px; height:42px; border-radius:50%;
+  background:var(--gold); border:none; color:#000;
+  font-size:18px; cursor:pointer; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.chat-send-btn:active { opacity:0.7; }
+.chat-send-btn:disabled { opacity:0.3; cursor:default; }
+.chat-loading { text-align:center; padding:20px; color:var(--text-dim); font-size:12px; }
+.chat-empty { text-align:center; padding:30px; color:var(--text-dim); font-size:12px; }
 
 </style>
 </head>
@@ -433,10 +547,10 @@ body {
 
 <div class="container">
 
-  <!-- ==================== STEP 0: ダッシュボード（顧客一覧） ==================== -->
+  <!-- ==================== STEP 0: ダッシュボード（チャットリスト風） ==================== -->
   <div class="step" id="step0">
     <div class="dashboard-header">
-      <h2>📋 ការកក់ថ្ងៃនេះ（今日の予約）</h2>
+      <h2>📋 ថ្ងៃនេះ（今日）</h2>
       <button class="dash-refresh-btn" onclick="loadDashboardBookings()">🔄 更新</button>
     </div>
     <div class="dash-stat-row" id="dashStats">
@@ -448,15 +562,28 @@ body {
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
     </div>
     <button class="dash-manual-btn" onclick="startManualEntry()">
-      ✍️ បញ្ចូលដោយដៃ（手動で新規登録）
+      <span style="font-size:22px;">✍️</span>
+      <span>បញ្ចូលដោយដៃ（手動で新規登録）</span>
     </button>
+  </div>
+
+  <!-- ==================== THREAD: 顧客スレッド ==================== -->
+  <div class="step" id="stepThread">
+    <button class="back-to-list-btn" onclick="backToList()">‹ ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
+    <div id="threadBookingCard" class="thread-booking-card"></div>
+    <div id="chatArea" class="chat-area">
+      <div class="chat-loading">⏳ チャット読み込み中...</div>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chatInput" type="text" placeholder="メッセージを入力... / វាយសារ..." onkeydown="if(event.key==='Enter')sendChatMessage()">
+      <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">➤</button>
+    </div>
   </div>
 
   <!-- ==================== STEP 1: Customer Info ==================== -->
   <div class="step" id="step1">
-    <!-- 一覧に戻るボタン -->
-    <button class="back-to-list-btn" onclick="backToList()">‹ ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
-    <!-- 紐付け中の予約表示（予約選択時のみ表示） -->
+    <!-- 戻るボタン（スレッドからの場合はスレッドへ、それ以外は一覧へ） -->
+    <button class="back-to-list-btn" onclick="goBackFromStep1()">‹ ថយក្រោយ（戻る）</button>
     <!-- 紐付け中の予約表示 -->
     <div id="bookingLinked" class="booking-linked" style="display:none;">
       <span class="bl-icon">🔗</span>
@@ -683,6 +810,9 @@ var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxz
 var currentStep = 0;  // 0 = ダッシュボード（顧客一覧）
 var totalSteps = 5;
 var dashboardBookings = []; // ダッシュボードに表示する予約一覧
+var currentThreadBooking = null; // 現在表示中の顧客スレッド
+var chatMessages = []; // チャット履歴
+var chatRefreshTimer = null; // チャット自動更新タイマー
 var photos = { before: [null,null,null,null], after: [null,null,null,null] };
 var timestamps = { registered: null, scheduled: null, start: null, end: null };
 var timerInterval = null;
@@ -865,23 +995,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===== NAVIGATION =====
 function renderStep() {
-  // Hide all steps（Step 0 ダッシュボードを含む）
+  // Hide all steps（Step 0, Thread, Step 1-5）
   for (var i = 0; i <= totalSteps; i++) {
     var el = document.getElementById('step'+i);
     if (el) el.classList.remove('active');
   }
-  var active = document.getElementById('step'+currentStep);
-  if (active) active.classList.add('active');
+  var threadEl = document.getElementById('stepThread');
+  if (threadEl) threadEl.classList.remove('active');
 
-  // Step 0ではプログレスバーとステップラベルを非表示
+  if (currentStep === 'thread') {
+    threadEl.classList.add('active');
+  } else {
+    var active = document.getElementById('step'+currentStep);
+    if (active) active.classList.add('active');
+  }
+
+  // Step 0/threadではプログレスバーとステップラベルを非表示
   var progressBar = document.getElementById('progressBar');
   var stepLabel = document.getElementById('stepLabel');
-  if (currentStep === 0) {
+  if (currentStep === 0 || currentStep === 'thread') {
     progressBar.style.display = 'none';
     stepLabel.style.display = 'none';
   } else {
     progressBar.style.display = 'flex';
     stepLabel.style.display = 'block';
+  }
+
+  // スレッドから離れたらチャット更新タイマーを停止
+  if (currentStep !== 'thread' && chatRefreshTimer) {
+    clearInterval(chatRefreshTimer);
+    chatRefreshTimer = null;
   }
 
   // Progress dots（Step 1-5のみ）
@@ -906,7 +1049,8 @@ function renderButtons() {
   var area = document.getElementById('actionButtons');
   switch(currentStep) {
     case 0:
-      area.innerHTML = ''; // ダッシュボードでは下部ボタンなし
+    case 'thread':
+      area.innerHTML = ''; // ダッシュボード・スレッドでは下部ボタンなし
       break;
     case 1:
       area.innerHTML = '<button class="btn btn-primary" onclick="goNext()">បន្ទាប់（次へ）→</button>';
@@ -1355,72 +1499,262 @@ function renderDashboard(bookings) {
   body.innerHTML = html;
 
   // クリックハンドラ
-  var cards = body.querySelectorAll('.bp-card');
-  for (var i = 0; i < cards.length; i++) {
-    (function(card){
-      card.addEventListener('click', function(){
-        var id = card.getAttribute('data-id');
+  var items = body.querySelectorAll('.chat-item');
+  for (var i = 0; i < items.length; i++) {
+    (function(item){
+      item.addEventListener('click', function(){
+        var id = item.getAttribute('data-id');
         var found = bookings.find(function(b){ return b.bookingId === id; });
-        if (found) openBookingJob(found);
+        if (found) openThread(found);
       });
-    })(cards[i]);
+    })(items[i]);
   }
 }
 
-function renderDashboardCard(b) {
-  var statusCls = 'pending';
-  var statusText = '⏳ 待機中';
-  if (b.status === '作業完了') { statusCls = 'done'; statusText = '✅ 完了'; }
-  else if (b.status === '駐車情報受領済み') { statusCls = 'driving'; statusText = '🚗 出発OK'; }
+// アバター色の生成（名前から一貫した色を返す）
+function getAvatarColor(name) {
+  var colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63'];
+  var hash = 0;
+  for (var i = 0; i < (name||'').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
 
-  var doneCls = (b.status === '作業完了') ? ' done' : '';
+function renderDashboardCard(b) {
+  var name = b.customerName || 'Guest';
+  var initial = name.charAt(0).toUpperCase();
+  var color = getAvatarColor(name);
+  var st = formatTimeDisplay(b.startTime);
+  var et = formatTimeDisplay(b.endTime);
   var amountStr = b.amount ? '$' + b.amount : '';
+
+  // ステータスに応じたプレビューテキスト
+  var preview = '🕐 ' + st + ' - ' + et;
+  if (b.status === '作業完了') preview = '✅ 完了 ・ ' + preview;
+  else if (b.status === '駐車情報受領済み') preview = '🚗 出発OK ・ ' + preview;
+  else preview = '⏳ 待機中 ・ ' + preview;
+
+  var planNames = { 'A': '清', 'B': '輝', 'C': '極', 'D': '匠' };
+  var planName = planNames[b.planLetter] || b.planLetter || '';
+  var sub = '✨' + b.planLetter + '(' + planName + ') ・ ' + (b.vehicleType || '-');
+
+  var doneCls = (b.status === '作業完了') ? ' opacity:0.5;' : '';
+
+  return '<div class="chat-item" data-id="' + b.bookingId + '" style="' + doneCls + '">' +
+    '<div class="chat-avatar" style="background:' + color + '">' + initial + '</div>' +
+    '<div class="chat-body">' +
+      '<div class="chat-name">' + name + '</div>' +
+      '<div class="chat-preview">' + preview + '</div>' +
+      '<div class="chat-preview" style="font-size:11px;margin-top:2px">' + sub + '</div>' +
+    '</div>' +
+    '<div class="chat-meta">' +
+      '<div class="chat-time">' + st + '</div>' +
+      (amountStr ? '<div class="chat-badge">' + amountStr + '</div>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+// ===== スレッドページ（予約詳細 + チャット履歴閲覧） =====
+function openThread(b) {
+  currentThreadBooking = b;
+  currentStep = 'thread';
+  renderStep();
+
+  // 予約情報カード表示
+  var card = document.getElementById('threadBookingCard');
   var st = formatTimeDisplay(b.startTime);
   var et = formatTimeDisplay(b.endTime);
   var planNames = { 'A': '清 KIYOME', 'B': '輝 KAGAYAKI', 'C': '極 KIWAMI', 'D': '匠 TAKUMI' };
   var planName = planNames[b.planLetter] || b.planLetter || '?';
   var loc = b.location || '-';
-  if (loc.indexOf('google.com/maps') >= 0) loc = '📍 地図リンクあり';
+  if (loc.indexOf('google.com/maps') >= 0) loc = '<a href="' + b.location + '" target="_blank" style="color:var(--blue)">📍 地図を開く</a>';
 
-  return '<div class="bp-card' + doneCls + '" data-id="' + b.bookingId + '">' +
-    '<div class="bp-card-row">' +
-      '<div class="bp-time" style="font-size:18px;font-weight:700">🕐 ' + st + ' - ' + et + '</div>' +
-      '<div class="bp-amount" style="font-size:16px;font-weight:700">' + amountStr + '</div>' +
-    '</div>' +
-    '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">' +
-      '<div style="font-size:15px;font-weight:700">👤 ' + (b.customerName || '名無し') + '</div>' +
-      '<div style="font-size:13px;color:var(--text-dim)">📍 ' + loc + '</div>' +
-      '<div style="font-size:13px;color:var(--text-dim)">🚗 ' + (b.vehicleType || '-') + ' ・ ✨ プラン' + b.planLetter + '（' + planName + '）</div>' +
-    '</div>' +
-    '<span class="bp-status ' + statusCls + '">' + statusText + '</span>' +
-  '</div>';
+  var statusBadge = '';
+  if (b.status === '作業完了') statusBadge = '<span class="bp-status done">✅ 完了</span>';
+  else if (b.status === '駐車情報受領済み') statusBadge = '<span class="bp-status driving">🚗 出発OK</span>';
+  else statusBadge = '<span class="bp-status pending">⏳ 待機中</span>';
+
+  card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
+    '<div>' +
+      '<div style="font-size:16px;font-weight:700">👤 ' + (b.customerName || 'Guest') + '</div>' +
+      '<div style="font-size:13px;color:var(--text-dim);margin-top:4px">🆔 ' + b.bookingId + '</div>' +
+    '</div>' + statusBadge +
+  '</div>' +
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;font-size:13px">' +
+    '<div>🕐 ' + st + ' - ' + et + '</div>' +
+    '<div>💰 $' + (b.amount || '0') + '</div>' +
+    '<div>✨ Plan ' + b.planLetter + '（' + planName + '）</div>' +
+    '<div>🚙 ' + (b.vehicleType || '-') + '</div>' +
+    '<div style="grid-column:1/-1">📍 ' + loc + '</div>' +
+  '</div>' +
+  (b.status !== '作業完了' ?
+    '<button class="thread-start-job-btn" onclick="startJobFromThread()">🚗 ジョブ開始 / ចាប់ផ្តើមការងារ</button>' : '');
+
+  // チャット履歴を読み込み
+  loadChatHistory(b.chatId);
+
+  // 10秒ごとに自動更新
+  if (chatRefreshTimer) clearInterval(chatRefreshTimer);
+  chatRefreshTimer = setInterval(function() {
+    if (currentStep === 'thread' && currentThreadBooking) {
+      loadChatHistory(currentThreadBooking.chatId, true);
+    }
+  }, 10000);
 }
 
-// 予約カードタップ → ジョブフォームへ
-function openBookingJob(b) {
+function loadChatHistory(chatId, silent) {
+  if (!chatId) {
+    document.getElementById('chatArea').innerHTML = '<div class="chat-loading">💬 チャットID不明 — 履歴を表示できません</div>';
+    return;
+  }
+  if (!silent) {
+    document.getElementById('chatArea').innerHTML = '<div class="chat-loading">⏳ チャット読み込み中...</div>';
+  }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'chat_history', chatId: String(chatId) })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res){
+    if (res.status === 'ok') {
+      chatMessages = res.messages || [];
+      renderChatMessages(chatMessages);
+    } else if (!silent) {
+      document.getElementById('chatArea').innerHTML = '<div class="chat-loading">📭 チャット履歴なし</div>';
+    }
+  })
+  .catch(function(err){
+    if (!silent) {
+      document.getElementById('chatArea').innerHTML = '<div class="chat-loading">⚠️ 読み込みエラー</div>';
+    }
+  });
+}
+
+function renderChatMessages(messages) {
+  var area = document.getElementById('chatArea');
+  if (!messages.length) {
+    area.innerHTML = '<div class="chat-loading">📭 まだメッセージはありません</div>';
+    return;
+  }
+
+  var html = '';
+  var lastDate = '';
+  messages.forEach(function(m) {
+    // 日付セパレータ
+    var dateStr = (m.dateTime || '').substring(0, 10);
+    if (dateStr && dateStr !== lastDate) {
+      html += '<div style="text-align:center;color:var(--text-dim);font-size:11px;margin:12px 0 8px">' + dateStr + '</div>';
+      lastDate = dateStr;
+    }
+
+    var isStaff = (m.direction === 'staff');
+    var bubbleCls = isStaff ? 'chat-bubble outgoing' : 'chat-bubble incoming';
+    var time = (m.dateTime || '').substring(11, 16);
+    var sender = isStaff ? (m.senderName || 'Staff') : (m.senderName || 'Customer');
+
+    html += '<div class="' + bubbleCls + '">' +
+      '<div style="font-size:10px;color:var(--text-dim);margin-bottom:3px">' + sender + '</div>' +
+      '<div>' + escapeHtml(m.message || '') + '</div>' +
+      (m.mediaUrl ? '<div style="margin-top:4px"><a href="' + m.mediaUrl + '" target="_blank" style="color:var(--blue);font-size:12px">📎 添付ファイル</a></div>' : '') +
+      '<div style="font-size:10px;color:var(--text-dim);text-align:right;margin-top:4px">' + time + '</div>' +
+    '</div>';
+  });
+
+  area.innerHTML = html;
+  // 最下部にスクロール
+  area.scrollTop = area.scrollHeight;
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// スレッドからジョブ開始ボタン
+function startJobFromThread() {
+  if (!currentThreadBooking) return;
+  var b = currentThreadBooking;
   if (b.status === '作業完了') {
     showToast('この予約は既に完了しています');
     return;
   }
-  // 予約データをフォームに自動入力
   selectBooking(b);
-  // Step 1 へ遷移（selectBookingが closeBookingPickerも呼ぶが、Step0からならStep遷移が必要）
+  cameFromThread = true;
   currentStep = 1;
   renderStep();
   saveSession();
 }
 
+var cameFromThread = false;
+
+// Step 1 の戻るボタン
+function goBackFromStep1() {
+  if (cameFromThread && currentThreadBooking) {
+    cameFromThread = false;
+    openThread(currentThreadBooking);
+  } else {
+    backToList();
+  }
+}
+
+// ミニアプリからメッセージ送信（オプション）
+function sendChatMessage() {
+  var input = document.getElementById('chatInput');
+  var msg = (input.value || '').trim();
+  if (!msg || !currentThreadBooking || !currentThreadBooking.chatId) return;
+
+  var btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+  input.disabled = true;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'chat_send',
+      chatId: String(currentThreadBooking.chatId),
+      message: msg,
+      senderName: 'App'
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res){
+    if (res.status === 'ok') {
+      input.value = '';
+      // ローカルに即時追加
+      chatMessages.push({
+        direction: 'staff', senderName: 'App', message: msg,
+        dateTime: new Date().toISOString().replace('T',' ').substring(0,19)
+      });
+      renderChatMessages(chatMessages);
+      showToast('✅ 送信完了');
+    } else {
+      showToast('❌ 送信失敗: ' + (res.message || ''));
+    }
+  })
+  .catch(function(err){ showToast('❌ エラー: ' + err.message); })
+  .finally(function(){ btn.disabled = false; input.disabled = false; input.focus(); });
+}
+
 // 手動入力ボタン
 function startManualEntry() {
   clearBookingSelection();
+  cameFromThread = false;
   currentStep = 1;
   renderStep();
 }
 
 // 一覧に戻る
 function backToList() {
-  // フォームをリセットしてダッシュボードに戻る
-  if (currentStep > 1) {
+  // チャットタイマー停止
+  if (chatRefreshTimer) { clearInterval(chatRefreshTimer); chatRefreshTimer = null; }
+  currentThreadBooking = null;
+  chatMessages = [];
+  cameFromThread = false;
+
+  if (currentStep > 1 && currentStep !== 'thread') {
     if (!confirm('一覧に戻ると入力内容がクリアされます。よろしいですか？')) return;
   }
   resetAll();

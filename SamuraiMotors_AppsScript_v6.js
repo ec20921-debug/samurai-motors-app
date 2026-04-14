@@ -46,6 +46,7 @@ var ATTENDANCE_SHEET_NAME = 'Attendance';
 var CUSTOMERS_SHEET_NAME = 'Customers';
 var BOOKINGS_SHEET_NAME = 'Bookings';
 var VEHICLES_SHEET_NAME = 'Vehicles';
+var CHATLOG_SHEET_NAME = 'ChatLog';
 
 // デプロイ済みWebアプリURL（Webhook設定用）
 // ※ 新しいデプロイを作成したらこのURLを更新すること
@@ -213,15 +214,29 @@ function doPost(e) {
 
     // Telegram Webhookからのメッセージ（update_idがある場合）
     if (data.update_id) {
-      // 重複排除：同じ update_id を2度処理しない（Telegramのリトライ対策）
-      // GAS処理が遅い場合Telegramが60秒後にリトライするため、300秒キャッシュ
-      var cache = CacheService.getScriptCache();
-      var cacheKey = 'tg_upd_' + data.update_id;
-      if (cache.get(cacheKey)) {
-        Logger.log('Duplicate webhook blocked: update_id=' + data.update_id);
+      // 重複排除：LockServiceで排他制御 + CacheServiceでチェック
+      // GAS同時実行でのレースコンディションを防止
+      var lock = LockService.getScriptLock();
+      try {
+        // 最大10秒待機してロック取得（取得できなければ重複の可能性大→スキップ）
+        if (!lock.tryLock(10000)) {
+          Logger.log('Lock timeout - skipping update_id=' + data.update_id);
+          return ContentService.createTextOutput('ok');
+        }
+        var cache = CacheService.getScriptCache();
+        var cacheKey = 'tg_upd_' + data.update_id;
+        if (cache.get(cacheKey)) {
+          Logger.log('Duplicate webhook blocked: update_id=' + data.update_id);
+          lock.releaseLock();
+          return ContentService.createTextOutput('ok');
+        }
+        cache.put(cacheKey, '1', 300); // 5分間キャッシュ
+        lock.releaseLock();
+      } catch (lockErr) {
+        Logger.log('Lock error: ' + lockErr + ' update_id=' + data.update_id);
+        try { lock.releaseLock(); } catch(e2) {}
         return ContentService.createTextOutput('ok');
       }
-      cache.put(cacheKey, '1', 300); // 5分間キャッシュ
 
       // どのBotから来たwebhookか? URLパラメータ ?bot=admin|field|booking で識別
       var botType = (e.parameter && e.parameter.bot) ? e.parameter.bot : 'admin';
@@ -275,6 +290,13 @@ function doPost(e) {
       // --- v6 Phase2: 顧客問い合わせ ---
       case 'inquiry_reply':
         return handleInquiryReplyFromApp(data);
+      // --- v6 Phase3: チャット履歴 ---
+      case 'chat_history':
+        return handleChatHistoryFromApp(data);
+      case 'chat_summary':
+        return handleChatSummaryFromApp(data);
+      case 'chat_send':
+        return handleChatSendFromApp(data);
       default:
         return jsonResponse({ status: 'error', message: 'Unknown action: ' + action });
     }
@@ -294,7 +316,7 @@ function handleTelegramWebhook(update, botType) {
 
   // callback_query（インラインボタン押下）の処理
   if (update.callback_query) {
-    return handleCallbackQuery(update.callback_query);
+    return handleCallbackQuery(update.callback_query, botType);
   }
 
   var message = update.message;
@@ -316,6 +338,15 @@ function handleTelegramWebhook(update, botType) {
   // 会話状態チェック（対話フロー中の場合）
   var convState = getConversationState(chatId);
   if (convState) {
+    // message_idベースの重複チェック（admin/field会話フロー用）
+    var admConvCache = CacheService.getScriptCache();
+    var admConvKey = 'adm_conv_' + chatId + '_' + message.message_id;
+    if (admConvCache.get(admConvKey)) {
+      Logger.log('Duplicate admin conv blocked: chatId=' + chatId + ' msg_id=' + message.message_id);
+      return ContentService.createTextOutput('ok');
+    }
+    admConvCache.put(admConvKey, '1', 300);
+
     handleConversationState(chatId, message, convState, senderName);
     return ContentService.createTextOutput('ok');
   }
@@ -451,6 +482,15 @@ function handleBookingBotWebhook(update) {
   // 会話状態チェック（駐車写真・支払いスクショ待ち等）
   var convState = getBookingConvState(chatId);
   if (convState) {
+    // message_idベースの重複チェック（会話フロー用）
+    var convCache = CacheService.getScriptCache();
+    var convCacheKey = 'conv_msg_' + chatId + '_' + message.message_id;
+    if (convCache.get(convCacheKey)) {
+      Logger.log('Duplicate conv message blocked: chatId=' + chatId + ' msg_id=' + message.message_id);
+      return ContentService.createTextOutput('ok');
+    }
+    convCache.put(convCacheKey, '1', 300);
+
     // /cancelで状態クリア
     if (text === '/cancel' || text === 'キャンセル') {
       clearBookingConvState(chatId);
@@ -489,6 +529,15 @@ function handleBookingBotWebhook(update) {
   }
 
   // それ以外: 顧客からの問い合わせとして保存＋スタッフに通知
+  // message_idベースの二重防御（LockServiceに加えて）
+  var inqCache = CacheService.getScriptCache();
+  var inqCacheKey = 'inq_msg_' + chatId + '_' + message.message_id;
+  if (inqCache.get(inqCacheKey)) {
+    Logger.log('Duplicate inquiry blocked: chatId=' + chatId + ' msg_id=' + message.message_id);
+    return ContentService.createTextOutput('ok');
+  }
+  inqCache.put(inqCacheKey, '1', 300);
+
   var msgType = 'text';
   var msgContent = text;
   var mediaUrl = '';
@@ -553,6 +602,9 @@ function handleBookingBotWebhook(update) {
   // Inquiriesシートに保存
   var inquiryId = createInquiry(chatId, firstName, msgContent, msgType, mediaUrl);
 
+  // ChatLogにも記録（顧客からの受信）
+  logChatMessage(chatId, 'customer', msgContent, firstName, mediaUrl);
+
   // 顧客に受領メッセージ
   sendBookingBotMessage(chatId,
     '✅ *Message received!*\n'
@@ -570,11 +622,21 @@ function handleBookingBotWebhook(update) {
     + (typeIcon[msgType] || '💬') + ' ' + msgContent
     + (mediaUrl ? '\n🔗 ' + mediaUrl : '');
 
-  // Adminグループに通知
-  sendTelegramTo(ADMIN_GROUP_ID, notifyMsg);
-  // 各フィールドスタッフに通知
+  // Field Bot経由でフィールドスタッフに通知（「返信」ボタン付き）
+  var replyKeyboard = {
+    inline_keyboard: [[
+      { text: '💬 返信 / ឆ្លើយតប', callback_data: 'reply_inquiry_' + chatId }
+    ]]
+  };
   FIELD_STAFF_IDS.forEach(function(staffId) {
-    sendTelegramTo(staffId, notifyMsg);
+    sendFieldBotWithKeyboard(staffId, notifyMsg, replyKeyboard);
+  });
+
+  // Adminグループにも通知（参照用、返信ボタン付き）
+  sendTelegramWithKeyboard(ADMIN_GROUP_ID, notifyMsg, {
+    inline_keyboard: [[
+      { text: '💬 返信 / Reply', callback_data: 'reply_inquiry_' + chatId }
+    ]]
   });
 
   return ContentService.createTextOutput('ok');
@@ -1139,7 +1201,14 @@ function sendBookingBotPhoto(chatId, photoUrl, caption) {
 // ─── トリガー設定 ────────────────────────────
 
 function setupV6Triggers() {
-  // 既存トリガーは触らない
+  // 既存の同名トリガーを削除してから作成（重複防止）
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkUnpaidBookings') {
+      ScriptApp.deleteTrigger(t);
+      Logger.log('既存トリガー checkUnpaidBookings を削除');
+    }
+  });
   // 1時間ごとに未払いチェック
   ScriptApp.newTrigger('checkUnpaidBookings')
     .timeBased()
@@ -1227,9 +1296,60 @@ function handleConversationState(chatId, message, state, senderName) {
     case 'pending_reason':
       handlePendingReasonFlow(chatId, message, state);
       break;
+    case 'inquiry_reply':
+      handleInquiryReplyFlow(chatId, message, state, senderName);
+      break;
     default:
       clearConversationState(chatId);
       break;
+  }
+}
+
+// ─── 問い合わせ返信フロー ─────────────────────
+// スタッフが「返信」ボタンを押した後、メッセージ入力 → 顧客に送信
+function handleInquiryReplyFlow(chatId, message, state, senderName) {
+  var replyText = (message.text || '').trim();
+  if (!replyText) {
+    sendTelegramTo(chatId, '📝 テキストメッセージを入力してください。\nសូមវាយសារជាអក្សរ។');
+    return;
+  }
+
+  var customerChatId = state.customerChatId;
+  clearConversationState(chatId);
+
+  // Booking Bot経由で顧客に送信
+  var replyMsg = '💬 *Samurai Motors*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + replyText;
+
+  try {
+    sendBookingBotMessage(customerChatId, replyMsg);
+
+    // ChatLogシートに記録（存在する場合）
+    logChatMessage(customerChatId, 'staff', replyText, senderName || 'Staff');
+
+    // 送信成功通知（送信者に）
+    sendTelegramTo(chatId,
+      '✅ *返信送信完了 / បានផ្ញើរួចរាល់*\n'
+      + '━━━━━━━━━━━━━━━\n'
+      + '👤 → ' + customerChatId + '\n'
+      + '💬 ' + replyText.substring(0, 200)
+    );
+
+    // Adminグループにログ（スタッフが返信した場合）
+    if (chatId !== ADMIN_GROUP_ID) {
+      sendTelegramTo(ADMIN_GROUP_ID,
+        '📤 *スタッフ返信ログ*\n'
+        + '━━━━━━━━━━━━━━━\n'
+        + '👤 ' + (senderName || 'Staff') + ' → 顧客 ' + customerChatId + '\n'
+        + '💬 ' + replyText.substring(0, 200)
+      );
+    }
+  } catch (e) {
+    Logger.log('handleInquiryReplyFlow error: ' + e.toString());
+    sendTelegramTo(chatId,
+      '❌ 送信失敗 / ផ្ញើមិនបាន: ' + e.toString()
+    );
   }
 }
 
@@ -1556,11 +1676,17 @@ function seedRecurringTasks() {
 //  Telegram Callback Query（インラインボタン）
 // ═══════════════════════════════════════════
 
-function handleCallbackQuery(callbackQuery) {
+function handleCallbackQuery(callbackQuery, botType) {
+  botType = botType || 'admin';
   var callbackId = callbackQuery.id;
   var data = callbackQuery.data;
   var chatId = String(callbackQuery.message.chat.id);
   var messageId = callbackQuery.message.message_id;
+
+  // callback応答関数の選択（Field Bot or Admin Bot）
+  var answerCb = (botType === 'field') ? answerFieldBotCallbackQuery : answerCallbackQuery;
+  // メッセージ送信関数の選択
+  var sendMsg = (botType === 'field') ? sendFieldBotMessage : sendTelegramTo;
 
   // task_done:TASK-XXXXXXX
   if (data.indexOf('task_done:') === 0) {
@@ -1611,6 +1737,29 @@ function handleCallbackQuery(callbackQuery) {
     var expenseId = data.replace('expense_confirm:', '');
     answerCallbackQuery(callbackId, '✅ 経費確認済み');
     editMessageText(chatId, messageId, '✅ 経費 ' + expenseId + ' を確認しました。');
+    return ContentService.createTextOutput('ok');
+  }
+
+  // reply_inquiry_<顧客chatId> — 顧客への返信フロー開始
+  if (data.indexOf('reply_inquiry_') === 0) {
+    var customerChatId = data.replace('reply_inquiry_', '');
+    answerCb(callbackId, '返信メッセージを入力してください');
+
+    // 返信待ち会話状態をセット（admin/field両方で使える）
+    setConversationState(chatId, {
+      type: 'inquiry_reply',
+      customerChatId: customerChatId
+    });
+
+    // スタッフに入力案内を送信（botTypeに応じてAdmin or Field Botで送信）
+    sendMsg(chatId,
+      '💬 *返信モード / របៀបឆ្លើយតប*\n'
+      + '━━━━━━━━━━━━━━━\n'
+      + '📱 顧客ID: ' + customerChatId + '\n\n'
+      + '返信メッセージを入力してください。\n'
+      + 'សូមវាយសារឆ្លើយតប។\n\n'
+      + '❌ /cancel でキャンセル'
+    );
     return ContentService.createTextOutput('ok');
   }
 
@@ -2314,6 +2463,75 @@ function sendTelegramWithKeyboard(chatId, text, replyMarkup) {
     });
   } catch (err) {
     Logger.log('sendTelegramWithKeyboard error: ' + err.toString());
+  }
+}
+
+// ─── Field Bot 送信関数 ───────────────────────
+// Field Botトークンでメッセージを送信
+function sendFieldBotMessage(chatId, text) {
+  var token = BOT_TOKENS.field;
+  if (!token) return;
+  var url = 'https://api.telegram.org/bot' + token + '/sendMessage';
+  var payload = {
+    chat_id: chatId,
+    text: text,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true
+  };
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('sendFieldBotMessage error: ' + err.toString());
+  }
+}
+
+// Field Botでインラインキーボード付きメッセージ送信
+function sendFieldBotWithKeyboard(chatId, text, replyMarkup) {
+  var token = BOT_TOKENS.field;
+  if (!token) return;
+  var url = 'https://api.telegram.org/bot' + token + '/sendMessage';
+  var payload = {
+    chat_id: chatId,
+    text: text,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    reply_markup: replyMarkup
+  };
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('sendFieldBotWithKeyboard error: ' + err.toString());
+  }
+}
+
+// Field Botのcallback_query応答
+function answerFieldBotCallbackQuery(callbackQueryId, text) {
+  var token = BOT_TOKENS.field;
+  if (!token) return;
+  var url = 'https://api.telegram.org/bot' + token + '/answerCallbackQuery';
+  var payload = {
+    callback_query_id: callbackQueryId,
+    text: text || ''
+  };
+  try {
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log('answerFieldBotCallbackQuery error: ' + err.toString());
   }
 }
 
@@ -5792,4 +6010,151 @@ function sendAdminMenu() {
   });
 
   Logger.log('Adminメニュー送信結果: ' + response.getContentText());
+}
+
+// ═══════════════════════════════════════════
+//  ChatLog: チャット履歴記録・取得
+// ═══════════════════════════════════════════
+
+// ChatLogシート取得（なければ作成）
+function getChatLogSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(CHATLOG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CHATLOG_SHEET_NAME);
+    var headers = ['ID', 'DateTime', 'ChatID', 'Direction', 'SenderName', 'Message', 'MediaURL', 'RelatedBookingId'];
+    sheet.appendRow(headers);
+    var hdr = sheet.getRange(1, 1, 1, headers.length);
+    hdr.setFontWeight('bold');
+    hdr.setBackground('#607D8B');
+    hdr.setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// チャットメッセージを記録
+// direction: 'customer'（受信）or 'staff'（送信）
+function logChatMessage(chatId, direction, message, senderName, mediaUrl, bookingId) {
+  try {
+    var sheet = getChatLogSheet();
+    var now = new Date();
+    var dateStr = Utilities.formatDate(now, BOOKING_TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+    var id = 'CHAT-' + Utilities.formatDate(now, BOOKING_TIMEZONE, 'yyyyMMddHHmmss') + '-' + Math.floor(Math.random() * 1000);
+    sheet.appendRow([
+      id,
+      dateStr,
+      String(chatId),
+      direction,
+      senderName || '',
+      message || '',
+      mediaUrl || '',
+      bookingId || ''
+    ]);
+    return id;
+  } catch (e) {
+    Logger.log('logChatMessage error: ' + e.toString());
+    return null;
+  }
+}
+
+// 顧客chatIdでチャット履歴を取得（API用）
+function getChatHistory(chatId) {
+  var sheet = getChatLogSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var messages = [];
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][2]) === String(chatId)) {
+      messages.push({
+        id: data[i][0],
+        dateTime: data[i][1],
+        chatId: data[i][2],
+        direction: data[i][3],
+        senderName: data[i][4],
+        message: data[i][5],
+        mediaUrl: data[i][6],
+        bookingId: data[i][7]
+      });
+    }
+  }
+  return messages;
+}
+
+// 全顧客のチャットサマリー（ダッシュボー���用：各顧客の最新メッセージ）
+function getChatSummary() {
+  var sheet = getChatLogSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  var customerMap = {};
+
+  for (var i = 0; i < data.length; i++) {
+    var cId = String(data[i][2]);
+    // 最新のメッセージで上書き（データは時系列順を仮定）
+    if (!customerMap[cId]) {
+      customerMap[cId] = {
+        chatId: cId,
+        lastMessage: data[i][5],
+        lastDirection: data[i][3],
+        lastSender: data[i][4],
+        lastDateTime: data[i][1],
+        messageCount: 1
+      };
+    } else {
+      customerMap[cId].lastMessage = data[i][5];
+      customerMap[cId].lastDirection = data[i][3];
+      customerMap[cId].lastSender = data[i][4];
+      customerMap[cId].lastDateTime = data[i][1];
+      customerMap[cId].messageCount++;
+    }
+  }
+
+  // 配列に変換して最新順にソート
+  var result = Object.keys(customerMap).map(function(k) { return customerMap[k]; });
+  result.sort(function(a, b) {
+    return String(b.lastDateTime).localeCompare(String(a.lastDateTime));
+  });
+  return result;
+}
+
+// ─── Chat API ハンドラー（ミニアプリから呼び出し） ─────
+
+// POST action=chat_history { chatId }
+function handleChatHistoryFromApp(data) {
+  if (!data.chatId) {
+    return jsonResponse({ status: 'error', message: 'chatId required' });
+  }
+  var messages = getChatHistory(String(data.chatId));
+  return jsonResponse({ status: 'ok', messages: messages });
+}
+
+// POST action=chat_summary
+function handleChatSummaryFromApp(data) {
+  var summary = getChatSummary();
+  return jsonResponse({ status: 'ok', summary: summary });
+}
+
+// POST action=chat_send { chatId, message, senderName }
+// ミニアプリからBooking Bot経由で顧客にメッセージ送信
+function handleChatSendFromApp(data) {
+  if (!data.chatId || !data.message) {
+    return jsonResponse({ status: 'error', message: 'chatId and message required' });
+  }
+
+  var replyMsg = '💬 *Samurai Motors*\n'
+    + '━━━━━━━━━━━━━━━\n'
+    + data.message;
+
+  try {
+    sendBookingBotMessage(String(data.chatId), replyMsg);
+    logChatMessage(data.chatId, 'staff', data.message, data.senderName || 'App');
+    return jsonResponse({ status: 'ok', message: 'sent' });
+  } catch (e) {
+    Logger.log('handleChatSendFromApp error: ' + e.toString());
+    return jsonResponse({ status: 'error', message: e.toString() });
+  }
 }
