@@ -2024,9 +2024,7 @@ function doGet(e) {
   return ContentService
     .createTextOutput('Samurai Motors v6 is active.')
     .setMimeType(ContentService.MimeType.TEXT);
-
-
-
+}
 
 // ═══════════════════════════════════════════
 //  ヘッダー修正
