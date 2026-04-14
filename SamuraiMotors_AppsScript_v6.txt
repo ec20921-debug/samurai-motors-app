@@ -213,38 +213,18 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
 
     // Telegram Webhookからのメッセージ（update_idがある場合）
+    // === 非同期キュー方式 ===
+    // 即座にキューに保存してokを返し、Telegramのタイムアウト/リトライを防止。
+    // 実処理は1分毎のprocessTelegramQueue()トリガーで行う。
     if (data.update_id) {
-      // 重複排除：LockServiceで排他制御 + CacheServiceでチェック
-      // GAS同時実行でのレースコンディションを防止
-      var lock = LockService.getScriptLock();
-      try {
-        // 最大10秒待機してロック取得（取得できなければ重複の可能性大→スキップ）
-        if (!lock.tryLock(10000)) {
-          Logger.log('Lock timeout - skipping update_id=' + data.update_id);
-          return ContentService.createTextOutput('ok');
-        }
-        var cache = CacheService.getScriptCache();
-        var cacheKey = 'tg_upd_' + data.update_id;
-        if (cache.get(cacheKey)) {
-          Logger.log('Duplicate webhook blocked: update_id=' + data.update_id);
-          lock.releaseLock();
-          return ContentService.createTextOutput('ok');
-        }
-        cache.put(cacheKey, '1', 300); // 5分間キャッシュ
-        lock.releaseLock();
-      } catch (lockErr) {
-        Logger.log('Lock error: ' + lockErr + ' update_id=' + data.update_id);
-        try { lock.releaseLock(); } catch(e2) {}
-        return ContentService.createTextOutput('ok');
-      }
-
-      // どのBotから来たwebhookか? URLパラメータ ?bot=admin|field|booking で識別
       var botType = (e.parameter && e.parameter.bot) ? e.parameter.bot : 'admin';
-      if (botType === 'booking') {
-        return handleBookingBotWebhook(data);
+      try {
+        enqueueTelegramUpdate(data, botType);
+      } catch (qErr) {
+        Logger.log('enqueueTelegramUpdate error: ' + qErr.toString());
       }
-      // admin / field は既存処理に流す（botTypeを渡して将来の分岐に備える）
-      return handleTelegramWebhook(data, botType);
+      // Telegramに即座にokを返す（処理時間は数ミリ秒で終わる）
+      return ContentService.createTextOutput('ok');
     }
 
     // ミニアプリからのリクエスト（actionがある場合）
@@ -257,20 +237,22 @@ function doPost(e) {
         return handleJobStart(data);
       case 'job_end':
         return handleJobEnd(data);
-      case 'task_create':
-        return handleTaskCreateFromApp(data);
-      case 'task_update':
-        return handleTaskUpdateFromApp(data);
-      case 'task_edit':
-        return handleTaskEditFromApp(data);
-      case 'expense_create':
-        return handleExpenseCreateFromApp(data);
-      case 'expense_edit':
-        return handleExpenseEditFromApp(data);
-      case 'daily_report':
-        return handleDailyReportFromApp(data);
-      case 'attendance':
-        return handleAttendanceFromApp(data);
+      // [DISABLED:Phase1] Tasks / Expenses / DailyReports / Attendance
+      // 復元時は DISABLED_FEATURES.md §1-4 参照
+      // case 'task_create':
+      //   return handleTaskCreateFromApp(data);
+      // case 'task_update':
+      //   return handleTaskUpdateFromApp(data);
+      // case 'task_edit':
+      //   return handleTaskEditFromApp(data);
+      // case 'expense_create':
+      //   return handleExpenseCreateFromApp(data);
+      // case 'expense_edit':
+      //   return handleExpenseEditFromApp(data);
+      // case 'daily_report':
+      //   return handleDailyReportFromApp(data);
+      // case 'attendance':
+      //   return handleAttendanceFromApp(data);
       // --- v6 Booking Mini App ---
       case 'booking_register_customer':
         return handleBookingRegisterCustomerFromApp(data);
@@ -353,84 +335,68 @@ function handleTelegramWebhook(update, botType) {
 
   // --- Adminグループからのメッセージ ---
   if (chatId === ADMIN_GROUP_ID) {
-    // /task コマンド: タスク作成対話開始
-    if (message.text && message.text.indexOf('/task') === 0) {
-      handleAdminTaskCommand(chatId, message);
-      return ContentService.createTextOutput('ok');
-    }
+    // [DISABLED:Phase1] /task コマンド（タスク管理） — DISABLED_FEATURES.md §1参照
+    // if (message.text && message.text.indexOf('/task') === 0) {
+    //   handleAdminTaskCommand(chatId, message);
+    //   return ContentService.createTextOutput('ok');
+    // }
+    // if (message.text && message.text.indexOf('/tasklist') === 0) {
+    //   showAllTasks(chatId);
+    //   return ContentService.createTextOutput('ok');
+    // }
 
-    // /tasklist コマンド: タスク一覧表示
-    if (message.text && message.text.indexOf('/tasklist') === 0) {
-      showAllTasks(chatId);
-      return ContentService.createTextOutput('ok');
-    }
-
-    // /reply <chatId> <message> : Booking Botから顧客に返信
-    // 例: /reply 123456 明日の10時にお伺いします
+    // /reply <chatId> <message> : Booking Botから顧客に返信（コア機能として残す）
     if (message.text && message.text.indexOf('/reply') === 0) {
       handleAdminReplyCommand(chatId, message.text);
       return ContentService.createTextOutput('ok');
     }
 
-    // テキストメッセージ転送
-    if (message.text) {
-      // /start等のコマンドは転送しない
-      if (message.text.indexOf('/') === 0) {
-        return ContentService.createTextOutput('ok');
-      }
-      // 全フィールドスタッフに転送
-      FIELD_STAFF_IDS.forEach(function(staffId) {
-        sendTelegramTo(staffId,
-          '📩 *管理者メッセージ*\n'
-          + '━━━━━━━━━━━━━━━\n'
-          + '👤 ' + senderName + '\n'
-          + '💬 ' + message.text
-        );
-      });
-    }
-
-    // スタンプ・写真・ドキュメント・音声は全スタッフに転送
-    if (message.sticker || message.photo || message.document || message.voice) {
-      FIELD_STAFF_IDS.forEach(function(staffId) {
-        forwardMessage(staffId, chatId, message.message_id);
-      });
-    }
+    // [DISABLED:Phase1] Admin→Field 一般メッセージ転送 — DISABLED_FEATURES.md §6参照
+    // テキスト・メディアの無条件転送は処理負荷が大きいため無効化
+    // if (message.text) {
+    //   if (message.text.indexOf('/') === 0) {
+    //     return ContentService.createTextOutput('ok');
+    //   }
+    //   FIELD_STAFF_IDS.forEach(function(staffId) {
+    //     sendTelegramTo(staffId,
+    //       '📩 *管理者メッセージ*\n━━━━━━━━━━━━━━━\n👤 ' + senderName + '\n💬 ' + message.text);
+    //   });
+    // }
+    // if (message.sticker || message.photo || message.document || message.voice) {
+    //   FIELD_STAFF_IDS.forEach(function(staffId) {
+    //     forwardMessage(staffId, chatId, message.message_id);
+    //   });
+    // }
   }
 
   // --- 現場スタッフからのメッセージ ---
   if (STAFF_REGISTRY[chatId]) {
     var staffName = STAFF_REGISTRY[chatId].name;
 
-    // /receipt コマンド: レシート経費登録モード開始
-    if (message.text && message.text.indexOf('/receipt') === 0) {
-      setConversationState(chatId, { type: 'receipt_pending', step: 'waiting_photo' });
-      sendTelegramTo(chatId, '📸 *レシート経費登録*\n━━━━━━━━━━━━━━━\nレシートの写真を送ってください。\nOCRで読み取り、経費を自動登録します。');
-      return ContentService.createTextOutput('ok');
-    }
+    // [DISABLED:Phase1] /receipt コマンド（レシートOCR） — DISABLED_FEATURES.md §2参照
+    // if (message.text && message.text.indexOf('/receipt') === 0) {
+    //   setConversationState(chatId, { type: 'receipt_pending', step: 'waiting_photo' });
+    //   sendTelegramTo(chatId, '📸 *レシート経費登録*\n━━━━━━━━━━━━━━━\nレシートの写真を送ってください。');
+    //   return ContentService.createTextOutput('ok');
+    // }
 
-    // /tasks コマンド: 自分のタスク一覧表示
-    if (message.text && message.text.indexOf('/tasks') === 0) {
-      showMyTasks(chatId, staffName);
-      return ContentService.createTextOutput('ok');
-    }
+    // [DISABLED:Phase1] /tasks コマンド（自分のタスク一覧） — DISABLED_FEATURES.md §1参照
+    // if (message.text && message.text.indexOf('/tasks') === 0) {
+    //   showMyTasks(chatId, staffName);
+    //   return ContentService.createTextOutput('ok');
+    // }
 
-    // テキストメッセージをAdminに転送
-    if (message.text) {
-      if (message.text.indexOf('/start') === 0) {
-        return ContentService.createTextOutput('ok');
-      }
-      sendTelegramTo(ADMIN_GROUP_ID,
-        '📩 *現場スタッフ*\n'
-        + '━━━━━━━━━━━━━━━\n'
-        + '👤 ' + staffName + '\n'
-        + '💬 ' + message.text
-      );
-    }
-
-    // スタンプ・写真・ドキュメント・音声をAdminに転送
-    if (message.sticker || message.photo || message.document || message.voice) {
-      forwardMessage(ADMIN_GROUP_ID, chatId, message.message_id);
-    }
+    // [DISABLED:Phase1] Field→Admin 一般メッセージ転送 — DISABLED_FEATURES.md §6参照
+    // if (message.text) {
+    //   if (message.text.indexOf('/start') === 0) {
+    //     return ContentService.createTextOutput('ok');
+    //   }
+    //   sendTelegramTo(ADMIN_GROUP_ID,
+    //     '📩 *現場スタッフ*\n━━━━━━━━━━━━━━━\n👤 ' + staffName + '\n💬 ' + message.text);
+    // }
+    // if (message.sticker || message.photo || message.document || message.voice) {
+    //   forwardMessage(ADMIN_GROUP_ID, chatId, message.message_id);
+    // }
   }
 
   return ContentService.createTextOutput('ok');
@@ -1198,15 +1164,109 @@ function sendBookingBotPhoto(chatId, photoUrl, caption) {
   }
 }
 
+// ─── 非同期キュー方式（Telegram Webhook処理） ─────
+// doPostは即座にokを返し、実処理は1分毎のprocessTelegramQueue()で行う。
+// これによりTelegramのタイムアウト（60秒）→リトライ→通知スパム問題を根本解決。
+
+// キューにTelegram updateを追加
+function enqueueTelegramUpdate(data, botType) {
+  var props = PropertiesService.getScriptProperties();
+  // キー: queue_<timestamp>_<update_id>  (sortすると時系列順)
+  var ts = Date.now();
+  var key = 'queue_' + String(ts).padStart(15, '0') + '_' + data.update_id;
+  var payload = {
+    data: data,
+    botType: botType || 'admin',
+    queuedAt: ts
+  };
+  props.setProperty(key, JSON.stringify(payload));
+}
+
+// キューに溜まったTelegram updateを順次処理（1分毎トリガーで実行）
+function processTelegramQueue() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  // queue_ プレフィックスのキーのみ取り出して時系列ソート
+  var keys = Object.keys(all).filter(function(k) {
+    return k.indexOf('queue_') === 0;
+  }).sort();
+
+  if (keys.length === 0) return;
+
+  var startTime = Date.now();
+  var MAX_MS = 5 * 60 * 1000; // 5分（GASタイムアウト6分のマージン）
+  var seen = {}; // 同一update_idの重複排除
+  var processedCount = 0;
+  var skippedDup = 0;
+  var errorCount = 0;
+
+  for (var i = 0; i < keys.length; i++) {
+    // タイムアウト前に中断（次回トリガーで残りを処理）
+    if (Date.now() - startTime > MAX_MS) {
+      Logger.log('processTelegramQueue: 時間切れで中断 残=' + (keys.length - i));
+      break;
+    }
+
+    var key = keys[i];
+    try {
+      var item = JSON.parse(all[key]);
+      var updateId = item.data.update_id;
+
+      // 同じupdate_idが複数キューに入っていたら1回だけ処理
+      if (seen[updateId]) {
+        props.deleteProperty(key);
+        skippedDup++;
+        continue;
+      }
+      seen[updateId] = true;
+
+      // 実処理を呼び出す
+      if (item.botType === 'booking') {
+        handleBookingBotWebhook(item.data);
+      } else {
+        handleTelegramWebhook(item.data, item.botType);
+      }
+
+      props.deleteProperty(key);
+      processedCount++;
+    } catch (err) {
+      Logger.log('processTelegramQueue error for ' + key + ': ' + err.toString());
+      // エラーでも削除（無限ループ防止）
+      try { props.deleteProperty(key); } catch (e2) {}
+      errorCount++;
+    }
+  }
+
+  Logger.log('processTelegramQueue: 処理=' + processedCount
+    + ', 重複排除=' + skippedDup
+    + ', エラー=' + errorCount
+    + ', 所要=' + (Date.now() - startTime) + 'ms');
+}
+
+// キュー全消去（デバッグ/緊急時用）
+function clearTelegramQueue() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var count = 0;
+  Object.keys(all).forEach(function(k) {
+    if (k.indexOf('queue_') === 0) {
+      props.deleteProperty(k);
+      count++;
+    }
+  });
+  Logger.log('キュー全消去: ' + count + '件');
+}
+
 // ─── トリガー設定 ────────────────────────────
 
 function setupV6Triggers() {
   // 既存の同名トリガーを削除してから作成（重複防止）
   var triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === 'checkUnpaidBookings') {
+    var fn = t.getHandlerFunction();
+    if (fn === 'checkUnpaidBookings' || fn === 'processTelegramQueue') {
       ScriptApp.deleteTrigger(t);
-      Logger.log('既存トリガー checkUnpaidBookings を削除');
+      Logger.log('既存トリガー ' + fn + ' を削除');
     }
   });
   // 1時間ごとに未払いチェック
@@ -1214,13 +1274,19 @@ function setupV6Triggers() {
     .timeBased()
     .everyHours(1)
     .create();
-  Logger.log('v6トリガー: checkUnpaidBookings (1時間毎) を作成しました。');
+  // 1分ごとにTelegramキューを処理
+  ScriptApp.newTrigger('processTelegramQueue')
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+  Logger.log('v6トリガー作成完了: checkUnpaidBookings(1h) + processTelegramQueue(1min)');
 }
 
 function removeV6Triggers() {
   var triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === 'checkUnpaidBookings') {
+    var fn = t.getHandlerFunction();
+    if (fn === 'checkUnpaidBookings' || fn === 'processTelegramQueue') {
       ScriptApp.deleteTrigger(t);
     }
   });
@@ -1287,15 +1353,17 @@ function handleConversationState(chatId, message, state, senderName) {
   }
 
   switch (state.type) {
-    case 'task_create':
-      handleTaskCreateFlow(chatId, message, state);
-      break;
-    case 'receipt_pending':
-      handleReceiptFlow(chatId, message, state, senderName);
-      break;
-    case 'pending_reason':
-      handlePendingReasonFlow(chatId, message, state);
-      break;
+    // [DISABLED:Phase1] task_create / receipt_pending / pending_reason
+    // 復元時は DISABLED_FEATURES.md §1-2 参照
+    // case 'task_create':
+    //   handleTaskCreateFlow(chatId, message, state);
+    //   break;
+    // case 'receipt_pending':
+    //   handleReceiptFlow(chatId, message, state, senderName);
+    //   break;
+    // case 'pending_reason':
+    //   handlePendingReasonFlow(chatId, message, state);
+    //   break;
     case 'inquiry_reply':
       handleInquiryReplyFlow(chatId, message, state, senderName);
       break;
@@ -1688,57 +1756,11 @@ function handleCallbackQuery(callbackQuery, botType) {
   // メッセージ送信関数の選択
   var sendMsg = (botType === 'field') ? sendFieldBotMessage : sendTelegramTo;
 
-  // task_done:TASK-XXXXXXX
-  if (data.indexOf('task_done:') === 0) {
-    var taskId = data.replace('task_done:', '');
-    updateTaskStatus(taskId, '完了');
-
-    answerCallbackQuery(callbackId, '✅ タスク完了！');
-
-    // メッセージを更新（ボタンを削除して完了表示）
-    editMessageText(chatId, messageId,
-      '✅ *タスク完了*: ' + taskId + '\n完了時刻: ' + formatCambodiaTime(new Date())
-    );
-
-    // Adminグループにも通知
-    sendTelegramTo(ADMIN_GROUP_ID,
-      '✅ *タスク完了通知*\n'
-      + '━━━━━━━━━━━━━━━\n'
-      + '🆔 ' + taskId + '\n'
-      + '⏰ ' + formatCambodiaTime(new Date())
-    );
-
-    return ContentService.createTextOutput('ok');
-  }
-
-  // task_notdone:TASK-XXXXXXX
-  if (data.indexOf('task_notdone:') === 0) {
-    var taskId = data.replace('task_notdone:', '');
-
-    answerCallbackQuery(callbackId, '理由を入力してください');
-
-    // 理由入力待ちの会話状態を設定
-    setConversationState(chatId, {
-      type: 'pending_reason',
-      taskId: taskId
-    });
-
-    sendTelegramTo(chatId,
-      '❌ *タスク未完了*: ' + taskId + '\n\n'
-      + 'なぜ完了できなかったか、理由を入力してください。\n'
-      + '（例: 部品が届いていない、時間が足りなかった 等）'
-    );
-
-    return ContentService.createTextOutput('ok');
-  }
-
-  // expense_confirm:EXP-XXXXXXX
-  if (data.indexOf('expense_confirm:') === 0) {
-    var expenseId = data.replace('expense_confirm:', '');
-    answerCallbackQuery(callbackId, '✅ 経費確認済み');
-    editMessageText(chatId, messageId, '✅ 経費 ' + expenseId + ' を確認しました。');
-    return ContentService.createTextOutput('ok');
-  }
+  // [DISABLED:Phase1] task_done: / task_notdone: / expense_confirm:
+  // 復元時は DISABLED_FEATURES.md §1-2 参照
+  // if (data.indexOf('task_done:') === 0) { ... }
+  // if (data.indexOf('task_notdone:') === 0) { ... }
+  // if (data.indexOf('expense_confirm:') === 0) { ... }
 
   // reply_inquiry_<顧客chatId> — 顧客への返信フロー開始
   if (data.indexOf('reply_inquiry_') === 0) {
