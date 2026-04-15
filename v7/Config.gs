@@ -51,7 +51,8 @@ const SHEET_NAMES = {
 const STORAGE_KEYS = {
   QUEUE_PREFIX:     'queue_',       // queue_{timestamp}_{update_id}
   PROCESSED_PREFIX: 'processed_',   // processed_{update_id}（24h保持）
-  ADMIN_REPLY_PREFIX: 'admin_reply_'  // admin_reply_{admin_chat_id}（Cache 300秒）
+  ADMIN_REPLY_PREFIX: 'admin_reply_', // admin_reply_{admin_chat_id}（Cache 300秒）
+  POLL_OFFSET_PREFIX: 'poll_offset_'  // poll_offset_{botType} : 次回取得用 update_id（Polling方式）
 };
 
 // ====== TTL（秒） ======

@@ -212,6 +212,24 @@ function fetchTelegramFile(botType, fileId) {
   }
 }
 
+// ====== Polling（Long/Short poll） ======
+
+/**
+ * getUpdates で保留中の update を取得する（Polling方式）
+ *
+ * @param {string} botType
+ * @param {number} offset - 取得開始する update_id（前回最大 update_id + 1）
+ * @param {Object} [options] - { limit, timeout, allowed_updates }
+ */
+function getUpdates(botType, offset, options) {
+  const payload = Object.assign({
+    offset: offset || 0,
+    limit: 100,
+    timeout: 0  // GAS は long-poll と相性悪いので short-poll 固定
+  }, options || {});
+  return callTelegramApi(botType, 'getUpdates', payload);
+}
+
 // ====== Webhook 管理 ======
 
 function setWebhook(botType, url) {

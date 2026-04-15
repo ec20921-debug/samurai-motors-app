@@ -168,7 +168,7 @@ function showQueueStatus() {
  * 既存の同名トリガーは一旦全削除してから作り直す（冪等）
  */
 function setupV7Triggers() {
-  const targets = ['processTelegramQueue', 'cleanupOldProcessedIds'];
+  const targets = ['processTelegramQueue', 'cleanupOldProcessedIds', 'pollTelegramUpdates'];
 
   // ── 既存トリガー削除 ──
   const existing = ScriptApp.getProjectTriggers();
@@ -182,6 +182,12 @@ function setupV7Triggers() {
   Logger.log('🗑️ 既存トリガー削除: ' + removed + '件');
 
   // ── 新規登録 ──
+  ScriptApp.newTrigger('pollTelegramUpdates')
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+  Logger.log('⏰ pollTelegramUpdates: 1分間隔（Polling方式）');
+
   ScriptApp.newTrigger('processTelegramQueue')
     .timeBased()
     .everyMinutes(1)
