@@ -25,7 +25,11 @@ const CONFIG_KEYS = {
   // Drive フォルダ
   DRIVE_FOLDER_WASH_PHOTOS:         'DRIVE_FOLDER_WASH_PHOTOS',
   DRIVE_FOLDER_QR_CODES:            'DRIVE_FOLDER_QR_CODES',
-  DRIVE_FOLDER_PAYMENT_SCREENSHOTS: 'DRIVE_FOLDER_PAYMENT_SCREENSHOTS'
+  DRIVE_FOLDER_PAYMENT_SCREENSHOTS: 'DRIVE_FOLDER_PAYMENT_SCREENSHOTS',
+
+  // ミニアプリ URL（Phase 3 以降で使用。未登録でもgetConfigは通るよう required から除外）
+  BOOKING_MINIAPP_URL:     'BOOKING_MINIAPP_URL',
+  JOB_MANAGER_MINIAPP_URL: 'JOB_MANAGER_MINIAPP_URL'
 };
 
 // ====== Bot種別識別子 ======
@@ -72,7 +76,17 @@ function getConfig() {
   const props = PropertiesService.getScriptProperties();
   const all = props.getProperties();
 
-  const required = Object.keys(CONFIG_KEYS);
+  // 必須キー（未登録なら例外）
+  const required = [
+    CONFIG_KEYS.BOT_TOKEN_BOOKING,
+    CONFIG_KEYS.BOT_TOKEN_FIELD,
+    CONFIG_KEYS.ADMIN_GROUP_ID,
+    CONFIG_KEYS.SPREADSHEET_ID,
+    CONFIG_KEYS.BOOKING_CALENDAR_ID,
+    CONFIG_KEYS.DRIVE_FOLDER_WASH_PHOTOS,
+    CONFIG_KEYS.DRIVE_FOLDER_QR_CODES,
+    CONFIG_KEYS.DRIVE_FOLDER_PAYMENT_SCREENSHOTS
+  ];
   const missing = required.filter(function(key) { return !all[key]; });
   if (missing.length > 0) {
     throw new Error('❌ PropertiesService 未登録: ' + missing.join(', '));
@@ -86,7 +100,10 @@ function getConfig() {
     bookingCalendarId:            all[CONFIG_KEYS.BOOKING_CALENDAR_ID],
     driveFolderWashPhotos:        all[CONFIG_KEYS.DRIVE_FOLDER_WASH_PHOTOS],
     driveFolderQrCodes:           all[CONFIG_KEYS.DRIVE_FOLDER_QR_CODES],
-    driveFolderPaymentScreenshots: all[CONFIG_KEYS.DRIVE_FOLDER_PAYMENT_SCREENSHOTS]
+    driveFolderPaymentScreenshots: all[CONFIG_KEYS.DRIVE_FOLDER_PAYMENT_SCREENSHOTS],
+    // オプション（未登録OK）
+    bookingMiniappUrl:            all[CONFIG_KEYS.BOOKING_MINIAPP_URL] || '',
+    jobManagerMiniappUrl:         all[CONFIG_KEYS.JOB_MANAGER_MINIAPP_URL] || ''
   };
 }
 

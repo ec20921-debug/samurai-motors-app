@@ -66,16 +66,62 @@ function dispatchBookingMessage(msg) {
  * 顧客からのDMメッセージ処理
  */
 function handleCustomerMessage(msg) {
+  const text = (msg.text || '').trim();
+
   // /start コマンド → 挨拶のみ返す（転送しない）
-  if (msg.text && msg.text.trim() === '/start') {
+  if (text === '/start') {
     sendWelcomeMessage(msg);
     // /start も新規顧客登録のきっかけにする：トピックだけ作っておく
     ensureCustomerTopic(msg);
     return;
   }
 
+  // /book コマンド → 予約ミニアプリ起動ボタン
+  if (text === '/book') {
+    sendBookingMiniApp(msg);
+    return;
+  }
+
   // それ以外の全メッセージ → 管理者トピックへ転送
   forwardCustomerMessage(msg);
+}
+
+/**
+ * 予約ミニアプリ起動ボタンを送信
+ * Telegram Web Apps の web_app ボタン仕様に従い、booking.html を開く
+ */
+function sendBookingMiniApp(msg) {
+  const url = getBookingMiniAppUrl();
+  if (!url) {
+    sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
+      '⚠️ ការកក់មិនអាចបានទេឥឡូវ / Booking unavailable now\n' +
+      '(BOOKING_MINIAPP_URL 未設定)'
+    );
+    return;
+  }
+
+  const text =
+    '🗓 សូមចុចប៊ូតុងខាងក្រោមដើម្បីធ្វើការកក់\n' +
+    '🗓 Tap below to book your car wash';
+
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, text, {
+    reply_markup: {
+      inline_keyboard: [[
+        {
+          text: '🚗 ការកក់ / Booking',
+          web_app: { url: url }
+        }
+      ]]
+    }
+  });
+}
+
+/**
+ * 予約ミニアプリの URL を取得
+ * PropertiesService から BOOKING_MINIAPP_URL を取得
+ */
+function getBookingMiniAppUrl() {
+  return PropertiesService.getScriptProperties().getProperty('BOOKING_MINIAPP_URL') || '';
 }
 
 /**
