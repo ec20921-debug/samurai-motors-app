@@ -351,7 +351,18 @@ function apiJobEnd(body) {
       Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
-    // [Phase 5] ここで sendPaymentQR(customerChatId, bookingId) を呼ぶ予定
+    // ── 6. 決済QRを連続送信（Phase 5） ──
+    // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
+    if (bookingId && typeof sendPaymentQR === 'function') {
+      try {
+        var qrRes = sendPaymentQR(bookingId);
+        if (!qrRes || !qrRes.ok) {
+          Logger.log('ℹ️ sendPaymentQR スキップ/失敗: ' + JSON.stringify(qrRes));
+        }
+      } catch (e) {
+        Logger.log('⚠️ sendPaymentQR 呼び出しエラー: ' + e);
+      }
+    }
 
     return { status: 'ok' };
   } catch (err) {

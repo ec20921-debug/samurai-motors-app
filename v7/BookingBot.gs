@@ -89,6 +89,18 @@ function handleCustomerMessage(msg) {
     return;
   }
 
+  // 写真メッセージは支払いスクショの可能性をまず判定（Phase 5）
+  // 該当する未払い予約があれば、それとして処理し通常転送はスキップ
+  if (msg.photo && msg.photo.length > 0 && typeof tryHandlePaymentScreenshot === 'function') {
+    try {
+      if (tryHandlePaymentScreenshot(msg)) {
+        return;
+      }
+    } catch (e) {
+      Logger.log('⚠️ tryHandlePaymentScreenshot エラー、通常転送に流す: ' + e);
+    }
+  }
+
   // それ以外の全メッセージ → 管理者トピックへ転送
   forwardCustomerMessage(msg);
 }

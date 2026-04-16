@@ -168,7 +168,12 @@ function showQueueStatus() {
  * 既存の同名トリガーは一旦全削除してから作り直す（冪等）
  */
 function setupV7Triggers() {
-  const targets = ['processTelegramQueue', 'cleanupOldProcessedIds', 'pollTelegramUpdates'];
+  const targets = [
+    'processTelegramQueue',
+    'cleanupOldProcessedIds',
+    'pollTelegramUpdates',
+    'checkUnpaidReminders'
+  ];
 
   // ── 既存トリガー削除 ──
   const existing = ScriptApp.getProjectTriggers();
@@ -200,8 +205,12 @@ function setupV7Triggers() {
     .create();
   Logger.log('⏰ cleanupOldProcessedIds: 1時間間隔');
 
-  // ── PaymentManager は Phase 5 で追加予定 ──
-  Logger.log('ℹ️ checkUnpaidReminders は Phase 5 実装時に別途追加');
+  // ── Phase 5: 24h催促 ──
+  ScriptApp.newTrigger('checkUnpaidReminders')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('⏰ checkUnpaidReminders: 1時間間隔（24h未払い催促）');
 
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('✅ トリガー設定完了');
