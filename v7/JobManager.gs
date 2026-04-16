@@ -162,7 +162,9 @@ function apiJobStart(body) {
       '開始時刻':       body.startTime ? new Date(body.startTime) : new Date(),
       '完了時刻':       '',
       'Before写真URL':  photoResult.urls.join('\n'),
-      'After写真URL':   ''
+      'After写真URL':   '',
+      '車種':           (body.carModel || '') + (body.plate ? ' / ' + body.plate : ''),
+      '施工時間':       ''
     });
 
     // ── 3. 予約ステータス更新 ──
@@ -186,21 +188,20 @@ function apiJobStart(body) {
       }
     }
 
-    // ── 4. 顧客へ: メッセージ + Before写真アルバム ──
-    if (customerChatId && photoResult.blobs.length > 0) {
-      var custCaption =
+    // ── 4. 顧客へ: メッセージ先 → 写真（写真失敗してもメッセージは届く） ──
+    if (customerChatId) {
+      var custText =
         '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
         'Your car wash has started!\n\n' +
-        '📸 រូបថតមុនពេលលាង / Before photos';
-      sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, custCaption, {});
-    } else if (customerChatId) {
-      // 写真がない場合はテキストのみ
-      sendMessage(BOT_TYPE.BOOKING, customerChatId,
-        '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\nYour car wash has started!');
+        '📸 រូបថតមុនពេលលាង / Before photos ↓';
+      sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      if (photoResult.blobs.length > 0) {
+        sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+      }
     }
 
-    // ── 5. 管理グループへ: メッセージ + Before写真アルバム ──
-    var adminCaption = '▶️ 作業開始\n' +
+    // ── 5. 管理グループへ: メッセージ先 → 写真 ──
+    var adminText = '▶️ 作業開始\n' +
       '━━━━━━━━━━━━━━━━━\n' +
       (bookingId ? '🆔 ' + bookingId + '\n' : '') +
       '👤 ' + (body.name || '-') + '\n' +
@@ -213,10 +214,9 @@ function apiJobStart(body) {
     var adminOpts = {};
     if (threadId) adminOpts.message_thread_id = threadId;
 
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
     if (photoResult.blobs.length > 0) {
-      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, adminCaption, adminOpts);
-    } else {
-      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminCaption, adminOpts);
+      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
     }
 
     return { status: 'ok', jobId: jobId };
@@ -258,7 +258,8 @@ function apiJobEnd(body) {
         updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, {
           '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
           'After写真URL':   photoResult.urls.join('\n'),
-          '作業状態':       '完了'
+          '作業状態':       '完了',
+          '施工時間':       duration + '分'
         });
       }
     }
@@ -280,21 +281,21 @@ function apiJobEnd(body) {
       }
     }
 
-    // ── 4. 顧客へ: メッセージ + After写真アルバム ──
-    if (customerChatId && photoResult.blobs.length > 0) {
-      var custCaption =
+    // ── 4. 顧客へ: メッセージ先 → 写真 ──
+    if (customerChatId) {
+      var custText =
         '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\n' +
         'Your car wash is complete!\n\n' +
         '⏱ ' + duration + ' នាទី / minutes\n' +
-        '📸 រូបថតក្រោយពេលលាង / After photos';
-      sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, custCaption, {});
-    } else if (customerChatId) {
-      sendMessage(BOT_TYPE.BOOKING, customerChatId,
-        '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\nYour car wash is complete!\n⏱ ' + duration + ' minutes');
+        '📸 រូបថតក្រោយពេលលាង / After photos ↓';
+      sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      if (photoResult.blobs.length > 0) {
+        sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+      }
     }
 
-    // ── 5. 管理グループへ: メッセージ + After写真アルバム ──
-    var adminCaption = '⏹ 作業終了\n' +
+    // ── 5. 管理グループへ: メッセージ先 → 写真 ──
+    var adminText = '⏹ 作業終了\n' +
       '━━━━━━━━━━━━━━━━━\n' +
       (bookingId ? '🆔 ' + bookingId + '\n' : '') +
       '👤 ' + (body.name || '-') + '\n' +
@@ -304,10 +305,9 @@ function apiJobEnd(body) {
     var adminOpts = {};
     if (threadId) adminOpts.message_thread_id = threadId;
 
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
     if (photoResult.blobs.length > 0) {
-      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, adminCaption, adminOpts);
-    } else {
-      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminCaption, adminOpts);
+      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
     }
 
     // [Phase 5] ここで sendPaymentQR(customerChatId, bookingId) を呼ぶ予定
@@ -542,6 +542,8 @@ function sendPhotoAlbum(botType, chatId, blobs, caption, opts) {
   // 2枚以上: sendMediaGroup（最大10枚）
   var maxBatch = 10;
   var lastRes = null;
+  var anySuccess = false;
+
   for (var offset = 0; offset < blobs.length; offset += maxBatch) {
     var batch = blobs.slice(offset, offset + maxBatch);
     var payload = { chat_id: String(chatId) };
@@ -552,7 +554,6 @@ function sendPhotoAlbum(botType, chatId, blobs, caption, opts) {
     var media = [];
     for (var i = 0; i < batch.length; i++) {
       var item = { type: 'photo', media: 'attach://photo' + i };
-      // 最初のバッチの最初の写真にキャプション
       if (offset === 0 && i === 0 && caption) item.caption = caption;
       media.push(item);
       payload['photo' + i] = batch[i];
@@ -568,15 +569,36 @@ function sendPhotoAlbum(botType, chatId, blobs, caption, opts) {
       });
       var body = res.getContentText();
       lastRes = JSON.parse(body);
-      if (!lastRes.ok) {
-        Logger.log('⚠️ sendMediaGroup failed: ' + body);
+      if (lastRes.ok) {
+        anySuccess = true;
+      } else {
+        Logger.log('⚠️ sendMediaGroup failed (chatId=' + chatId + '): ' + body);
       }
     } catch (err) {
-      Logger.log('❌ sendPhotoAlbum error: ' + err);
-      return { ok: false, error: String(err) };
+      Logger.log('❌ sendPhotoAlbum error (chatId=' + chatId + '): ' + err);
+      lastRes = { ok: false, error: String(err) };
     }
   }
+
+  // アルバムが失敗したら1枚ずつ個別送信でフォールバック
+  if (!anySuccess) {
+    Logger.log('⚠️ アルバム送信失敗 → 1枚ずつフォールバック (chatId=' + chatId + ')');
+    return sendPhotosIndividually(botType, chatId, blobs, caption, opts);
+  }
   return lastRes || { ok: false };
+}
+
+/**
+ * フォールバック: 1枚ずつ sendPhoto で送信
+ */
+function sendPhotosIndividually(botType, chatId, blobs, caption, opts) {
+  var okCount = 0;
+  for (var i = 0; i < blobs.length; i++) {
+    var cap = (i === 0 && caption) ? caption : '';
+    var res = sendPhotoBlob(botType, chatId, blobs[i], cap, opts);
+    if (res && res.ok) okCount++;
+  }
+  return { ok: okCount > 0, sent: okCount, total: blobs.length };
 }
 
 /**
