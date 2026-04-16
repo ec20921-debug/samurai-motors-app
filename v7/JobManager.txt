@@ -167,12 +167,16 @@ function apiJobStart(body) {
       '施工時間':       ''
     });
 
-    // ── 3. 予約ステータス更新 ──
+    // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
     var bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
     if (bkRow) {
-      updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
-        '進行状態': 'in_progress'
-      });
+      try {
+        updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
+          '進行状態': '作業中'
+        });
+      } catch (e) {
+        Logger.log('⚠️ 予約ステータス更新失敗: ' + e);
+      }
     }
 
     // トピック ID を取得
@@ -188,35 +192,47 @@ function apiJobStart(body) {
       }
     }
 
-    // ── 4. 顧客へ: メッセージ先 → 写真（写真失敗してもメッセージは届く） ──
+    // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     if (customerChatId) {
-      var custText =
-        '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
-        'Your car wash has started!\n\n' +
-        '📸 រូបថតមុនពេលលាង / Before photos ↓';
-      sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      try {
+        var custText =
+          '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
+          'Your car wash has started!\n\n' +
+          '📸 រូបថតមុនពេលលាង / Before photos ↓';
+        sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      } catch (e) {
+        Logger.log('⚠️ 顧客メッセージ送信失敗: ' + e);
+      }
       if (photoResult.blobs.length > 0) {
-        sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+        try {
+          sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+        } catch (e) {
+          Logger.log('⚠️ 顧客写真送信失敗: ' + e);
+        }
       }
     }
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
-    var adminText = '▶️ 作業開始\n' +
-      '━━━━━━━━━━━━━━━━━\n' +
-      (bookingId ? '🆔 ' + bookingId + '\n' : '') +
-      '👤 ' + (body.name || '-') + '\n' +
-      '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
-      '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
-      '✨ Plan ' + (body.plan || '-') + ' (' + (body.vehicleType || '-') + ')\n' +
-      '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
-      '📷 Before ' + photoResult.urls.length + '枚';
+    try {
+      var adminText = '▶️ 作業開始\n' +
+        '━━━━━━━━━━━━━━━━━\n' +
+        (bookingId ? '🆔 ' + bookingId + '\n' : '') +
+        '👤 ' + (body.name || '-') + '\n' +
+        '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
+        '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
+        '✨ Plan ' + (body.plan || '-') + ' (' + (body.vehicleType || '-') + ')\n' +
+        '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
+        '📷 Before ' + photoResult.urls.length + '枚';
 
-    var adminOpts = {};
-    if (threadId) adminOpts.message_thread_id = threadId;
+      var adminOpts = {};
+      if (threadId) adminOpts.message_thread_id = threadId;
 
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
-    if (photoResult.blobs.length > 0) {
-      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      if (photoResult.blobs.length > 0) {
+        sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+      }
+    } catch (e) {
+      Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
     return { status: 'ok', jobId: jobId };
@@ -251,27 +267,40 @@ function apiJobEnd(body) {
       photoResult = saveBase64PhotosToDrive(body.afterPhotos, bookingId || 'manual', 'after');
     }
 
-    // ── 2. 作業記録シート更新 ──
+    // ── 2. 作業記録シート更新（同一予約IDで複数行ある場合は最新行を更新） ──
     if (bookingId) {
-      var jobRow = findRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
+      // jobId が body で指定されていればそれで検索、なければ 予約ID の最新ヒット行
+      var jobRow = body.jobId
+        ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
+        : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
       if (jobRow) {
-        updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, {
-          '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
-          'After写真URL':   photoResult.urls.join('\n'),
-          '作業状態':       '完了',
-          '施工時間':       duration + '分'
-        });
+        try {
+          updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, {
+            '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
+            'After写真URL':   photoResult.urls.join('\n'),
+            '作業状態':       '完了',
+            '施工時間':       duration + '分'
+          });
+        } catch (e) {
+          Logger.log('⚠️ 作業記録更新失敗: ' + e);
+        }
+      } else {
+        Logger.log('⚠️ 作業記録で該当ジョブ行が見つからない: bookingId=' + bookingId + ' jobId=' + (body.jobId || ''));
       }
     }
 
-    // ── 3. 予約ステータス更新 ──
+    // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
     var bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
     var customerChatId = '';
     var threadId = null;
     if (bkRow) {
-      updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
-        '進行状態': 'completed'
-      });
+      try {
+        updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
+          '進行状態': '作業完了'
+        });
+      } catch (e) {
+        Logger.log('⚠️ 予約ステータス更新失敗: ' + e);
+      }
       customerChatId = String(bkRow.data['チャットID'] || '');
       if (customerChatId) {
         var custRow = findCustomerRow(customerChatId);
@@ -281,33 +310,45 @@ function apiJobEnd(body) {
       }
     }
 
-    // ── 4. 顧客へ: メッセージ先 → 写真 ──
+    // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     if (customerChatId) {
-      var custText =
-        '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\n' +
-        'Your car wash is complete!\n\n' +
-        '⏱ ' + duration + ' នាទី / minutes\n' +
-        '📸 រូបថតក្រោយពេលលាង / After photos ↓';
-      sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      try {
+        var custText =
+          '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\n' +
+          'Your car wash is complete!\n\n' +
+          '⏱ ' + duration + ' នាទី / minutes\n' +
+          '📸 រូបថតក្រោយពេលលាង / After photos ↓';
+        sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+      } catch (e) {
+        Logger.log('⚠️ 顧客メッセージ送信失敗: ' + e);
+      }
       if (photoResult.blobs.length > 0) {
-        sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+        try {
+          sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
+        } catch (e) {
+          Logger.log('⚠️ 顧客写真送信失敗: ' + e);
+        }
       }
     }
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
-    var adminText = '⏹ 作業終了\n' +
-      '━━━━━━━━━━━━━━━━━\n' +
-      (bookingId ? '🆔 ' + bookingId + '\n' : '') +
-      '👤 ' + (body.name || '-') + '\n' +
-      '⏱ 所要時間: ' + duration + '分\n' +
-      '📷 After ' + photoResult.urls.length + '枚';
+    try {
+      var adminText = '⏹ 作業終了\n' +
+        '━━━━━━━━━━━━━━━━━\n' +
+        (bookingId ? '🆔 ' + bookingId + '\n' : '') +
+        '👤 ' + (body.name || '-') + '\n' +
+        '⏱ 所要時間: ' + duration + '分\n' +
+        '📷 After ' + photoResult.urls.length + '枚';
 
-    var adminOpts = {};
-    if (threadId) adminOpts.message_thread_id = threadId;
+      var adminOpts = {};
+      if (threadId) adminOpts.message_thread_id = threadId;
 
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
-    if (photoResult.blobs.length > 0) {
-      sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      if (photoResult.blobs.length > 0) {
+        sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+      }
+    } catch (e) {
+      Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
     // [Phase 5] ここで sendPaymentQR(customerChatId, bookingId) を呼ぶ予定
@@ -331,7 +372,9 @@ function apiJobFinal(body) {
 
     // 既に作業記録がある場合は何もしない（job_end で完結済み）
     if (bookingId) {
-      var existing = findRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
+      var existing = body.jobId
+        ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
+        : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
       if (existing && existing.data['作業状態'] === '完了') {
         return { status: 'ok', message: 'already completed' };
       }
@@ -350,7 +393,11 @@ function apiJobFinal(body) {
     }
 
     // 作業記録（既存更新 or 新規作成）
-    var jobRow = bookingId ? findRow(SHEET_NAMES.JOBS, '予約ID', bookingId) : null;
+    var jobRow = bookingId
+      ? (body.jobId
+          ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
+          : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId))
+      : null;
 
     if (jobRow) {
       var updates = {
@@ -378,13 +425,17 @@ function apiJobFinal(body) {
       });
     }
 
-    // 予約ステータス
+    // 予約ステータス（ドロップダウン値に合わせる）
     if (bookingId) {
       var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow) {
-        updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
-          '進行状態': 'completed'
-        });
+        try {
+          updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
+            '進行状態': '作業完了'
+          });
+        } catch (e) {
+          Logger.log('⚠️ 予約ステータス更新失敗: ' + e);
+        }
       }
     }
 

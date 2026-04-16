@@ -116,6 +116,36 @@ function findRow(sheetName, colName, value) {
 }
 
 /**
+ * 指定列の値で行を検索し、「最後にヒットした1行」を返す
+ * 同じ予約で複数ジョブ行がある場合に最新行を更新したい時に使う
+ *
+ * @param {string} sheetName
+ * @param {string} colName
+ * @param {*} value
+ * @return {{rowIndex: number, data: Object} | null}
+ */
+function findLastRow(sheetName, colName, value) {
+  const sheet = getSheet(sheetName);
+  const headers = getHeaderMap(sheetName);
+  const colIdx = headers[colName];
+  if (!colIdx) {
+    throw new Error('❌ findLastRow: 列 "' + colName + '" が ' + sheetName + ' に存在しません');
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  const colValues = sheet.getRange(2, colIdx, lastRow - 1, 1).getValues();
+  var hitRow = -1;
+  for (let i = 0; i < colValues.length; i++) {
+    if (String(colValues[i][0]) === String(value)) {
+      hitRow = i + 2;
+    }
+  }
+  if (hitRow === -1) return null;
+  return { rowIndex: hitRow, data: readRow(sheetName, hitRow) };
+}
+
+/**
  * 指定行を読み取ってオブジェクトで返す
  */
 function readRow(sheetName, rowIndex) {
