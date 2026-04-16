@@ -36,11 +36,15 @@ function apiBookingToday() {
     var headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
     var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
 
-    // 今日と明日の日付文字列（カンボジア時間）
+    // スプレッドシートのタイムゾーンで比較（シートに格納された Date は
+    // ss.getSpreadsheetTimeZone() の midnight として扱われるため、
+    // 比較用の today/tomorrow も同じ TZ で作る）
+    var tz = getSpreadsheet().getSpreadsheetTimeZone();
+
     var now = new Date();
-    var todayStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+    var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
     var tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    var tomorrowStr = Utilities.formatDate(tomorrow, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+    var tomorrowStr = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
 
     var bookings = [];
     for (var i = 0; i < data.length; i++) {
@@ -50,7 +54,7 @@ function apiBookingToday() {
       var dateVal = row[(headers['予約日'] || 1) - 1];
       var dateStr = '';
       if (dateVal instanceof Date) {
-        dateStr = Utilities.formatDate(dateVal, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+        dateStr = Utilities.formatDate(dateVal, tz, 'yyyy-MM-dd');
       } else {
         dateStr = String(dateVal || '').substring(0, 10);
       }
@@ -60,8 +64,14 @@ function apiBookingToday() {
       var status = String(row[(headers['進行状態'] || 1) - 1] || '');
       if (status === 'cancelled' || status === 'キャンセル') continue;
 
-      // 予約時刻（'HH:mm' 文字列）
-      var startTime = String(row[(headers['予約時刻'] || 1) - 1] || '');
+      // 予約時刻（'HH:mm' 文字列 or Date）
+      var startRaw = row[(headers['予約時刻'] || 1) - 1];
+      var startTime = '';
+      if (startRaw instanceof Date) {
+        startTime = Utilities.formatDate(startRaw, tz, 'HH:mm');
+      } else {
+        startTime = String(startRaw || '');
+      }
       var durationMin = Number(row[(headers['所要時間(分)'] || 1) - 1] || 0);
       var endTime = calcEndTime(startTime, durationMin);
 
