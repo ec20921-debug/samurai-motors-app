@@ -45,8 +45,9 @@ function apiBookingToday() {
     var bookings = [];
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
-      // 列インデックスはヘッダーマップから取得（0-based にするため -1）
-      var dateVal = row[(headers['日付'] || 1) - 1];
+
+      // 予約日（'yyyy-MM-dd' 文字列 or Date）
+      var dateVal = row[(headers['予約日'] || 1) - 1];
       var dateStr = '';
       if (dateVal instanceof Date) {
         dateStr = Utilities.formatDate(dateVal, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
@@ -56,30 +57,41 @@ function apiBookingToday() {
 
       // 今日 or 明日のみ（キャンセルは除外）
       if (dateStr !== todayStr && dateStr !== tomorrowStr) continue;
-      var status = String(row[(headers['ステータス'] || 1) - 1] || '');
-      if (status === 'cancelled') continue;
+      var status = String(row[(headers['進行状態'] || 1) - 1] || '');
+      if (status === 'cancelled' || status === 'キャンセル') continue;
 
-      var startTime = row[(headers['開始時刻'] || 1) - 1] || '';
-      var endTime = row[(headers['終了時刻'] || 1) - 1] || '';
+      // 予約時刻（'HH:mm' 文字列）
+      var startTime = String(row[(headers['予約時刻'] || 1) - 1] || '');
+      var durationMin = Number(row[(headers['所要時間(分)'] || 1) - 1] || 0);
+      var endTime = calcEndTime(startTime, durationMin);
+
+      // プランフル名から letter を抽出（例: "清 KIYOME (A)" → "A"）
+      var planFull = String(row[(headers['プラン'] || 1) - 1] || '');
+      var letterMatch = planFull.match(/\(([A-Z])\)/);
+      var planLetter = letterMatch ? letterMatch[1] : planFull;
+
+      // 顧客氏名は顧客シートから引く（予約シートには氏名列なし）
+      var chatId = String(row[(headers['チャットID'] || 1) - 1] || '');
+      var customerName = '';
+      if (chatId) {
+        var cr = findCustomerRow(chatId);
+        if (cr) customerName = cr.data['氏名'] || cr.data['ユーザー名'] || '';
+      }
 
       bookings.push({
-        bookingId: String(row[(headers['予約番号'] || 1) - 1] || ''),
+        bookingId: String(row[(headers['予約ID'] || 1) - 1] || ''),
         date: dateStr,
-        customerName: String(row[(headers['氏名'] || 1) - 1] || ''),
-        chatId: String(row[(headers['チャットID'] || 1) - 1] || ''),
-        planLetter: String(row[(headers['プラン'] || 1) - 1] || ''),
-        vehicleType: String(row[(headers['車種区分'] || 1) - 1] || ''),
-        startTime: startTime instanceof Date
-          ? Utilities.formatDate(startTime, 'Asia/Phnom_Penh', 'HH:mm')
-          : String(startTime),
-        endTime: endTime instanceof Date
-          ? Utilities.formatDate(endTime, 'Asia/Phnom_Penh', 'HH:mm')
-          : String(endTime),
-        amount: Number(row[(headers['金額'] || 1) - 1] || 0),
+        customerName: customerName,
+        chatId: chatId,
+        planLetter: planLetter,
+        vehicleType: String(row[(headers['車種タイプ'] || 1) - 1] || ''),
+        startTime: startTime,
+        endTime: endTime,
+        amount: Number(row[(headers['料金(USD)'] || 1) - 1] || 0),
         status: status,
-        location: String(row[(headers['場所'] || 1) - 1] || ''),
-        carModel: String(row[(headers['車種'] || 1) - 1] || ''),
-        plate: String(row[(headers['ナンバー'] || 1) - 1] || '')
+        location: String(row[(headers['マップリンク'] || 1) - 1] || row[(headers['住所'] || 1) - 1] || ''),
+        carModel: String(row[(headers['車種名'] || 1) - 1] || ''),
+        plate: ''
       });
     }
 
@@ -94,6 +106,19 @@ function apiBookingToday() {
     Logger.log('❌ apiBookingToday error: ' + err);
     return { status: 'error', message: String(err) };
   }
+}
+
+/**
+ * 開始時刻 + 所要時間 → 終了時刻 'HH:mm'
+ */
+function calcEndTime(startHHmm, durationMin) {
+  if (!startHHmm || !durationMin) return '';
+  var parts = String(startHHmm).split(':');
+  if (parts.length < 2) return '';
+  var totalMin = Number(parts[0]) * 60 + Number(parts[1]) + durationMin;
+  var h = Math.floor(totalMin / 60) % 24;
+  var m = totalMin % 60;
+  return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
 }
 
 // ====== job_start ======
@@ -112,10 +137,10 @@ function apiJobStart(body) {
 
     // 予約紐付けがあればステータス更新
     if (bookingId) {
-      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow) {
         updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
-          'ステータス': 'in_progress'
+          '進行状態': 'in_progress'
         });
       }
     }
@@ -141,7 +166,7 @@ function apiJobStart(body) {
     // 管理グループにトピックがあれば、そのトピックへ。なければ General
     var threadId = null;
     if (bookingId) {
-      var bkRow2 = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow2 = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow2) {
         var chatId = String(bkRow2.data['チャットID'] || '');
         if (chatId) {
@@ -164,7 +189,7 @@ function apiJobStart(body) {
 
     // ── 3方向配信: 顧客へ通知（予約紐付けがある場合） ──
     if (bookingId) {
-      var bkRow3 = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow3 = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow3) {
         var custChatId = String(bkRow3.data['チャットID'] || '');
         if (custChatId) {
@@ -232,7 +257,7 @@ function apiJobEnd(body) {
 
     var threadId = null;
     if (bookingId) {
-      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow) {
         var chatId = String(bkRow.data['チャットID'] || '');
         if (chatId) {
@@ -255,7 +280,7 @@ function apiJobEnd(body) {
 
     // ── 顧客へ通知 ──
     if (bookingId) {
-      var bkRow2 = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow2 = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow2) {
         var custChatId = String(bkRow2.data['チャットID'] || '');
         if (custChatId) {
@@ -344,10 +369,10 @@ function apiJobFinal(body) {
 
     // 予約ステータスを「completed」に更新
     if (bookingId) {
-      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約番号', bookingId);
+      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
       if (bkRow) {
         updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
-          'ステータス': 'completed'
+          '進行状態': 'completed'
         });
       }
     }
