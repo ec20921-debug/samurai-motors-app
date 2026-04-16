@@ -235,7 +235,8 @@ function createBooking(params) {
     const hm = params.startTime.split(':');
     const startDt = parseDateTimePhnomPenh(params.date, parseInt(hm[0], 10), parseInt(hm[1], 10));
     const endDt = new Date(startDt.getTime() + duration * 60 * 1000);
-    const endTimeStr = formatHHmm(endDt.getHours(), endDt.getMinutes());
+    const endPP = toPhnomPenhHM(endDt);
+    const endTimeStr = formatHHmm(endPP.h, endPP.m);
 
     // ── 4. 位置情報をパース ──
     const loc = parseLocationString(params.location);
@@ -374,6 +375,16 @@ function parseDateTimePhnomPenh(dateStr, h, m) {
   const d = parseInt(parts[2], 10);
   // Phnom Penh = UTC+7, so local h:m = UTC (h-7):m
   return new Date(Date.UTC(y, mo, d, h - 7, m, 0));
+}
+
+/**
+ * UTC の Date オブジェクトから カンボジア時間（UTC+7）の時・分を取得
+ * GASサーバーのローカルTZに依存しない安全な変換
+ */
+function toPhnomPenhHM(date) {
+  var h = date.getUTCHours() + 7;
+  if (h >= 24) h -= 24;
+  return { h: h, m: date.getUTCMinutes() };
 }
 
 /**
