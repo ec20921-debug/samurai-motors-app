@@ -15,9 +15,15 @@
  *     - ping                        : ヘルスチェック
  *     - booking_init                : 予約画面初期データ（顧客情報+プラン+出張料）
  *     - booking_slots               : 指定日・プラン・車種の空き枠
+ *     - booking_today               : 本日＋明日の予約一覧（業務ミニアプリ用）
  *   POST:
  *     - booking_register_customer   : 新規顧客登録
  *     - booking_create              : 予約確定
+ *     - job_start                   : 作業開始通知
+ *     - job_end                     : 作業終了通知
+ *     - job                         : 最終データ送信（写真付き）
+ *     - chat_history                : 顧客チャット履歴取得
+ *     - chat_send                   : ミニアプリからメッセージ送信
  */
 
 /**
@@ -41,11 +47,9 @@ function doGet(e) {
         result = apiBookingSlots(e.parameter);
         break;
 
-      // ── Phase 4 で実装 ──
-      case 'getTodayJobs':
-      case 'startJob':
-      case 'endJob':
-        result = { status: 'error', message: 'NOT_IMPLEMENTED', action: action };
+      // ── Phase 4: 業務ミニアプリ ──
+      case 'booking_today':
+        result = apiBookingToday();
         break;
 
       default:
@@ -80,6 +84,27 @@ function doPost(e) {
 
       case 'booking_create':
         result = apiBookingCreate(body);
+        break;
+
+      // ── Phase 4: 業務ミニアプリ ──
+      case 'job_start':
+        result = apiJobStart(body);
+        break;
+
+      case 'job_end':
+        result = apiJobEnd(body);
+        break;
+
+      case 'job':
+        result = apiJobFinal(body);
+        break;
+
+      case 'chat_history':
+        result = apiChatHistory(body);
+        break;
+
+      case 'chat_send':
+        result = apiChatSend(body);
         break;
 
       default:
