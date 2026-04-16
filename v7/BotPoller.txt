@@ -23,11 +23,26 @@
 
 /**
  * Polling メイン関数（1分間隔トリガー）
- * 両Botをまとめてポーリングする
+ * 両Botをまとめてポーリングし、取得した update を即座に処理まで進める。
+ *
+ * 【遅延最小化】
+ *   pollTelegramUpdates と processTelegramQueue が別トリガーだと、
+ *   タイミングによっては最大2分遅延が発生する。
+ *   このため、polling の末尾で同じ実行内で processTelegramQueue を呼び、
+ *   取得直後に顧客転送まで完了させる（最大1分遅延に短縮）。
+ *   別途1分間隔で走る processTelegramQueue トリガーは、万が一失敗した
+ *   update のリトライとして機能する。
  */
 function pollTelegramUpdates() {
   pollBotUpdates(BOT_TYPE.BOOKING);
   pollBotUpdates(BOT_TYPE.FIELD);
+
+  // ── ポーリング直後にキュー処理まで連続実行 ──
+  try {
+    processTelegramQueue();
+  } catch (err) {
+    Logger.log('⚠️ pollTelegramUpdates → processTelegramQueue error: ' + err);
+  }
 }
 
 /**
