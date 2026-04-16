@@ -167,25 +167,37 @@ function sendMessageToTopic(msg, threadId) {
  * @param {Object} msg - Telegram message オブジェクト（chat.id === ADMIN_GROUP_ID）
  */
 function handleAdminReply(msg) {
+  // ── 診断ログ: 受信したmsgのメタ情報を出す ──
+  Logger.log('🔵 handleAdminReply called: thread_id=' + msg.message_thread_id +
+    ' from.is_bot=' + (msg.from ? msg.from.is_bot : 'no-from') +
+    ' from.id=' + (msg.from ? msg.from.id : '-') +
+    ' type=' + (msg.text ? 'text' : (msg.photo ? 'photo' : (msg.document ? 'document' : 'other'))));
+
   // トピック外（General）の投稿は無視
   if (!msg.message_thread_id) {
+    Logger.log('⏭️ handleAdminReply: thread_id 無し（General投稿） → skip');
     return;
   }
 
   // Botの投稿（自分で転送した顧客メッセージ）はスキップ
   if (msg.from && msg.from.is_bot) {
+    Logger.log('⏭️ handleAdminReply: is_bot=true → skip');
     return;
   }
 
   // thread_id から顧客を逆引き
   const customer = findCustomerByThreadId(msg.message_thread_id);
   if (!customer) {
-    Logger.log('⚠️ handleAdminReply: thread_id=' + msg.message_thread_id + ' に対応する顧客なし');
+    Logger.log('⚠️ handleAdminReply: thread_id=' + msg.message_thread_id + ' に対応する顧客なし（顧客シートのトピックID列を確認）');
     return;
   }
 
+  Logger.log('✅ handleAdminReply: 顧客特定 chatId=' + customer.chatId + ' → sendMessageToCustomer 呼び出し');
+
   // 顧客へ送信（種別ごとに分岐）
   const result = sendMessageToCustomer(msg, customer.chatId);
+
+  Logger.log('📤 handleAdminReply 送信完了: type=' + result.messageType + ' content=' + result.content);
 
   // ログ
   logChat({

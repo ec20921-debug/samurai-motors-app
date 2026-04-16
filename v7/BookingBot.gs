@@ -47,8 +47,14 @@ function dispatchBookingMessage(msg) {
   const chatId = String(msg.chat.id);
   const adminGroupId = String(cfg.adminGroupId);
 
+  Logger.log('🟢 dispatchBookingMessage: chat.id=' + chatId +
+    ' vs adminGroupId=' + adminGroupId +
+    ' chat.type=' + msg.chat.type +
+    ' thread_id=' + (msg.message_thread_id || '-'));
+
   // ── 管理グループからの返信 ──
   if (chatId === adminGroupId) {
+    Logger.log('→ route: handleAdminReply');
     handleAdminReply(msg);
     return;
   }
@@ -59,6 +65,7 @@ function dispatchBookingMessage(msg) {
     return;
   }
 
+  Logger.log('→ route: handleCustomerMessage');
   handleCustomerMessage(msg);
 }
 

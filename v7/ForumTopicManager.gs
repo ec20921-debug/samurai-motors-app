@@ -166,6 +166,32 @@ function pickIconColor(chatId) {
 // ====== デバッグ ======
 
 /**
+ * 顧客シートの トピックID 列の中身を一覧表示（診断用）
+ * GAS エディタで関数選択 → 実行 → ログ確認
+ */
+function dumpCustomerTopics() {
+  var sheet = getSheet(SHEET_NAMES.CUSTOMERS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('⚠️ 顧客シートにデータなし');
+    return;
+  }
+  var headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('📋 顧客シート トピックID 一覧');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var name  = row[(headers['氏名'] || 1) - 1];
+    var cid   = row[(headers['チャットID'] || 1) - 1];
+    var tid   = row[(headers['トピックID'] || 1) - 1];
+    Logger.log((i + 2) + ': 氏名=' + name + ' chatId=' + cid + ' topicId=' + tid + ' (type=' + typeof tid + ')');
+  }
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
  * Telegram update から customer オブジェクトを抽出する共通ヘルパー
  */
 function extractCustomerFromMessage(msg) {
