@@ -113,3 +113,36 @@ function getWebhookInfo(botType) {
 function getMe(botType) {
   return callTelegramApi(botType, 'getMe', {});
 }
+
+/**
+ * 引数なしで実行できるデバッグ用ラッパー
+ * GAS エディタの「▶ 実行」で直接呼べる
+ */
+function debugGetMeInternal() {
+  const res = getMe(BOT_TYPE.INTERNAL);
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🤖 内務Bot getMe 結果');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log(JSON.stringify(res, null, 2));
+  return res;
+}
+
+/**
+ * 引数なしで Webhook 状況を確認
+ * ポーリング方式に切り替える前に Webhook が残っていないか確認する用
+ */
+function debugGetWebhookInfoInternal() {
+  const res = getWebhookInfo(BOT_TYPE.INTERNAL);
+  Logger.log(JSON.stringify(res, null, 2));
+  return res;
+}
+
+/**
+ * ポーリング方式に切り替えるため Webhook を削除
+ * （BotFather から webhook が張られていた場合に必要）
+ */
+function debugDeleteWebhookInternal() {
+  const res = deleteWebhook(BOT_TYPE.INTERNAL);
+  Logger.log(JSON.stringify(res, null, 2));
+  return res;
+}
