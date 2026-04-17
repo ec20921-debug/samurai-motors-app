@@ -22,8 +22,9 @@ const SLOT_STEP_MIN = 30;   // 空き枠チェックの刻み幅（分）
 
 // ミニアプリ（英語表示）用のプラン説明
 // 料金設定シートの「説明」列は日本語（管理者向け）なので、顧客用は letter 毎にここで訳す
+// Air check は希望者のみ対応（全プラン共通オプション扱い）→ 基本説明からは外す
 const PLAN_DESC_EN = {
-  'A': 'Waterless wash + Tire shine + Air check',
+  'A': 'Waterless wash + Tire shine',
   'B': 'A + Front 3 windows water-repellent (quick)',
   'C': 'A + All windows water-repellent (quick)',
   'D': 'A + Oil film removal + All windows water-repellent'
