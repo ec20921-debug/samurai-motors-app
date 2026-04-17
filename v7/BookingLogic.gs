@@ -232,11 +232,16 @@ function createBooking(params) {
     }
 
     // ── 3. 時刻計算 ──
+    // ⚠️ タイムゾーン注意: GAS実行環境のロケールに依存しないよう、
+    //   終了時刻は Utilities.formatDate + Asia/Phnom_Penh で確実にPP時刻に整形する。
+    //   （以前 toPhnomPenhHM() を使っていたがUTC計算が混入し誤表示した経緯あり）
     const hm = params.startTime.split(':');
     const startDt = parseDateTimePhnomPenh(params.date, parseInt(hm[0], 10), parseInt(hm[1], 10));
     const endDt = new Date(startDt.getTime() + duration * 60 * 1000);
-    const endPP = toPhnomPenhHM(endDt);
-    const endTimeStr = formatHHmm(endPP.h, endPP.m);
+    const endTimeStr = Utilities.formatDate(endDt, BOOKING_TZ, 'HH:mm');
+    Logger.log('🕒 createBooking time calc: start=' + params.startTime +
+      ' duration=' + duration + 'min end=' + endTimeStr +
+      ' (startDt=' + startDt.toISOString() + ' endDt=' + endDt.toISOString() + ')');
 
     // ── 4. 位置情報をパース ──
     const loc = parseLocationString(params.location);
@@ -340,6 +345,21 @@ function notifyBookingCreated(info) {
     '━━━━━━━━━━━━━━━━\n' +
     'សូមអរគុណ! / Thank you!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
+
+  // ── 駐車場所のヒアリング（カンボジアはビル駐車場で階が多いため必須） ──
+  // 現場スタッフが「どの階のどの車か」を特定できるよう、車両前面の写真と階数を聞く。
+  // 返信が来なくても個別対応できるので必須応答にはしない。
+  const parkingInfoText =
+    '📍 សូមផ្ញើបន្ថែម / Please also send:\n' +
+    '━━━━━━━━━━━━━━━━\n' +
+    '1️⃣ 📸 រូបថតពីខាងមុខរថយន្តនៅកន្លែងចត\n' +
+    '    Front photo of your car (at parking spot)\n' +
+    '2️⃣ 🏢 ជាន់ទីប៉ុន្មាន?\n' +
+    '    Which floor is your car parked on?\n' +
+    '━━━━━━━━━━━━━━━━\n' +
+    '🙏 ដើម្បីឱ្យក្រុមការងាររបស់យើងរកឃើញរថយន្តរបស់អ្នកបានឆាប់\n' +
+    '🙏 So our team can locate your car quickly.';
+  sendMessage(BOT_TYPE.BOOKING, info.chatId, parkingInfoText);
 
   // ── 管理グループへ（顧客トピック内） ──
   const customer = findCustomerRow(info.chatId);
