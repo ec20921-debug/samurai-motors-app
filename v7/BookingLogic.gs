@@ -20,6 +20,15 @@
 const BOOKING_TZ = 'Asia/Phnom_Penh';
 const SLOT_STEP_MIN = 30;   // 空き枠チェックの刻み幅（分）
 
+// ミニアプリ（英語表示）用のプラン説明
+// 料金設定シートの「説明」列は日本語（管理者向け）なので、顧客用は letter 毎にここで訳す
+const PLAN_DESC_EN = {
+  'A': 'Waterless wash + Tire shine + Air check',
+  'B': 'A + Front 3 windows water-repellent (quick)',
+  'C': 'A + All windows water-repellent (quick)',
+  'D': 'A + Oil film removal + All windows water-repellent'
+};
+
 // ====== プラン取得 ======
 
 /**
@@ -49,7 +58,8 @@ function getActivePlans() {
       letter: parsed.letter,
       jp: parsed.jp,
       name: parsed.name,
-      desc: String(row[5] || ''),
+      desc: String(row[5] || ''),                          // 日本語（管理用）
+      descEn: PLAN_DESC_EN[parsed.letter] || parsed.name,  // 英語（顧客ミニアプリ用）
       planFull: planName,
       priceSedan: Number(row[1]) || 0,
       priceSuv: Number(row[2]) || 0,

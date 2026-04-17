@@ -724,7 +724,7 @@ function renderPlans() {
       + '<span class="plan-letter">' + plan.letter + '</span>'
       + '<span class="plan-name">' + escapeHtml(plan.name) + '</span>'
       + '</div>'
-      + '<div class="plan-desc">' + escapeHtml(plan.desc || plan.jp || '') + '</div>'
+      + '<div class="plan-desc">' + escapeHtml(plan.descEn || plan.desc || plan.jp || '') + '</div>'
       + '<div class="plan-meta">'
       + '<div class="plan-duration">⏱ ' + durationDisplay + '</div>'
       + '<div class="plan-price">' + priceDisplay + '</div>'

@@ -145,6 +145,8 @@ function getBookingMiniAppUrl() {
 
 /**
  * /start 応答：クメール語メインで挨拶
+ * 顧客がDMで直接問い合わせするのではなく、
+ * 左下のメニューボタンからミニアプリを開いて予約してもらうよう誘導する。
  */
 function sendWelcomeMessage(msg) {
   const from = msg.from || {};
@@ -157,10 +159,31 @@ function sendWelcomeMessage(msg) {
     '\n' +
     'Hello! Welcome to Samurai Motors — mobile car wash service.\n' +
     '\n' +
-    '📸 សូមផ្ញើរូបថតឡានរបស់អ្នកឬសួរអ្វីមួយ។\n' +
-    '📸 Please send a photo of your car or ask us anything.\n' +
+    '━━━━━━━━━━━━━━━━\n' +
+    '👇 សូមកក់តាមរយៈប៊ូតុងខាងក្រោមឆ្វេង\n' +
+    '👇 Please book using the button at the bottom-left\n' +
+    '━━━━━━━━━━━━━━━━\n' +
     '\n' +
-    '🗓 ការកក់ / Booking: /book';
+    '🗓 ការកក់ / Booking: /book\n' +
+    '\n' +
+    '📸 ឬផ្ញើរូបថតឡានរបស់អ្នកសម្រាប់សំណួរ\n' +
+    '📸 Or send a photo of your car for questions.';
+
+  // ── メニューボタンをこの顧客向けに明示設定（booking mini-app 直起動） ──
+  // デフォルトでも setupBookingBotMenuButton() で全ユーザーに設定されるが、
+  // /start を打つ新規顧客にはその場で再設定して即ボタンが現れるようにする。
+  try {
+    const url = getBookingMiniAppUrl();
+    if (url) {
+      setChatMenuButton(BOT_TYPE.BOOKING, {
+        type: 'web_app',
+        text: '🚗 Booking',
+        web_app: { url: url }
+      }, msg.chat.id);
+    }
+  } catch (e) {
+    Logger.log('⚠️ setChatMenuButton for user error: ' + e);
+  }
 
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id, text);
 
@@ -188,4 +211,45 @@ function ensureCustomerTopic(msg) {
       { message_thread_id: topic.threadId }
     );
   }
+}
+
+/**
+ * 予約Bot のデフォルト メニューボタン（左下）を「🚗 Booking」ミニアプリ起動に設定する
+ *
+ * 【使い方】
+ *   BOOKING_MINIAPP_URL を PropertiesService に登録後、GASエディタから1回実行するだけ。
+ *   全ユーザーの左下ボタンがミニアプリ直起動になる。
+ *   URL を変えたらもう一度実行すればOK。
+ *
+ * 【Telegram 仕様】
+ *   setChatMenuButton を chat_id 指定なしで呼ぶと全ユーザー共通のデフォルト設定になる。
+ *   ただし一度個別ユーザーにセットされた場合は、個別設定が優先される（/start で同じURLを再設定している）。
+ */
+function setupBookingBotMenuButton() {
+  const url = getBookingMiniAppUrl();
+  if (!url) {
+    Logger.log('❌ BOOKING_MINIAPP_URL が未登録です。PropertiesService に登録してから再実行してください');
+    return;
+  }
+
+  const res = setChatMenuButton(BOT_TYPE.BOOKING, {
+    type: 'web_app',
+    text: '🚗 Booking',
+    web_app: { url: url }
+  });
+
+  if (res && res.ok) {
+    Logger.log('✅ 予約Bot メニューボタン設定完了: ' + url);
+  } else {
+    Logger.log('❌ メニューボタン設定失敗: ' + JSON.stringify(res));
+  }
+}
+
+/**
+ * 予約Bot のメニューボタンをデフォルト（= /commands リスト表示）に戻す
+ * 復旧用
+ */
+function resetBookingBotMenuButton() {
+  const res = setChatMenuButton(BOT_TYPE.BOOKING, { type: 'default' });
+  Logger.log('🔄 メニューボタン初期化: ' + JSON.stringify(res));
 }

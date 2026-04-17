@@ -230,6 +230,22 @@ function getUpdates(botType, offset, options) {
   return callTelegramApi(botType, 'getUpdates', payload);
 }
 
+// ====== チャットメニューボタン（ミニアプリ直起動） ======
+
+/**
+ * Bot 左下の「メニューボタン」を設定する
+ * chatId を省略するとデフォルト（全ユーザー共通）として登録される
+ *
+ * @param {string} botType
+ * @param {Object} menuButton - {type:'web_app', text, web_app:{url}} or {type:'commands'} or {type:'default'}
+ * @param {string|number} [chatId] - 個別ユーザー限定時のみ
+ */
+function setChatMenuButton(botType, menuButton, chatId) {
+  const payload = { menu_button: menuButton };
+  if (chatId) payload.chat_id = chatId;
+  return callTelegramApi(botType, 'setChatMenuButton', payload);
+}
+
 // ====== Webhook 管理 ======
 
 function setWebhook(botType, url) {
