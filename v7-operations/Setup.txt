@@ -26,7 +26,7 @@ function setupV7OpsInitial() {
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
 
   ensureStaffMasterSheet(ss);
-  ensureAttendanceGpsColumns(ss);
+  ensureAttendanceSchema(ss);
   seedInitialStaff();
 
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
@@ -82,18 +82,35 @@ function ensureStaffMasterSheet(ss) {
 }
 
 /**
- * 「勤怠記録」シートに GPS 関連列を追加
+ * 「勤怠記録」シートに AttendanceManager が要求する全列を追加
  *
- * 追加する列（足りなければ末尾に追加）:
- *   出勤緯度 / 出勤経度 / 出勤マップリンク
- *   退勤緯度 / 退勤経度 / 退勤マップリンク
+ * 必須列:
+ *   日付 / スタッフID / 氏名(JP) / Chat ID /
+ *   出勤時刻 / 退勤時刻 / 勤務分数 /
+ *   出勤緯度 / 出勤経度 / 出勤マップリンク /
+ *   退勤緯度 / 退勤経度 / 退勤マップリンク /
  *   位置精度(m) / メモ
+ *
+ * 既存列は尊重し、足りないものだけ末尾に追加する。
+ * シートが存在しなければ新規作成。
  */
-function ensureAttendanceGpsColumns(ss) {
+function ensureAttendanceSchema(ss) {
   const name = SHEET_NAMES.ATTENDANCE;
-  const sheet = ss.getSheetByName(name);
+  let sheet = ss.getSheetByName(name);
+  const needed = [
+    '日付', 'スタッフID', '氏名(JP)', 'Chat ID',
+    '出勤時刻', '退勤時刻', '勤務分数',
+    '出勤緯度', '出勤経度', '出勤マップリンク',
+    '退勤緯度', '退勤経度', '退勤マップリンク',
+    '位置精度(m)', 'メモ'
+  ];
+
   if (!sheet) {
-    Logger.log('⚠️ 「' + name + '」が存在しません。手動で作成してください（v5/v6 から流用想定）');
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, needed.length).setValues([needed]);
+    sheet.getRange(1, 1, 1, needed.length).setFontWeight('bold').setBackground('#f1f3f4');
+    sheet.setFrozenRows(1);
+    Logger.log('✅ 「' + name + '」を新規作成しました（' + needed.length + '列）');
     return;
   }
 
@@ -102,22 +119,15 @@ function ensureAttendanceGpsColumns(ss) {
     ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h); })
     : [];
 
-  const needed = [
-    '出勤緯度', '出勤経度', '出勤マップリンク',
-    '退勤緯度', '退勤経度', '退勤マップリンク',
-    '位置精度(m)', 'メモ'
-  ];
-
   const toAdd = needed.filter(function(h) { return existingHeaders.indexOf(h) < 0; });
   if (toAdd.length === 0) {
-    Logger.log('ℹ️ 「' + name + '」の GPS 列は既に完備（スキップ）');
+    Logger.log('ℹ️ 「' + name + '」のスキーマ完備（スキップ）');
     return;
   }
 
   const startCol = lastCol + 1;
   sheet.getRange(1, startCol, 1, toAdd.length).setValues([toAdd]);
   sheet.getRange(1, startCol, 1, toAdd.length).setFontWeight('bold').setBackground('#f1f3f4');
-
   Logger.log('✅ 「' + name + '」に列を追加: ' + toAdd.join(', '));
 }
 

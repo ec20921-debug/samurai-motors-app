@@ -26,9 +26,17 @@ function doGet(e) {
       case 'staff_list':
         return jsonOut({ ok: true, staff: getActiveStaff() });
 
-      // Phase 1b 以降で追加
-      // case 'attendance_today': return jsonOut({ ok: true, ... });
-      // case 'attendance_history': return jsonOut({ ok: true, ... });
+      case 'whoami': {
+        const chatId = String(e.parameter.chatId || '');
+        const staff = chatId ? findStaffByChatId(chatId) : null;
+        return jsonOut({ ok: true, staff: staff });
+      }
+
+      case 'attendance_today': {
+        const chatId = String(e.parameter.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(getTodayAttendance(chatId));
+      }
 
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
@@ -57,9 +65,17 @@ function doPost(e) {
       case 'ping':
         return jsonOut({ ok: true, echo: body });
 
-      // Phase 1b 以降で追加
-      // case 'punch_in':  return jsonOut(punchIn(body));
-      // case 'punch_out': return jsonOut(punchOut(body));
+      case 'punch_in': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(punchIn(chatId, body.gps || null));
+      }
+
+      case 'punch_out': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(punchOut(chatId, body.gps || null));
+      }
 
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });

@@ -16,6 +16,7 @@ const CONFIG_KEYS = {
   // Telegram
   BOT_TOKEN_INTERNAL:        'BOT_TOKEN_INTERNAL',
   ADMIN_GROUP_ID:            'ADMIN_GROUP_ID',
+  ATTENDANCE_TOPIC_ID:       'ATTENDANCE_TOPIC_ID',   // 勤怠ログ用フォーラムトピック
 
   // Google Workspace
   OPERATIONS_SPREADSHEET_ID: 'OPERATIONS_SPREADSHEET_ID',
@@ -75,6 +76,7 @@ function getConfig() {
   return {
     botTokenInternal:        all[CONFIG_KEYS.BOT_TOKEN_INTERNAL],
     adminGroupId:            all[CONFIG_KEYS.ADMIN_GROUP_ID],
+    attendanceTopicId:       all[CONFIG_KEYS.ATTENDANCE_TOPIC_ID] || '',   // 任意
     operationsSpreadsheetId: all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
     internalMiniappUrl:      all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || ''
   };
