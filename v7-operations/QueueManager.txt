@@ -2,11 +2,11 @@
  * QueueManager.gs — 非同期キュー管理（v7-ops版、簡素化）
  *
  * 【責務】
- *   内務Bot からの Telegram update を ScriptProperties に溜め込み、
+ *   勤務Bot からの Telegram update を ScriptProperties に溜め込み、
  *   1分間隔トリガー `processInternalQueue` で順次処理する。
  *
  * 【v7 との違い】
- *   内務Bot はスタッフ数名 × ほぼ打刻のみ、という低頻度ユースケース。
+ *   勤務Bot はスタッフ数名 × ほぼ打刻のみ、という低頻度ユースケース。
  *   v7 のような大量メッセージ転送は無いため、処理ロジックを簡素化。
  *
  * 【キー形式】

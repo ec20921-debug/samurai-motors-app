@@ -1,7 +1,7 @@
 /**
- * TelegramAPI.gs — 内務Bot API ラッパー
+ * TelegramAPI.gs — 勤務Bot API ラッパー
  *
- * v7 の TelegramAPI.gs から流用。内務Bot は1種類のみなので、
+ * v7 の TelegramAPI.gs から流用。勤務Bot は1種類のみなので、
  * BOT_TYPE.INTERNAL 固定で動作する想定。
  */
 
@@ -121,7 +121,7 @@ function getMe(botType) {
 function debugGetMeInternal() {
   const res = getMe(BOT_TYPE.INTERNAL);
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
-  Logger.log('🤖 内務Bot getMe 結果');
+  Logger.log('🤖 勤務Bot getMe 結果');
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log(JSON.stringify(res, null, 2));
   return res;

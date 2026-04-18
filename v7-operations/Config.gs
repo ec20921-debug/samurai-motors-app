@@ -6,8 +6,8 @@
  *   v7（顧客系）とは別の GAS プロジェクトなので、ここで独立に管理する。
  *
  * 【v7 との違い】
- *   - Bot Token は内務Bot 専用（BOT_TOKEN_INTERNAL）
- *   - スプレッドシートも内務専用（OPERATIONS_SPREADSHEET_ID）
+ *   - Bot Token は勤務Bot 専用（BOT_TOKEN_INTERNAL）
+ *   - スプレッドシートも勤務専用（OPERATIONS_SPREADSHEET_ID）
  *   - ADMIN_GROUP_ID は v7 と同値（共通の管理グループ）
  */
 
@@ -26,7 +26,7 @@ const CONFIG_KEYS = {
 };
 
 // ====== Bot種別識別子 ======
-// v7-ops は内務Bot のみ。v7 の BOT_TYPE とは別名前空間。
+// v7-ops は勤務Bot のみ。v7 の BOT_TYPE とは別名前空間。
 const BOT_TYPE = {
   INTERNAL: 'internal'
 };

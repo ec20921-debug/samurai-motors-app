@@ -1,5 +1,5 @@
 /**
- * BotPoller.gs — 内務Bot ポーリング
+ * BotPoller.gs — 勤務Bot ポーリング
  *
  * 【責務】
  *   Telegram getUpdates をポーリングし、受信した update を
@@ -13,7 +13,7 @@
  */
 
 /**
- * 内務Bot のポーリング本体（1分トリガー想定）
+ * 勤務Bot のポーリング本体（1分トリガー想定）
  */
 function pollInternalBot() {
   const props = PropertiesService.getScriptProperties();
@@ -68,7 +68,7 @@ function setupInternalBotTriggers() {
   ScriptApp.newTrigger('processInternalQueue').timeBased().everyMinutes(1).create();
   ScriptApp.newTrigger('cleanupOldProcessedIds').timeBased().everyHours(1).create();
 
-  Logger.log('✅ 内務Bot トリガー設定完了');
+  Logger.log('✅ 勤務Bot トリガー設定完了');
   Logger.log('  - pollInternalBot        : 1分');
   Logger.log('  - processInternalQueue   : 1分');
   Logger.log('  - cleanupOldProcessedIds : 1時間');

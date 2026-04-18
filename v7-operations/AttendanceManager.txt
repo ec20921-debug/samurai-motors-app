@@ -254,7 +254,7 @@ function toMinutes_(hhmm) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// ====== 内務Bot update 処理（Queueからディスパッチ） ======
+// ====== 勤務Bot update 処理（Queueからディスパッチ） ======
 
 /**
  * QueueManager.processInternalQueue から呼ばれる
@@ -272,7 +272,7 @@ function handleInternalBotUpdate(update) {
   }
 
   // それ以外のメッセージは無視（現時点）
-  Logger.log('ℹ️ 内務Bot: 未対応メッセージ chat=' + chatId + ' text=' + text);
+  Logger.log('ℹ️ 勤務Bot: 未対応メッセージ chat=' + chatId + ' text=' + text);
 }
 
 /**

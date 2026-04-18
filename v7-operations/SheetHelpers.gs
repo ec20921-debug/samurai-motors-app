@@ -7,7 +7,7 @@
  *   - 列名ベースの汎用 append / find 関数
  *
  * 【設計方針】
- *   - getConfig().operationsSpreadsheetId で常に内務専用シートを開く
+ *   - getConfig().operationsSpreadsheetId で常に勤務専用シートを開く
  *   - 列ヘッダーは1行目を基準（v7 と同じ方式）
  */
 
