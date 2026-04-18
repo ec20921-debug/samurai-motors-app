@@ -147,6 +147,44 @@ function getPriceFor(plan, miniappVt) {
 // 定休日 (0=日, 1=月, ..., 6=土)  ※日曜休業
 const CLOSED_WEEKDAYS = [0];
 
+/**
+ * カンボジアの祝日（YYYY-MM-DD 形式）
+ * 【重要】移動祝日（仏教・水祭り等）は毎年少しずれるため、年度ごとに見直すこと。
+ *         公式発表: https://www.mlvt.gov.kh/ / プラカート
+ * 下記は 2026 年公式リスト（固定祝日＋概算の移動祝日）。
+ */
+const CAMBODIA_HOLIDAYS = [
+  // 2026
+  '2026-01-01', // International New Year Day
+  '2026-01-07', // Victory over Genocide Day
+  '2026-03-08', // International Women's Day
+  '2026-04-14', // Khmer New Year
+  '2026-04-15', // Khmer New Year
+  '2026-04-16', // Khmer New Year
+  '2026-05-01', // International Labour Day
+  '2026-05-01', // Visak Bochea Day（移動・要確認）
+  '2026-05-08', // Royal Ploughing Ceremony（移動・要確認）
+  '2026-05-13', // King Sihamoni's Birthday
+  '2026-05-14', // King Sihamoni's Birthday
+  '2026-05-15', // King Sihamoni's Birthday
+  '2026-06-18', // Queen Mother's Birthday
+  '2026-09-24', // Constitution Day
+  '2026-10-10', // Pchum Ben Holiday（移動・要確認）
+  '2026-10-11', // Pchum Ben Day（移動・要確認）
+  '2026-10-12', // Pchum Ben Holiday（移動・要確認）
+  '2026-10-15', // King Father Commemoration Day
+  '2026-10-29', // King's Coronation Day
+  '2026-10-31', // King Father Sihanouk's Birthday
+  '2026-11-09', // Independence Day
+  '2026-11-23', // Water Festival（移動・要確認）
+  '2026-11-24', // Water Festival
+  '2026-11-25', // Water Festival
+  // 2027 固定祝日（他年分は別途追加）
+  '2027-01-01',
+  '2027-01-07',
+  '2027-03-08'
+];
+
 function findAvailableSlots(dateStr, planLetter, miniappVt) {
   const plan = findPlanByLetter(planLetter);
   if (!plan) return { ok: false, error: 'INVALID_PLAN' };
@@ -167,7 +205,17 @@ function findAvailableSlots(dateStr, planLetter, miniappVt) {
       ok: true,
       slots: [],
       durationMin: duration,
-      debug: 'closed_day: 日曜休業 / Closed on Sundays'
+      debug: 'closed_day: Closed (Sunday)'
+    };
+  }
+
+  // ── カンボジア祝日チェック ──
+  if (CAMBODIA_HOLIDAYS.indexOf(dateStr) >= 0) {
+    return {
+      ok: true,
+      slots: [],
+      durationMin: duration,
+      debug: 'closed_day: Public holiday (Cambodia)'
     };
   }
 

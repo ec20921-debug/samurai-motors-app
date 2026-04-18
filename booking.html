@@ -784,10 +784,44 @@ function renderDates() {
   // 定休日（0=日曜）
   var CLOSED_DAYS = [0];
 
+  // カンボジア祝日（YYYY-MM-DD）— GAS 側 CAMBODIA_HOLIDAYS と同期すること
+  var CAMBODIA_HOLIDAYS = {
+    '2026-01-01': 'New Year',
+    '2026-01-07': 'Victory Day',
+    '2026-03-08': "Women's Day",
+    '2026-04-14': 'Khmer New Year',
+    '2026-04-15': 'Khmer New Year',
+    '2026-04-16': 'Khmer New Year',
+    '2026-05-01': 'Labour Day',
+    '2026-05-08': 'Royal Ploughing',
+    '2026-05-13': "King's Birthday",
+    '2026-05-14': "King's Birthday",
+    '2026-05-15': "King's Birthday",
+    '2026-06-18': "Queen Mother",
+    '2026-09-24': 'Constitution Day',
+    '2026-10-10': 'Pchum Ben',
+    '2026-10-11': 'Pchum Ben',
+    '2026-10-12': 'Pchum Ben',
+    '2026-10-15': 'King Father Day',
+    '2026-10-29': 'Coronation Day',
+    '2026-10-31': 'King Father',
+    '2026-11-09': 'Independence',
+    '2026-11-23': 'Water Festival',
+    '2026-11-24': 'Water Festival',
+    '2026-11-25': 'Water Festival',
+    '2027-01-01': 'New Year',
+    '2027-01-07': 'Victory Day',
+    '2027-03-08': "Women's Day"
+  };
+
   for (var i = 0; i < 12; i++) {
     var d = new Date(today.getTime() + i * 86400000);
     var dateStr = formatDate(d);
-    var isClosed = CLOSED_DAYS.indexOf(d.getDay()) >= 0;
+    var isWeekendClosed = CLOSED_DAYS.indexOf(d.getDay()) >= 0;
+    var holidayName = CAMBODIA_HOLIDAYS[dateStr] || '';
+    var isClosed = isWeekendClosed || !!holidayName;
+    var closedLabel = isWeekendClosed ? 'Closed' : (holidayName ? 'Holiday' : '');
+
     var cell = document.createElement('div');
     cell.className = 'date-cell';
     if (i === 0) cell.classList.add('today');
@@ -797,7 +831,7 @@ function renderDates() {
       '<div class="d-day">' + dayEn[d.getDay()] + '</div>'
       + '<div class="d-num">' + d.getDate() + '</div>'
       + '<div class="d-month">' + monthEn[d.getMonth()] + '</div>'
-      + (isClosed ? '<div class="d-closed">休業</div>' : '');
+      + (isClosed ? '<div class="d-closed" title="' + escapeHtml(holidayName) + '">' + closedLabel + '</div>' : '');
     if (!isClosed) {
       cell.onclick = (function(ds) {
         return function() { selectDate(ds); };
