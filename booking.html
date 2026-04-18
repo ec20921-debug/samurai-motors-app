@@ -226,6 +226,21 @@ body {
 .date-cell.today { border-color: var(--accent); }
 .date-cell.selected .d-day, .date-cell.selected .d-month { color: var(--gold); }
 .date-cell.selected .d-num { color: var(--gold); }
+.date-cell.closed {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(255,255,255,0.02);
+}
+.date-cell.closed:active { transform: none; }
+.date-cell.closed .d-num,
+.date-cell.closed .d-day,
+.date-cell.closed .d-month { color: var(--text-dim); }
+.date-cell .d-closed {
+  font-size: 9px;
+  color: #c62828;
+  margin-top: 2px;
+  font-weight: 700;
+}
 
 /* ───────── 時間スロット ───────── */
 .time-section { margin-top: 20px; }
@@ -766,20 +781,28 @@ function renderDates() {
   var dayEn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var monthEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
+  // 定休日（0=日曜）
+  var CLOSED_DAYS = [0];
+
   for (var i = 0; i < 12; i++) {
     var d = new Date(today.getTime() + i * 86400000);
     var dateStr = formatDate(d);
+    var isClosed = CLOSED_DAYS.indexOf(d.getDay()) >= 0;
     var cell = document.createElement('div');
     cell.className = 'date-cell';
     if (i === 0) cell.classList.add('today');
     if (state.selectedDate === dateStr) cell.classList.add('selected');
+    if (isClosed) cell.classList.add('closed');
     cell.innerHTML =
       '<div class="d-day">' + dayEn[d.getDay()] + '</div>'
       + '<div class="d-num">' + d.getDate() + '</div>'
-      + '<div class="d-month">' + monthEn[d.getMonth()] + '</div>';
-    cell.onclick = (function(ds) {
-      return function() { selectDate(ds); };
-    })(dateStr);
+      + '<div class="d-month">' + monthEn[d.getMonth()] + '</div>'
+      + (isClosed ? '<div class="d-closed">休業</div>' : '');
+    if (!isClosed) {
+      cell.onclick = (function(ds) {
+        return function() { selectDate(ds); };
+      })(dateStr);
+    }
     container.appendChild(cell);
   }
 

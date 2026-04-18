@@ -172,7 +172,8 @@ function apiBookingSlots(params) {
   return {
     status: 'ok',
     slots: res.slots,
-    durationMin: res.durationMin
+    durationMin: res.durationMin,
+    debug: res.debug || ''
   };
 }
 

@@ -144,12 +144,32 @@ function getPriceFor(plan, miniappVt) {
  * @param {string} miniappVt - 'セダン以下' | 'SUV以上'
  * @return {{ok:boolean, slots?:Array<string>, durationMin?:number, error?:string}}
  */
+// 定休日 (0=日, 1=月, ..., 6=土)  ※日曜休業
+const CLOSED_WEEKDAYS = [0];
+
 function findAvailableSlots(dateStr, planLetter, miniappVt) {
   const plan = findPlanByLetter(planLetter);
   if (!plan) return { ok: false, error: 'INVALID_PLAN' };
 
   const duration = getDurationFor(plan, miniappVt);
   if (!duration) return { ok: false, error: 'INVALID_VEHICLE_TYPE' };
+
+  // ── 定休日チェック（日曜）──
+  // 'YYYY-MM-DD' からローカル日付の曜日を算出（カンボジア時間）
+  const dp = dateStr.split('-');
+  const weekday = new Date(Date.UTC(
+    parseInt(dp[0], 10),
+    parseInt(dp[1], 10) - 1,
+    parseInt(dp[2], 10)
+  )).getUTCDay(); // 0..6
+  if (CLOSED_WEEKDAYS.indexOf(weekday) >= 0) {
+    return {
+      ok: true,
+      slots: [],
+      durationMin: duration,
+      debug: 'closed_day: 日曜休業 / Closed on Sundays'
+    };
+  }
 
   const cfg = getBookingConfig();
   const buffer = cfg.bufferMinutes || 30;
@@ -165,6 +185,21 @@ function findAvailableSlots(dateStr, planLetter, miniappVt) {
   const dayEnd = parseDateTimePhnomPenh(dateStr, bizEnd, 0);
 
   const events = calendar.getEvents(dayStart, dayEnd);
+  // 診断用: ブロック元のイベント情報を残す
+  const evDiag = events.map(function(ev) {
+    try {
+      var title = ev.getTitle();
+      var s = ev.getStartTime();
+      var e = ev.getEndTime();
+      var allDay = (typeof ev.isAllDayEvent === 'function' && ev.isAllDayEvent());
+      var fmt = function(d) {
+        return Utilities.formatDate(d, 'Asia/Phnom_Penh', 'MM/dd HH:mm');
+      };
+      return (allDay ? '[ALL-DAY]' : '') + title + ' ' + fmt(s) + '-' + fmt(e);
+    } catch (err) {
+      return '(evt-parse-err)';
+    }
+  });
   const busyRanges = events.map(function(ev) {
     return {
       start: ev.getStartTime().getTime() - buffer * 60 * 1000,
@@ -172,18 +207,24 @@ function findAvailableSlots(dateStr, planLetter, miniappVt) {
     };
   });
 
+  Logger.log('🔎 findAvailableSlots date=' + dateStr + ' weekday=' + weekday +
+    ' events=' + events.length + ' buffer=' + buffer +
+    ' biz=' + bizStart + '-' + bizEnd + ' duration=' + duration +
+    (evDiag.length ? ' evts=[' + evDiag.join(' | ') + ']' : ''));
+
   // ── 候補時刻を 30分刻みで生成 ──
   const now = new Date().getTime();
   const slots = [];
+  let skipPast = 0, skipConflict = 0, skipOverflow = 0;
   for (let h = bizStart; h < bizEnd; h++) {
     for (let m = 0; m < 60; m += SLOT_STEP_MIN) {
       const slotStart = parseDateTimePhnomPenh(dateStr, h, m);
       const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
 
       // 営業終了時刻を超えるならスキップ
-      if (slotEnd > dayEnd) continue;
+      if (slotEnd > dayEnd) { skipOverflow++; continue; }
       // 過去時刻スキップ
-      if (slotStart.getTime() < now) continue;
+      if (slotStart.getTime() < now) { skipPast++; continue; }
 
       // 既存予約と重複チェック（バッファ込み）
       let conflict = false;
@@ -194,13 +235,18 @@ function findAvailableSlots(dateStr, planLetter, miniappVt) {
           break;
         }
       }
-      if (conflict) continue;
+      if (conflict) { skipConflict++; continue; }
 
       slots.push(formatHHmm(h, m));
     }
   }
 
-  return { ok: true, slots: slots, durationMin: duration };
+  // フロントに診断情報を返す（空のときにユーザーに何が原因か見せるため）
+  let debug = 'events=' + events.length +
+    ' past=' + skipPast + ' conflict=' + skipConflict + ' overflow=' + skipOverflow;
+  if (evDiag.length) debug += ' blockedBy=[' + evDiag.join(' | ') + ']';
+
+  return { ok: true, slots: slots, durationMin: duration, debug: debug };
 }
 
 // ====== 予約作成 ======
