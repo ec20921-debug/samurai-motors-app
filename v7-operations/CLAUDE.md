@@ -163,6 +163,59 @@ if (params.get('chatId')) currentChatId = params.get('chatId');
 
 **教訓**: 動作確認は **本番と同じ URL 形式**で行う。特にクエリパラメータの有無・内容で挙動が変わる箇所は要注意。
 
+### 5. 🔥 スタンドアロン GAS で `SpreadsheetApp.getActiveSpreadsheet()` は null
+
+**症状**: 出勤打刻はシートに書き込めるのに、退勤ボタンが常に disabled。`findTodayRow_` のログで `target=2026-04-18` なのにシート上の日付セルが `2026-04-17` と読める（1日ズレ）。
+
+**原因**: v7-ops は**スタンドアロン GAS**（スプレッドシートに紐付かない独立プロジェクト）。この場合 `SpreadsheetApp.getActiveSpreadsheet()` は **null を返す**。
+`getSheetTz_()` が null チェック失敗で OPS_TZ (`Asia/Phnom_Penh`) にフォールバックしていた一方、スプレッドシート本体は別TZ（GMT など）で日付セルを保持していたため、`Utilities.formatDate` の結果と `getValue()` が返す Date オブジェクトの表示日付が1日ズレていた。
+
+**解決**:
+```javascript
+// ✅ スタンドアロン GAS では openById を使う
+let _sheetTzCache_ = null;
+function getSheetTz_() {
+  if (_sheetTzCache_) return _sheetTzCache_;
+  const id = getConfig().operationsSpreadsheetId;
+  _sheetTzCache_ = SpreadsheetApp.openById(id).getSpreadsheetTimeZone() || OPS_TZ;
+  return _sheetTzCache_;
+}
+
+// ❌ これは v7 (container-bound) でしか動かない
+// var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+```
+
+さらに、スプレッドシート側の TZ を `Asia/Phnom_Penh` に揃えておく（`ss.setSpreadsheetTimeZone(OPS_TZ)`）。
+
+**教訓**:
+- **v7（container-bound）と v7-ops（standalone）で GAS API の挙動は違う**。v7 からコピペしたコードはこの差異で壊れる。
+- 日付比較系バグは真っ先に **TZ** を疑う。`Utilities.formatDate(tz)` と `Date.getTime()` はズレない、**ズレているのは 2つの TZ 参照源**。
+- 新プロジェクトでは最初に `getSpreadsheetTimeZone()` をログ出力して確認する。
+
+### 6. 💡 Telegram フォーラムトピックの thread_id は URL の**真ん中**の数字
+
+**症状**: `sendMessage` で `message thread not found` (400)。ScriptProperty に入れた topic ID が間違っていた。
+
+**原因**: トピック URL `https://t.me/c/3856480475/137/142` の構造を誤解していた。
+- `3856480475` = グループ ID
+- `137` = **トピック ID（message_thread_id）** ← これが正解
+- `142` = そのトピック内の最新メッセージ ID
+
+末尾の `142` を thread_id と誤認していた。
+
+**教訓**: Telegram フォーラムトピックの URL は `t.me/c/<group>/<topic>/<msg>` 形式。**真ん中**を取る。
+
+### 7. 🧠 Claude 自身への教訓：分析の繰り返しではなく実行を優先する
+
+**症状**: ユーザーから「原因の説明は理解した。修正コードを出して、commit して push して。分析の繰り返しではなく、修正の実行を求めてください」と指摘された。
+
+**原因**: バグの原因説明を何度も丁寧に繰り返し、修正コミット＆プッシュに進むのが遅かった。ユーザーはすでに原因を理解しているのに、Claude が説明モードに留まっていた。
+
+**解決・教訓**:
+- 原因特定 → 修正コード → commit → push → ユーザーへ手順提示、という**一連を1ターンで完結**させる。
+- ユーザーが「わかった」「理解した」と言ったら、**それ以上の原因説明は不要**。即実行。
+- デバッグループでは「次の1手」を短く提示し、ログを待つ。長文の解説は後でまとめて CLAUDE.md に書けば良い。
+
 ---
 
 ## 📋 現在の Phase
