@@ -179,7 +179,10 @@ function findTodayRow_(dateStr, staffId) {
  */
 function notifyAdminSimple_(text, gps) {
   const cfg = getConfig();
-  if (!cfg.adminGroupId) return;
+  if (!cfg.adminGroupId) {
+    Logger.log('⚠️ notifyAdminSimple_: adminGroupId 未設定');
+    return;
+  }
 
   let body = text;
   if (gps && gps.lat && gps.lng) {
@@ -196,13 +199,44 @@ function notifyAdminSimple_(text, gps) {
     options.message_thread_id = parseInt(cfg.attendanceTopicId, 10);
   }
 
-  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, body, options);
+  const res = sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, body, options);
+  if (!res || !res.ok) {
+    Logger.log('❌ notifyAdminSimple_ 失敗 chat=' + cfg.adminGroupId
+             + ' topic=' + (cfg.attendanceTopicId || '（なし）')
+             + ' res=' + JSON.stringify(res));
+  } else {
+    Logger.log('✅ notifyAdminSimple_ 送信OK ' + body);
+  }
+}
+
+/**
+ * Admin通知を単独でテストするデバッグ関数
+ * GAS エディタで実行して、勤怠ログトピックにテストメッセージが飛ぶか確認する
+ */
+function debugNotifyAdmin() {
+  const testGps = { lat: 35.758238, lng: 140.028751, accuracy: 7 };
+  notifyAdminSimple_('🧪 テスト通知（debugNotifyAdmin）', testGps);
 }
 
 // ====== ヘルパー ======
 
+/**
+ * 「今日」の yyyy-MM-dd
+ * ★スプレッドシートの TZ を優先（Sheets が Date に変換する際の TZ と一致させる）
+ */
 function todayStr_() {
-  return Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
+  return Utilities.formatDate(new Date(), getSheetTz_(), 'yyyy-MM-dd');
+}
+
+/**
+ * シートのタイムゾーンを取得（失敗時は OPS_TZ にフォールバック）
+ */
+function getSheetTz_() {
+  try {
+    return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || OPS_TZ;
+  } catch (_) {
+    return OPS_TZ;
+  }
 }
 
 function mapLink_(lat, lng) {
@@ -211,13 +245,13 @@ function mapLink_(lat, lng) {
 
 /**
  * シートセルの日付を yyyy-MM-dd に正規化
- * Date オブジェクトか文字列か判定
+ * ★Sheets が Date に変換したセルはシートの TZ で解釈する（todayStr_ と対応）
  */
 function formatDateCell_(cell) {
   if (cell instanceof Date) {
-    return Utilities.formatDate(cell, OPS_TZ, 'yyyy-MM-dd');
+    return Utilities.formatDate(cell, getSheetTz_(), 'yyyy-MM-dd');
   }
-  return String(cell || '');
+  return String(cell || '').trim();
 }
 
 /**
