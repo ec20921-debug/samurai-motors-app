@@ -182,40 +182,47 @@ if (!GAS_URL) {
 }
 
 var BASE = window.location.href.replace(/\/[^\/]*$/, '');
+var currentChatId = '';
+
+// Telegram user.id を取得（ここでのみ取得可能、遷移先ページには渡す必要あり）
+if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
+  var u = Telegram.WebApp.initDataUnsafe.user;
+  if (u && u.id) currentChatId = String(u.id);
+}
+
 function buildUrl(page) {
   var url = BASE + '/' + page;
-  if (GAS_URL) url += '?gas=' + encodeURIComponent(GAS_URL);
+  var q = [];
+  if (GAS_URL) q.push('gas=' + encodeURIComponent(GAS_URL));
+  if (currentChatId) q.push('chatId=' + encodeURIComponent(currentChatId));
+  if (q.length) url += '?' + q.join('&');
   return url;
 }
 
 document.getElementById('menuAttendance').href = buildUrl('attendance-internal.html');
 
-// ユーザー識別（Telegram のユーザー情報を表示）
+// ユーザー識別（whoami でスタッフ判別）
 (function loadWho() {
   var line = document.getElementById('whoLine');
-  var user = null;
-  if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
-    user = Telegram.WebApp.initDataUnsafe.user || null;
-  }
-  if (!user) {
+  if (!currentChatId) {
     line.textContent = 'ℹ️ Telegram 経由で開いてください';
     return;
   }
   if (!GAS_URL) {
-    line.innerHTML = '👤 <strong>' + escapeHtml(user.first_name || '') + '</strong>';
+    line.textContent = '⚠️ GAS URL 未設定';
     return;
   }
-  fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(user.id))
+  fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(currentChatId))
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.ok && d.staff) {
         line.innerHTML = '👤 <strong>' + escapeHtml(d.staff.nameJp) + '</strong> (' + escapeHtml(d.staff.nameEn) + ')';
       } else {
-        line.textContent = '⚠️ スタッフ未登録 chat_id=' + user.id;
+        line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
       }
     })
-    .catch(function() {
-      line.innerHTML = '👤 <strong>' + escapeHtml(user.first_name || '') + '</strong>';
+    .catch(function(err) {
+      line.textContent = '⚠️ 通信エラー: ' + err.message;
     });
 })();
 

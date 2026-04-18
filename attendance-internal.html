@@ -166,51 +166,55 @@ body {
 
 <script>
 // ═══════════════════════════════════════════
-//  GAS URL 解決
+//  GAS URL / chatId 解決（URL パラメータ優先）
 // ═══════════════════════════════════════════
 var GAS_URL = '';
+var currentChatId = '';
+var currentStaff = null;
+var currentGps = null;
+
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
   Telegram.WebApp.expand();
-  if (Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) {
-    GAS_URL = decodeURIComponent(Telegram.WebApp.initDataUnsafe.start_param);
-  }
-}
-if (!GAS_URL) {
-  var p = new URLSearchParams(window.location.search);
-  if (p.get('gas')) GAS_URL = p.get('gas');
 }
 
-// ═══════════════════════════════════════════
-//  ユーザー識別（Telegram user.id → スタッフ判別）
-// ═══════════════════════════════════════════
-var currentUser = null;   // Telegram user
-var currentStaff = null;  // サーバー解決後のスタッフ情報
-var currentGps = null;    // 最新 GPS
+// URL パラメータから取得（ページ遷移でも確実に引き継ぐ）
+var urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('gas'))    GAS_URL = urlParams.get('gas');
+if (urlParams.get('chatId')) currentChatId = urlParams.get('chatId');
 
-if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
-  currentUser = Telegram.WebApp.initDataUnsafe.user || null;
+// フォールバック: Telegram WebApp から取得（初回起動時）
+if (!GAS_URL && window.Telegram && Telegram.WebApp &&
+    Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) {
+  GAS_URL = decodeURIComponent(Telegram.WebApp.initDataUnsafe.start_param);
+}
+if (!currentChatId && window.Telegram && Telegram.WebApp &&
+    Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) {
+  currentChatId = String(Telegram.WebApp.initDataUnsafe.user.id || '');
 }
 
 function loadWho() {
   var line = document.getElementById('whoLine');
-  if (!currentUser) {
-    line.textContent = '⚠️ Telegram 経由で開いてください';
+  if (!currentChatId) {
+    line.textContent = '⚠️ chatId 取得失敗';
     return Promise.resolve();
   }
   if (!GAS_URL) {
-    line.innerHTML = '⚠️ GAS URL 未設定';
+    line.textContent = '⚠️ GAS URL 未設定';
     return Promise.resolve();
   }
-  return fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(currentUser.id))
+  return fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(currentChatId))
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.ok && d.staff) {
         currentStaff = d.staff;
         line.innerHTML = '👤 <strong>' + esc(d.staff.nameJp) + '</strong> (' + esc(d.staff.nameEn) + ')';
       } else {
-        line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentUser.id;
+        line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
       }
+    })
+    .catch(function(err) {
+      line.textContent = '⚠️ 通信エラー: ' + err.message;
     });
 }
 
@@ -265,8 +269,8 @@ function acquireGps() {
 //  今日の状況取得
 // ═══════════════════════════════════════════
 function loadToday() {
-  if (!GAS_URL || !currentUser) return Promise.resolve();
-  return fetch(GAS_URL + '?action=attendance_today&chatId=' + encodeURIComponent(currentUser.id))
+  if (!GAS_URL || !currentChatId) return Promise.resolve();
+  return fetch(GAS_URL + '?action=attendance_today&chatId=' + encodeURIComponent(currentChatId))
     .then(function(r) { return r.json(); })
     .then(function(d) { applyStatus(d); });
 }
@@ -311,8 +315,8 @@ function applyStatus(d) {
 //  打刻実行
 // ═══════════════════════════════════════════
 function doPunch(type) {
-  if (!currentUser) { toast('Telegram 経由で開いてください', 'err'); return; }
-  if (!GAS_URL)     { toast('GAS URL 未設定', 'err'); return; }
+  if (!currentChatId) { toast('chatId 取得失敗', 'err'); return; }
+  if (!GAS_URL)       { toast('GAS URL 未設定', 'err'); return; }
 
   var btnIn  = document.getElementById('btnIn');
   var btnOut = document.getElementById('btnOut');
@@ -320,7 +324,7 @@ function doPunch(type) {
 
   var payload = {
     action: type === 'in' ? 'punch_in' : 'punch_out',
-    chatId: String(currentUser.id),
+    chatId: currentChatId,
     gps: currentGps
   };
 
