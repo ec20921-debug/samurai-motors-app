@@ -56,7 +56,11 @@
       "Bash(curl -s \"https://ec20921-debug.github.io/samurai-motors-app/booking.html\")",
       "Bash(grep -E \"\\\\.html$\")",
       "Bash(rm -rfv node_modules)",
-      "Bash(rm -v public/SamuraiMotors_AppsScript_v5.js public/admin-console.html public/attendance.html public/customer-chat.html public/daily-report.html public/expense-entry.html public/home.html public/inventory.html public/task-manager.html)"
+      "Bash(rm -v public/SamuraiMotors_AppsScript_v5.js public/admin-console.html public/attendance.html public/customer-chat.html public/daily-report.html public/expense-entry.html public/home.html public/inventory.html public/task-manager.html)",
+      "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/booking.html\")",
+      "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/job-manager.html\")",
+      "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/home-internal.html\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' https://ec20921-debug.github.io/samurai-motors-app/__TRACKED_VAR__)"
     ]
   }
 }
