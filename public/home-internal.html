@@ -192,7 +192,9 @@ if (!currentChatId && window.Telegram && Telegram.WebApp &&
   if (u && u.id) currentChatId = String(u.id);
 }
 
-var BASE = window.location.href.replace(/\/[^\/]*$/, '').split('?')[0];
+// ⚠️ 先に ? でクエリを落としてから最後の /ファイル名 を削る
+// （GAS URL がクエリ内に / を含むため、逆順だと末尾マッチが誤爆する）
+var BASE = window.location.href.split('?')[0].replace(/\/[^\/]*$/, '');
 
 function buildUrl(page) {
   var url = BASE + '/' + page;
