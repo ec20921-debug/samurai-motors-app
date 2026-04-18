@@ -97,6 +97,37 @@ function doPost(e) {
         return jsonOut(punchOut(chatId, body.gps || null));
       }
 
+      // ── タスク管理ミニアプリ ──
+      case 'tasks_today': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        const staff = findStaffByChatId(chatId);
+        if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        const tasks = getPendingTasksForStaff_(staff);
+        return jsonOut({ ok: true, tasks: tasks, staff: { nameJp: staff.nameJp, nameEn: staff.nameEn, role: staff.role } });
+      }
+
+      case 'task_done': {
+        const chatId = String(body.chatId || '');
+        const taskId = String(body.taskId || '');
+        if (!chatId || !taskId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        const staff = findStaffByChatId(chatId);
+        if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        markTaskDone(taskId, { first_name: staff.nameJp, username: staff.username || '' });
+        return jsonOut({ ok: true });
+      }
+
+      case 'task_notdone': {
+        const chatId = String(body.chatId || '');
+        const taskId = String(body.taskId || '');
+        const reason = String(body.reason || '');
+        if (!chatId || !taskId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        const staff = findStaffByChatId(chatId);
+        if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        markTaskNotDone(taskId, { first_name: staff.nameJp, username: staff.username || '' }, reason);
+        return jsonOut({ ok: true });
+      }
+
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
     }
