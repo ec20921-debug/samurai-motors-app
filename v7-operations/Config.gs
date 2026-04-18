@@ -14,12 +14,15 @@
 // ====== PropertiesService キー一覧 ======
 const CONFIG_KEYS = {
   // Telegram
-  BOT_TOKEN_INTERNAL:        'BOT_TOKEN_INTERNAL',
-  ADMIN_GROUP_ID:            'ADMIN_GROUP_ID',
-  ATTENDANCE_TOPIC_ID:       'ATTENDANCE_TOPIC_ID',   // 勤怠ログ用フォーラムトピック
+  BOT_TOKEN_INTERNAL:          'BOT_TOKEN_INTERNAL',
+  ADMIN_GROUP_ID:              'ADMIN_GROUP_ID',
+  ATTENDANCE_TOPIC_ID:         'ATTENDANCE_TOPIC_ID',           // 勤怠ログトピック
+  ADMIN_TASK_THREAD_ID:        'ADMIN_TASK_THREAD_ID',          // タスクトピック（154）
+  ADMIN_DAILY_REPORT_THREAD_ID:'ADMIN_DAILY_REPORT_THREAD_ID',  // 日報トピック（157）
 
   // Google Workspace
   OPERATIONS_SPREADSHEET_ID: 'OPERATIONS_SPREADSHEET_ID',
+  V7_SPREADSHEET_ID:         'V7_SPREADSHEET_ID',                // 顧客系スプレッドシート（日報で売上参照）
 
   // ミニアプリ
   INTERNAL_MINIAPP_URL:      'INTERNAL_MINIAPP_URL'   // home-internal.html の公開URL
@@ -33,12 +36,15 @@ const BOT_TYPE = {
 
 // ====== シート名 ======
 const SHEET_NAMES = {
-  STAFF_MASTER:   'スタッフマスター',   // v7-ops で新設
-  ATTENDANCE:     '勤怠記録',           // v5/v6 の Attendance を改名＋列拡張
-  TASKS:          'タスク',             // v5 の Tasks を改名
-  DAILY_REPORTS:  '日報',               // v5 の DailyReports を改名
-  EXPENSES:       '経費'                // v5 の Expenses を改名
+  STAFF_MASTER:   'スタッフマスター',
+  ATTENDANCE:     '勤怠記録',
+  TASKS:          'タスク',
+  DAILY_REPORTS:  '日報',
+  EXPENSES:       '経費'
 };
+
+// ====== 繰返しルール（新規タスク入力・Tasks シートで使う候補値） ======
+const RECURRENCE_OPTIONS = ['なし', '毎日', '毎週月曜', '毎週金曜', '毎月1日', '毎月10日', '毎月末'];
 
 // ====== キャッシュ・キューのキープレフィックス ======
 const STORAGE_KEYS = {
@@ -74,11 +80,14 @@ function getConfig() {
   }
 
   return {
-    botTokenInternal:        all[CONFIG_KEYS.BOT_TOKEN_INTERNAL],
-    adminGroupId:            all[CONFIG_KEYS.ADMIN_GROUP_ID],
-    attendanceTopicId:       all[CONFIG_KEYS.ATTENDANCE_TOPIC_ID] || '',   // 任意
-    operationsSpreadsheetId: all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
-    internalMiniappUrl:      all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || ''
+    botTokenInternal:         all[CONFIG_KEYS.BOT_TOKEN_INTERNAL],
+    adminGroupId:             all[CONFIG_KEYS.ADMIN_GROUP_ID],
+    attendanceTopicId:        all[CONFIG_KEYS.ATTENDANCE_TOPIC_ID] || '',
+    adminTaskThreadId:        all[CONFIG_KEYS.ADMIN_TASK_THREAD_ID] || '',
+    adminDailyReportThreadId: all[CONFIG_KEYS.ADMIN_DAILY_REPORT_THREAD_ID] || '',
+    operationsSpreadsheetId:  all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
+    v7SpreadsheetId:          all[CONFIG_KEYS.V7_SPREADSHEET_ID] || '',
+    internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || ''
   };
 }
 

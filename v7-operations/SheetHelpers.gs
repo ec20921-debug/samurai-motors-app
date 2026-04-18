@@ -128,6 +128,8 @@ function getActiveStaff() {
         nameJp:         String(r['氏名(JP)'] || ''),
         nameEn:         String(r['Name(EN)'] || ''),
         role:           String(r['役割'] || ''),
+        timezone:       String(r['タイムゾーン'] || OPS_TZ),
+        username:       String(r['Telegram Username'] || ''),
         employmentType: String(r['雇用形態'] || ''),
         hireDate:       r['入社日'] || '',
         monthlySalary:  Number(r['月給(USD)']) || 0,
@@ -138,6 +140,18 @@ function getActiveStaff() {
 
   cache.put('staff_master_cache', JSON.stringify(staff), TTL.STAFF_MASTER_CACHE);
   return staff;
+}
+
+/**
+ * 氏名(JP) からスタッフ1名を検索
+ */
+function findStaffByNameJp(nameJp) {
+  const all = getActiveStaff();
+  const target = String(nameJp || '').trim();
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].nameJp === target) return all[i];
+  }
+  return null;
 }
 
 /**

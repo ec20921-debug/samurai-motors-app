@@ -163,6 +163,270 @@ function seedInitialStaff() {
   clearStaffMasterCache();
 }
 
+// ═══════════════════════════════════════════════════════
+// Phase 2: タスク管理セットアップ
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Phase 2 初回セットアップのエントリポイント
+ * 1. スタッフマスターに「タイムゾーン」「Telegram Username」列を追加
+ * 2. Admin スタッフ（飯泉・鈴木・五木田）を追加
+ * 3. タスクシートを新設（担当者/繰返しルールのドロップダウン付き）
+ * 4. 既存スタッフ（ロン）にタイムゾーン自動設定
+ * 5. 繰返しタスクテンプレートを seed
+ */
+function setupPhase2Tasks() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🔧 Phase 2 タスク管理セットアップ開始');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  ensureStaffMasterTzColumn(ss);
+  backfillRonTimezone();
+  seedAdminStaff();
+  ensureTasksSheet(ss);
+  applyTasksSheetValidation(ss);
+  seedRecurringTaskTemplates();
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ Phase 2 セットアップ完了');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
+ * スタッフマスターに「タイムゾーン」「Telegram Username」列を追加
+ */
+function ensureStaffMasterTzColumn(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.STAFF_MASTER);
+  if (!sheet) throw new Error('❌ スタッフマスターが未作成。先に setupV7OpsInitial() を実行してください');
+
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const toAdd = [];
+  if (headers.indexOf('タイムゾーン') < 0)         toAdd.push('タイムゾーン');
+  if (headers.indexOf('Telegram Username') < 0)   toAdd.push('Telegram Username');
+  if (toAdd.length === 0) {
+    Logger.log('ℹ️ スタッフマスターに必要列は全て存在（スキップ）');
+    return;
+  }
+  sheet.getRange(1, lastCol + 1, 1, toAdd.length).setValues([toAdd]);
+  sheet.getRange(1, lastCol + 1, 1, toAdd.length).setFontWeight('bold').setBackground('#f1f3f4');
+  Logger.log('✅ スタッフマスターに列追加: ' + toAdd.join(', '));
+}
+
+/**
+ * 既存ロンのタイムゾーンを空欄なら Asia/Phnom_Penh で埋める
+ */
+function backfillRonTimezone() {
+  const row = findRow(SHEET_NAMES.STAFF_MASTER, 'スタッフID', 'STAFF-001');
+  if (!row) return;
+  if (!row.data['タイムゾーン']) {
+    updateRow(SHEET_NAMES.STAFF_MASTER, row.row, { 'タイムゾーン': 'Asia/Phnom_Penh' });
+    Logger.log('✅ ロンのタイムゾーン=Asia/Phnom_Penh を設定');
+  }
+  clearStaffMasterCache();
+}
+
+/**
+ * Admin スタッフ（飯泉・鈴木・五木田）を seed
+ * 既に同名のスタッフが居ればスキップ。chat_id と username は空欄で登録（後日手動編集）。
+ */
+function seedAdminStaff() {
+  const admins = [
+    { id: 'STAFF-002', nameJp: '飯泉',   memo: 'Admin（日本）' },
+    { id: 'STAFF-003', nameJp: '鈴木',   memo: 'Admin（日本・DRIM担当）' },
+    { id: 'STAFF-004', nameJp: '五木田', memo: 'Admin（日本）' }
+  ];
+  const rows = getAllRows(SHEET_NAMES.STAFF_MASTER);
+
+  admins.forEach(function(a) {
+    const exists = rows.some(function(r) {
+      return String(r['スタッフID']) === a.id || String(r['氏名(JP)']) === a.nameJp;
+    });
+    if (exists) {
+      Logger.log('ℹ️ ' + a.nameJp + ' は登録済み（スキップ）');
+      return;
+    }
+    appendRow(SHEET_NAMES.STAFF_MASTER, {
+      'スタッフID':   a.id,
+      'Chat ID':      '',
+      '氏名(JP)':     a.nameJp,
+      'Name(EN)':     '',
+      '役割':         'admin',
+      'タイムゾーン':    'Asia/Tokyo',
+      'Telegram Username': '',
+      '雇用形態':     '',
+      '入社日':       '',
+      '月給(USD)':    0,
+      '有効':         true,
+      '備考':         a.memo
+    });
+    Logger.log('✅ ' + a.nameJp + ' を登録');
+  });
+  clearStaffMasterCache();
+}
+
+/**
+ * タスクシートを新設（なければ）
+ *
+ * 列構成:
+ *   A: タスクID (TASK-YYYYMMDD-NNN)
+ *   B: 作成日時
+ *   C: 担当者名(JP)
+ *   D: 担当 Chat ID      (field 用。admin は空)
+ *   E: 担当 role
+ *   F: 担当 timezone
+ *   G: 期限 (yyyy-MM-dd)
+ *   H: タスク内容
+ *   I: ステータス (未着手/完了/未完了/繰返し中)
+ *   J: 完了日時
+ *   K: 未完了理由
+ *   L: 繰返しルール  (RECURRENCE_OPTIONS)
+ *   M: 親タスクID    (繰返し元テンプレートID)
+ */
+function ensureTasksSheet(ss) {
+  const name = SHEET_NAMES.TASKS;
+  let sheet = ss.getSheetByName(name);
+  const headers = [
+    'タスクID', '作成日時', '担当者名', '担当 Chat ID', '担当 role', '担当 timezone',
+    '期限', 'タスク内容', 'ステータス', '完了日時', '未完了理由', '繰返しルール', '親タスクID'
+  ];
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#f1f3f4');
+    sheet.setFrozenRows(1);
+    // 列幅
+    [140, 140, 100, 130, 80, 130, 100, 360, 90, 140, 200, 110, 140].forEach(function(w, i) {
+      sheet.setColumnWidth(i + 1, w);
+    });
+    Logger.log('✅ タスクシートを新規作成');
+    return;
+  }
+
+  // 既存シートなら不足列を追加
+  const lastCol = sheet.getLastColumn();
+  const existing = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const missing = headers.filter(function(h) { return existing.indexOf(h) < 0; });
+  if (missing.length > 0) {
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setFontWeight('bold').setBackground('#f1f3f4');
+    Logger.log('✅ タスクシートに列追加: ' + missing.join(', '));
+  } else {
+    Logger.log('ℹ️ タスクシートのスキーマ完備（スキップ）');
+  }
+}
+
+/**
+ * タスクシートに Data Validation を適用
+ * - 担当者名: スタッフマスターの 氏名(JP) 列を参照
+ * - 繰返しルール: RECURRENCE_OPTIONS 固定リスト
+ * - 期限: 日付ピッカー
+ * - ステータス: 固定リスト
+ */
+function applyTasksSheetValidation(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.TASKS);
+  const staffSheet = ss.getSheetByName(SHEET_NAMES.STAFF_MASTER);
+  if (!sheet || !staffSheet) return;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const colNum = function(name) { return headers.indexOf(name) + 1; };
+
+  const MAX_ROWS = 2000;
+  const startRow = 2;
+
+  // 担当者名: スタッフマスター C列（氏名JP）を参照
+  const staffNameRange = staffSheet.getRange('C2:C');
+  const staffRule = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(staffNameRange, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(startRow, colNum('担当者名'), MAX_ROWS, 1).setDataValidation(staffRule);
+
+  // 期限: 日付
+  const dateRule = SpreadsheetApp.newDataValidation()
+    .requireDate()
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(startRow, colNum('期限'), MAX_ROWS, 1).setDataValidation(dateRule);
+
+  // ステータス
+  const statusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['未着手', '完了', '未完了', '繰返し中'], true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(startRow, colNum('ステータス'), MAX_ROWS, 1).setDataValidation(statusRule);
+
+  // 繰返しルール
+  const recRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(RECURRENCE_OPTIONS, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(startRow, colNum('繰返しルール'), MAX_ROWS, 1).setDataValidation(recRule);
+
+  Logger.log('✅ タスクシートに Data Validation 適用');
+}
+
+/**
+ * 繰返しタスクのテンプレートを seed（3件）
+ * テンプレート行は「ステータス=繰返し中」「期限=空」で Tasks シートに保存される。
+ * 毎日 generateRecurringTasks() がテンプレートをスキャンし、
+ * 今日のルールに合致すれば子タスク（期限=今日、ステータス=未着手）を作成する。
+ */
+function seedRecurringTaskTemplates() {
+  const templates = [
+    {
+      id:     'TEMPLATE-001',
+      name:   '飯泉',
+      desc:   'ロンさんへ給与支払い',
+      rule:   '毎月10日'
+    },
+    {
+      id:     'TEMPLATE-002',
+      name:   '飯泉',
+      desc:   'オフィス賃料支払い $750-\n⚠️ 毎月1日〜5日までに支払いです（2.3条）。月末ではなく月初払いです。\n7日を過ぎると1日あたり$20のペナルティが発生するので、毎月5日までに忘れず払うようにしましょう。',
+      rule:   '毎月1日'
+    },
+    {
+      id:     'TEMPLATE-003',
+      name:   '飯泉',
+      desc:   '携帯電話代 $4 をロンさんへ渡す',
+      rule:   '毎月10日'
+    }
+  ];
+
+  const existing = getAllRows(SHEET_NAMES.TASKS);
+  templates.forEach(function(t) {
+    if (existing.some(function(r) { return String(r['タスクID']) === t.id; })) {
+      Logger.log('ℹ️ ' + t.id + ' は登録済み（スキップ）');
+      return;
+    }
+    const staff = findStaffByNameJp(t.name);
+    if (!staff) {
+      Logger.log('⚠️ ' + t.name + ' が スタッフマスターに未登録 — テンプレートを作れません');
+      return;
+    }
+    appendRow(SHEET_NAMES.TASKS, {
+      'タスクID':      t.id,
+      '作成日時':      new Date(),
+      '担当者名':      staff.nameJp,
+      '担当 Chat ID':  staff.chatId,
+      '担当 role':     staff.role,
+      '担当 timezone': staff.timezone,
+      '期限':          '',
+      'タスク内容':    t.desc,
+      'ステータス':    '繰返し中',
+      '完了日時':      '',
+      '未完了理由':    '',
+      '繰返しルール':  t.rule,
+      '親タスクID':    ''
+    });
+    Logger.log('✅ ' + t.id + ' を登録: ' + t.desc.substring(0, 30));
+  });
+}
+
 /**
  * デバッグ用: 現在のスタッフ一覧を Logger に出力
  */
