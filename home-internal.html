@@ -216,13 +216,11 @@ document.getElementById('menuAttendance').href = buildUrl('attendance-internal.h
     line.textContent = '⚠️ GAS URL 未設定';
     return;
   }
-  // iOS Safari / Telegram WebView で GET が "Load failed" になる対策で
-  // POST + text/plain（simple request）を使う。headers を指定しないことが重要。
+  // v7 booking.html と同一方式: POST + Content-Type: 'text/plain;charset=utf-8'
   fetch(GAS_URL, {
     method: 'POST',
-    body: new URLSearchParams({
-      payload: JSON.stringify({ action: 'whoami', chatId: currentChatId })
-    })
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'whoami', chatId: currentChatId })
   })
     .then(function(r) { return r.text(); })   // デバッグ: まず text で受ける
     .then(function(txt) {

@@ -205,9 +205,8 @@ function loadWho() {
   }
   return fetch(GAS_URL, {
     method: 'POST',
-    body: new URLSearchParams({
-      payload: JSON.stringify({ action: 'whoami', chatId: currentChatId })
-    })
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'whoami', chatId: currentChatId })
   })
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -277,9 +276,8 @@ function loadToday() {
   if (!GAS_URL || !currentChatId) return Promise.resolve();
   return fetch(GAS_URL, {
     method: 'POST',
-    body: new URLSearchParams({
-      payload: JSON.stringify({ action: 'attendance_today', chatId: currentChatId })
-    })
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'attendance_today', chatId: currentChatId })
   })
     .then(function(r) { return r.json(); })
     .then(function(d) { applyStatus(d); });
@@ -340,7 +338,8 @@ function doPunch(type) {
 
   fetch(GAS_URL, {
     method: 'POST',
-    body: new URLSearchParams({ payload: JSON.stringify(payload) })
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {

@@ -51,14 +51,15 @@ function doGet(e) {
  * POST リクエスト（ミニアプリからの書き込み系）
  */
 function doPost(e) {
-  // ミニアプリ側は URLSearchParams で payload=<JSON> を送る（iOS Safari の 302 リダイレクト回避のため）
-  // 旧互換として e.postData.contents が直接 JSON の場合もサポート
+  // v7 booking.html と同一方式:
+  //   ミニアプリ側は Content-Type: 'text/plain;charset=utf-8' + body: JSON.stringify(...)
+  //   GAS 側は e.postData.contents を JSON.parse
   let body = {};
   try {
-    if (e.parameter && e.parameter.payload) {
-      body = JSON.parse(e.parameter.payload);
-    } else if (e.postData && e.postData.contents) {
+    if (e.postData && e.postData.contents) {
       body = JSON.parse(e.postData.contents);
+    } else if (e.parameter && e.parameter.payload) {
+      body = JSON.parse(e.parameter.payload);
     }
   } catch (err) {
     return jsonOut({ ok: false, error: 'INVALID_JSON', raw: String(err) });
