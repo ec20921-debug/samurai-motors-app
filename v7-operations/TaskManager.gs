@@ -43,7 +43,10 @@ function hourlyTaskScheduler() {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(JST): ' + e); }
     try { sendMorningTaskForAdmin(); } catch (e) { Logger.log('❌ sendAdmin: ' + e); }
   }
-  // 日報 (Phase 2e) は jstHour === 20 時点で sendDailyReport() を後日追加
+  // 日報 (Phase 2e) JST 20:00
+  if (jstHour === 20) {
+    try { sendDailyReport(); } catch (e) { Logger.log('❌ sendDailyReport: ' + e); }
+  }
 }
 
 /**
