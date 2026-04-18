@@ -51,11 +51,17 @@ function doGet(e) {
  * POST リクエスト（ミニアプリからの書き込み系）
  */
 function doPost(e) {
+  // ミニアプリ側は URLSearchParams で payload=<JSON> を送る（iOS Safari の 302 リダイレクト回避のため）
+  // 旧互換として e.postData.contents が直接 JSON の場合もサポート
   let body = {};
   try {
-    body = JSON.parse(e.postData.contents || '{}');
+    if (e.parameter && e.parameter.payload) {
+      body = JSON.parse(e.parameter.payload);
+    } else if (e.postData && e.postData.contents) {
+      body = JSON.parse(e.postData.contents);
+    }
   } catch (err) {
-    return jsonOut({ ok: false, error: 'INVALID_JSON' });
+    return jsonOut({ ok: false, error: 'INVALID_JSON', raw: String(err) });
   }
 
   const action = body.action || '';
