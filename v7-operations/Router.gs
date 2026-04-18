@@ -167,6 +167,33 @@ function doPost(e) {
         }));
       }
 
+      // ── 経費入力ミニアプリ ──
+      case 'expense_meta': {
+        // 勘定科目・通貨の選択肢
+        return jsonOut({
+          ok: true,
+          categories: EXPENSE_CATEGORIES_,
+          currencies: EXPENSE_CURRENCIES_
+        });
+      }
+
+      case 'expense_submit': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(submitExpense(chatId, {
+          transactionDate: String(body.transactionDate || ''),
+          description:     String(body.description     || ''),
+          amount:          Number(body.amount          || 0),
+          currency:        String(body.currency        || 'USD'),
+          vendor:          String(body.vendor          || ''),
+          category:        String(body.category        || ''),
+          memo:            String(body.memo            || ''),
+          photoBase64:     String(body.photoBase64     || ''),
+          photoMime:       String(body.photoMime       || ''),
+          photoName:       String(body.photoName       || '')
+        }));
+      }
+
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
     }

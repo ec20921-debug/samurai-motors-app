@@ -19,10 +19,12 @@ const CONFIG_KEYS = {
   ATTENDANCE_TOPIC_ID:         'ATTENDANCE_TOPIC_ID',           // 勤怠ログトピック
   ADMIN_TASK_THREAD_ID:        'ADMIN_TASK_THREAD_ID',          // タスクトピック（154）
   ADMIN_DAILY_REPORT_THREAD_ID:'ADMIN_DAILY_REPORT_THREAD_ID',  // 日報トピック（157）
+  ADMIN_EXPENSE_THREAD_ID:     'ADMIN_EXPENSE_THREAD_ID',       // 経費トピック（任意、未設定なら日報トピックへ）
 
   // Google Workspace
   OPERATIONS_SPREADSHEET_ID: 'OPERATIONS_SPREADSHEET_ID',
   V7_SPREADSHEET_ID:         'V7_SPREADSHEET_ID',                // 顧客系スプレッドシート（日報で売上参照）
+  RECEIPT_FOLDER_ID:         'RECEIPT_FOLDER_ID',                // レシート保存先 Drive フォルダ（任意、未設定なら自動作成）
 
   // ミニアプリ
   INTERNAL_MINIAPP_URL:      'INTERNAL_MINIAPP_URL'   // home-internal.html の公開URL
@@ -86,8 +88,10 @@ function getConfig() {
     attendanceTopicId:        all[CONFIG_KEYS.ATTENDANCE_TOPIC_ID] || '',
     adminTaskThreadId:        all[CONFIG_KEYS.ADMIN_TASK_THREAD_ID] || '',
     adminDailyReportThreadId: all[CONFIG_KEYS.ADMIN_DAILY_REPORT_THREAD_ID] || '',
+    adminExpenseThreadId:     all[CONFIG_KEYS.ADMIN_EXPENSE_THREAD_ID] || '',
     operationsSpreadsheetId:  all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
     v7SpreadsheetId:          all[CONFIG_KEYS.V7_SPREADSHEET_ID] || '',
+    receiptFolderId:          all[CONFIG_KEYS.RECEIPT_FOLDER_ID] || '',
     internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || ''
   };
 }

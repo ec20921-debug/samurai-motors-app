@@ -153,13 +153,11 @@ body {
     <span class="menu-arrow">›</span>
   </a>
 
-  <div class="section-label">⚙️ 準備中 / កំពុងរៀបចំ</div>
-
-  <a class="menu-item disabled">
+  <a class="menu-item" id="menuExpense">
     <div class="menu-icon icon-expense">💰</div>
     <div class="menu-info">
-      <div class="menu-title">経費入力<span class="badge-soon">SOON</span></div>
-      <div class="menu-desc">Phase 4 で公開予定</div>
+      <div class="menu-title">経費入力 / ចំណាយ</div>
+      <div class="menu-desc">レシート写真付きで経費を記録</div>
     </div>
     <span class="menu-arrow">›</span>
   </a>
@@ -213,10 +211,13 @@ var taskHref = buildUrl('task-internal.html');
 document.getElementById('menuTask').href = taskHref;
 var reportHref = buildUrl('report-internal.html');
 document.getElementById('menuReport').href = reportHref;
+var expenseHref = buildUrl('expense-internal.html');
+document.getElementById('menuExpense').href = expenseHref;
 // デバッグ: タップ前にリンク先 URL を確認できるよう表示
 console.log('📍 attendance URL:', attendanceHref);
 console.log('📍 task URL:', taskHref);
 console.log('📍 report URL:', reportHref);
+console.log('📍 expense URL:', expenseHref);
 
 // ユーザー識別（whoami でスタッフ判別）
 (function loadWho() {
