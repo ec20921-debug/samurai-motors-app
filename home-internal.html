@@ -194,18 +194,23 @@ if (!currentChatId && window.Telegram && Telegram.WebApp &&
 
 // ⚠️ 先に ? でクエリを落としてから最後の /ファイル名 を削る
 // （GAS URL がクエリ内に / を含むため、逆順だと末尾マッチが誤爆する）
+// （不要になったが互換のため残す）
 var BASE = window.location.href.split('?')[0].replace(/\/[^\/]*$/, '');
 
+// URL API を使って相対パス解決（regex より堅牢）
+// new URL('attendance-internal.html', 'https://.../home-internal.html?gas=...')
+//   → https://.../attendance-internal.html （クエリは自動で落ちる）
 function buildUrl(page) {
-  var url = BASE + '/' + page;
-  var q = [];
-  if (GAS_URL) q.push('gas=' + encodeURIComponent(GAS_URL));
-  if (currentChatId) q.push('chatId=' + encodeURIComponent(currentChatId));
-  if (q.length) url += '?' + q.join('&');
-  return url;
+  var u = new URL(page, window.location.href);
+  if (GAS_URL)       u.searchParams.set('gas', GAS_URL);
+  if (currentChatId) u.searchParams.set('chatId', currentChatId);
+  return u.toString();
 }
 
-document.getElementById('menuAttendance').href = buildUrl('attendance-internal.html');
+var attendanceHref = buildUrl('attendance-internal.html');
+document.getElementById('menuAttendance').href = attendanceHref;
+// デバッグ: タップ前にリンク先 URL を確認できるよう表示
+console.log('📍 attendance URL:', attendanceHref);
 
 // ユーザー識別（whoami でスタッフ判別）
 (function loadWho() {
