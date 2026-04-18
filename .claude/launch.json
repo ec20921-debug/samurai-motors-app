@@ -41,6 +41,20 @@
       "runtimeArgs": ["server.js"],
       "port": 3000,
       "urlPath": "/job-manager.html"
+    },
+    {
+      "name": "booking",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/booking.html"
+    },
+    {
+      "name": "admin-console",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["server.js"],
+      "port": 3000,
+      "urlPath": "/admin-console.html"
     }
   ]
 }

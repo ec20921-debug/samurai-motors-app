@@ -1162,10 +1162,13 @@ function createExpenseRecord(data) {
   // 精算ステータス（デフォルトは未精算。data.settlementStatusで上書き可能）
   var settlementStatus = data.settlementStatus || '未精算';
 
-  // レシート写真をHYPERLINK形式に
-  var photoFormula = data.photoUrl
-    ? '=HYPERLINK("' + data.photoUrl + '","📷 レシート")'
-    : '';
+  // 写真URL配列（後方互換: photoUrl単一指定もサポート）
+  var photoUrls = [];
+  if (data.photoUrls && data.photoUrls.length > 0) {
+    photoUrls = data.photoUrls;
+  } else if (data.photoUrl) {
+    photoUrls = [data.photoUrl];
+  }
 
   sheet.appendRow([
     expenseId,
@@ -1177,21 +1180,63 @@ function createExpenseRecord(data) {
     data.vendor || '',
     data.category || '消耗品費',
     data.registeredBy || '',
-    '',  // レシート写真（HYPERLINK式で後書き）
+    '',  // レシート写真（後で書き込み）
     data.ocrText || '',
     settlementStatus,
     ''  // 関連タスクID（自動生成廃止）
   ]);
 
-  // HYPERLINK式をセルに書き込み
-  if (data.photoUrl) {
+  // 写真セルへの書き込み
+  if (photoUrls.length > 0) {
     var newRow = sheet.getLastRow();
-    sheet.getRange(newRow, 10).setFormula(
-      '=HYPERLINK("' + data.photoUrl + '","📷 レシート")'
-    );
+    setExpensePhotoUrls(sheet, newRow, photoUrls);
   }
 
   return expenseId;
+}
+
+// 経費写真URLをセルに書き込み（複数枚対応）
+// 1枚: HYPERLINK式で「📷 レシート」表示
+// 2枚以上: HYPERLINK式で1枚目「📷 レシート (N枚)」+ メモに全URL改行
+function setExpensePhotoUrls(sheet, row, urls) {
+  if (!urls || urls.length === 0) {
+    sheet.getRange(row, 10).setValue('');
+    sheet.getRange(row, 10).clearNote();
+    return;
+  }
+  if (urls.length === 1) {
+    sheet.getRange(row, 10).setFormula(
+      '=HYPERLINK("' + urls[0] + '","📷 レシート")'
+    );
+    sheet.getRange(row, 10).clearNote();
+  } else {
+    sheet.getRange(row, 10).setFormula(
+      '=HYPERLINK("' + urls[0] + '","📷 レシート (' + urls.length + '枚)")'
+    );
+    // 全URLをセルメモに保存（複数URL保持の正本）
+    sheet.getRange(row, 10).setNote(urls.join('\n'));
+  }
+}
+
+// 経費写真URLをセルから読み取り（複数枚対応・後方互換）
+function getExpensePhotoUrls(sheet, row) {
+  var cell = sheet.getRange(row, 10);
+  var note = cell.getNote();
+  if (note) {
+    return note.split('\n').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+  }
+  // メモが無ければ式から1枚目URLを抽出
+  var formula = cell.getFormula();
+  if (formula && formula.toUpperCase().indexOf('HYPERLINK') >= 0) {
+    var m = formula.match(/HYPERLINK\("([^"]+)"/);
+    if (m) return [m[1]];
+  }
+  // 旧データでURLが直接入っている場合
+  var value = cell.getValue();
+  if (value && value.toString().indexOf('http') === 0) {
+    return [value.toString()];
+  }
+  return [];
 }
 
 // ═══════════════════════════════════════════
@@ -1914,17 +1959,28 @@ function getTodayDailyReports(today) {
 
 // ミニアプリからの経費登録
 function handleExpenseCreateFromApp(data) {
-  var photoUrl = '';
+  var photoUrls = [];
 
-  // レシート写真をDriveに保存
-  if (data.receiptPhoto) {
+  // 入力統一: receiptPhotos配列を優先、無ければreceiptPhoto単体（旧仕様）
+  var photosToSave = [];
+  if (data.receiptPhotos && data.receiptPhotos.length > 0) {
+    photosToSave = data.receiptPhotos;
+  } else if (data.receiptPhoto) {
+    photosToSave = [data.receiptPhoto];
+  }
+
+  // レシート写真をDriveに保存（複数枚）
+  if (photosToSave.length > 0) {
     try {
       var receiptFolder = getOrCreateFolder(RECEIPT_FOLDER_NAME);
       var now = new Date();
       var dateStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
-      var fileName = 'receipt_' + dateStr + '_' + (data.registeredBy || 'unknown') + '.jpg';
-      var link = saveBase64Image(receiptFolder, data.receiptPhoto, fileName.replace('.jpg', ''));
-      photoUrl = link;
+      var who = (data.registeredBy || 'unknown');
+      for (var i = 0; i < photosToSave.length; i++) {
+        var fileName = 'receipt_' + dateStr + '_' + who + '_' + (i + 1);
+        var link = saveBase64Image(receiptFolder, photosToSave[i], fileName);
+        if (link) photoUrls.push(link);
+      }
     } catch (photoErr) {
       Logger.log('handleExpenseCreateFromApp photo error: ' + photoErr.toString());
     }
@@ -1940,13 +1996,22 @@ function handleExpenseCreateFromApp(data) {
     vendor: data.vendor || '',
     category: data.category || '消耗品費',
     registeredBy: data.registeredBy || '',
-    photoUrl: photoUrl,
+    photoUrls: photoUrls,
     ocrText: '',
     settlementStatus: settlementStatus
   });
 
   // Adminグループに通知
   var statusLabel = settlementStatus === '未精算' ? '⚠️ 未精算（立替え）' : '✅ 精算済み';
+  var photoLinks = '';
+  if (photoUrls.length === 1) {
+    photoLinks = '\n📷 [レシート](' + photoUrls[0] + ')';
+  } else if (photoUrls.length > 1) {
+    photoLinks = '\n📷 レシート (' + photoUrls.length + '枚):';
+    for (var p = 0; p < photoUrls.length; p++) {
+      photoLinks += '\n  [' + (p + 1) + '枚目](' + photoUrls[p] + ')';
+    }
+  }
   sendTelegramTo(ADMIN_GROUP_ID,
     '💰 *新規経費登録（ミニアプリ）*\n'
     + '━━━━━━━━━━━━━━━\n'
@@ -1957,10 +2022,10 @@ function handleExpenseCreateFromApp(data) {
     + '📝 ' + (data.description || '-') + '\n'
     + '💰 ' + (data.amount || '?') + ' ' + (data.currency || 'USD') + '\n'
     + '💳 ' + statusLabel
-    + (photoUrl ? '\n📷 [レシート](' + photoUrl + ')' : '')
+    + photoLinks
   );
 
-  return jsonResponse({ status: 'ok', expenseId: expenseId });
+  return jsonResponse({ status: 'ok', expenseId: expenseId, photoUrls: photoUrls });
 }
 
 // 経費編集（ミニアプリ用）
@@ -1985,30 +2050,49 @@ function handleExpenseEditFromApp(data) {
     return jsonResponse({ status: 'error', message: 'ID not found: ' + data.expenseId });
   }
 
-  // 写真の処理（新しい写真がある場合のみ更新）
-  var photoUrl = sheet.getRange(targetRow, 10).getValue();
-  if (data.receiptPhoto) {
-    try {
-      var receiptFolder = getOrCreateFolder(RECEIPT_FOLDER_NAME);
-      var now = new Date();
-      var dateStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
-      var fileName = 'receipt_edit_' + dateStr;
-      var link = saveBase64Image(receiptFolder, data.receiptPhoto, fileName);
-      photoUrl = link;
-    } catch (photoErr) {
-      Logger.log('handleExpenseEditFromApp photo error: ' + photoErr.toString());
+  // 写真の処理（複数枚対応）
+  // - data.existingPhotoUrls: 残す既存URL配列（編集UIで削除されなかったもの）
+  // - data.receiptPhotos: 追加アップロードされた新規base64配列
+  // - data.receiptPhoto: 後方互換（単体）
+  // 上記いずれも未指定のとき、現状の写真をそのまま維持する
+  var photoFieldsTouched = (data.existingPhotoUrls !== undefined)
+    || (data.receiptPhotos !== undefined && data.receiptPhotos !== null)
+    || (data.receiptPhoto !== undefined && data.receiptPhoto !== null && data.receiptPhoto !== '');
+
+  if (photoFieldsTouched) {
+    var finalUrls = [];
+    if (data.existingPhotoUrls && data.existingPhotoUrls.length > 0) {
+      finalUrls = finalUrls.concat(data.existingPhotoUrls);
     }
+    var newPhotos = [];
+    if (data.receiptPhotos && data.receiptPhotos.length > 0) {
+      newPhotos = data.receiptPhotos;
+    } else if (data.receiptPhoto) {
+      newPhotos = [data.receiptPhoto];
+    }
+    if (newPhotos.length > 0) {
+      try {
+        var receiptFolder = getOrCreateFolder(RECEIPT_FOLDER_NAME);
+        var now = new Date();
+        var dateStr = Utilities.formatDate(now, 'Asia/Phnom_Penh', 'yyyyMMdd_HHmmss');
+        for (var i = 0; i < newPhotos.length; i++) {
+          var fileName = 'receipt_edit_' + dateStr + '_' + (i + 1);
+          var link = saveBase64Image(receiptFolder, newPhotos[i], fileName);
+          if (link) finalUrls.push(link);
+        }
+      } catch (photoErr) {
+        Logger.log('handleExpenseEditFromApp photo error: ' + photoErr.toString());
+      }
+    }
+    setExpensePhotoUrls(sheet, targetRow, finalUrls);
   }
 
-  // 各フィールドを更新（列: 3=日付, 4=説明, 5=金額, 6=通貨, 7=店名, 10=写真URL, 12=ステータス）
+  // 各フィールドを更新（列: 3=日付, 4=説明, 5=金額, 6=通貨, 7=店名, 12=ステータス）
   if (data.date) sheet.getRange(targetRow, 3).setValue(data.date);
   if (data.description) sheet.getRange(targetRow, 4).setValue(data.description);
   if (data.amount) sheet.getRange(targetRow, 5).setValue(data.amount);
   if (data.currency) sheet.getRange(targetRow, 6).setValue(data.currency);
   if (data.vendor !== undefined) sheet.getRange(targetRow, 7).setValue(data.vendor);
-  if (photoUrl) {
-    sheet.getRange(targetRow, 10).setFormula('=HYPERLINK("' + photoUrl + '","📷 レシート")');
-  }
   if (data.settlementStatus) sheet.getRange(targetRow, 12).setValue(data.settlementStatus);
 
   return jsonResponse({ status: 'ok', expenseId: data.expenseId });
@@ -2023,8 +2107,27 @@ function handleExpensesGet() {
     return jsonResponse({ status: 'ok', expenses: [] });
   }
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
-  var expenses = data.map(function(row) {
+  var range = sheet.getRange(2, 1, lastRow - 1, 13);
+  var values = range.getValues();
+  var formulas = range.getFormulas();
+  var notes = range.getNotes();
+
+  var expenses = values.map(function(row, i) {
+    // 写真URL（複数枚対応）
+    var photoUrls = [];
+    var note = notes[i][9];
+    if (note) {
+      photoUrls = note.split('\n').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+    } else {
+      var formula = formulas[i][9];
+      if (formula && formula.toUpperCase().indexOf('HYPERLINK') >= 0) {
+        var m = formula.match(/HYPERLINK\("([^"]+)"/);
+        if (m) photoUrls = [m[1]];
+      } else if (row[9] && row[9].toString().indexOf('http') === 0) {
+        photoUrls = [row[9].toString()];
+      }
+    }
+
     return {
       id: row[0],
       created: row[1],
@@ -2035,7 +2138,8 @@ function handleExpensesGet() {
       vendor: row[6],
       category: row[7],
       registeredBy: row[8],
-      photoUrl: row[9],
+      photoUrl: photoUrls.length > 0 ? photoUrls[0] : '',  // 後方互換
+      photoUrls: photoUrls,
       status: row[11],
       taskId: row[12]
     };

@@ -227,7 +227,7 @@ document.getElementById('menuAttendance').href = buildUrl('attendance-internal.h
       var d;
       try { d = JSON.parse(txt); }
       catch (e) {
-        line.textContent = '⚠️ 非JSON応答（先頭120文字）: ' + txt.substring(0, 120);
+        line.textContent = '⚠️ 非JSON応答（先頭300文字）: ' + txt.substring(0, 300);
         return;
       }
       if (d.ok && d.staff) {

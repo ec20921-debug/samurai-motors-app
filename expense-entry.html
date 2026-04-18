@@ -111,6 +111,29 @@ body {
 }
 .photo-preview.show { display:block; }
 
+/* 複数写真サムネイルグリッド */
+.photo-thumbs {
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;
+  margin-top:8px;
+}
+.photo-thumbs:empty { display:none; }
+.photo-thumb {
+  position:relative; aspect-ratio:1/1;
+  border-radius:8px; overflow:hidden;
+  border:1px solid var(--border); background:var(--bg);
+}
+.photo-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.photo-thumb .remove-btn {
+  position:absolute; top:2px; right:2px;
+  width:22px; height:22px; border-radius:50%;
+  background:rgba(0,0,0,0.7); color:#fff; border:none;
+  font-size:14px; line-height:22px; padding:0;
+  cursor:pointer; font-family:inherit;
+  display:flex; align-items:center; justify-content:center;
+}
+.photo-thumb .remove-btn:active { background:#c8102e; }
+.photo-count-hint { font-size:11px; color:var(--text-dim); margin-top:6px; text-align:center; }
+
 .expense-card {
   background: var(--card);
   border: 1.5px solid var(--border);
@@ -300,13 +323,14 @@ body {
     </a>
 
     <div class="section">
-      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真</div>
+      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真（複数枚OK）</div>
       <div class="photo-upload" id="photoUpload">
         <span class="upload-icon">📷</span>
-        <div class="upload-text" id="uploadText">ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択</div>
-        <input type="file" accept="image/*" onchange="handleReceiptPhoto(this)">
+        <div class="upload-text" id="uploadText">ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択（複数枚可）</div>
+        <input type="file" accept="image/*" multiple onchange="handleReceiptPhoto(this)">
       </div>
-      <img class="photo-preview" id="photoPreview">
+      <div class="photo-thumbs" id="photoThumbs"></div>
+      <div class="photo-count-hint" id="photoCountHint"></div>
     </div>
 
     <div class="section">
@@ -418,13 +442,14 @@ body {
     <input type="hidden" id="editExpenseId">
 
     <div class="section">
-      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真</div>
+      <div class="section-title">📸 រូបថតបង្កាន់ដៃ / レシート写真（複数枚OK）</div>
       <div class="photo-upload" id="editPhotoUpload">
         <span class="upload-icon">📷</span>
-        <div class="upload-text" id="editUploadText">ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択</div>
-        <input type="file" accept="image/*" onchange="handleEditPhoto(this)">
+        <div class="upload-text" id="editUploadText">ចុចដើម្បីបន្ថែមរូប / タップして写真を追加（複数枚可）</div>
+        <input type="file" accept="image/*" multiple onchange="handleEditPhoto(this)">
       </div>
-      <img class="edit-photo-preview" id="editPhotoPreview">
+      <div class="photo-thumbs" id="editPhotoThumbs"></div>
+      <div class="photo-count-hint" id="editPhotoCountHint"></div>
     </div>
 
     <div class="field">
@@ -484,7 +509,8 @@ body {
 // ═══════════════════════════════════════════
 
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbxJfqfid10yT_gRxzUb01qoN_RUVr6AcMuKzVpE7w3_cZoDKNewnBjKO4DO96LPA1hh/exec';
-var receiptPhotoBase64 = '';
+var receiptPhotosBase64 = []; // 入力ビュー: 新規アップロード用 base64 配列
+var MAX_PHOTOS = 8;
 var isAdmin = false;
 var expenseDataCache = [];
 var currentSettlementStatus = '未精算';
@@ -593,26 +619,75 @@ function switchTab(tab) {
 // ═══════════════════════════════════════════
 
 function handleReceiptPhoto(input) {
-  if (!input.files || !input.files[0]) return;
+  if (!input.files || input.files.length === 0) return;
 
-  var file = input.files[0];
-  var reader = new FileReader();
+  var files = Array.prototype.slice.call(input.files);
+  // 上限チェック
+  var availableSlots = MAX_PHOTOS - receiptPhotosBase64.length;
+  if (availableSlots <= 0) {
+    showToast('最大' + MAX_PHOTOS + '枚までです');
+    input.value = '';
+    return;
+  }
+  if (files.length > availableSlots) {
+    files = files.slice(0, availableSlots);
+    showToast('最大' + MAX_PHOTOS + '枚まで。先頭' + availableSlots + '枚のみ追加');
+  }
 
-  reader.onload = function(e) {
-    var preview = document.getElementById('photoPreview');
-    preview.src = e.target.result;
-    preview.classList.add('show');
+  var processed = 0;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      compressImage(e.target.result, function(compressed) {
+        receiptPhotosBase64.push(compressed);
+        processed++;
+        if (processed === files.length) {
+          renderEntryThumbs();
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+  // 同じファイルを再選択できるようにリセット
+  input.value = '';
+}
 
-    document.getElementById('photoUpload').classList.add('has-photo');
-    document.getElementById('uploadText').textContent = '✅ រូបថតត្រូវបានជ្រើស / 写真選択済み';
-    document.getElementById('uploadText').classList.add('success');
+function renderEntryThumbs() {
+  var thumbs = document.getElementById('photoThumbs');
+  var hint = document.getElementById('photoCountHint');
+  var uploadEl = document.getElementById('photoUpload');
+  var uploadText = document.getElementById('uploadText');
 
-    compressImage(e.target.result, function(compressed) {
-      receiptPhotoBase64 = compressed;
-    });
-  };
+  thumbs.innerHTML = '';
+  receiptPhotosBase64.forEach(function(b64, idx) {
+    var div = document.createElement('div');
+    div.className = 'photo-thumb';
+    var img = document.createElement('img');
+    img.src = b64;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'remove-btn';
+    btn.innerHTML = '×';
+    btn.onclick = function() {
+      receiptPhotosBase64.splice(idx, 1);
+      renderEntryThumbs();
+    };
+    div.appendChild(img);
+    div.appendChild(btn);
+    thumbs.appendChild(div);
+  });
 
-  reader.readAsDataURL(file);
+  if (receiptPhotosBase64.length > 0) {
+    uploadEl.classList.add('has-photo');
+    uploadText.textContent = '✅ ' + receiptPhotosBase64.length + ' រូប / 枚 選択済み（タップで追加）';
+    uploadText.classList.add('success');
+    hint.textContent = '最大' + MAX_PHOTOS + '枚まで（残り ' + (MAX_PHOTOS - receiptPhotosBase64.length) + ' 枚）';
+  } else {
+    uploadEl.classList.remove('has-photo');
+    uploadText.textContent = 'ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択（複数枚可）';
+    uploadText.classList.remove('success');
+    hint.textContent = '';
+  }
 }
 
 function compressImage(dataUrl, callback) {
@@ -669,7 +744,7 @@ function submitExpense() {
     category: category,
     registeredBy: registeredBy || 'មិនស្គាល់',
     settlementStatus: settlementStatus,
-    receiptPhoto: receiptPhotoBase64 || ''
+    receiptPhotos: receiptPhotosBase64.slice()
   };
 
   if (!GAS_URL) {
@@ -699,11 +774,8 @@ function submitExpense() {
       document.getElementById('expenseVendor').value = '';
       document.getElementById('expenseDescription').value = '';
       if (isAdmin) document.getElementById('expenseCategory').selectedIndex = 0;
-      receiptPhotoBase64 = '';
-      document.getElementById('photoPreview').classList.remove('show');
-      document.getElementById('photoUpload').classList.remove('has-photo');
-      document.getElementById('uploadText').textContent = 'ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択';
-      document.getElementById('uploadText').classList.remove('success');
+      receiptPhotosBase64 = [];
+      renderEntryThumbs();
       selectSettlementStatus('未精算');
     } else {
       showToast('កំហុស: ' + (data.message || 'エラー'));
@@ -770,8 +842,13 @@ function renderExpenses(expenses) {
       html += ' | 📂 ' + escapeHtml(exp.category || '-');
     }
     html += '</div>';
-    if (exp.photoUrl) {
-      html += '<img class="expense-photo-thumb" src="' + escapeHtml(exp.photoUrl) + '" onclick="window.open(expenseDataCache[' + idx + '].photoUrl)">';
+    var urls = (exp.photoUrls && exp.photoUrls.length > 0) ? exp.photoUrls : (exp.photoUrl ? [exp.photoUrl] : []);
+    if (urls.length > 0) {
+      html += '<div style="margin-top:6px;">';
+      urls.forEach(function(u, ui) {
+        html += '<img class="expense-photo-thumb" src="' + escapeHtml(u) + '" onclick="window.open(expenseDataCache[' + idx + '].photoUrls ? expenseDataCache[' + idx + '].photoUrls[' + ui + '] : expenseDataCache[' + idx + '].photoUrl)" style="margin-right:4px;">';
+      });
+      html += '</div>';
     }
     var statusClass = exp.status === '精算済み' ? 'paid' : 'pending';
     html += '<span class="expense-status ' + statusClass + '">' + escapeHtml(exp.status || 'មិនទាន់ទូទាត់') + '</span>';
@@ -807,7 +884,8 @@ function closeModal() {
 //  経費編集
 // ═══════════════════════════════════════════
 
-var editPhotoBase64 = '';
+var editExistingPhotoUrls = []; // 編集中に保持する既存URL
+var editNewPhotosBase64 = [];   // 編集中に追加する新規base64
 var editSettlementStatus = '未精算';
 
 function selectEditSettlementStatus(status) {
@@ -820,10 +898,17 @@ function openEditExpenseByIndex(idx) {
   var exp = expenseDataCache[idx];
   if (!exp) return;
   selectEditSettlementStatus(exp.status === '精算済み' ? '精算済み' : '未精算');
-  openEditExpense(exp.id || '', exp.date || '', exp.amount || 0, exp.currency || 'USD', exp.vendor || '', exp.description || '', exp.photoUrl || '');
+  // 複数枚URL（後方互換: photoUrls > photoUrl）
+  var urls = [];
+  if (exp.photoUrls && exp.photoUrls.length > 0) {
+    urls = exp.photoUrls.slice();
+  } else if (exp.photoUrl) {
+    urls = [exp.photoUrl];
+  }
+  openEditExpense(exp.id || '', exp.date || '', exp.amount || 0, exp.currency || 'USD', exp.vendor || '', exp.description || '', urls);
 }
 
-function openEditExpense(id, date, amount, currency, vendor, description, photoUrl) {
+function openEditExpense(id, date, amount, currency, vendor, description, photoUrls) {
   document.getElementById('editExpenseId').value = id;
   document.getElementById('editDate').value = date;
   document.getElementById('editAmount').value = amount;
@@ -831,50 +916,109 @@ function openEditExpense(id, date, amount, currency, vendor, description, photoU
   document.getElementById('editVendor').value = vendor;
   document.getElementById('editDescription').value = description;
 
-  // 既存写真の表示
-  editPhotoBase64 = '';
-  var preview = document.getElementById('editPhotoPreview');
-  var uploadEl = document.getElementById('editPhotoUpload');
-  var uploadText = document.getElementById('editUploadText');
-
-  if (photoUrl) {
-    preview.src = photoUrl;
-    preview.classList.add('show');
-    uploadEl.classList.add('has-photo');
-    uploadText.textContent = '✅ រូបថតមានរួចហើយ / 写真あり（変更可）';
-    uploadText.classList.add('success');
-  } else {
-    preview.classList.remove('show');
-    preview.src = '';
-    uploadEl.classList.remove('has-photo');
-    uploadText.textContent = 'ចុចដើម្បីថតរូប ឬជ្រើសរូប / タップして撮影 or 写真を選択';
-    uploadText.classList.remove('success');
-  }
+  editExistingPhotoUrls = photoUrls ? photoUrls.slice() : [];
+  editNewPhotosBase64 = [];
+  renderEditThumbs();
 
   document.getElementById('editExpenseModal').classList.add('show');
 }
 
+function renderEditThumbs() {
+  var thumbs = document.getElementById('editPhotoThumbs');
+  var hint = document.getElementById('editPhotoCountHint');
+  var uploadEl = document.getElementById('editPhotoUpload');
+  var uploadText = document.getElementById('editUploadText');
+
+  thumbs.innerHTML = '';
+
+  // 既存写真（URL）
+  editExistingPhotoUrls.forEach(function(url, idx) {
+    var div = document.createElement('div');
+    div.className = 'photo-thumb';
+    var img = document.createElement('img');
+    img.src = url;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'remove-btn';
+    btn.innerHTML = '×';
+    btn.onclick = function() {
+      editExistingPhotoUrls.splice(idx, 1);
+      renderEditThumbs();
+    };
+    div.appendChild(img);
+    div.appendChild(btn);
+    thumbs.appendChild(div);
+  });
+
+  // 新規写真（base64）
+  editNewPhotosBase64.forEach(function(b64, idx) {
+    var div = document.createElement('div');
+    div.className = 'photo-thumb';
+    var img = document.createElement('img');
+    img.src = b64;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'remove-btn';
+    btn.innerHTML = '×';
+    btn.onclick = function() {
+      editNewPhotosBase64.splice(idx, 1);
+      renderEditThumbs();
+    };
+    div.appendChild(img);
+    div.appendChild(btn);
+    thumbs.appendChild(div);
+  });
+
+  var totalCount = editExistingPhotoUrls.length + editNewPhotosBase64.length;
+  if (totalCount > 0) {
+    uploadEl.classList.add('has-photo');
+    uploadText.textContent = '✅ ' + totalCount + ' រូប / 枚（タップで追加）';
+    uploadText.classList.add('success');
+    hint.textContent = '最大' + MAX_PHOTOS + '枚まで（残り ' + (MAX_PHOTOS - totalCount) + ' 枚）';
+  } else {
+    uploadEl.classList.remove('has-photo');
+    uploadText.textContent = 'ចុចដើម្បីបន្ថែមរូប / タップして写真を追加（複数枚可）';
+    uploadText.classList.remove('success');
+    hint.textContent = '';
+  }
+}
+
 function closeEditExpense() {
   document.getElementById('editExpenseModal').classList.remove('show');
-  editPhotoBase64 = '';
+  editExistingPhotoUrls = [];
+  editNewPhotosBase64 = [];
 }
 
 function handleEditPhoto(input) {
-  if (!input.files || !input.files[0]) return;
-  var file = input.files[0];
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var preview = document.getElementById('editPhotoPreview');
-    preview.src = e.target.result;
-    preview.classList.add('show');
-    document.getElementById('editPhotoUpload').classList.add('has-photo');
-    document.getElementById('editUploadText').textContent = '✅ រូបថតថ្មីត្រូវបានជ្រើស / 新しい写真を選択済み';
-    document.getElementById('editUploadText').classList.add('success');
-    compressImage(e.target.result, function(compressed) {
-      editPhotoBase64 = compressed;
-    });
-  };
-  reader.readAsDataURL(file);
+  if (!input.files || input.files.length === 0) return;
+  var files = Array.prototype.slice.call(input.files);
+  var totalCount = editExistingPhotoUrls.length + editNewPhotosBase64.length;
+  var availableSlots = MAX_PHOTOS - totalCount;
+  if (availableSlots <= 0) {
+    showToast('最大' + MAX_PHOTOS + '枚までです');
+    input.value = '';
+    return;
+  }
+  if (files.length > availableSlots) {
+    files = files.slice(0, availableSlots);
+    showToast('最大' + MAX_PHOTOS + '枚まで。先頭' + availableSlots + '枚のみ追加');
+  }
+
+  var processed = 0;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      compressImage(e.target.result, function(compressed) {
+        editNewPhotosBase64.push(compressed);
+        processed++;
+        if (processed === files.length) {
+          renderEditThumbs();
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
 }
 
 function submitExpenseEdit() {
@@ -900,13 +1044,11 @@ function submitExpenseEdit() {
     currency: currency,
     vendor: vendor,
     description: description,
-    settlementStatus: editSettlementStatus
+    settlementStatus: editSettlementStatus,
+    // 写真は常に「最終的な状態」を送る（既存URL残し + 新規追加）
+    existingPhotoUrls: editExistingPhotoUrls.slice(),
+    receiptPhotos: editNewPhotosBase64.slice()
   };
-
-  // 新しい写真がある場合のみ送信
-  if (editPhotoBase64) {
-    payload.receiptPhoto = editPhotoBase64;
-  }
 
   fetch(GAS_URL, {
     method: 'POST',
