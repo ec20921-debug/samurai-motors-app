@@ -65,6 +65,19 @@ function doPost(e) {
       case 'ping':
         return jsonOut({ ok: true, echo: body });
 
+      // iOS Safari / Telegram WebView 対策で GET ではなく POST(text/plain) 経由でも受け付ける
+      case 'whoami': {
+        const chatId = String(body.chatId || '');
+        const staff = chatId ? findStaffByChatId(chatId) : null;
+        return jsonOut({ ok: true, staff: staff });
+      }
+
+      case 'attendance_today': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(getTodayAttendance(chatId));
+      }
+
       case 'punch_in': {
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
