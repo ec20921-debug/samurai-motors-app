@@ -167,28 +167,32 @@ body {
 </div>
 
 <script>
-// v7-ops GAS URL を決定（Telegram start_param → URL ?gas=... の順）
+// v7-ops GAS URL / chatId を決定
+// 優先順位: URL ?gas=/?chatId= → Telegram start_param / initDataUnsafe.user
 var GAS_URL = '';
+var currentChatId = '';
+
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
   Telegram.WebApp.expand();
-  if (Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) {
-    GAS_URL = decodeURIComponent(Telegram.WebApp.initDataUnsafe.start_param);
-  }
-}
-if (!GAS_URL) {
-  var params = new URLSearchParams(window.location.search);
-  if (params.get('gas')) GAS_URL = params.get('gas');
 }
 
-var BASE = window.location.href.replace(/\/[^\/]*$/, '');
-var currentChatId = '';
+var params = new URLSearchParams(window.location.search);
+if (params.get('gas'))    GAS_URL = params.get('gas');
+if (params.get('chatId')) currentChatId = params.get('chatId');
 
-// Telegram user.id を取得（ここでのみ取得可能、遷移先ページには渡す必要あり）
-if (window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe) {
+// フォールバック: Telegram WebApp
+if (!GAS_URL && window.Telegram && Telegram.WebApp &&
+    Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.start_param) {
+  GAS_URL = decodeURIComponent(Telegram.WebApp.initDataUnsafe.start_param);
+}
+if (!currentChatId && window.Telegram && Telegram.WebApp &&
+    Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) {
   var u = Telegram.WebApp.initDataUnsafe.user;
   if (u && u.id) currentChatId = String(u.id);
 }
+
+var BASE = window.location.href.replace(/\/[^\/]*$/, '').split('?')[0];
 
 function buildUrl(page) {
   var url = BASE + '/' + page;
@@ -212,7 +216,12 @@ document.getElementById('menuAttendance').href = buildUrl('attendance-internal.h
     line.textContent = '⚠️ GAS URL 未設定';
     return;
   }
-  fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(currentChatId))
+  // iOS Safari / Telegram WebView で GET が "Load failed" になる対策で
+  // POST + text/plain（simple request）を使う。headers を指定しないことが重要。
+  fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'whoami', chatId: currentChatId })
+  })
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.ok && d.staff) {

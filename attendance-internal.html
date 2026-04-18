@@ -203,7 +203,10 @@ function loadWho() {
     line.textContent = '⚠️ GAS URL 未設定';
     return Promise.resolve();
   }
-  return fetch(GAS_URL + '?action=whoami&chatId=' + encodeURIComponent(currentChatId))
+  return fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'whoami', chatId: currentChatId })
+  })
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (d.ok && d.staff) {
@@ -270,7 +273,10 @@ function acquireGps() {
 // ═══════════════════════════════════════════
 function loadToday() {
   if (!GAS_URL || !currentChatId) return Promise.resolve();
-  return fetch(GAS_URL + '?action=attendance_today&chatId=' + encodeURIComponent(currentChatId))
+  return fetch(GAS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'attendance_today', chatId: currentChatId })
+  })
     .then(function(r) { return r.json(); })
     .then(function(d) { applyStatus(d); });
 }
