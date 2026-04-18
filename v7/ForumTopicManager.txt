@@ -163,6 +163,85 @@ function pickIconColor(chatId) {
   return colors[sum % colors.length];
 }
 
+// ====== stale thread 自動復旧 ======
+
+/**
+ * 顧客トピックへテキスト送信（古い thread_id で失敗したら自動再作成してリトライ）
+ *
+ * 【背景】
+ *   管理グループでチャットログを削除してトピックごと消してしまうと、
+ *   顧客シートに残った「トピックID」は無効になり、sendMessage が
+ *   "message thread not found" (400) を返して配送失敗する。
+ *   ここで検知して: トピックID をクリア → getOrCreateTopic で再作成 → 1回だけリトライ。
+ *
+ * @param {Object} customer - {chatId, firstName, lastName, username, ...}
+ * @param {string} text
+ * @param {Object} [extraOpts] - sendMessage の追加オプション
+ * @return {{ok: boolean, threadId: number, recreated: boolean}}
+ */
+function sendToCustomerTopicWithRecovery(customer, text, extraOpts) {
+  const cfg = getConfig();
+  const chatId = String(customer.chatId);
+
+  // ── 1回目: 既存の（あるいは新規作成の）トピックへ送信 ──
+  let topic = getOrCreateTopic(customer);
+  let res = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, Object.assign({
+    message_thread_id: topic.threadId
+  }, extraOpts || {}));
+
+  if (res && res.ok) {
+    return { ok: true, threadId: topic.threadId, recreated: false };
+  }
+
+  // ── 失敗時: "message thread not found" ならトピックID をクリアして1回だけ再作成 ──
+  const desc = String((res && res.description) || '');
+  const isStaleThread = /thread.*not.*found/i.test(desc) || /TOPIC_.*INVALID/i.test(desc);
+  Logger.log('⚠️ sendToCustomerTopicWithRecovery: 1回目失敗 desc="' + desc + '" stale=' + isStaleThread);
+
+  if (!isStaleThread) {
+    // 別の理由（権限・chat_id 不正など）は再作成しても直らないのでここで終了
+    return { ok: false, threadId: topic.threadId, recreated: false };
+  }
+
+  // トピックID をクリアして強制的に再作成
+  const row = findCustomerRow(chatId);
+  if (row) {
+    updateRow(SHEET_NAMES.CUSTOMERS, row.rowIndex, { 'トピックID': '' });
+    Logger.log('🧹 stale トピックID クリア chatId=' + chatId + ' (旧 threadId=' + topic.threadId + ')');
+  }
+
+  topic = getOrCreateTopic(customer);
+  Logger.log('♻️ トピック再作成 chatId=' + chatId + ' 新 threadId=' + topic.threadId);
+
+  res = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, Object.assign({
+    message_thread_id: topic.threadId
+  }, extraOpts || {}));
+
+  return {
+    ok: !!(res && res.ok),
+    threadId: topic.threadId,
+    recreated: true
+  };
+}
+
+/**
+ * 全顧客のトピックID を一括クリア（管理グループのチャットログを完全削除した場合のリセット用）
+ * ⚠️ 次の顧客メッセージ・次の予約で自動的に新しいトピックが作成される
+ */
+function resetAllCustomerTopicIds() {
+  const sheet = getSheet(SHEET_NAMES.CUSTOMERS);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('⚠️ 顧客シート空'); return; }
+
+  const headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+  const topicCol = headers['トピックID'];
+  if (!topicCol) { Logger.log('⚠️ トピックID列が見つからない'); return; }
+
+  const range = sheet.getRange(2, topicCol, lastRow - 1, 1);
+  range.clearContent();
+  Logger.log('✅ 全顧客のトピックID をクリア (' + (lastRow - 1) + ' 件)。次の顧客メッセージ/予約で自動再作成されます。');
+}
+
 // ====== デバッグ ======
 
 /**

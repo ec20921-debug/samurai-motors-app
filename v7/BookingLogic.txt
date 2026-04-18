@@ -373,8 +373,20 @@ function notifyBookingCreated(info) {
   sendMessage(BOT_TYPE.BOOKING, info.chatId, parkingInfoText);
 
   // ── 管理グループへ（顧客トピック内） ──
-  const customer = findCustomerRow(info.chatId);
-  const threadId = (customer && customer.data['トピックID']) ? Number(customer.data['トピックID']) : null;
+  // stale thread_id が残っている（例: 管理グループのチャットログを消してトピック削除した）ケースに備え、
+  // getOrCreateTopic + 自動再作成フォールバック付きの sendToCustomerTopicWithRecovery を使う
+  const custRow = findCustomerRow(info.chatId);
+  const customerObj = (custRow && custRow.data) ? {
+    chatId:    info.chatId,
+    firstName: (custRow.data['氏名'] || info.name || '').toString(),
+    lastName:  '',
+    username:  custRow.data['ユーザー名'] || ''
+  } : {
+    chatId:    info.chatId,
+    firstName: info.name || '',
+    lastName:  '',
+    username:  ''
+  };
 
   const adminText =
     '🆕 新規予約\n' +
@@ -388,8 +400,21 @@ function notifyBookingCreated(info) {
     '場所: ' + info.mapsUrl + '\n' +
     '━━━━━━━━━━━━━━━━';
 
-  const options = threadId ? { message_thread_id: threadId } : {};
-  sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, options);
+  try {
+    const sendRes = sendToCustomerTopicWithRecovery(customerObj, adminText);
+    if (!sendRes.ok) {
+      Logger.log('⚠️ notifyBookingCreated: 管理グループ通知失敗（トピック送信が最終的に失敗）');
+      // 最終フォールバック: General（thread 指定なし）に投げて消失を防ぐ
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+        '⚠️ トピック送信失敗のため General へ投稿\n' + adminText);
+    } else if (sendRes.recreated) {
+      Logger.log('♻️ notifyBookingCreated: 古いトピック検出 → 再作成して通知成功');
+    }
+  } catch (err) {
+    Logger.log('❌ notifyBookingCreated: sendToCustomerTopicWithRecovery 例外: ' + err);
+    // 例外でも最低限 General に投げて予約通知を失わない
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText);
+  }
 }
 
 // ====== ヘルパー ======

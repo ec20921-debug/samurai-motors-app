@@ -274,8 +274,13 @@ function tryHandlePaymentScreenshot(msg) {
 }
 
 /**
- * 該当顧客の最新「QR送信済み」予約を返す
+ * 該当顧客の最新「支払い待ち」予約を返す
  * 同じ顧客に複数の未払いがある場合、QR送信日時が新しいものを採用
+ *
+ * 【判定条件】（誤爆防止のため厳格化 2026-04-19）
+ *   - 決済状態 = 'QR送信済み'
+ *   - 進行状態 = '作業完了' （作業前の駐車写真を支払い扱いしないため必須）
+ *   - QR送信日時 が 48時間以内 （古いテスト予約に吸収されないため）
  *
  * @param {string} chatId
  * @return {{rowIndex: number, data: Object} | null}
@@ -290,15 +295,26 @@ function findLatestUnpaidBooking(chatId) {
 
   var latest = null;
   var latestTs = 0;
+  var WINDOW_MS = 48 * 60 * 60 * 1000; // 48時間以内
+  var now = Date.now();
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     if (String(row[(headers['チャットID'] || 1) - 1]) !== String(chatId)) continue;
+
     var pStatus = String(row[(headers['決済状態'] || 1) - 1] || '');
     if (pStatus !== 'QR送信済み') continue;
 
+    // ★ 進行状態チェック: 作業完了済みの予約のみを支払い待ちとみなす
+    //   （予約確定・作業中の時点ではまだ支払いフェーズではない）
+    var jStatus = String(row[(headers['進行状態'] || 1) - 1] || '');
+    if (jStatus !== '作業完了') continue;
+
     var qrSent = row[(headers['QR送信日時'] || 1) - 1];
     var ts = (qrSent instanceof Date) ? qrSent.getTime() : 0;
+    // ★ QR送信から48h以内のもののみ対象
+    if (!ts || (now - ts) > WINDOW_MS) continue;
+
     if (ts > latestTs) {
       latestTs = ts;
       latest = { rowIndex: i + 2, data: readRow(SHEET_NAMES.BOOKINGS, i + 2) };

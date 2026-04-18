@@ -91,7 +91,8 @@ function handleCustomerMessage(msg) {
 
   // 写真メッセージは支払いスクショの可能性をまず判定（Phase 5）
   // 該当する未払い予約があれば、それとして処理し通常転送はスキップ
-  if (msg.photo && msg.photo.length > 0 && typeof tryHandlePaymentScreenshot === 'function') {
+  var isPhoto = msg.photo && msg.photo.length > 0;
+  if (isPhoto && typeof tryHandlePaymentScreenshot === 'function') {
     try {
       if (tryHandlePaymentScreenshot(msg)) {
         return;
@@ -103,6 +104,20 @@ function handleCustomerMessage(msg) {
 
   // それ以外の全メッセージ → 管理者トピックへ転送
   forwardCustomerMessage(msg);
+
+  // 支払いスクショでない写真には軽い受領メッセージを返す
+  // （駐車場所の写真など、作業前の写真を想定。支払い確認の自動返信は誤解を招くため出さない）
+  if (isPhoto) {
+    try {
+      sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
+        '📸 សូមអរគុណសម្រាប់រូបថត! / Thanks for the photo!\n' +
+        'ក្រុមការងាររបស់យើងបានទទួលហើយ។\n' +
+        'Our team has received it.'
+      );
+    } catch (err) {
+      Logger.log('⚠️ photo thanks reply 失敗: ' + err);
+    }
+  }
 }
 
 /**
