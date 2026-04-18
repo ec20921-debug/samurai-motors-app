@@ -128,6 +128,24 @@ function doPost(e) {
         return jsonOut({ ok: true });
       }
 
+      // ── 日報提出ミニアプリ ──
+      case 'report_today': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(getTodayReport(chatId));
+      }
+
+      case 'report_submit': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(submitDailyReport(chatId, {
+          work:       String(body.work       || ''),
+          notes:      String(body.notes      || ''),
+          tomorrow:   String(body.tomorrow   || ''),
+          targetDate: String(body.targetDate || '')
+        }));
+      }
+
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
     }
