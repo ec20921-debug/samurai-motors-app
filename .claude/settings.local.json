@@ -54,7 +54,9 @@
       "Bash(cp BotPoller.gs BotPoller.txt)",
       "Bash(cp BookingLogic.gs BookingLogic.txt)",
       "Bash(curl -s \"https://ec20921-debug.github.io/samurai-motors-app/booking.html\")",
-      "Bash(grep -E \"\\\\.html$\")"
+      "Bash(grep -E \"\\\\.html$\")",
+      "Bash(rm -rfv node_modules)",
+      "Bash(rm -v public/SamuraiMotors_AppsScript_v5.js public/admin-console.html public/attendance.html public/customer-chat.html public/daily-report.html public/expense-entry.html public/home.html public/inventory.html public/task-manager.html)"
     ]
   }
 }
