@@ -188,11 +188,95 @@ function setupPhase2Tasks() {
   seedAdminStaff();
   ensureTasksSheet(ss);
   applyTasksSheetValidation(ss);
+  ensureTaskInputSheet(ss);
   seedRecurringTaskTemplates();
 
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('✅ Phase 2 セットアップ完了');
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('');
+  Logger.log('⏭️ 次に setupTaskInputOnEditTrigger() を実行してください');
+  Logger.log('   （「新規タスク入力」シートの自動転記を有効化）');
+}
+
+/**
+ * 「新規タスク入力」シートを作成。
+ *
+ * UX: ユーザーは 4項目（担当者/期限/タスク内容/繰返し）だけ入力し、
+ *     E列の☑を入れると onEdit が発火してタスクシートへ自動転記される。
+ *
+ * 列構成:
+ *   A: 担当者          (スタッフマスター・氏名JP ドロップダウン)
+ *   B: 期限            (日付ピッカー)
+ *   C: タスク内容      (自由入力)
+ *   D: 繰返しルール    (RECURRENCE_OPTIONS ドロップダウン・空ならなし扱い)
+ *   E: 追加 (☑ で転記)  (チェックボックス)
+ *   F: 結果            (処理ログ/エラーの自動出力)
+ */
+function ensureTaskInputSheet(ss) {
+  const name = SHEET_NAMES.TASK_INPUT;
+  let sheet = ss.getSheetByName(name);
+  const headers = ['担当者', '期限', 'タスク内容', '繰返し', '追加', '結果'];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fff3cd');
+    sheet.setFrozenRows(1);
+    [110, 110, 420, 100, 70, 260].forEach(function(w, i) { sheet.setColumnWidth(i + 1, w); });
+
+    // 使い方の案内行
+    sheet.getRange('A2').setNote(
+      '🆕 新規タスク追加手順:\n' +
+      '① A列: 担当者を選択\n' +
+      '② B列: 期限を選択\n' +
+      '③ C列: タスク内容を入力\n' +
+      '④ D列: 繰返し設定（任意）\n' +
+      '⑤ E列にチェック☑ → 自動でタスクシートに追加され、行はクリアされます'
+    );
+
+    Logger.log('✅ 「' + name + '」を新規作成');
+  } else {
+    Logger.log('ℹ️ 「' + name + '」は既存（スキップ）');
+  }
+
+  // Data Validation を適用（新規/既存問わず再設定）
+  const staffNameRange = ss.getSheetByName(SHEET_NAMES.STAFF_MASTER).getRange('C2:C');
+  const MAX = 200;
+
+  sheet.getRange(2, 1, MAX, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInRange(staffNameRange, true).setAllowInvalid(false).build()
+  );
+  sheet.getRange(2, 2, MAX, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build()
+  );
+  sheet.getRange(2, 4, MAX, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(RECURRENCE_OPTIONS, true).setAllowInvalid(false).build()
+  );
+  sheet.getRange(2, 5, MAX, 1).insertCheckboxes();
+
+  Logger.log('✅ 「' + name + '」の Data Validation を再適用');
+}
+
+/**
+ * 新規タスク入力シートの onEdit トリガーを登録
+ * ※ シンプル onEdit では openById 等が制限されるため、installable を使う
+ */
+function setupTaskInputOnEditTrigger() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+
+  // 既存の同名トリガーを削除
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'handleTaskInputEdit') ScriptApp.deleteTrigger(t);
+  });
+
+  ScriptApp.newTrigger('handleTaskInputEdit')
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+
+  Logger.log('✅ handleTaskInputEdit の onEdit トリガーを登録');
 }
 
 /**

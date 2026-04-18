@@ -39,6 +39,7 @@ const SHEET_NAMES = {
   STAFF_MASTER:   'スタッフマスター',
   ATTENDANCE:     '勤怠記録',
   TASKS:          'タスク',
+  TASK_INPUT:     '新規タスク入力',
   DAILY_REPORTS:  '日報',
   EXPENSES:       '経費'
 };

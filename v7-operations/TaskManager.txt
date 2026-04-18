@@ -416,6 +416,93 @@ function debugShowPendingTasks() {
 }
 
 // ============================================================
+//  新規タスク入力シート - onEdit ハンドラ
+// ============================================================
+
+/**
+ * 「新規タスク入力」シートの編集イベント。
+ * E列（追加）のチェックが入ったら、その行をタスクシートに転記し、
+ * 入力行をクリアしてチェックボックスも外す。
+ *
+ * 【インストール方法】Setup.gs の setupTaskInputOnEditTrigger() を1回実行
+ */
+function handleTaskInputEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    const sheet = e.range.getSheet();
+    if (sheet.getName() !== SHEET_NAMES.TASK_INPUT) return;
+    if (e.range.getColumn() !== 5) return;     // E列以外は無視
+    if (e.value !== 'TRUE') return;            // チェックが入った時のみ
+    const row = e.range.getRow();
+    if (row < 2) return;                       // ヘッダー行は無視
+
+    processTaskInputRow_(sheet, row);
+  } catch (err) {
+    Logger.log('❌ handleTaskInputEdit: ' + err);
+  }
+}
+
+function processTaskInputRow_(sheet, row) {
+  const values = sheet.getRange(row, 1, 1, 5).getValues()[0];
+  const assigneeName = String(values[0] || '').trim();
+  const dueRaw       = values[1];
+  const desc         = String(values[2] || '').trim();
+  const recurrence   = String(values[3] || '').trim();
+
+  const resultCell = sheet.getRange(row, 6);
+  const checkCell  = sheet.getRange(row, 5);
+
+  if (!assigneeName || !dueRaw || !desc) {
+    resultCell.setValue('⚠️ 担当者・期限・タスク内容は必須');
+    checkCell.setValue(false);
+    return;
+  }
+
+  const staff = findStaffByNameJp(assigneeName);
+  if (!staff) {
+    resultCell.setValue('⚠️ スタッフマスターに「' + assigneeName + '」未登録');
+    checkCell.setValue(false);
+    return;
+  }
+
+  const tz = staff.timezone || 'Asia/Phnom_Penh';
+  const dueStr = (dueRaw instanceof Date)
+    ? Utilities.formatDate(dueRaw, tz, 'yyyy-MM-dd')
+    : String(dueRaw).trim();
+
+  // 繰返しありかつ期限なし → テンプレート扱い
+  // 通常は一回タスク
+  const isTemplate = (recurrence && recurrence !== 'なし');
+  const status = isTemplate ? '繰返し中' : '未着手';
+  const taskId = generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID');
+
+  appendRow(SHEET_NAMES.TASKS, {
+    'タスクID':      taskId,
+    '作成日時':      new Date(),
+    '担当者名':      staff.nameJp,
+    '担当 Chat ID':  staff.chatId,
+    '担当 role':     staff.role,
+    '担当 timezone': tz,
+    '期限':          isTemplate ? '' : dueStr,   // テンプレートは期限を持たない
+    'タスク内容':    desc,
+    'ステータス':    status,
+    '完了日時':      '',
+    '未完了理由':    '',
+    '繰返しルール':  isTemplate ? recurrence : '',
+    '親タスクID':    ''
+  });
+
+  // 入力行クリア
+  sheet.getRange(row, 1, 1, 5).clearContent();
+  sheet.getRange(row, 5).insertCheckboxes();  // チェックボックス再挿入
+
+  const label = isTemplate
+    ? '✅ テンプレート登録: ' + taskId + ' (' + recurrence + ')'
+    : '✅ タスク登録: ' + taskId + ' 期限=' + dueStr;
+  resultCell.setValue(label);
+}
+
+// ============================================================
 //  ユーティリティ
 // ============================================================
 
