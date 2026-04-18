@@ -163,14 +163,19 @@ function findTodayRow_(dateStr, staffId) {
   }
 
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  Logger.log('🔍 findTodayRow_ target=' + dateStr + '/' + staffId + ' rows=' + values.length);
   for (let i = 0; i < values.length; i++) {
     const d = formatDateCell_(values[i][dateIdx]);
-    if (d === dateStr && String(values[i][idIdx]) === String(staffId)) {
+    const id = String(values[i][idIdx]);
+    Logger.log('  row=' + (i+2) + ' date=' + d + ' id=' + id);
+    if (d === dateStr && id === String(staffId)) {
       const data = {};
       headers.forEach(function(h, j) { data[h] = values[i][j]; });
+      Logger.log('  ✅ match row=' + (i+2));
       return { row: i + 2, data: data };
     }
   }
+  Logger.log('  ❌ no match');
   return null;
 }
 
@@ -256,11 +261,12 @@ function formatDateCell_(cell) {
 
 /**
  * シートセルの時刻を HH:mm に正規化
+ * ★ Date セルはシートの TZ で解釈（日付セルと同様、TZ ズレ対策）
  */
 function formatTimeCell_(cell) {
-  if (!cell) return '';
+  if (cell === '' || cell === null || cell === undefined) return '';
   if (cell instanceof Date) {
-    return Utilities.formatDate(cell, OPS_TZ, 'HH:mm');
+    return Utilities.formatDate(cell, getSheetTz_(), 'HH:mm');
   }
   // "HH:mm" or "HH:mm:ss"
   const s = String(cell);
