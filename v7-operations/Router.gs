@@ -128,6 +128,27 @@ function doPost(e) {
         return jsonOut({ ok: true });
       }
 
+      case 'task_create': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        const creator = findStaffByChatId(chatId);
+        if (!creator) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        return jsonOut(createTaskFromUi(chatId, {
+          assigneeName: String(body.assigneeName || ''),
+          targetDate:   String(body.targetDate   || ''),
+          description:  String(body.description  || ''),
+          recurrence:   String(body.recurrence   || 'なし')
+        }));
+      }
+
+      case 'staff_list_for_tasks': {
+        // タスク作成UIの担当者ドロップダウン用（最小限の情報）
+        const all = getActiveStaff().map(function(s) {
+          return { nameJp: s.nameJp, nameEn: s.nameEn, role: s.role };
+        });
+        return jsonOut({ ok: true, staff: all, recurrences: RECURRENCE_OPTIONS });
+      }
+
       // ── 日報提出ミニアプリ ──
       case 'report_today': {
         const chatId = String(body.chatId || '');

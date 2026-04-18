@@ -506,6 +506,93 @@ function processTaskInputRow_(sheet, row) {
 }
 
 // ============================================================
+//  ミニアプリからのタスク作成
+// ============================================================
+
+/**
+ * ミニアプリからのタスク作成
+ *
+ * @param {string} creatorChatId 作成者（通知の「作成者」表示用）
+ * @param {{ assigneeName:string, targetDate:string, description:string, recurrence:string }} payload
+ */
+function createTaskFromUi(creatorChatId, payload) {
+  const assigneeName = String((payload && payload.assigneeName) || '').trim();
+  const desc         = String((payload && payload.description)  || '').trim();
+  const targetDate   = String((payload && payload.targetDate)   || '').trim();
+  const recurrence   = String((payload && payload.recurrence)   || 'なし').trim();
+
+  if (!assigneeName) return { ok: false, error: 'ASSIGNEE_REQUIRED' };
+  if (!desc)         return { ok: false, error: 'DESC_REQUIRED' };
+
+  const staff = findStaffByNameJp(assigneeName);
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND', name: assigneeName };
+
+  const isTemplate = (recurrence && recurrence !== 'なし');
+  if (!isTemplate && !targetDate) return { ok: false, error: 'DATE_REQUIRED' };
+
+  const tz = staff.timezone || OPS_TZ;
+  const taskId = generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID');
+  const status = isTemplate ? '繰返し中' : '未着手';
+
+  appendRow(SHEET_NAMES.TASKS, {
+    'タスクID':      taskId,
+    '作成日時':      new Date(),
+    '担当者名':      staff.nameJp,
+    '担当 Chat ID':  staff.chatId,
+    '担当 role':     staff.role,
+    '担当 timezone': tz,
+    '期限':          isTemplate ? '' : targetDate,
+    'タスク内容':    desc,
+    'ステータス':    status,
+    '完了日時':      '',
+    '未完了理由':    '',
+    '繰返しルール':  isTemplate ? recurrence : '',
+    '親タスクID':    ''
+  });
+
+  // 管理グループへ通知（成功時のみ／失敗してもユーザの作成自体は成功として返す）
+  try {
+    notifyTaskCreated_(staff, taskId, desc, isTemplate ? recurrence : targetDate, isTemplate, creatorChatId);
+  } catch (err) {
+    Logger.log('⚠️ タスク作成通知失敗: ' + err);
+  }
+
+  return {
+    ok: true,
+    taskId: taskId,
+    isTemplate: isTemplate,
+    assignee: staff.nameJp
+  };
+}
+
+/**
+ * 作成通知（管理グループ・タスクトピック）
+ */
+function notifyTaskCreated_(staff, taskId, desc, dueOrRule, isTemplate, creatorChatId) {
+  const cfg = getConfig();
+  if (!cfg.adminTaskThreadId) return;
+
+  const creator = findStaffByChatId(String(creatorChatId || ''));
+  const creatorName = creator ? creator.nameJp : ('chat_id=' + (creatorChatId || '?'));
+
+  const header = isTemplate ? '🔁 <b>繰返しタスク登録</b>' : '➕ <b>タスク作成</b>';
+  const dueLine = isTemplate ? '繰返し: ' + dueOrRule : '期限: ' + dueOrRule;
+  const text = [
+    header,
+    '━━━━━━━━━━━━━━━━━━',
+    '担当: ' + escapeHtml_(staff.nameJp),
+    dueLine,
+    '内容: ' + escapeHtml_(String(desc).substring(0, 200)),
+    '作成者: ' + escapeHtml_(creatorName)
+  ].join('\n');
+
+  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
+    parse_mode: 'HTML',
+    message_thread_id: Number(cfg.adminTaskThreadId)
+  });
+}
+
+// ============================================================
 //  ユーティリティ
 // ============================================================
 

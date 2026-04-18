@@ -175,6 +175,47 @@ body {
 .toast.show { transform: translateX(-50%) translateY(0); }
 .toast.err { border-color: var(--red); }
 .toast.ok  { border-color: var(--green); }
+
+/* 新規タスク作成 */
+.add-btn {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--gold);
+  background: transparent;
+  color: var(--gold);
+  border-radius: var(--radius);
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 14px;
+  transition: background 0.2s;
+}
+.add-btn:active { background: rgba(201,168,76,0.1); }
+
+.create-modal .field {
+  margin-bottom: 12px;
+}
+.create-modal label {
+  display:block;
+  font-size: 12px; font-weight: 600;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.create-modal .req { color: #ff5252; font-size: 11px; margin-left: 4px; }
+.create-modal select,
+.create-modal input[type=date],
+.create-modal textarea {
+  width:100%;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; font-family: inherit; font-size: 14px;
+}
+.create-modal input[type=date] { color-scheme: dark; }
+.create-modal textarea { resize: vertical; min-height: 70px; }
+.create-modal .hint {
+  font-size: 10px; color: var(--text-dim); margin-top: 4px;
+}
+.btn-create { background: linear-gradient(135deg, #E65100, #F57C00); }
 </style>
 </head>
 <body>
@@ -191,10 +232,49 @@ body {
     <div class="sum-card"><div class="num" id="sumTotal">0</div><div class="lbl">📋 合計</div></div>
   </div>
 
+  <button class="add-btn" id="btnOpenCreate">➕ 新規タスク作成 / បង្កើតភារកិច្ច</button>
+
   <div id="taskList" class="task-list">
     <div class="loading">読み込み中… / កំពុងផ្ទុក…</div>
   </div>
 
+</div>
+
+<!-- 新規タスク作成モーダル -->
+<div class="modal-bg" id="createModalBg">
+  <div class="modal create-modal">
+    <h3>➕ 新規タスク作成</h3>
+
+    <div class="field">
+      <label>👤 担当者 <span class="req">* 必須</span></label>
+      <select id="createAssignee">
+        <option value="">-- 選択してください --</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>📝 タスク内容 <span class="req">* 必須</span></label>
+      <textarea id="createDesc" placeholder="例: 倉庫の清掃、月末棚卸し 等"></textarea>
+    </div>
+
+    <div class="field">
+      <label>📅 期限</label>
+      <input type="date" id="createDate">
+      <div class="hint">※ 繰返しを指定する場合は期限は不要</div>
+    </div>
+
+    <div class="field">
+      <label>🔁 繰返し</label>
+      <select id="createRecurrence">
+        <option value="なし">なし（単発タスク）</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" id="createCancel">キャンセル</button>
+      <button class="btn btn-create"  id="createSubmit">作成</button>
+    </div>
+  </div>
 </div>
 
 <!-- 未完了理由モーダル -->
@@ -452,6 +532,110 @@ function esc(s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
   });
 }
+
+// ═══════════════════════════════════════════
+//  新規タスク作成
+// ═══════════════════════════════════════════
+var staffListCache = null;
+
+function openCreateModal() {
+  // 日付初期値 = 今日
+  document.getElementById('createDate').value = formatDateLocal(new Date());
+  document.getElementById('createDesc').value = '';
+  document.getElementById('createAssignee').value = '';
+  document.getElementById('createRecurrence').value = 'なし';
+
+  loadStaffAndRecurrences().then(function() {
+    document.getElementById('createModalBg').classList.add('show');
+  });
+}
+function closeCreateModal() {
+  document.getElementById('createModalBg').classList.remove('show');
+}
+
+function loadStaffAndRecurrences() {
+  if (staffListCache) return Promise.resolve(staffListCache);
+  return postJson({ action: 'staff_list_for_tasks' })
+    .then(function(d) {
+      if (!d.ok) { toast('スタッフ取得失敗', 'err'); return null; }
+      staffListCache = d;
+
+      var sel = document.getElementById('createAssignee');
+      // 既存オプションは先頭（プレースホルダ）だけ残す
+      sel.innerHTML = '<option value="">-- 選択してください --</option>';
+      (d.staff || []).forEach(function(s) {
+        var roleLabel = s.role === 'admin' ? '日本側' : '現場';
+        var opt = document.createElement('option');
+        opt.value = s.nameJp;
+        opt.textContent = s.nameJp + '（' + roleLabel + '）';
+        sel.appendChild(opt);
+      });
+      // デフォルトは自分
+      if (currentStaff && currentStaff.nameJp) sel.value = currentStaff.nameJp;
+
+      var recSel = document.getElementById('createRecurrence');
+      recSel.innerHTML = '';
+      (d.recurrences || ['なし']).forEach(function(r) {
+        var opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r === 'なし' ? 'なし（単発タスク）' : r;
+        recSel.appendChild(opt);
+      });
+      return d;
+    });
+}
+
+document.getElementById('btnOpenCreate').addEventListener('click', openCreateModal);
+document.getElementById('createCancel').addEventListener('click', closeCreateModal);
+document.getElementById('createModalBg').addEventListener('click', function(ev) {
+  if (ev.target === this) closeCreateModal();
+});
+
+document.getElementById('createSubmit').addEventListener('click', function() {
+  var assignee   = document.getElementById('createAssignee').value;
+  var desc       = document.getElementById('createDesc').value.trim();
+  var targetDate = document.getElementById('createDate').value;
+  var recurrence = document.getElementById('createRecurrence').value;
+
+  if (!assignee) { toast('担当者を選択してください', 'err'); return; }
+  if (!desc)     { toast('タスク内容を入力してください', 'err'); return; }
+  if ((!recurrence || recurrence === 'なし') && !targetDate) {
+    toast('期限を指定してください（繰返しの場合は繰返しを選択）', 'err');
+    return;
+  }
+
+  var btn = document.getElementById('createSubmit');
+  btn.disabled = true;
+  var orig = btn.textContent;
+  btn.textContent = '作成中…';
+
+  postJson({
+    action: 'task_create',
+    chatId: currentChatId,
+    assigneeName: assignee,
+    targetDate: targetDate,
+    description: desc,
+    recurrence: recurrence
+  })
+    .then(function(d) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      if (d.ok) {
+        toast(d.isTemplate
+          ? '🔁 繰返しテンプレート登録: ' + d.taskId
+          : '✅ タスク作成: ' + d.taskId, 'ok');
+        closeCreateModal();
+        setTimeout(function() { loadTasks(); }, 500);
+      } else {
+        toast('⚠️ ' + (d.error || 'エラー'), 'err');
+      }
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      toast('通信エラー: ' + err.message, 'err');
+    });
+});
 
 // ═══════════════════════════════════════════
 //  起動
