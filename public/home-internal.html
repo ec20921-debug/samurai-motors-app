@@ -222,12 +222,20 @@ document.getElementById('menuAttendance').href = buildUrl('attendance-internal.h
     method: 'POST',
     body: JSON.stringify({ action: 'whoami', chatId: currentChatId })
   })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
+    .then(function(r) { return r.text(); })   // デバッグ: まず text で受ける
+    .then(function(txt) {
+      var d;
+      try { d = JSON.parse(txt); }
+      catch (e) {
+        line.textContent = '⚠️ 非JSON応答（先頭120文字）: ' + txt.substring(0, 120);
+        return;
+      }
       if (d.ok && d.staff) {
         line.innerHTML = '👤 <strong>' + escapeHtml(d.staff.nameJp) + '</strong> (' + escapeHtml(d.staff.nameEn) + ')';
-      } else {
+      } else if (d.ok) {
         line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
+      } else {
+        line.textContent = '⚠️ サーバ応答: ' + (d.error || JSON.stringify(d));
       }
     })
     .catch(function(err) {
