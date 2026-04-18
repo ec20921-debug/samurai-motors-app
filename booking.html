@@ -154,6 +154,9 @@ body {
 .plan-card .plan-duration {
   font-size:11px; color:var(--text-dim);
 }
+.plan-card .plan-fee-note {
+  margin-top:4px; font-size:11px; color:var(--text-dim); text-align:right;
+}
 
 /* ───────── 車種サイズカード ───────── */
 .size-grid {
@@ -734,6 +737,15 @@ function renderPlans() {
       : state.selectedSize === 'セダン以下'
         ? plan.durationSedan + 'min'
         : plan.durationSedan + '~' + plan.durationSuv + 'min';
+    // 出張料は「料金設定シート」の値を動的取得（state.dispatchFee）
+    var feeForCard = state.selectedSize === 'SUV以上'
+      ? (state.dispatchFee && state.dispatchFee.suv) || 0
+      : state.selectedSize === 'セダン以下'
+        ? (state.dispatchFee && state.dispatchFee.sedan) || 0
+        : (state.dispatchFee && state.dispatchFee.sedan) || 0;
+    var feeNote = feeForCard
+      ? '<div class="plan-fee-note">+ $' + feeForCard + ' Delivery fee / + $' + feeForCard + ' ថ្លៃដឹកជញ្ជូន</div>'
+      : '';
     card.innerHTML =
       '<div>'
       + '<span class="plan-letter">' + plan.letter + '</span>'
@@ -743,7 +755,8 @@ function renderPlans() {
       + '<div class="plan-meta">'
       + '<div class="plan-duration">⏱ ' + durationDisplay + '</div>'
       + '<div class="plan-price">' + priceDisplay + '</div>'
-      + '</div>';
+      + '</div>'
+      + feeNote;
     card.onclick = function() { selectPlan(plan.letter); };
     container.appendChild(card);
   });
@@ -914,7 +927,13 @@ function selectSlot(time) {
 
 function renderSummary() {
   var plan = state.plans.find(function(p) { return p.letter === state.selectedPlan; });
-  var amount = (state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
+  // 基本料金（プラン）
+  var basePrice = (state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
+  // 出張料（料金設定シート由来、ハードコードしない）
+  var fee = (state.selectedSize === 'SUV以上')
+    ? ((state.dispatchFee && state.dispatchFee.suv) || 0)
+    : ((state.dispatchFee && state.dispatchFee.sedan) || 0);
+  var total = basePrice + fee;
   var sizeLabel = (state.selectedSize === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
 
   var html = '';
@@ -923,9 +942,10 @@ function renderSummary() {
   html += summaryRow('Date', state.selectedDate);
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
-  html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + amount + '</div></div>';
-  var fee = (state.selectedSize === 'SUV以上') ? state.dispatchFee.suv : state.dispatchFee.sedan;
-  html += '<div style="text-align:right;font-size:11px;color:#999;margin-top:2px;">Incl. $' + fee + ' dispatch fee / រួមថ្លៃដឹកជញ្ជូន $' + fee + '</div>';
+  // 料金内訳: プラン / 出張料 / 合計
+  html += summaryRow('Plan price / តម្លៃសេវា', '$' + basePrice);
+  html += summaryRow('Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee);
+  html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + total + '</div></div>';
 
   document.getElementById('summaryCard').innerHTML = html;
 }

@@ -125,13 +125,29 @@ function getDurationFor(plan, miniappVt) {
 }
 
 /**
- * プラン+車種から料金(USD)を取得（出張料込み）
+ * プラン+車種から基本料金(USD)を取得（出張料を含まない）
+ */
+function getBasePriceFor(plan, miniappVt) {
+  return miniappVt === 'SUV以上' ? plan.priceSuv : plan.priceSedan;
+}
+
+/**
+ * プラン+車種から出張料(USD)を取得（料金設定シート「出張料」行から動的取得）
+ * 【重要】$2 などの金額はコード内にハードコードしない。
+ *         料金設定シートの「出張料」行（セダン/SUV列）の値のみを使う。
+ *         シートを書き換えるだけで全フロー（ミニアプリ表示・顧客通知・請求額）に反映される。
+ */
+function getDispatchFeeFor(miniappVt) {
+  const fees = getDispatchFee(); // { sedan, suv } from getBookingConfig().travelFee
+  return miniappVt === 'SUV以上' ? (fees.suv || 0) : (fees.sedan || 0);
+}
+
+/**
+ * プラン+車種から総額(USD)を取得（基本料金 + 出張料）
+ * シートの「出張料」値を動的加算するため、将来の料金改定はシート更新のみでOK。
  */
 function getPriceFor(plan, miniappVt) {
-  const base = miniappVt === 'SUV以上' ? plan.priceSuv : plan.priceSedan;
-  return base; // 初期データでは priceSedan/Suv に出張料込みの値が入っている想定
-  // ⚠️ 仕様確認: 出張料を加算表示するか別枠にするかは HTML 表示に合わせる
-  // 現booking.htmlは priceSedan/priceSuv をそのまま総額として表示 → そのままでOK
+  return getBasePriceFor(plan, miniappVt) + getDispatchFeeFor(miniappVt);
 }
 
 // ====== 空き枠検索 ======
@@ -323,7 +339,9 @@ function createBooking(params) {
     }
 
     const duration = getDurationFor(plan, vehicleType);
-    const amount = getPriceFor(plan, vehicleType);
+    const baseAmount = getBasePriceFor(plan, vehicleType);
+    const dispatchFeeAmount = getDispatchFeeFor(vehicleType);
+    const amount = baseAmount + dispatchFeeAmount; // 請求総額（シートの出張料を動的加算）
 
     // ── 2. 空き枠再確認（ロック後に取り直し） ──
     const avail = findAvailableSlots(params.date, params.planLetter, vehicleType);
@@ -365,7 +383,7 @@ function createBooking(params) {
         '車種: ' + vehicleType + '\n' +
         '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
         '場所: ' + params.location + '\n' +
-        '料金: $' + amount,
+        '料金: $' + baseAmount + ' + 出張料 $' + dispatchFeeAmount + ' = 合計 $' + amount,
       location: loc.mapsUrl || params.location
     });
     const calendarEventId = event.getId();
@@ -412,6 +430,8 @@ function createBooking(params) {
       startTime: params.startTime,
       endTime: endTimeStr,
       duration: duration,
+      baseAmount: baseAmount,
+      dispatchFee: dispatchFeeAmount,
       amount: amount,
       mapsUrl: loc.mapsUrl || params.location
     });
@@ -440,13 +460,19 @@ function notifyBookingCreated(info) {
   const cfg = getConfig();
 
   // ── 顧客へ（クメール語 + 英語） ──
+  // 料金は「プラン料金 + 出張料 = 総額」の内訳で表示（シート「出張料」値を動的参照）
+  const baseAmt = (typeof info.baseAmount === 'number') ? info.baseAmount : info.amount;
+  const feeAmt  = (typeof info.dispatchFee === 'number') ? info.dispatchFee : 0;
   const customerText =
     '✅ ការកក់ទទួលបានជោគជ័យ! / Booking confirmed!\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📋 ' + info.bookingId + '\n' +
     '📦 Plan: ' + info.plan.jp + ' ' + info.plan.name + ' (' + info.plan.letter + ')\n' +
     '📅 ' + info.date + ' ' + info.startTime + ' - ' + info.endTime + '\n' +
-    '💰 $' + info.amount + '\n' +
+    '━━━━━━━━━━━━━━━━\n' +
+    '💰 Plan / តម្លៃសេវា:        $' + baseAmt + '\n' +
+    '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន: $' + feeAmt + '\n' +
+    '💵 Total / សរុប:            $' + info.amount + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
     'សូមអរគុណ! / Thank you!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
@@ -490,7 +516,7 @@ function notifyBookingCreated(info) {
     'プラン: ' + info.plan.planFull + '\n' +
     '車種: ' + info.vehicleType + '\n' +
     '日時: ' + info.date + ' ' + info.startTime + '〜' + info.endTime + ' (' + info.duration + '分)\n' +
-    '料金: $' + info.amount + '\n' +
+    '料金: $' + baseAmt + ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount + '\n' +
     '場所: ' + info.mapsUrl + '\n' +
     '━━━━━━━━━━━━━━━━';
 
