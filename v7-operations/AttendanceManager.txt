@@ -235,13 +235,45 @@ function todayStr_() {
 
 /**
  * シートのタイムゾーンを取得（失敗時は OPS_TZ にフォールバック）
+ *
+ * ★ v7-ops はスタンドアロン GAS のため getActiveSpreadsheet() は null。
+ *    必ず openById() で取得すること。
+ *    結果は script scope でキャッシュ（1回の実行中に毎回 openById しない）。
  */
+let _sheetTzCache_ = null;
 function getSheetTz_() {
+  if (_sheetTzCache_) return _sheetTzCache_;
   try {
-    return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || OPS_TZ;
-  } catch (_) {
-    return OPS_TZ;
+    const id = getConfig().operationsSpreadsheetId;
+    const tz = SpreadsheetApp.openById(id).getSpreadsheetTimeZone();
+    _sheetTzCache_ = tz || OPS_TZ;
+  } catch (e) {
+    Logger.log('⚠️ getSheetTz_ failed: ' + e);
+    _sheetTzCache_ = OPS_TZ;
   }
+  return _sheetTzCache_;
+}
+
+/**
+ * 現在のシート TZ をログに出す（診断用）
+ */
+function debugShowSheetTz() {
+  Logger.log('📅 sheet TZ = ' + getSheetTz_() + ' / OPS_TZ = ' + OPS_TZ);
+  Logger.log('📅 todayStr_ = ' + todayStr_());
+}
+
+/**
+ * スプレッドシートの TZ を OPS_TZ (Asia/Phnom_Penh) に強制設定
+ * 勤怠シートの日付が1日ズレる問題の根本治療用。一度実行すればOK
+ */
+function fixSpreadsheetTimezone() {
+  const id = getConfig().operationsSpreadsheetId;
+  const ss = SpreadsheetApp.openById(id);
+  const before = ss.getSpreadsheetTimeZone();
+  ss.setSpreadsheetTimeZone(OPS_TZ);
+  _sheetTzCache_ = null;  // キャッシュ破棄
+  const after = ss.getSpreadsheetTimeZone();
+  Logger.log('🔧 spreadsheet TZ: ' + before + ' → ' + after);
 }
 
 function mapLink_(lat, lng) {
