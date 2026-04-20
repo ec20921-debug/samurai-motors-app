@@ -158,27 +158,220 @@ function formatDateCellTz_(v, tz) {
 // ============================================================
 
 /**
- * field スタッフへ当日朝のタスクを送信（個人DM）
+ * field スタッフへ当日朝の通知を送信（個人DM）
+ * 【v7.4】本日の洗車予約スケジュール + タスクをセットで通知
  */
 function sendMorningTaskForField() {
   const staff = getActiveStaff().filter(function(s) { return s.role === 'field'; });
   if (staff.length === 0) return;
 
+  // 予約は field スタッフ全員共通（現場のロンさんは全予約を見る）
+  const bookings = getTodayBookingsFromV7_();
+
   staff.forEach(function(s) {
     if (!s.chatId) return;  // chat_id 無ければ送らない
     const tasks = getPendingTasksForStaff_(s);
-    if (tasks.length === 0) {
-      // タスクゼロの日は通知しない（スパム防止）
+
+    // 予約もタスクもゼロなら通知しない（スパム防止）
+    if (tasks.length === 0 && bookings.length === 0) {
+      Logger.log('ℹ️ 予約・タスクゼロ: ' + s.nameJp + ' - 通知スキップ');
       return;
     }
-    const text = buildFieldTaskMessage_(s, tasks);
-    const keyboard = buildTaskInlineKeyboard_(tasks);
-    sendMessage(BOT_TYPE.INTERNAL, s.chatId, text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-    Logger.log('📤 field タスク送信: ' + s.nameJp + ' (' + tasks.length + '件)');
+
+    const text = buildFieldMorningMessage_(s, bookings, tasks);
+    const keyboard = tasks.length > 0 ? buildTaskInlineKeyboard_(tasks) : null;
+
+    const opts = { parse_mode: 'HTML', disable_web_page_preview: true };
+    if (keyboard) opts.reply_markup = { inline_keyboard: keyboard };
+
+    sendMessage(BOT_TYPE.INTERNAL, s.chatId, text, opts);
+    Logger.log('📤 field 朝通知: ' + s.nameJp +
+      ' (予約' + bookings.length + '件 / タスク' + tasks.length + '件)');
   });
+}
+
+/**
+ * v7（顧客系）スプレッドシートの「予約」シートから、当日・未完了の予約一覧を取得
+ * 【設計】v7 と v7-ops は別プロジェクトだが、SpreadsheetApp.openById で読み取り専用参照する
+ *         （v7 の GAS 関数は呼び出さない＝分離原則を維持）
+ */
+function getTodayBookingsFromV7_() {
+  const cfg = getConfig();
+  if (!cfg.v7SpreadsheetId) {
+    Logger.log('⚠️ V7_SPREADSHEET_ID 未設定 — 予約情報の取得スキップ');
+    return [];
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+    const bookingSheet = ss.getSheetByName('予約');
+    if (!bookingSheet) {
+      Logger.log('⚠️ v7 に「予約」シートが見つからない');
+      return [];
+    }
+
+    const data = bookingSheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+
+    // ヘッダーから列インデックスを解決
+    const headers = data[0];
+    const col = {};
+    headers.forEach(function(h, i) { col[String(h).trim()] = i; });
+
+    const required = ['予約ID', '予約日', '予約時刻', 'プラン', '進行状態'];
+    for (var k = 0; k < required.length; k++) {
+      if (col[required[k]] === undefined) {
+        Logger.log('⚠️ 予約シートに必須列なし: ' + required[k]);
+        return [];
+      }
+    }
+
+    // 顧客名マップ（チャットID → 氏名）を先に作る
+    const custMap = buildCustomerNameMap_(ss);
+
+    const todayStr = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+    const results = [];
+
+    for (var i = 1; i < data.length; i++) {
+      const row = data[i];
+
+      // 予約日の照合（Date オブジェクト or 文字列の両対応）
+      const dateCell = row[col['予約日']];
+      var dateStr = '';
+      if (dateCell instanceof Date) {
+        dateStr = Utilities.formatDate(dateCell, 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+      } else {
+        dateStr = String(dateCell || '').trim();
+      }
+      if (dateStr !== todayStr) continue;
+
+      // 完了・キャンセル済みは除外
+      const status = String(row[col['進行状態']] || '');
+      if (status === '作業完了' || status === 'completed' ||
+          status === 'キャンセル' || status === 'cancelled') continue;
+
+      // 時間計算
+      const startTime = String(row[col['予約時刻']] || '').trim();
+      const duration = Number(row[col['所要時間(分)']] || 0);
+      var endTime = '';
+      if (startTime && duration) {
+        const hm = startTime.split(':');
+        if (hm.length === 2) {
+          const total = Number(hm[0]) * 60 + Number(hm[1]) + duration;
+          const eh = Math.floor(total / 60);
+          const em = total % 60;
+          endTime = ('0' + eh).slice(-2) + ':' + ('0' + em).slice(-2);
+        }
+      }
+
+      const chatId = String(row[col['チャットID']] || '');
+      const customerName = custMap[chatId] || '';
+
+      results.push({
+        bookingId:   String(row[col['予約ID']] || ''),
+        startTime:   startTime,
+        endTime:     endTime,
+        duration:    duration,
+        customerName: customerName,
+        vehicleType: String(row[col['車種タイプ']] || ''),
+        vehicleName: String(row[col['車種名']] || ''),
+        plan:        String(row[col['プラン']] || ''),
+        price:       row[col['料金(USD)']] || '',
+        mapUrl:      String(row[col['マップリンク']] || '')
+      });
+    }
+
+    // 予約時刻順にソート
+    results.sort(function(a, b) {
+      return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
+    });
+
+    return results;
+
+  } catch (err) {
+    Logger.log('❌ getTodayBookingsFromV7_ error: ' + err + ' stack=' + (err.stack || ''));
+    return [];
+  }
+}
+
+/**
+ * v7 顧客シートから チャットID → 氏名 のマップを構築
+ */
+function buildCustomerNameMap_(ss) {
+  const map = {};
+  const custSheet = ss.getSheetByName('顧客');
+  if (!custSheet) return map;
+  const cdata = custSheet.getDataRange().getValues();
+  if (cdata.length < 2) return map;
+
+  const chead = {};
+  cdata[0].forEach(function(h, i) { chead[String(h).trim()] = i; });
+  if (chead['チャットID'] === undefined) return map;
+
+  const nameCol = chead['氏名'] !== undefined ? chead['氏名'] :
+                  chead['ユーザー名'] !== undefined ? chead['ユーザー名'] : -1;
+  if (nameCol < 0) return map;
+
+  for (var i = 1; i < cdata.length; i++) {
+    const cid = String(cdata[i][chead['チャットID']] || '');
+    if (cid) map[cid] = String(cdata[i][nameCol] || '');
+  }
+  return map;
+}
+
+/**
+ * field 向け朝メッセージ組み立て（予約 + タスク）
+ */
+function buildFieldMorningMessage_(staff, bookings, tasks) {
+  const tz = staff.timezone || 'Asia/Phnom_Penh';
+  const todayJp = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd (E)');
+  const lines = [
+    '☀️ <b>អរុណសួស្តី / おはよう ' + escapeHtml_(staff.nameJp) + ' さん</b>',
+    '📅 ថ្ងៃនេះ / 本日 ' + todayJp,
+    ''
+  ];
+
+  // ── 予約セクション ──
+  if (bookings.length > 0) {
+    lines.push('🚗 <b>ការកក់ថ្ងៃនេះ / 本日の予約 (' + bookings.length + '件)</b>');
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    const NUM = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    bookings.forEach(function(b, i) {
+      const num = NUM[i] || ('(' + (i + 1) + ')');
+      const timeRange = b.endTime ? (b.startTime + '〜' + b.endTime) : b.startTime;
+      lines.push(num + ' <b>' + escapeHtml_(timeRange) + '</b>  ' + escapeHtml_(b.bookingId));
+      if (b.customerName) lines.push('   👤 ' + escapeHtml_(b.customerName));
+      const veh = [b.vehicleType, b.vehicleName].filter(function(x){ return x; }).join(' / ');
+      if (veh) lines.push('   🚙 ' + escapeHtml_(veh));
+      if (b.plan) {
+        var planLine = '   📦 ' + escapeHtml_(b.plan);
+        if (b.price !== '' && b.price != null) planLine += ' / $' + b.price;
+        lines.push(planLine);
+      }
+      if (b.mapUrl) lines.push('   📍 <a href="' + escapeHtml_(b.mapUrl) + '">ផែនទី / Map</a>');
+      lines.push('');
+    });
+  } else {
+    lines.push('🚗 <b>ការកក់ថ្ងៃនេះ / 本日の予約</b>');
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    lines.push('ℹ️ គ្មានការកក់ទេ / 予約はありません');
+    lines.push('');
+  }
+
+  // ── タスクセクション ──
+  if (tasks.length > 0) {
+    lines.push('📋 <b>កិច្ចការថ្ងៃនេះ / 本日のタスク (' + tasks.length + '件)</b>');
+    lines.push('━━━━━━━━━━━━━━━━━━');
+    tasks.forEach(function(t, i) {
+      const mark = t.overdue ? '🔴' : '🟡';
+      lines.push((i + 1) + '. ' + mark + ' ' + escapeHtml_(t.desc) +
+        ' <i>(期限 ' + t.due + ')</i>');
+    });
+    lines.push('');
+    lines.push('↓ ប៊ូតុងខាងក្រោមដើម្បីរាយការណ៍ / 下のボタンで報告');
+  }
+
+  return lines.join('\n');
 }
 
 /**
