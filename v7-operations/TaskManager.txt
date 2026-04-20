@@ -541,6 +541,134 @@ function markTaskDone(taskId, actor) {
     '完了日時':   new Date()
   });
   notifyTaskStatusChange_(row.data, '完了', actor);
+
+  // Phase B: 関連経費ID があれば経費シートを連動更新（立替精算タスク完了時）
+  const expenseId = String(row.data['関連経費ID'] || '').trim();
+  if (expenseId) {
+    try {
+      settleExpenseByTask_(expenseId, row.data, actor);
+    } catch (err) {
+      Logger.log('⚠️ 経費連動更新失敗 expenseId=' + expenseId + ' err=' + err);
+    }
+  }
+}
+
+/**
+ * Phase B: 立替精算タスク完了時に経費シートを更新し、立替者へDM通知する
+ *   - 経費シート: ステータス→精算済み、精算日=today
+ *   - 立替者（登録者）に Telegram DM で精算完了を通知
+ */
+function settleExpenseByTask_(expenseId, taskRow, actor) {
+  const row = findRow(SHEET_NAMES.EXPENSES, '経費ID', expenseId);
+  if (!row) { Logger.log('⚠️ 経費未発見 ' + expenseId); return; }
+
+  const expense = row.data;
+  if (String(expense['ステータス']) === '精算済み') return; // 冪等
+
+  const tz = OPS_TZ;
+  const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  updateRow(SHEET_NAMES.EXPENSES, row.row, {
+    'ステータス': '精算済み',
+    '精算日':     todayStr
+  });
+
+  // 立替者（登録者）に DM 通知
+  const payerChatId = String(expense['登録者 Chat ID'] || '');
+  const payerName   = String(expense['登録者'] || '');
+  const reimburseBy = String(taskRow['担当者名'] || expense['精算先'] || '');
+  const amount      = Number(expense['金額'] || 0);
+  const currency    = String(expense['通貨'] || '');
+  const desc        = String(expense['品目・摘要'] || '');
+
+  // 経費トピックへ通知
+  try {
+    const cfg = getConfig();
+    const thread = cfg.adminExpenseThreadId || cfg.adminDailyReportThreadId;
+    if (thread) {
+      const money = currency + ' ' + amount.toLocaleString('en-US');
+      const text = [
+        '✅ <b>立替精算 完了</b>',
+        '━━━━━━━━━━━━━━━━━━',
+        '💸 ' + escapeHtml_(reimburseBy) + ' → ' + escapeHtml_(payerName),
+        '💵 <b>' + escapeHtml_(money) + '</b>',
+        '📝 ' + escapeHtml_(desc.substring(0, 120)),
+        '📅 精算日: ' + todayStr,
+        'ID: <code>' + escapeHtml_(expenseId) + '</code>'
+      ].join('\n');
+      sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
+        parse_mode: 'HTML',
+        message_thread_id: Number(thread)
+      });
+    }
+  } catch (err) {
+    Logger.log('⚠️ 経費トピック通知失敗: ' + err);
+  }
+
+  // 立替者にDM
+  if (payerChatId) {
+    try {
+      const money = currency + ' ' + amount.toLocaleString('en-US');
+      const dm = [
+        '✅ <b>ការទូទាត់បានចប់ / 立替精算 完了</b>',
+        '━━━━━━━━━━━━━━━━━━',
+        '💸 ' + escapeHtml_(reimburseBy) + ' さんから受け取り確認',
+        '💵 <b>' + escapeHtml_(money) + '</b>',
+        '📝 ' + escapeHtml_(desc.substring(0, 120)),
+        '📅 ' + todayStr,
+        '',
+        'អរគុណ! / おつかれさまです'
+      ].join('\n');
+      sendMessage(BOT_TYPE.INTERNAL, payerChatId, dm, { parse_mode: 'HTML' });
+    } catch (err) {
+      Logger.log('⚠️ 立替者DM失敗 chatId=' + payerChatId + ' err=' + err);
+    }
+  }
+}
+
+/**
+ * Phase B: 立替経費登録時に精算タスクを自動生成
+ *
+ * @param {{nameJp:string, chatId:string, role:string, timezone:string}} payerStaff 立替者（ロン等）
+ * @param {{expenseId, amount, currency, desc, reimburseTo, reimburseDue}} data 経費データ
+ * @return {{ok:boolean, taskId?:string, error?:string}}
+ */
+function createExpenseReimburseTask_(payerStaff, data) {
+  if (!data || !data.reimburseTo)  return { ok: false, error: 'REIMBURSE_TO_REQUIRED' };
+  if (!data.reimburseDue)          return { ok: false, error: 'DUE_REQUIRED' };
+
+  // 精算先スタッフを解決（スタッフマスター未登録でもタスクは作る：chatId/role/tz は空欄）
+  const assignee = (typeof findStaffByNameJp === 'function')
+    ? findStaffByNameJp(data.reimburseTo)
+    : null;
+  const assigneeName = data.reimburseTo;
+  const assigneeChatId = assignee ? assignee.chatId : '';
+  const assigneeRole   = assignee ? assignee.role   : '';
+  const assigneeTz     = (assignee && assignee.timezone) || OPS_TZ;
+
+  const money = data.currency + ' ' + Number(data.amount).toLocaleString('en-US');
+  const desc = payerStaff.nameJp + ' へ立替精算 ' + money +
+    '（' + data.expenseId + (data.desc ? ' / ' + String(data.desc).substring(0, 60) : '') + '）';
+
+  const taskId = generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID');
+  appendRow(SHEET_NAMES.TASKS, {
+    'タスクID':      taskId,
+    '作成日時':      new Date(),
+    '担当者名':      assigneeName,
+    '担当 Chat ID':  assigneeChatId,
+    '担当 role':     assigneeRole,
+    '担当 timezone': assigneeTz,
+    '期限':          data.reimburseDue,
+    'タスク内容':    desc,
+    'ステータス':    '未着手',
+    '完了日時':      '',
+    '未完了理由':    '',
+    '繰返しルール':  '',
+    '親タスクID':    '',
+    '関連経費ID':    data.expenseId
+  });
+
+  return { ok: true, taskId: taskId };
 }
 
 function markTaskNotDone(taskId, actor, reason) {
@@ -685,7 +813,8 @@ function processTaskInputRow_(sheet, row) {
     '完了日時':      '',
     '未完了理由':    '',
     '繰返しルール':  isTemplate ? recurrence : '',
-    '親タスクID':    ''
+    '親タスクID':    '',
+    '関連経費ID':    ''
   });
 
   // 入力行クリア
@@ -740,7 +869,8 @@ function createTaskFromUi(creatorChatId, payload) {
     '完了日時':      '',
     '未完了理由':    '',
     '繰返しルール':  isTemplate ? recurrence : '',
-    '親タスクID':    ''
+    '親タスクID':    '',
+    '関連経費ID':    ''
   });
 
   // 管理グループへ通知（成功時のみ／失敗してもユーザの作成自体は成功として返す）

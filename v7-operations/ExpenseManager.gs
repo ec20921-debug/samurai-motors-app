@@ -179,6 +179,24 @@ function submitExpense(chatId, payload) {
   // 立替なら「未精算」、会社直払いは精算不要なので「会社負担」
   const statusValue = isReimburse ? '未精算' : '会社負担';
 
+  // Phase B: 立替時は先に精算タスクを自動生成 → 関連タスクIDをシートに書く
+  var linkedTaskId = '';
+  if (isReimburse) {
+    try {
+      const taskResult = createExpenseReimburseTask_(staff, {
+        expenseId:    expenseId,
+        amount:       amount,
+        currency:     currency,
+        desc:         desc,
+        reimburseTo:  reimburseTo,
+        reimburseDue: reimburseDue
+      });
+      if (taskResult && taskResult.ok) linkedTaskId = taskResult.taskId;
+    } catch (err) {
+      Logger.log('⚠️ 精算タスク自動生成失敗: ' + err);
+    }
+  }
+
   appendRow(SHEET_NAMES.EXPENSES, {
     '経費ID':        expenseId,
     '登録日時':      new Date(),
@@ -199,7 +217,7 @@ function submitExpense(chatId, payload) {
     '精算期限':      reimburseDue,
     '精算日':        '',
     '精算方法':      '',
-    '関連タスクID':  ''   // Phase B で精算タスクの TASK-ID を書き込む
+    '関連タスクID':  linkedTaskId
   });
 
   // Admin 通知（失敗してもユーザ登録自体は成功として返す）
@@ -216,7 +234,8 @@ function submitExpense(chatId, payload) {
       memo:         memo,
       paymentType:  paymentType,
       reimburseTo:  reimburseTo,
-      reimburseDue: reimburseDue
+      reimburseDue: reimburseDue,
+      linkedTaskId: linkedTaskId
     });
   } catch (err) {
     Logger.log('⚠️ 経費通知失敗: ' + err);
@@ -228,7 +247,8 @@ function submitExpense(chatId, payload) {
     receiptUrl: receiptUrl,
     paymentType: paymentType,
     reimburseTo: reimburseTo,
-    reimburseDue: reimburseDue
+    reimburseDue: reimburseDue,
+    linkedTaskId: linkedTaskId
   };
 }
 
@@ -292,9 +312,13 @@ function notifyExpenseSubmitted_(staff, data) {
 
   lines.push('ID: <code>' + escapeHtml_(data.expenseId) + '</code>');
 
-  if (isReimburse) {
+  if (isReimburse && data.linkedTaskId) {
     lines.push('');
-    lines.push('※ Phase B で ' + escapeHtml_(data.reimburseTo) + ' さん宛の精算タスクが自動生成されます（現状手動フォロー）');
+    lines.push('📋 精算タスクを自動生成: <code>' + escapeHtml_(data.linkedTaskId) + '</code>');
+    lines.push('→ ' + escapeHtml_(data.reimburseTo) + ' さんの朝通知（翌日以降のJST 8:00）で届きます。完了ボタンで自動精算処理。');
+  } else if (isReimburse) {
+    lines.push('');
+    lines.push('⚠️ 精算タスクの自動生成に失敗しました（手動フォロー必要）');
   }
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, lines.join('\n'), {

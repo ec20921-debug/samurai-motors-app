@@ -369,13 +369,15 @@ function seedAdminStaff() {
  *   K: 未完了理由
  *   L: 繰返しルール  (RECURRENCE_OPTIONS)
  *   M: 親タスクID    (繰返し元テンプレートID)
+ *   N: 関連経費ID    (立替経費との連携 / EXP-YYYYMMDD-NNN)
  */
 function ensureTasksSheet(ss) {
   const name = SHEET_NAMES.TASKS;
   let sheet = ss.getSheetByName(name);
   const headers = [
     'タスクID', '作成日時', '担当者名', '担当 Chat ID', '担当 role', '担当 timezone',
-    '期限', 'タスク内容', 'ステータス', '完了日時', '未完了理由', '繰返しルール', '親タスクID'
+    '期限', 'タスク内容', 'ステータス', '完了日時', '未完了理由', '繰返しルール', '親タスクID',
+    '関連経費ID'
   ];
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -383,7 +385,7 @@ function ensureTasksSheet(ss) {
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#f1f3f4');
     sheet.setFrozenRows(1);
     // 列幅
-    [140, 140, 100, 130, 80, 130, 100, 360, 90, 140, 200, 110, 140].forEach(function(w, i) {
+    [140, 140, 100, 130, 80, 130, 100, 360, 90, 140, 200, 110, 140, 150].forEach(function(w, i) {
       sheet.setColumnWidth(i + 1, w);
     });
     Logger.log('✅ タスクシートを新規作成');
