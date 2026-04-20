@@ -83,6 +83,27 @@ body {
 .row .field { flex:1; margin-bottom: 0; }
 .row-wrap { margin-bottom: 12px; }
 
+/* 立替トグル */
+.toggle-group {
+  display:flex; gap: 8px; margin-top: 6px;
+}
+.toggle-btn {
+  flex:1; padding: 12px; text-align:center;
+  background: var(--bg); color: var(--text-dim);
+  border: 1.5px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.toggle-btn.active {
+  background: linear-gradient(135deg, var(--gold), #e8d5a3);
+  color: #1a1a1a; border-color: var(--gold);
+}
+.toggle-btn:active { transform: scale(0.98); }
+
+/* 立替時のみ表示 */
+.reimburse-only { display:none; }
+.reimburse-only.show { display:block; }
+
 /* 金額＋通貨の特殊レイアウト */
 .amount-row {
   display:flex; gap: 8px;
@@ -189,6 +210,36 @@ body {
     <div class="hint">任意</div>
   </div>
 
+  <!-- 立替区分トグル -->
+  <div class="field">
+    <label>💳 支払い区分 / ការទូទាត់</label>
+    <div class="toggle-group">
+      <button type="button" class="toggle-btn active" id="btnPayCompany" data-type="会社直払い">
+        🏢 会社直払い
+      </button>
+      <button type="button" class="toggle-btn" id="btnPayReimburse" data-type="立替">
+        💸 立替（精算必要）
+      </button>
+    </div>
+    <div class="hint">会社カード・会社口座で直接払った場合は「会社直払い」。自分のお金で立て替えた場合は「立替」。</div>
+  </div>
+
+  <!-- 立替時のみ表示：精算先 -->
+  <div class="field reimburse-only" id="fldReimburseTo">
+    <label>👤 精算先（誰から払ってもらう？） <span class="req">* 立替時は必須</span></label>
+    <select id="inputReimburseTo">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <div class="hint">デフォルト：飯泉さん</div>
+  </div>
+
+  <!-- 立替時のみ表示：精算期限 -->
+  <div class="field reimburse-only" id="fldReimburseDue">
+    <label>⏰ 精算期限</label>
+    <input type="date" id="inputReimburseDue">
+    <div class="hint">デフォルトは +3日。変更しなくてOK</div>
+  </div>
+
   <!-- レシート写真 -->
   <div class="photo-zone" id="photoZone">
     <div class="ph-icon">📸</div>
@@ -221,6 +272,8 @@ var currentStaff = null;
 var currentPhotoBase64 = '';
 var currentPhotoMime   = '';
 var currentPhotoName   = '';
+var currentPaymentType = '会社直払い'; // '会社直払い' | '立替'
+var REIMBURSE_DUE_DEFAULT_DAYS = 3;
 
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
@@ -270,7 +323,7 @@ function init() {
       }
     });
 
-  // カテゴリ・通貨
+  // カテゴリ・通貨・精算先候補
   postJson({ action: 'expense_meta' })
     .then(function(d) {
       if (!d.ok) return;
@@ -287,8 +340,43 @@ function init() {
         opt.value = c; opt.textContent = c;
         curSel.appendChild(opt);
       });
+      // 精算先候補（デフォルトは先頭 = 飯泉）
+      var reimSel = document.getElementById('inputReimburseTo');
+      var candidates = d.reimburseCandidates || ['飯泉'];
+      reimSel.innerHTML = '';
+      candidates.forEach(function(c, i) {
+        var opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        if (i === 0) opt.selected = true;
+        reimSel.appendChild(opt);
+      });
+      if (d.reimburseDueDefaultDays) REIMBURSE_DUE_DEFAULT_DAYS = Number(d.reimburseDueDefaultDays);
+      // 精算期限のデフォルト値
+      var due = new Date();
+      due.setDate(due.getDate() + REIMBURSE_DUE_DEFAULT_DAYS);
+      document.getElementById('inputReimburseDue').value = formatDateLocal(due);
     });
 }
+
+// ═══════════════════════════════════════════
+//  立替トグル
+// ═══════════════════════════════════════════
+function setPaymentType(type) {
+  currentPaymentType = type;
+  var btnC = document.getElementById('btnPayCompany');
+  var btnR = document.getElementById('btnPayReimburse');
+  btnC.classList.toggle('active', type === '会社直払い');
+  btnR.classList.toggle('active', type === '立替');
+  var show = type === '立替';
+  document.getElementById('fldReimburseTo').classList.toggle('show', show);
+  document.getElementById('fldReimburseDue').classList.toggle('show', show);
+}
+document.getElementById('btnPayCompany').addEventListener('click', function() {
+  setPaymentType('会社直払い');
+});
+document.getElementById('btnPayReimburse').addEventListener('click', function() {
+  setPaymentType('立替');
+});
 
 // ═══════════════════════════════════════════
 //  写真アップロード
@@ -384,6 +472,15 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
   if (!amount || amount <= 0) { toast('金額を入力してください', 'err'); return; }
   if (!desc)                  { toast('品目・摘要は必須です', 'err'); return; }
 
+  // 立替時は精算先が必須
+  var reimburseTo  = '';
+  var reimburseDue = '';
+  if (currentPaymentType === '立替') {
+    reimburseTo = document.getElementById('inputReimburseTo').value;
+    reimburseDue = document.getElementById('inputReimburseDue').value;
+    if (!reimburseTo) { toast('立替の場合は精算先を選んでください', 'err'); return; }
+  }
+
   var btn = document.getElementById('btnSubmit');
   btn.disabled = true;
   var orig = btn.textContent;
@@ -401,13 +498,20 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
     memo: memo,
     photoBase64: currentPhotoBase64,
     photoMime:   currentPhotoMime,
-    photoName:   currentPhotoName
+    photoName:   currentPhotoName,
+    paymentType:      currentPaymentType,
+    reimburseTo:      reimburseTo,
+    reimburseDueDate: reimburseDue
   })
     .then(function(d) {
       btn.disabled = false;
       btn.textContent = orig;
       if (d.ok) {
-        toast('✅ 経費登録完了: ' + d.expenseId, 'ok');
+        var msg = '✅ 経費登録完了: ' + d.expenseId;
+        if (d.paymentType === '立替' && d.reimburseTo) {
+          msg += '（' + d.reimburseTo + ' さん精算 / 期限 ' + (d.reimburseDue || '') + '）';
+        }
+        toast(msg, 'ok');
         // フォームリセット
         document.getElementById('inputAmount').value = '';
         document.getElementById('inputDesc').value = '';
@@ -415,6 +519,7 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
         document.getElementById('inputMemo').value = '';
         document.getElementById('inputCategory').value = '';
         clearPhoto();
+        setPaymentType('会社直払い'); // 既定に戻す
       } else {
         toast('⚠️ ' + (d.error || 'エラー'), 'err');
       }
