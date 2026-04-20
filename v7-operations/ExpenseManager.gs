@@ -305,28 +305,36 @@ function notifyExpenseSubmitted_(staff, data) {
 }
 
 /**
- * 精算先候補（admin role のアクティブスタッフ名 + 「会社負担」）
+ * 精算先候補（スタッフマスターのアクティブ全員）
  * ミニアプリの精算先プルダウン用。
+ *
+ * 並び順: 飯泉 → 鈴木 → 五木田 → ロン → その他（スタッフマスター追加順）
+ * 飯泉さんをデフォルトにするため先頭固定。以降は業務上の優先度順。
  */
 function getExpenseReimburseCandidates_() {
   const staff = (typeof getActiveStaff === 'function') ? getActiveStaff() : [];
   const names = [];
   staff.forEach(function(s) {
-    if (s && s.role === 'admin' && s.nameJp) {
-      if (names.indexOf(s.nameJp) < 0) names.push(s.nameJp);
+    if (s && s.nameJp && names.indexOf(s.nameJp) < 0) names.push(s.nameJp);
+  });
+
+  // 優先順（この順で先頭に寄せる）
+  const PRIORITY = ['飯泉', '鈴木', '五木田', 'ロン'];
+
+  const ordered = [];
+  // 優先メンバーを順番通り先頭へ（スタッフマスター未登録でも候補に出す）
+  PRIORITY.forEach(function(name) {
+    const idx = names.indexOf(name);
+    if (idx >= 0) {
+      names.splice(idx, 1);
+      ordered.push(name);
+    } else {
+      ordered.push(name);
     }
   });
-  // 飯泉さんをデフォルトにするため、先頭に寄せる
-  const DEFAULT_FIRST = '飯泉';
-  const idx = names.indexOf(DEFAULT_FIRST);
-  if (idx > 0) {
-    names.splice(idx, 1);
-    names.unshift(DEFAULT_FIRST);
-  } else if (idx < 0) {
-    // スタッフマスターに飯泉さんがまだ未登録でも選択肢に出す
-    names.unshift(DEFAULT_FIRST);
-  }
-  return names;
+  // 残りのスタッフを末尾に追加
+  names.forEach(function(n) { ordered.push(n); });
+  return ordered;
 }
 
 // ============================================================
