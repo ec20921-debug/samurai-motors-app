@@ -1,64 +1,191 @@
-# សៀវភៅណែនាំសម្រាប់បុគ្គលិក（スタッフマニュアル）
+# Samurai Motors
+# សៀវភៅណែនាំសម្រាប់បុគ្គលិកការងារ
+# 現場スタッフ向け作業手順書
 
-## Samurai Motors - ការគ្រប់គ្រងការងារ（ジョブ管理）
+**សម្រាប់**（対象）: បុគ្គលិកការងារ（現場スタッフ）
 
----
-
-## 1. ការបើកកម្មវិធី（アプリの開き方）
-
-កម្មវិធីនេះប្រើតាម Telegram（Telegramで使います）
-
-1. បើក Telegram（Telegramを開く）
-2. ស្វែងរក **@quickwash_kh_bot**（ボットを検索する）
-3. ចុចប៊ូតុង **"📋 業務管理"** នៅខាងក្រោមឆ្វេង（左下のメニューボタンをタップ）
-4. កម្មវិធី Mini App នឹងបើកដោយស្វ័យប្រវត្តិ（Mini Appが自動で開きます）
-
-> **សំគាល់（注意）：** បើមិនឃើញប៊ូតុង "📋 業務管理" ទេ សូមចុចរូបតូច ☰ នៅជិតប្រអប់វាយអត្ថបទ（ボタンが見えない場合は、テキスト入力欄の横にある ☰ アイコンをタップしてください）
+**កែប្រែចុងក្រោយ**（最終更新）: 2026-04-20
 
 ---
 
-## 2. ជំហានទី 1: ចុះបញ្ជីអតិថិជន（Step 1: 顧客登録）
+## 📱 Bot ២ គ្រឿង / 使用する Bot は2つ
 
-បំពេញព័ត៌មានអតិថិជន（お客様の情報を入力します）
-
-| វាល（フィールド） | ការពិពណ៌នា（説明） | ចាំបាច់（必須） |
-|---|---|---|
-| **ឈ្មោះអតិថិជន**（顧客名） | វាយឈ្មោះអតិថិជន（お客様の名前を入力） | ✅ បាទ/ចាស（はい） |
-| **លេខទូរស័ព្ទ**（電話番号） | វាយលេខទូរស័ព្ទអតិថិជន（電話番号を入力） | ✅ បាទ/ចាស（はい） |
-| **ឈ្មោះអគារ**（建物名） | ជ្រើសរើសពីបញ្ជី ឬជ្រើស "ផ្សេងទៀត"（リストから選択、または「その他」を選ぶ） | |
-| **លេខបន្ទប់**（部屋番号） | វាយលេខបន្ទប់（部屋番号を入力） | |
-| **Google Maps** | ចុចប៊ូតុង 📍 ដើម្បីយកទីតាំងបច្ចុប្បន្ន（📍ボタンをタップして現在地を取得） | |
-| **ម៉ាក / ម៉ូដែល**（車種） | វាយម៉ាក និងម៉ូដែលរថយន្ត（車のメーカーとモデルを入力） | |
-| **ស្លាកលេខ**（ナンバー） | វាយស្លាកលេខរថយន្ត（車のナンバープレートを入力） | |
-| **គម្រោង**（プラン） | ជ្រើសរើសគម្រោងសេវាកម្ម（サービスプランを選択） | ✅ បាទ/ចាស（はい） |
-| **កំណត់សម្គាល់**（備考） | សរសេរកំណត់ចំណាំបន្ថែម（追加メモを記入） | |
-
-### គម្រោងសេវាកម្ម（サービスプラン一覧）
-
-| គម្រោង（プラン） | រថយន្តធម្មតា（普通車） | រថយន្តធំ（大型車） |
-|---|---|---|
-| 清 KIYOME (A) | $12 | $15 |
-| 鏡 KAGAMI (B) | $17 | $20 |
-| 匠 TAKUMI (C) | $20 | $23 |
-| 将軍 SHOGUN (D) | $35 | $38 |
-
-បន្ទាប់ពីបំពេញរួច សូមចុច **បន្ទាប់（次へ）→**（入力が終わったら「次へ」をタップ）
+| Bot | ការប្រើប្រាស់（用途） | ប៊ូតុង（ボタン） |
+|-----|---------------------|------------------|
+| 🚗 業務Bot | ការលាងរថយន្ត（洗車作業） | 🔧 業務管理 |
+| 🕐 勤務Bot | វត្តមាន / កិច្ចការ / របាយការណ៍ / ចំណាយ（勤怠・タスク・日報・経費） | 🚀 Open App |
 
 ---
 
-## 3. ជំហានទី 2: កាលវិភាគ（Step 2: 予約設定）
+## 1. 🕐 ចុះវត្តមាន / 勤怠打刻
 
-- កំណត់ **កាលបរិច្ឆេទ**（日付を設定）
-- កំណត់ **ម៉ោង**（時間を設定）
-- ពិនិត្យមើលសេចក្តីសង្ខេបព័ត៌មានទាំងអស់（全ての情報のまとめを確認）
-- បើត្រឹមត្រូវ សូមចុច **បន្ទាប់（次へ）→**（正しければ「次へ」をタップ）
+### ចូលធ្វើការ / 出勤
+
+1. បើក Telegram → 勤務Bot（Telegramで勤務Botを開く）
+2. ចុច「🚀 Open App」（Open Appをタップ）
+3. ចុច「🕐 勤怠打刻 / ចុះវត្តមាន」（勤怠打刻をタップ）
+4. ទូរស័ព្ទសុំការអនុញ្ញាតទីតាំង → ចុច「Allow / អនុញ្ញាត」（位置情報の許可を求められたらAllowをタップ）
+5. ចុច 🟢 ប៊ូតុងពណ៌បៃតង「ចូលធ្វើការ / 出勤」（緑色の出勤ボタンをタップ）
+6. ✅ អេក្រង់បង្ហាញ「🟢 កំពុងធ្វើការ / 勤務中」（「勤務中」と表示されれば完了）
+
+### ចេញពីការងារ / 退勤
+
+1. បើកទំព័រចុះវត្តមានដដែល（同じ勤怠打刻画面を開く）
+2. ចុច 🔴 ប៊ូតុងពណ៌ក្រហម「ចេញពីការងារ / 退勤」（赤色の退勤ボタンをタップ）
+3. ✅ រួចរាល់（完了）
+
+※ GPS មិនមាន ក៏អាចចុះវត្តមានបាន（GPSが取得できなくても打刻できます）
 
 ---
 
-## 4. ជំហានទី 3: រូបថតមុន + ចាប់ផ org ើមការងារ org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org
+## 2. 🚗 ការលាងរថយន្ត / 洗車作業
 
-### ថតរូបមុនធ org ើការ org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org
+### 2-1. មើលការកក់ថ្ងៃនេះ / 今日の予約確認
 
-ថតរូបរថយន org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org
+1. បើក Telegram → 業務Bot（Telegramで業務Botを開く）
+2. ចុចប៊ូតុង「🔧 業務管理」ខាងក្រោមឆ្វេង（左下の業務管理ボタンをタップ）
+3. 📋 បញ្ជីការកក់ថ្ងៃនេះនឹងបង្ហាញ（今日の予約一覧が表示される）
+4. ចុចកាតអតិថិជន ដើម្បីមើលព័ត៌មានលម្អិត（顧客カードをタップして詳細を確認）
+5. 📍 ចុចតំណទីតាំង → Google Maps នឹងបើក ហើយបង្ហាញផ្លូវ（場所リンクをタップするとGoogle Mapsでナビが開く）
 
-1. **មុខ org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org org
+### 2-2. ▶ ចាប់ផ្ដើមការងារ / 作業開始
+
+1. ចុច「▶ ចាប់ផ្ដើម / 作業開始」（作業開始ボタンをタップ）
+2. 📷 ថតរូបមុនលាង ៤ សន្លឹក（Before写真4枚を撮影）
+
+| រូបថត（写真） | ទិសដៅ（方向） |
+|--------------|-------------|
+| រូបទី 1 | 🚗 ខាងមុខ（前） |
+| រូបទី 2 | 🚗 ខាងក្រោយ（後） |
+| រូបទី 3 | 🚗 ខាងឆ្វេង（左） |
+| រូបទី 4 | 🚗 ខាងស្ដាំ（右） |
+
+3. ផ្ទុកឡើងរូបថត ៤ សន្លឹក（4枚をアップロード）
+4. ✅ រូបថតនឹងត្រូវផ្ញើទៅអតិថិជន និង Admin ដោយស្វ័យប្រវត្តិ（写真は顧客とAdminに自動送信される）
+
+### 2-3. 🔧 ធ្វើការលាង / 洗車作業
+
+ធ្វើការលាងរថយន្តតាមគម្រោងដែលបានកក់（予約されたプランに従って洗車作業を実施）
+
+| គម្រោង（プラン） | ការងារ（作業内容） |
+|----------------|-----------------|
+| A: KIYOME 清 | លាងទឹកស្ងួត + ជូតកង់（無水洗車＋タイヤワックス） |
+| B: KAGAMI 鏡 | A + ខ្ចប់ទឹកកញ្ចក់មុខ ៣（A + 前3面ガラス撥水） |
+| C: TAKUMI 匠 | A + ខ្ចប់ទឹកកញ្ចក់ទាំងអស់（A + 全面ガラス撥水） |
+| D: SHOGUN 将軍 | A + យកខ្លាញ់ + ខ្ចប់ទឹកកញ្ចក់ទាំងអស់（A + 全面油膜落とし + 全面ガラス撥水） |
+
+### 2-4. ✅ ការងាររួចរាល់ / 作業完了
+
+1. ចុច「✅ រួចរាល់ / 作業完了」（作業完了ボタンをタップ）
+2. 📷 ថតរូបបន្ទាប់ពីលាង ៤ សន្លឹក（After写真4枚を撮影）
+
+| រូបថត（写真） | ទិសដៅ（方向） |
+|--------------|-------------|
+| រូបទី 1 | 🚗 ខាងមុខ（前） |
+| រូបទី 2 | 🚗 ខាងក្រោយ（後） |
+| រូបទី 3 | 🚗 ខាងឆ្វេង（左） |
+| រូបទី 4 | 🚗 ខាងស្ដាំ（右） |
+
+3. ផ្ទុកឡើងរូបថត ៤ សន្លឹក（4枚をアップロード）
+4. ✅ រូបថតនឹងត្រូវផ្ញើទៅអតិថិជន និង Admin ដោយស្វ័យប្រវត្តិ（写真は顧客とAdminに自動送信される）
+5. 💳 QR កូដនឹងត្រូវផ្ញើទៅអតិថិជនដោយស្វ័យប្រវត្តិ（QRコードが顧客に自動送信される）
+
+※ QR កូដ និង ការទាមទារប្រាក់ ត្រូវបានគ្រប់គ្រងដោយ Admin（QRコードと請求管理はAdminが担当します）
+
+---
+
+## 3. 📋 កិច្ចការ / タスク管理
+
+### មើលកិច្ចការថ្ងៃនេះ / 今日のタスク確認
+
+រៀងរាល់ព្រឹក ម៉ោង 8:00 Bot នឹងផ្ញើកិច្ចការមកអ្នក（毎朝8:00にBotからタスクが届きます）
+
+1. បើក 勤務Bot → ចុច「🚀 Open App」（勤務Botを開く）
+2. ចុច「📋 タスク管理 / កិច្ចការ」（タスク管理をタップ）
+3. កិច្ចការថ្ងៃនេះនឹងបង្ហាញ（今日のタスクが表示される）
+
+### កិច្ចការរួចរាល់ / タスク完了
+
+1. ចុច ✅ ប៊ូតុងពណ៌បៃតង「បានធ្វើ / 完了」（緑色の完了ボタンをタップ）
+2. ✅ Admin នឹងទទួលការជូនដំណឹង（Adminに通知が届く）
+
+### កិច្ចការមិនទាន់រួច / タスク未完了
+
+1. ចុច ❌ ប៊ូតុងពណ៌ក្រហម「មិនទាន់ / 未完了」（赤色の未完了ボタンをタップ）
+2. សរសេរមូលហេតុ（理由を入力）
+3. ✅ Admin នឹងទទួលការជូនដំណឹង（Adminに通知が届く）
+
+---
+
+## 4. 📝 របាយការណ៍ / 日報入力
+
+1. បើក 勤務Bot → ចុច「🚀 Open App」（勤務Botを開く）
+2. ចុច「📝 日報入力 / របាយការណ៍」（日報入力をタップ）
+3. បំពេញព័ត៌មាន（情報を入力）
+   - ការងារថ្ងៃនេះ（今日の作業内容）
+   - បញ្ហា ប្រសិនបើមាន（問題点があれば）
+   - កំណត់ចំណាំ（その他メモ）
+4. ចុច「📤 ផ្ញើ / 送信」（送信ボタンをタップ）
+5. ✅ Admin នឹងទទួលបាន（Adminに届きます）
+
+---
+
+## 5. 💰 ចំណាយ / 経費入力
+
+ការចំណាយសម្រាប់ការងារ ដូចជាប្រេងឥន្ធនៈ សម្ភារៈជាដើម（業務経費の記録：ガソリン代、資材代等）
+
+1. បើក 勤務Bot → ចុច「🚀 Open App」（勤務Botを開く）
+2. ចុច「💰 経費入力 / ចំណាយ」（経費入力をタップ）
+3. បំពេញព័ត៌មាន（情報を入力）
+   - ចំនួនទឹកប្រាក់（金額）
+   - ប្រភេទ（カテゴリ）
+   - កំណត់ចំណាំ（メモ）
+   - 📷 រូបថតបង្កាន់ដៃ ប្រសិនបើមាន（レシート写真、あれば）
+4. ចុច「📤 ផ្ញើ / 送信」（送信ボタンをタップ）
+5. ✅ Admin នឹងទទួលបាន（Adminに届きます）
+
+---
+
+## 6. ⚡ សង្ខេបប្រចាំថ្ងៃ / 1日のまとめ
+
+```
+ព្រឹក / 朝
+  🕐 ចូលធ្វើការ（出勤打刻）
+  📋 មើលកិច្ចការ（タスク確認）
+
+ពេលធ្វើការ / 仕事中
+  🚗 មើលការកក់（予約確認）
+  📍 ទៅទីតាំង（現場へ移動）
+  ▶ ចាប់ផ្ដើម（作業開始）
+  📷 រូបថតមុនលាង ៤（Before写真4枚）
+  🔧 ធ្វើការលាង（洗車作業）
+  ✅ រួចរាល់（作業完了）
+  📷 រូបថតបន្ទាប់ពីលាង ៤（After写真4枚）
+
+ល្ងាច / 夕方
+  📝 សរសេររបាយការណ៍（日報入力）
+  💰 កត់ត្រាចំណាយ ប្រសិនបើមាន（経費入力、あれば）
+  🕐 ចេញពីការងារ（退勤打刻）
+```
+
+---
+
+## 7. 📞 បញ្ហា / トラブル時
+
+| បញ្ហា（問題） | ដំណោះស្រាយ（対処法） |
+|---------------|---------------------|
+| Bot មិនឆ្លើយ（Botが応答しない） | បិទ Telegram រួចបើកម្ដងទៀត（Telegram再起動） |
+| GPS មិនដំណើរការ（GPS不可） | អាចចុះវត្តមានបានដោយមិនប្រើ GPS（GPSなしでも打刻可） |
+| រូបថតផ្ទុកឡើងមិនបាន（写真アップ不可） | ពិនិត្យអ៊ីនធើណែត រួចព្យាយាមម្ដងទៀត（通信確認して再試行） |
+| មិនឃើញការកក់ថ្ងៃនេះ（予約が表示されない） | បិទមីនីអែប រួចបើកម្ដងទៀត（ミニアプリを閉じて再度開く） |
+| បញ្ហាផ្សេងទៀត（その他） | ទាក់ទង Admin តាម Telegram（AdminにTelegram連絡） |
+
+---
+
+## ⚠️ សំខាន់ / 重要な注意事項
+
+- 📷 រូបថតត្រូវថតឱ្យច្បាស់ មិនព្រិល（写真は鮮明に撮影、ぼやけないように）
+- 📷 រូបថត ៤ សន្លឹកត្រូវគ្រប់ទិសដៅ：មុខ ក្រោយ ឆ្វេង ស្ដាំ（4枚は必ず前・後・左・右）
+- 🕐 ចុះវត្តមានរៀងរាល់ថ្ងៃ កុំភ្លេច（毎日の打刻を忘れずに）
+- 📝 សរសេររបាយការណ៍មុនចេញពីការងារ（退勤前に日報を入力）
+- ❓ មិនច្បាស់ សួរ Admin（わからないことはAdminに聞く）
