@@ -319,7 +319,9 @@ function init() {
         currentStaff = d.staff;
         line.innerHTML = '👤 <strong>' + esc(d.staff.nameJp) + '</strong> (' + esc(d.staff.nameEn) + ')';
       } else {
-        line.textContent = '⚠️ スタッフ未登録';
+        line.innerHTML = '⚠️ スタッフマスター未登録<br>' +
+                         '<span style="font-size:11px;color:#ff8c8c">chat_id = ' + esc(currentChatId) + '</span><br>' +
+                         '<span style="font-size:10px;color:var(--text-dim)">このIDをスタッフマスターに追加してください</span>';
       }
     });
 
@@ -521,7 +523,12 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
         clearPhoto();
         setPaymentType('会社直払い'); // 既定に戻す
       } else {
-        toast('⚠️ ' + (d.error || 'エラー'), 'err');
+        var errMsg = '⚠️ ' + (d.error || 'エラー');
+        if (d.error === 'STAFF_NOT_FOUND') {
+          errMsg = '⚠️ スタッフマスター未登録です\nchat_id = ' + (d.chatId || currentChatId) +
+                   '\nこのIDをスタッフマスターに追加してください';
+        }
+        toast(errMsg, 'err');
       }
     })
     .catch(function(err) {

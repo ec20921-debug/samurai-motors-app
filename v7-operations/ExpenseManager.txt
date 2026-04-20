@@ -124,7 +124,7 @@ function getOrCreateReceiptFolder_() {
  */
 function submitExpense(chatId, payload) {
   const staff = findStaffByChatId(String(chatId));
-  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND', chatId: String(chatId) };
 
   const desc     = String((payload && payload.description) || '').trim();
   const amount   = Number((payload && payload.amount) || 0);
