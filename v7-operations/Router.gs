@@ -104,7 +104,16 @@ function doPost(e) {
         const staff = findStaffByChatId(chatId);
         if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
         const tasks = getPendingTasksForStaff_(staff);
-        return jsonOut({ ok: true, tasks: tasks, staff: { nameJp: staff.nameJp, nameEn: staff.nameEn, role: staff.role } });
+        const resp = {
+          ok: true,
+          tasks: tasks,
+          staff: { nameJp: staff.nameJp, nameEn: staff.nameEn, role: staff.role }
+        };
+        // admin の場合は全管理者のタスクを担当者別に返す（朝通知と同じ形式）
+        if (staff.role === 'admin') {
+          resp.adminGrouped = getAdminGroupedTasks_();
+        }
+        return jsonOut(resp);
       }
 
       case 'task_done': {

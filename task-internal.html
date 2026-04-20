@@ -238,6 +238,14 @@ body {
     <div class="loading">読み込み中… / កំពុងផ្ទុក…</div>
   </div>
 
+  <!-- admin のみ: 他管理者のタスクを担当者別に表示 -->
+  <div id="adminGroupedSection" style="display:none; margin-top: 24px;">
+    <div style="text-align:center; font-size:13px; color:var(--gold); font-weight:700; margin-bottom:10px; letter-spacing:0.05em;">
+      👥 管理者のタスク一覧 / All admin tasks
+    </div>
+    <div id="adminGroupedList"></div>
+  </div>
+
 </div>
 
 <!-- 新規タスク作成モーダル -->
@@ -352,6 +360,8 @@ function loadTasks() {
       currentStaff = d.staff;
       line.innerHTML = '👤 <strong>' + esc(d.staff.nameJp) + '</strong> (' + esc(d.staff.nameEn) + ')';
       renderTasks(d.tasks || []);
+      // admin の場合は他管理者のタスク一覧も描画
+      renderAdminGrouped(d.adminGrouped || [], d.staff);
     })
     .catch(function(err) {
       line.textContent = '⚠️ 通信エラー: ' + err.message;
@@ -419,6 +429,48 @@ function renderTasks(tasks) {
   list.querySelectorAll('button.btn').forEach(function(btn) {
     btn.addEventListener('click', onTaskButtonClick);
   });
+}
+
+// ═══════════════════════════════════════════
+//  admin グループ表示
+// ═══════════════════════════════════════════
+function renderAdminGrouped(groups, staff) {
+  var section = document.getElementById('adminGroupedSection');
+  var container = document.getElementById('adminGroupedList');
+  if (!staff || staff.role !== 'admin') {
+    section.style.display = 'none';
+    return;
+  }
+  // 自分のグループは上の "taskList" で既に表示しているので除外
+  var otherGroups = (groups || []).filter(function(g) { return g.nameJp !== staff.nameJp; });
+  if (otherGroups.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  var todayStr = formatDateLocal(new Date());
+  var html = otherGroups.map(function(g) {
+    var tasks = (g.tasks || []).slice().sort(function(a, b) {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      return a.due < b.due ? -1 : (a.due > b.due ? 1 : 0);
+    });
+    var rows = tasks.map(function(t) {
+      var mark = t.overdue ? '🔴' : (t.due === todayStr ? '🟡' : '🟢');
+      var dueLabel = t.overdue ? '（期限超過 ' + esc(t.due) + '）' : '（期限 ' + esc(t.due) + '）';
+      return '<div style="padding:8px 10px; border-bottom:1px solid var(--border); font-size:13px;">' +
+             mark + ' ' + esc(t.desc) +
+             '<span style="color:var(--text-dim); font-size:11px; margin-left:6px;">' + dueLabel + '</span>' +
+             '</div>';
+    }).join('');
+    return '<div style="background:var(--card); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden;">' +
+           '<div style="padding:10px 12px; background:#242424; font-weight:700; color:var(--gold); font-size:13px;">' +
+             '👤 ' + esc(g.nameJp) + ' さん（' + tasks.length + '件）' +
+           '</div>' +
+           rows +
+           '</div>';
+  }).join('');
+  container.innerHTML = html;
 }
 
 function onTaskButtonClick(ev) {

@@ -417,6 +417,59 @@ function sendMorningTaskForAdmin() {
 }
 
 /**
+ * 全 admin 担当者のタスクを担当者別にグループ化（ミニアプリ admin 画面用）
+ * 戻り値: [{ assignee, nameJp, tasks:[...] }, ...]
+ * スタッフマスター未登録の担当者名もタスクがあれば返す（admin同等として扱う）
+ */
+function getAdminGroupedTasks_() {
+  const admins = getActiveStaff().filter(function(s) { return s.role === 'admin'; });
+  const groups = [];
+  const seenNames = {};
+
+  admins.forEach(function(a) {
+    const tasks = getPendingTasksForStaff_(a);
+    if (tasks.length > 0) {
+      groups.push({ assignee: a.nameJp, nameJp: a.nameJp, tasks: tasks });
+      seenNames[a.nameJp] = true;
+    }
+  });
+
+  // スタッフマスター未登録だがタスクがある担当者も拾う（飯泉さんがまだ未登録のケース等）
+  try {
+    const rows = getAllRows(SHEET_NAMES.TASKS);
+    const tz = OPS_TZ;
+    const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    const unregGroups = {};
+    rows.forEach(function(r) {
+      if (String(r['ステータス']) !== '未着手') return;
+      const name = String(r['担当者名'] || '').trim();
+      if (!name || seenNames[name]) return;
+      // field スタッフは除外（未登録のfield扱いは想定外なので role 欄で判定）
+      const role = String(r['担当 role'] || '').trim();
+      if (role === 'field') return;
+      const due = formatDateCellTz_(r['期限'], tz);
+      if (!due || due > todayStr) return;
+      if (!unregGroups[name]) unregGroups[name] = [];
+      unregGroups[name].push({
+        id:       String(r['タスクID']),
+        desc:     String(r['タスク内容']),
+        due:      due,
+        overdue:  due < todayStr,
+        assignee: name,
+        role:     role
+      });
+    });
+    Object.keys(unregGroups).forEach(function(name) {
+      groups.push({ assignee: name, nameJp: name, tasks: unregGroups[name] });
+    });
+  } catch (e) {
+    Logger.log('⚠️ getAdminGroupedTasks_ 未登録担当者の走査失敗: ' + e);
+  }
+
+  return groups;
+}
+
+/**
  * 対象スタッフの、今日以前が期限で未完了のタスク一覧
  */
 function getPendingTasksForStaff_(staff) {
