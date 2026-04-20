@@ -103,15 +103,18 @@ function doPost(e) {
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
         const staff = findStaffByChatId(chatId);
         if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
-        const tasks = getPendingTasksForStaff_(staff);
+        // ミニアプリでは 1週間先までのタスクを表示（朝通知は 0日=本日のみのまま）
+        const DAYS_AHEAD = 7;
+        const tasks = getPendingTasksForStaff_(staff, DAYS_AHEAD);
         const resp = {
           ok: true,
           tasks: tasks,
+          daysAhead: DAYS_AHEAD,
           staff: { nameJp: staff.nameJp, nameEn: staff.nameEn, role: staff.role }
         };
         // admin の場合は全管理者のタスクを担当者別に返す（朝通知と同じ形式）
         if (staff.role === 'admin') {
-          resp.adminGrouped = getAdminGroupedTasks_();
+          resp.adminGrouped = getAdminGroupedTasks_(DAYS_AHEAD);
         }
         return jsonOut(resp);
       }

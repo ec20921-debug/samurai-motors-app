@@ -420,14 +420,17 @@ function sendMorningTaskForAdmin() {
  * 全 admin 担当者のタスクを担当者別にグループ化（ミニアプリ admin 画面用）
  * 戻り値: [{ assignee, nameJp, tasks:[...] }, ...]
  * スタッフマスター未登録の担当者名もタスクがあれば返す（admin同等として扱う）
+ *
+ * @param {number} [daysAhead=0] 何日先まで含めるか
  */
-function getAdminGroupedTasks_() {
+function getAdminGroupedTasks_(daysAhead) {
   const admins = getActiveStaff().filter(function(s) { return s.role === 'admin'; });
   const groups = [];
   const seenNames = {};
+  const ahead = Math.max(0, Number(daysAhead || 0));
 
   admins.forEach(function(a) {
-    const tasks = getPendingTasksForStaff_(a);
+    const tasks = getPendingTasksForStaff_(a, ahead);
     if (tasks.length > 0) {
       groups.push({ assignee: a.nameJp, nameJp: a.nameJp, tasks: tasks });
       seenNames[a.nameJp] = true;
@@ -439,6 +442,12 @@ function getAdminGroupedTasks_() {
     const rows = getAllRows(SHEET_NAMES.TASKS);
     const tz = OPS_TZ;
     const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var horizonStr = todayStr;
+    if (ahead > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + ahead);
+      horizonStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    }
     const unregGroups = {};
     rows.forEach(function(r) {
       if (String(r['ステータス']) !== '未着手') return;
@@ -448,13 +457,14 @@ function getAdminGroupedTasks_() {
       const role = String(r['担当 role'] || '').trim();
       if (role === 'field') return;
       const due = formatDateCellTz_(r['期限'], tz);
-      if (!due || due > todayStr) return;
+      if (!due || due > horizonStr) return;
       if (!unregGroups[name]) unregGroups[name] = [];
       unregGroups[name].push({
         id:       String(r['タスクID']),
         desc:     String(r['タスク内容']),
         due:      due,
         overdue:  due < todayStr,
+        today:    due === todayStr,
         assignee: name,
         role:     role
       });
@@ -470,19 +480,33 @@ function getAdminGroupedTasks_() {
 }
 
 /**
- * 対象スタッフの、今日以前が期限で未完了のタスク一覧
+ * 対象スタッフの未完了タスク一覧を取得
+ *
+ * @param {Object} staff スタッフオブジェクト
+ * @param {number} [daysAhead=0] 何日先まで含めるか（0=今日以前、7=今日〜1週間先）
+ *
+ * - 朝通知からは daysAhead 省略（今日以前 = 本日期限 + 期限超過）
+ * - ミニアプリからは daysAhead=7 で呼び、1週間先までのタスクを表示
  */
-function getPendingTasksForStaff_(staff) {
+function getPendingTasksForStaff_(staff, daysAhead) {
   const rows = getAllRows(SHEET_NAMES.TASKS);
   const tz = staff.timezone || 'Asia/Phnom_Penh';
   const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  const ahead = Math.max(0, Number(daysAhead || 0));
+  var horizonStr = todayStr;
+  if (ahead > 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + ahead);
+    horizonStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+  }
 
   return rows.filter(function(r) {
     if (String(r['ステータス']) !== '未着手') return false;
     if (String(r['担当者名'])   !== staff.nameJp) return false;
     const due = formatDateCellTz_(r['期限'], tz);
     if (!due) return false;
-    return due <= todayStr;   // 期限超過も含める
+    return due <= horizonStr;
   }).map(function(r) {
     const due = formatDateCellTz_(r['期限'], tz);
     return {
@@ -490,6 +514,7 @@ function getPendingTasksForStaff_(staff) {
       desc:      String(r['タスク内容']),
       due:       due,
       overdue:   due < todayStr,
+      today:     due === todayStr,
       assignee:  String(r['担当者名']),
       role:      String(r['担当 role'])
     };

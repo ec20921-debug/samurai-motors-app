@@ -229,6 +229,7 @@ body {
   <div class="summary" id="summaryBox" style="display:none">
     <div class="sum-card overdue"><div class="num" id="sumOverdue">0</div><div class="lbl">🔴 期限超過</div></div>
     <div class="sum-card today"><div class="num" id="sumToday">0</div><div class="lbl">🟡 本日期限</div></div>
+    <div class="sum-card"><div class="num" id="sumWeek">0</div><div class="lbl">🟢 今週以内</div></div>
     <div class="sum-card"><div class="num" id="sumTotal">0</div><div class="lbl">📋 合計</div></div>
   </div>
 
@@ -381,21 +382,23 @@ function renderTasks(tasks) {
     list.innerHTML =
       '<div class="empty">' +
       '<div class="big">🎉</div>' +
-      '本日のタスクはありません<br>' +
-      'គ្មានភារកិច្ចថ្ងៃនេះ' +
+      '1週間以内のタスクはありません<br>' +
+      'គ្មានភារកិច្ចក្នុង១សប្តាហ៍' +
       '</div>';
     return;
   }
 
   // サマリー集計
   var todayStr = formatDateLocal(new Date());
-  var overdueCount = 0, todayCount = 0;
+  var overdueCount = 0, todayCount = 0, weekCount = 0;
   tasks.forEach(function(t) {
     if (t.overdue) overdueCount++;
     else if (t.due === todayStr) todayCount++;
+    else weekCount++;
   });
   document.getElementById('sumOverdue').textContent = overdueCount;
   document.getElementById('sumToday').textContent   = todayCount;
+  document.getElementById('sumWeek').textContent    = weekCount;
   document.getElementById('sumTotal').textContent   = tasks.length;
   sumBox.style.display = 'flex';
 
