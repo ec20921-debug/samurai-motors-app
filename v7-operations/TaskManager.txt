@@ -417,27 +417,40 @@ function sendMorningTaskForAdmin() {
 }
 
 /**
- * 全 admin 担当者のタスクを担当者別にグループ化（ミニアプリ admin 画面用）
- * 戻り値: [{ assignee, nameJp, tasks:[...] }, ...]
- * スタッフマスター未登録の担当者名もタスクがあれば返す（admin同等として扱う）
+ * 全スタッフ（admin + field）のタスクを担当者別にグループ化（ミニアプリ admin 画面用）
+ * 戻り値: [{ assignee, nameJp, role, tasks:[...] }, ...]
+ * スタッフマスター未登録の担当者名もタスクがあれば返す。
+ * 並び順: admin → field → 未登録
  *
  * @param {number} [daysAhead=0] 何日先まで含めるか
  */
 function getAdminGroupedTasks_(daysAhead) {
-  const admins = getActiveStaff().filter(function(s) { return s.role === 'admin'; });
+  const all = getActiveStaff();
+  const admins = all.filter(function(s) { return s.role === 'admin'; });
+  const fields = all.filter(function(s) { return s.role === 'field'; });
   const groups = [];
   const seenNames = {};
   const ahead = Math.max(0, Number(daysAhead || 0));
 
+  // ① admin を先に
   admins.forEach(function(a) {
     const tasks = getPendingTasksForStaff_(a, ahead);
     if (tasks.length > 0) {
-      groups.push({ assignee: a.nameJp, nameJp: a.nameJp, tasks: tasks });
-      seenNames[a.nameJp] = true;
+      groups.push({ assignee: a.nameJp, nameJp: a.nameJp, role: 'admin', tasks: tasks });
     }
+    seenNames[a.nameJp] = true;
   });
 
-  // スタッフマスター未登録だがタスクがある担当者も拾う（飯泉さんがまだ未登録のケース等）
+  // ② field を次に
+  fields.forEach(function(f) {
+    const tasks = getPendingTasksForStaff_(f, ahead);
+    if (tasks.length > 0) {
+      groups.push({ assignee: f.nameJp, nameJp: f.nameJp, role: 'field', tasks: tasks });
+    }
+    seenNames[f.nameJp] = true;
+  });
+
+  // ③ スタッフマスター未登録だがタスクがある担当者も拾う（飯泉さんがまだ未登録のケース等）
   try {
     const rows = getAllRows(SHEET_NAMES.TASKS);
     const tz = OPS_TZ;
@@ -449,16 +462,16 @@ function getAdminGroupedTasks_(daysAhead) {
       horizonStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
     }
     const unregGroups = {};
+    const unregRoles  = {};
     rows.forEach(function(r) {
       if (String(r['ステータス']) !== '未着手') return;
       const name = String(r['担当者名'] || '').trim();
       if (!name || seenNames[name]) return;
-      // field スタッフは除外（未登録のfield扱いは想定外なので role 欄で判定）
       const role = String(r['担当 role'] || '').trim();
-      if (role === 'field') return;
       const due = formatDateCellTz_(r['期限'], tz);
       if (!due || due > horizonStr) return;
       if (!unregGroups[name]) unregGroups[name] = [];
+      unregRoles[name] = role;
       unregGroups[name].push({
         id:       String(r['タスクID']),
         desc:     String(r['タスク内容']),
@@ -470,7 +483,7 @@ function getAdminGroupedTasks_(daysAhead) {
       });
     });
     Object.keys(unregGroups).forEach(function(name) {
-      groups.push({ assignee: name, nameJp: name, tasks: unregGroups[name] });
+      groups.push({ assignee: name, nameJp: name, role: unregRoles[name] || '', tasks: unregGroups[name] });
     });
   } catch (e) {
     Logger.log('⚠️ getAdminGroupedTasks_ 未登録担当者の走査失敗: ' + e);
