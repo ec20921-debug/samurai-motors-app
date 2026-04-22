@@ -513,6 +513,213 @@ function seedRecurringTaskTemplates() {
   });
 }
 
+// ═══════════════════════════════════════════════════════
+// パートナープログラム セットアップ
+// ═══════════════════════════════════════════════════════
+
+/**
+ * パートナープログラム 初回セットアップ
+ *   1. パートナーシート作成
+ *   2. 紹介履歴シート作成
+ *   3. ステータスの Data Validation 適用
+ *
+ * ※ Google Form は手動作成。作成後 setupPartnerFormTrigger(formId) でトリガー登録。
+ */
+function setupPartnerProgram() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🤝 パートナープログラム セットアップ開始');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  ensurePartnerSheet_(ss);
+  ensureReferralHistorySheet_(ss);
+  applyPartnerValidation_(ss);
+  applyReferralHistoryValidation_(ss);
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ パートナー セットアップ完了');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('');
+  Logger.log('⏭️ 次の手順:');
+  Logger.log('  1. Google Form を作成（docs/PARTNER_FORM_SETUP.md 参照）');
+  Logger.log('  2. Script Properties に ADMIN_PARTNER_THREAD_ID（任意）を登録');
+  Logger.log('  3. setupPartnerFormTrigger("フォームID") を実行');
+}
+
+function ensurePartnerSheet_(ss) {
+  const name = SHEET_NAMES.PARTNERS;
+  let sheet = ss.getSheetByName(name);
+  if (sheet) {
+    const lastCol = sheet.getLastColumn();
+    const existing = lastCol > 0
+      ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String)
+      : [];
+    const missing = PARTNER_HEADERS_.filter(function(h) { return existing.indexOf(h) < 0; });
+    if (missing.length === 0) {
+      Logger.log('ℹ️ 「' + name + '」スキーマ完備（スキップ）');
+      return;
+    }
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setFontWeight('bold').setBackground('#f1f3f4');
+    Logger.log('✅ 「' + name + '」に列追加: ' + missing.join(', '));
+    return;
+  }
+
+  sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, PARTNER_HEADERS_.length).setValues([PARTNER_HEADERS_]);
+  sheet.getRange(1, 1, 1, PARTNER_HEADERS_.length).setFontWeight('bold').setBackground('#fff4c2');
+  sheet.setFrozenRows(1);
+
+  // 列幅（目安）
+  const widths = [130, 140, 140, 120,  80, 160, 120, 160, 140, 140, 130, 180, 120, 140, 130, 140, 100, 100, 110, 110, 130, 180, 260];
+  widths.forEach(function(w, i) {
+    if (i < PARTNER_HEADERS_.length) sheet.setColumnWidth(i + 1, w);
+  });
+
+  Logger.log('✅ 「' + name + '」を新規作成');
+}
+
+function ensureReferralHistorySheet_(ss) {
+  const name = SHEET_NAMES.REFERRAL_HISTORY;
+  let sheet = ss.getSheetByName(name);
+  if (sheet) {
+    const lastCol = sheet.getLastColumn();
+    const existing = lastCol > 0
+      ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String)
+      : [];
+    const missing = REFERRAL_HISTORY_HEADERS_.filter(function(h) { return existing.indexOf(h) < 0; });
+    if (missing.length === 0) {
+      Logger.log('ℹ️ 「' + name + '」スキーマ完備（スキップ）');
+      return;
+    }
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setFontWeight('bold').setBackground('#f1f3f4');
+    Logger.log('✅ 「' + name + '」に列追加: ' + missing.join(', '));
+    return;
+  }
+
+  sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, REFERRAL_HISTORY_HEADERS_.length).setValues([REFERRAL_HISTORY_HEADERS_]);
+  sheet.getRange(1, 1, 1, REFERRAL_HISTORY_HEADERS_.length).setFontWeight('bold').setBackground('#d4e8ff');
+  sheet.setFrozenRows(1);
+
+  const widths = [130, 140, 130, 140, 120, 160, 130, 120, 110, 100, 110, 140, 120, 110, 100, 260];
+  widths.forEach(function(w, i) {
+    if (i < REFERRAL_HISTORY_HEADERS_.length) sheet.setColumnWidth(i + 1, w);
+  });
+
+  Logger.log('✅ 「' + name + '」を新規作成');
+}
+
+function applyPartnerValidation_(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.PARTNERS);
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const col = function(name) { return headers.indexOf(name) + 1; };
+  const MAX = 1000;
+  const startRow = 2;
+
+  // ステータス
+  const statusCol = col('ステータス');
+  if (statusCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['承認待ち', '承認済み', '却下', '停止'], true)
+      .setAllowInvalid(false)
+      .build();
+    sheet.getRange(startRow, statusCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // 国籍（参考候補）
+  const natCol = col('国籍');
+  if (natCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['日本', 'カンボジア', '中国', '韓国', 'その他'], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(startRow, natCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // 日付列に書式を適用（Date オブジェクトを appendRow するため）
+  const regCol = col('登録日時');
+  if (regCol > 0) sheet.getRange(startRow, regCol, MAX, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  const startDateCol = col('契約開始日');
+  if (startDateCol > 0) sheet.getRange(startRow, startDateCol, MAX, 1).setNumberFormat('yyyy-mm-dd');
+  const endDateCol = col('契約終了日');
+  if (endDateCol > 0) sheet.getRange(startRow, endDateCol, MAX, 1).setNumberFormat('yyyy-mm-dd');
+
+  Logger.log('✅ パートナーシートに Data Validation 適用');
+}
+
+function applyReferralHistoryValidation_(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.REFERRAL_HISTORY);
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const col = function(name) { return headers.indexOf(name) + 1; };
+  const MAX = 2000;
+  const startRow = 2;
+
+  // 支払ステータス
+  const payCol = col('支払ステータス');
+  if (payCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['未払い', '支払済み', '保留'], true)
+      .setAllowInvalid(false)
+      .build();
+    sheet.getRange(startRow, payCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // 支払方法
+  const methodCol = col('支払方法');
+  if (methodCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['ABA', '現金', 'Wing', 'その他'], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(startRow, methodCol, MAX, 1).setDataValidation(rule);
+  }
+
+  Logger.log('✅ 紹介履歴シートに Data Validation 適用');
+}
+
+/**
+ * Google Form の onFormSubmit トリガーを登録
+ * @param {string} formId Google Form の ID（URL の /d/{ここ}/edit の部分）
+ *
+ * 使い方:
+ *   1. Form を作成（docs/PARTNER_FORM_SETUP.md 参照）
+ *   2. Form 編集画面の URL から ID をコピー
+ *   3. GAS エディタで setupPartnerFormTrigger('FORM_ID') を実行
+ */
+function setupPartnerFormTrigger(formId) {
+  if (!formId) throw new Error('❌ formId が必要です');
+
+  // 既存トリガーを削除
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'handlePartnerFormSubmit') ScriptApp.deleteTrigger(t);
+  });
+
+  const form = FormApp.openById(formId);
+  ScriptApp.newTrigger('handlePartnerFormSubmit')
+    .forForm(form)
+    .onFormSubmit()
+    .create();
+
+  Logger.log('✅ handlePartnerFormSubmit の onFormSubmit トリガーを登録 (form=' + formId + ')');
+}
+
+function removePartnerFormTrigger() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'handlePartnerFormSubmit') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
+  });
+  Logger.log('🧹 handlePartnerFormSubmit トリガー削除: ' + removed + '件');
+}
+
 /**
  * デバッグ用: 現在のスタッフ一覧を Logger に出力
  */

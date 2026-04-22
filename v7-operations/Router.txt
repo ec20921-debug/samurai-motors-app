@@ -213,6 +213,50 @@ function doPost(e) {
         }));
       }
 
+      // ── パートナープログラム ──
+      case 'partner_lookup_by_code': {
+        // 予約Bot / booking.html からコード検証のみに使う
+        // ⚠️ 認証なしエンドポイントなので、総当たりでアクティブコード列挙を防ぐため
+        //    コードは「完全一致のみ」返却し、部分一致や類似検索は絶対にしない。
+        //    将来的には v7 側と shared secret で HMAC 署名することを推奨。
+        const code = String(body.code || '');
+        if (!code || code.length < 4) return jsonOut({ ok: false, error: 'MISSING_CODE' });
+        const p = (typeof findPartnerByCode === 'function') ? findPartnerByCode(code) : null;
+        if (!p) return jsonOut({ ok: false, error: 'NOT_FOUND' });
+        if (String(p['ステータス']) !== '承認済み') {
+          return jsonOut({ ok: false, error: 'NOT_ACTIVE', status: String(p['ステータス']) });
+        }
+        return jsonOut({
+          ok: true,
+          partner: {
+            partnerId:     String(p['パートナーID'] || ''),
+            displayName:   String(p['表示名'] || p['氏名'] || ''),
+            referralCode:  String(p['紹介コード'] || ''),
+            commissionRate: Number(p['コミッション率'] || 30)
+          }
+        });
+      }
+
+      case 'partner_record_referral': {
+        // 予約完了時の紹介実績記録（呼び出し側は v7 側想定。当面はデバッグ用）
+        if (typeof recordReferralHistory !== 'function') {
+          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
+        }
+        const id = recordReferralHistory({
+          partnerId:      String(body.partnerId      || ''),
+          partnerName:    String(body.partnerName    || ''),
+          referralCode:   String(body.referralCode   || ''),
+          customerName:   String(body.customerName   || ''),
+          customerChatId: String(body.customerChatId || ''),
+          bookingId:      String(body.bookingId      || ''),
+          serviceDate:    String(body.serviceDate    || ''),
+          revenue:        Number(body.revenue        || 0),
+          commissionRate: Number(body.commissionRate || 30),
+          memo:           String(body.memo           || '')
+        });
+        return jsonOut({ ok: true, referralId: id });
+      }
+
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
     }

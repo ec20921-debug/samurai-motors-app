@@ -618,6 +618,11 @@ function handleTaskCallback_(cb) {
     answerCallbackQuery(BOT_TYPE.INTERNAL, cbId, { text: '❌ 未完了にしました' });
     return;
   }
+  // パートナー承認/却下（PartnerManager で処理）
+  if (typeof handlePartnerCallback_ === 'function' &&
+      (data.indexOf('partner_approve:') === 0 || data.indexOf('partner_reject:') === 0)) {
+    if (handlePartnerCallback_(cb)) return;
+  }
   // 未対応
   answerCallbackQuery(BOT_TYPE.INTERNAL, cbId, { text: '不明な操作' });
 }

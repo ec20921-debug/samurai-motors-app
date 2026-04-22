@@ -20,6 +20,7 @@ const CONFIG_KEYS = {
   ADMIN_TASK_THREAD_ID:        'ADMIN_TASK_THREAD_ID',          // タスクトピック（154）
   ADMIN_DAILY_REPORT_THREAD_ID:'ADMIN_DAILY_REPORT_THREAD_ID',  // 日報トピック（157）
   ADMIN_EXPENSE_THREAD_ID:     'ADMIN_EXPENSE_THREAD_ID',       // 経費トピック（任意、未設定なら日報トピックへ）
+  ADMIN_PARTNER_THREAD_ID:     'ADMIN_PARTNER_THREAD_ID',       // パートナートピック（紹介・承認）
 
   // Google Workspace
   OPERATIONS_SPREADSHEET_ID: 'OPERATIONS_SPREADSHEET_ID',
@@ -27,7 +28,11 @@ const CONFIG_KEYS = {
   RECEIPT_FOLDER_ID:         'RECEIPT_FOLDER_ID',                // レシート保存先 Drive フォルダ（任意、未設定なら自動作成）
 
   // ミニアプリ
-  INTERNAL_MINIAPP_URL:      'INTERNAL_MINIAPP_URL'   // home-internal.html の公開URL
+  INTERNAL_MINIAPP_URL:      'INTERNAL_MINIAPP_URL',  // home-internal.html の公開URL
+
+  // パートナープログラム
+  PARTNER_WELCOME_KIT_URL:   'PARTNER_WELCOME_KIT_URL',   // Welcome Kit PDF/ページURL（任意）
+  PARTNER_TRIAL_VOUCHER_PREFIX: 'PARTNER_TRIAL_VOUCHER_PREFIX' // 体験コードのプレフィックス（既定: SMTRY）
 };
 
 // ====== Bot種別識別子 ======
@@ -38,12 +43,14 @@ const BOT_TYPE = {
 
 // ====== シート名 ======
 const SHEET_NAMES = {
-  STAFF_MASTER:   'スタッフマスター',
-  ATTENDANCE:     '勤怠記録',
-  TASKS:          'タスク',
-  TASK_INPUT:     '新規タスク入力',
-  DAILY_REPORTS:  '日報',
-  EXPENSES:       '経費'
+  STAFF_MASTER:      'スタッフマスター',
+  ATTENDANCE:        '勤怠記録',
+  TASKS:             'タスク',
+  TASK_INPUT:        '新規タスク入力',
+  DAILY_REPORTS:     '日報',
+  EXPENSES:          '経費',
+  PARTNERS:          'パートナー',
+  REFERRAL_HISTORY:  '紹介履歴'
 };
 
 // ====== 繰返しルール（新規タスク入力・Tasks シートで使う候補値） ======
@@ -89,10 +96,13 @@ function getConfig() {
     adminTaskThreadId:        all[CONFIG_KEYS.ADMIN_TASK_THREAD_ID] || '',
     adminDailyReportThreadId: all[CONFIG_KEYS.ADMIN_DAILY_REPORT_THREAD_ID] || '',
     adminExpenseThreadId:     all[CONFIG_KEYS.ADMIN_EXPENSE_THREAD_ID] || '',
+    adminPartnerThreadId:     all[CONFIG_KEYS.ADMIN_PARTNER_THREAD_ID] || '',
     operationsSpreadsheetId:  all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
     v7SpreadsheetId:          all[CONFIG_KEYS.V7_SPREADSHEET_ID] || '',
     receiptFolderId:          all[CONFIG_KEYS.RECEIPT_FOLDER_ID] || '',
-    internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || ''
+    internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || '',
+    partnerWelcomeKitUrl:     all[CONFIG_KEYS.PARTNER_WELCOME_KIT_URL] || '',
+    partnerTrialVoucherPrefix: all[CONFIG_KEYS.PARTNER_TRIAL_VOUCHER_PREFIX] || 'SMTRY'
   };
 }
 
