@@ -721,6 +721,217 @@ function removePartnerFormTrigger() {
 }
 
 /**
+ * Google Form「Samurai Motors パートナー申請」を自動生成し、onFormSubmit トリガー登録まで一括実行。
+ *
+ * 【実行方法】 GAS エディタで本関数を選択 → ▶ 実行（1度だけ）
+ *
+ * 【処理内容】
+ *   1. FormApp.create() で新規フォーム作成
+ *   2. 15個の質問を PARTNER_FORM_FIELDS_ と完全一致で追加（タイポ防止）
+ *   3. 契約条件セクションヘッダー挿入（カンボジアE-Commerce Law準拠）
+ *   4. 収集設定（メール収集ON、編集不可、確認メッセージ、進捗バー）
+ *   5. onFormSubmit トリガーを自動登録
+ *   6. 編集URL・公開URL・フォームIDを Logger に出力
+ *
+ * ⚠️ 繰り返し実行すると同名のフォームが複製される。1度だけ実行し、再作成が必要な場合は
+ *    古いフォームを Drive のゴミ箱に移動してから再実行すること。
+ *
+ * @returns {Object} { formId, editUrl, publishedUrl, shortUrl }
+ */
+function createPartnerApplicationForm() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('📝 パートナー申請フォーム自動生成開始');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  const form = FormApp.create('Samurai Motors パートナー申請');
+
+  form.setDescription(
+    'Samurai Motors 出張洗車サービスのパートナー（紹介制度）にご関心をお寄せいただきありがとうございます。\n\n' +
+    '本フォームにご記入いただいた内容をもとに、管理者が内容を確認のうえ承認いたします。\n' +
+    '承認完了後、Telegram にて紹介コード・無料体験コード・Welcome Kit をお送りします。\n\n' +
+    'ℹ️ 所要時間：約5分\n' +
+    'ℹ️ ご質問は管理者までお気軽にお問い合わせください。'
+  );
+
+  form.setCollectEmail(true);
+  form.setAllowResponseEdits(false);
+  form.setShowLinkToRespondAgain(false);
+  form.setProgressBar(true);
+  form.setConfirmationMessage(
+    '✅ 申請を受け付けました。\n' +
+    '管理者が内容を確認のうえ、1〜3営業日以内にご連絡いたします。\n\n' +
+    'Thank you for your application! We will review and respond within 1-3 business days.'
+  );
+
+  // ── セクション1: 基本情報 ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('① 基本情報 / Basic Information');
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.NAME)
+    .setHelpText('パスポート・IDカード記載の正式なフルネーム')
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.DISPLAY_NAME)
+    .setHelpText('紹介時に呼ばれたい名前（空欄の場合は本名を使用）')
+    .setRequired(false);
+
+  form.addMultipleChoiceItem()
+    .setTitle(PARTNER_FORM_FIELDS_.NATIONALITY)
+    .setChoiceValues(['日本', 'カンボジア', '中国', '韓国', 'その他'])
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.COMPANY)
+    .setRequired(false);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.TITLE)
+    .setHelpText('例: CEO / 代表 / 店長 / フリーランス')
+    .setRequired(false);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.COMMUNITY)
+    .setHelpText('例: カンボジア日本人会、JETRO、ロータリー、カンボジア華僑連合会 など')
+    .setRequired(false);
+
+  // ── セクション2: 連絡先 ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('② 連絡先 / Contact Information');
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.PHONE)
+    .setHelpText('国番号付き推奨。例: +855 12 345 678')
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.TELEGRAM)
+    .setHelpText('@ は不要（例: yamadataro）。承認後の DM 連絡に使用します。')
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.EMAIL)
+    .setRequired(false);
+
+  // ── セクション3: 送金先（ABA） ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('③ コミッション送金先 / Payout (ABA Bank)')
+    .setHelpText('毎月のコミッションは ABA 銀行口座へ送金します。');
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.ABA_ACCOUNT)
+    .setRequired(true);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.ABA_NAME)
+    .setHelpText('パスポート記載どおり（半角英大文字推奨。例: YAMADA TARO）')
+    .setRequired(true);
+
+  // ── セクション4: 紹介コード希望 ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('④ 紹介コード希望 / Referral Code Preference');
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.CODE_HINT)
+    .setHelpText('4〜12文字の英数字。例: YAMADA → SM-YAMADA となります。空欄の場合は自動生成。')
+    .setRequired(false);
+
+  form.addTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.REFERRER_SOURCE)
+    .setHelpText('集客施策の分析に使わせていただきます')
+    .setRequired(false);
+
+  // ── セクション5: 契約条件（必読） ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('⑤ 契約条件 / Terms & Conditions')
+    .setHelpText(
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+      'Samurai Motors パートナー契約条件\n' +
+      'Samurai Motors Partner Terms\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+      '1. 役割\n' +
+      'パートナーは Samurai Motors の出張洗車サービスを知人・顧客に紹介します。\n\n' +
+      '2. コミッション\n' +
+      '紹介コード経由で成約した売上の 30% を、月末締め・翌月 ABA 送金します。\n\n' +
+      '3. 帰属判定\n' +
+      'お客さまが予約時に紹介コードを伝えた時点でパートナー実績として記録されます。複数パートナーが関与した場合は、最初にコードを伝えたパートナーが対象となります。\n\n' +
+      '4. 初回限定\n' +
+      'コミッション対象はお客さまの「初回ご利用分のみ」です。\n\n' +
+      '5. 支払\n' +
+      '翌月10日までに ABA 口座へ送金。金額 $10未満の場合は翌月繰越とします。\n\n' +
+      '6. 対象外\n' +
+      'Samurai Motors の既存顧客（過去利用あり）の再紹介は対象外です。\n\n' +
+      '7. 契約期間\n' +
+      '承認日から 6ヶ月（以降、両者同意により自動更新）。\n\n' +
+      '8. 税金\n' +
+      '受け取るコミッションに係る税金はパートナー自身の責任で処理してください。\n\n' +
+      '9. 守秘義務\n' +
+      '受け取った顧客情報は第三者に開示しません。\n\n' +
+      '10. 解約\n' +
+      '両者は 30日前の通知で解約できます。Samurai Motors は違反時に即時解約できます。\n\n' +
+      '11. 改訂\n' +
+      '条件変更時は1ヶ月前に通知します。\n\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+      'ℹ️ カンボジア E-Commerce Law 2019 第48条により、本フォームでの同意は電子契約として有効です。'
+    );
+
+  form.addCheckboxItem()
+    .setTitle(PARTNER_FORM_FIELDS_.TERMS_AGREE)
+    .setChoiceValues(['同意します / I agree'])
+    .setRequired(true);
+
+  // ── セクション6: その他 ───────────────────
+  form.addSectionHeaderItem()
+    .setTitle('⑥ その他 / Additional Notes');
+
+  form.addParagraphTextItem()
+    .setTitle(PARTNER_FORM_FIELDS_.NOTES)
+    .setHelpText('質問・ご要望などご自由にご記入ください。')
+    .setRequired(false);
+
+  // フォーム情報を取得
+  const formId = form.getId();
+  const editUrl = form.getEditUrl();
+  const publishedUrl = form.getPublishedUrl();
+  let shortUrl = publishedUrl;
+  try {
+    shortUrl = form.shortenFormUrl(publishedUrl);
+  } catch (err) {
+    Logger.log('⚠️ 短縮URL生成失敗（無視可）: ' + err);
+  }
+
+  // onFormSubmit トリガーを自動登録
+  try {
+    setupPartnerFormTrigger(formId);
+  } catch (err) {
+    Logger.log('⚠️ トリガー登録に失敗: ' + err);
+    Logger.log('   → 手動で setupPartnerFormTrigger("' + formId + '") を実行してください');
+  }
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ フォーム自動生成完了');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('フォームID:     ' + formId);
+  Logger.log('編集URL:        ' + editUrl);
+  Logger.log('公開URL(長):    ' + publishedUrl);
+  Logger.log('公開URL(短):    ' + shortUrl);
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('次のステップ:');
+  Logger.log('  1. 編集URL を開いて見た目を確認');
+  Logger.log('  2. debugMockPartnerFormSubmit() でテスト送信（任意）');
+  Logger.log('  3. 公開URL(短) を候補者に配布');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  return {
+    formId: formId,
+    editUrl: editUrl,
+    publishedUrl: publishedUrl,
+    shortUrl: shortUrl
+  };
+}
+
+/**
  * デバッグ用: 現在のスタッフ一覧を Logger に出力
  */
 function debugShowStaff() {
