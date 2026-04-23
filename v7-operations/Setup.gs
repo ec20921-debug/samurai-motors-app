@@ -931,6 +931,182 @@ function createPartnerApplicationForm() {
   };
 }
 
+// ============================================================
+//  撥水コーティング無料モニター施策 セットアップ
+// ============================================================
+
+/**
+ * 撥水モニター施策の初回セットアップ
+ *
+ *   1. 「撥水モニター」シート作成
+ *   2. Data Validation 適用
+ *   3. 申込フォーム自動生成（onFormSubmit トリガー含む）
+ *   4. アンケートフォーム自動生成（onFormSubmit トリガー含む）
+ *   5. 雨季フォローアップの週次トリガー登録
+ *
+ * 【実行方法】 GAS エディタで本関数を選択 → ▶ 実行（1度だけ）
+ *
+ * @returns {Object} { sheet, monitorForm, surveyForm }
+ */
+function setupWaterRepellentSystem() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('💧 撥水モニター施策 セットアップ開始');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  // 1. シート
+  ensureWaterRepellentSheet_(ss);
+  applyWaterRepellentValidation_(ss);
+
+  // 2. 申込フォーム
+  Logger.log('');
+  Logger.log('📝 ステップ1: 申込フォーム生成');
+  const monitorForm = createWaterRepellentMonitorForm();
+
+  // 3. アンケートフォーム
+  Logger.log('');
+  Logger.log('📋 ステップ2: アンケートフォーム生成');
+  const surveyForm = createWaterRepellentSurveyForm();
+
+  // 4. 雨季フォローアップ週次トリガー
+  Logger.log('');
+  Logger.log('⏰ ステップ3: 週次フォローアップトリガー登録');
+  setupWaterRepellentFollowUpTrigger();
+
+  Logger.log('');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ 撥水モニター施策 セットアップ完了');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('');
+  Logger.log('⏭️ 次の手順:');
+  Logger.log('  1. 申込URL を Telegram / Email でターゲットに配布');
+  Logger.log('     → ' + monitorForm.shortUrl);
+  Logger.log('  2. アンケートURL は雨季中に自動配信されるため共有不要');
+  Logger.log('     → ' + surveyForm.shortUrl);
+  Logger.log('  3. 撥水トピック ID を ADMIN_WATER_REPELLENT_THREAD_ID に登録（任意）');
+  Logger.log('  4. debugMockWaterRepellentFormSubmit() でテスト送信');
+
+  return { monitorForm: monitorForm, surveyForm: surveyForm };
+}
+
+function ensureWaterRepellentSheet_(ss) {
+  const name = SHEET_NAMES.WATER_REPELLENT;
+  let sheet = ss.getSheetByName(name);
+  if (sheet) {
+    const lastCol = sheet.getLastColumn();
+    const existing = lastCol > 0
+      ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String)
+      : [];
+    const missing = WATER_REPELLENT_HEADERS_.filter(function(h) { return existing.indexOf(h) < 0; });
+    if (missing.length === 0) {
+      Logger.log('ℹ️ 「' + name + '」スキーマ完備（スキップ）');
+      return;
+    }
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setFontWeight('bold').setBackground('#cfe9ff');
+    Logger.log('✅ 「' + name + '」に列追加: ' + missing.join(', '));
+    return;
+  }
+
+  sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, WATER_REPELLENT_HEADERS_.length).setValues([WATER_REPELLENT_HEADERS_]);
+  sheet.getRange(1, 1, 1, WATER_REPELLENT_HEADERS_.length).setFontWeight('bold').setBackground('#cfe9ff');
+  sheet.setFrozenRows(1);
+
+  // 列幅（目安）
+  const widths = [
+    130, 140,            // モニターID, 申込日時
+    160, 130, 180,       // 会社名, 経営者氏名, 経営者連絡先
+    130, 160,            // ドライバー氏名, ドライバー連絡先
+    180, 140,            // 車種・色, ナンバープレート
+    110, 110, 180,       // 希望日, 第2希望日, 希望時間帯
+    110, 140, 140, 110,  // ステータス, 予約確定日時, 施工日時, 施工担当
+    140, 140,            // アンケート送付日, アンケート回答日
+    100, 130, 130,       // 視界改善評価, リピート意向, 紹介意向
+    260,                 // 経営者の反応
+    160, 110, 260        // 紹介元, パートナー化候補, 備考
+  ];
+  widths.forEach(function(w, i) {
+    if (i < WATER_REPELLENT_HEADERS_.length) sheet.setColumnWidth(i + 1, w);
+  });
+
+  Logger.log('✅ 「' + name + '」を新規作成');
+}
+
+function applyWaterRepellentValidation_(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.WATER_REPELLENT);
+  if (!sheet) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const col = function(name) { return headers.indexOf(name) + 1; };
+  const MAX = 1000;
+  const startRow = 2;
+
+  // ステータス
+  const statusCol = col('ステータス');
+  if (statusCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['申込', '予約確定', '施工完了', 'フォロー済み', 'キャンセル', '匿名アンケート'], true)
+      .setAllowInvalid(false)
+      .build();
+    sheet.getRange(startRow, statusCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // 希望時間帯
+  const slotCol = col('希望時間帯');
+  if (slotCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList([
+        '午前 10:00〜12:00 / Morning',
+        '午後 13:00〜16:00 / Afternoon',
+        'どちらでも可 / Either is fine'
+      ], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(startRow, slotCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // リピート/紹介意向
+  ['リピート意向', '紹介意向'].forEach(function(h) {
+    const c = col(h);
+    if (c > 0) {
+      const rule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(['ぜひ', 'たぶん', '不要', '未回答'], true)
+        .setAllowInvalid(true)
+        .build();
+      sheet.getRange(startRow, c, MAX, 1).setDataValidation(rule);
+    }
+  });
+
+  // 視界改善評価
+  const visCol = col('視界改善評価');
+  if (visCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['1', '2', '3', '4', '5'], true)
+      .setAllowInvalid(true)
+      .build();
+    sheet.getRange(startRow, visCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // パートナー化候補（チェックボックス）
+  const candCol = col('パートナー化候補');
+  if (candCol > 0) {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireCheckbox()
+      .build();
+    sheet.getRange(startRow, candCol, MAX, 1).setDataValidation(rule);
+  }
+
+  // 日付列の書式
+  ['申込日時', '予約確定日時', '施工日時', 'アンケート送付日', 'アンケート回答日'].forEach(function(h) {
+    const c = col(h);
+    if (c > 0) sheet.getRange(startRow, c, MAX, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  });
+
+  Logger.log('✅ 撥水モニターシートに Data Validation 適用');
+}
+
 /**
  * デバッグ用: 現在のスタッフ一覧を Logger に出力
  */

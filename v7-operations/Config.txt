@@ -32,7 +32,12 @@ const CONFIG_KEYS = {
 
   // パートナープログラム
   PARTNER_WELCOME_KIT_URL:   'PARTNER_WELCOME_KIT_URL',   // Welcome Kit PDF/ページURL（任意）
-  PARTNER_TRIAL_VOUCHER_PREFIX: 'PARTNER_TRIAL_VOUCHER_PREFIX' // 体験コードのプレフィックス（既定: SMTRY）
+  PARTNER_TRIAL_VOUCHER_PREFIX: 'PARTNER_TRIAL_VOUCHER_PREFIX', // 体験コードのプレフィックス（既定: SMTRY）
+
+  // 撥水コーティング無料モニター施策（2026年雨季キャンペーン）
+  ADMIN_WATER_REPELLENT_THREAD_ID: 'ADMIN_WATER_REPELLENT_THREAD_ID', // 撥水トピック（任意・未設定なら パートナー or タスクトピックへフォールバック）
+  WATER_REPELLENT_FORM_URL:        'WATER_REPELLENT_FORM_URL',        // モニター申込フォーム URL（createWaterRepellentMonitorForm 実行時に自動登録）
+  WATER_REPELLENT_SURVEY_URL:      'WATER_REPELLENT_SURVEY_URL'       // 雨季体験アンケート URL（createWaterRepellentSurveyForm 実行時に自動登録）
 };
 
 // ====== Bot種別識別子 ======
@@ -50,7 +55,8 @@ const SHEET_NAMES = {
   DAILY_REPORTS:     '日報',
   EXPENSES:          '経費',
   PARTNERS:          'パートナー',
-  REFERRAL_HISTORY:  '紹介履歴'
+  REFERRAL_HISTORY:  '紹介履歴',
+  WATER_REPELLENT:   '撥水モニター'
 };
 
 // ====== 繰返しルール（新規タスク入力・Tasks シートで使う候補値） ======
@@ -102,7 +108,10 @@ function getConfig() {
     receiptFolderId:          all[CONFIG_KEYS.RECEIPT_FOLDER_ID] || '',
     internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || '',
     partnerWelcomeKitUrl:     all[CONFIG_KEYS.PARTNER_WELCOME_KIT_URL] || '',
-    partnerTrialVoucherPrefix: all[CONFIG_KEYS.PARTNER_TRIAL_VOUCHER_PREFIX] || 'SMTRY'
+    partnerTrialVoucherPrefix: all[CONFIG_KEYS.PARTNER_TRIAL_VOUCHER_PREFIX] || 'SMTRY',
+    adminWaterRepellentThreadId: all[CONFIG_KEYS.ADMIN_WATER_REPELLENT_THREAD_ID] || '',
+    waterRepellentFormUrl:    all[CONFIG_KEYS.WATER_REPELLENT_FORM_URL] || '',
+    waterRepellentSurveyUrl:  all[CONFIG_KEYS.WATER_REPELLENT_SURVEY_URL] || ''
   };
 }
 

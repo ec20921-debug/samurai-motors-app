@@ -257,6 +257,43 @@ function doPost(e) {
         return jsonOut({ ok: true, referralId: id });
       }
 
+      // ── 撥水モニター施策 ──
+      case 'water_repellent_lookup': {
+        // モニターIDで参照（管理画面・スタッフ確認用）
+        const monitorId = String(body.monitorId || '');
+        if (!monitorId) return jsonOut({ ok: false, error: 'MISSING_MONITOR_ID' });
+        if (typeof getWaterRepellentMonitorById !== 'function') {
+          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
+        }
+        const m = getWaterRepellentMonitorById(monitorId);
+        if (!m) return jsonOut({ ok: false, error: 'NOT_FOUND' });
+        return jsonOut({ ok: true, monitor: m });
+      }
+
+      case 'water_repellent_stats': {
+        // 集計（ダッシュボード用）
+        if (typeof getWaterRepellentStats !== 'function') {
+          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
+        }
+        return jsonOut({ ok: true, stats: getWaterRepellentStats() });
+      }
+
+      case 'water_repellent_complete': {
+        // 現場スタッフが施工完了マークを入れる用（home-internal.html 拡張時に使用）
+        const chatId = String(body.chatId || '');
+        const monitorId = String(body.monitorId || '');
+        if (!chatId || !monitorId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        const staff = findStaffByChatId(chatId);
+        if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        if (typeof markMonitorServiceCompleted !== 'function') {
+          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
+        }
+        return jsonOut(markMonitorServiceCompleted(monitorId, {
+          first_name: staff.nameJp,
+          username: staff.username || ''
+        }));
+      }
+
       default:
         return jsonOut({ ok: false, error: 'UNKNOWN_ACTION', action: action });
     }

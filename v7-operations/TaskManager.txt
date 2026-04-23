@@ -623,6 +623,18 @@ function handleTaskCallback_(cb) {
       (data.indexOf('partner_approve:') === 0 || data.indexOf('partner_reject:') === 0)) {
     if (handlePartnerCallback_(cb)) return;
   }
+  // 撥水モニター（WaterRepellentManager で処理）
+  if (typeof handleWaterRepellentCallback_ === 'function' &&
+      (data.indexOf('wr_confirm:') === 0
+       || data.indexOf('wr_cancel:') === 0
+       || data.indexOf('wr_complete:') === 0)) {
+    if (handleWaterRepellentCallback_(cb)) return;
+  }
+  // 撥水モニター: アンケート送付完了マーク
+  if (typeof _handleWaterRepellentSurveyCallback_ === 'function' &&
+      data.indexOf('wr_survey:') === 0) {
+    if (_handleWaterRepellentSurveyCallback_(cb)) return;
+  }
   // 未対応
   answerCallbackQuery(BOT_TYPE.INTERNAL, cbId, { text: '不明な操作' });
 }
