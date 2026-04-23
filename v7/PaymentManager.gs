@@ -565,3 +565,172 @@ function testSendPaymentQR(bookingId) {
   var res = sendPaymentQR(bookingId);
   Logger.log('結果: ' + JSON.stringify(res));
 }
+
+// ====== 緊急救済・診断（2026-04-23 追加） ======
+
+/**
+ * 「作業完了だがQR未送信」の予約を一括で救済送信する
+ *
+ * 使い方（GAS コンソール）:
+ *   dispatchAllPendingQRs()      // 直近3日以内を対象
+ *   dispatchAllPendingQRs(7)     // 直近7日以内
+ *
+ * @param {number} [days=3] - 何日前までの予約を対象にするか
+ */
+function dispatchAllPendingQRs(days) {
+  days = days || 3;
+  var since = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  var sheet = getSheet(SHEET_NAMES.BOOKINGS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('予約が1件もありません');
+    return { sent: [], skipped: [], failed: [] };
+  }
+
+  var headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+
+  var results = { sent: [], skipped: [], failed: [] };
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var status = String(row[(headers['進行状態'] || 1) - 1] || '');
+    var qrSent = row[(headers['QR送信日時'] || 1) - 1];
+    var bookingId = String(row[(headers['予約ID'] || 1) - 1] || '');
+    var dateVal = row[(headers['予約日'] || 1) - 1];
+
+    if (status !== '作業完了') continue;
+    if (qrSent) { results.skipped.push(bookingId + ' (QR送信済)'); continue; }
+    var bkTime = (dateVal instanceof Date) ? dateVal.getTime() : Date.now();
+    if (bkTime < since) { results.skipped.push(bookingId + ' (' + days + '日以上前)'); continue; }
+
+    try {
+      var res = sendPaymentQR(bookingId);
+      if (res && res.ok) {
+        results.sent.push(bookingId);
+      } else {
+        results.failed.push(bookingId + ' → ' + ((res && res.reason) || 'unknown'));
+      }
+    } catch (e) {
+      results.failed.push(bookingId + ' → ' + e);
+    }
+  }
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('📤 一括QR送信結果（過去' + days + '日以内の作業完了予約）');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ 送信成功: ' + results.sent.length + '件');
+  results.sent.forEach(function(s) { Logger.log('  - ' + s); });
+  Logger.log('⏭️ スキップ: ' + results.skipped.length + '件');
+  results.skipped.forEach(function(s) { Logger.log('  - ' + s); });
+  Logger.log('❌ 失敗: ' + results.failed.length + '件');
+  results.failed.forEach(function(s) { Logger.log('  - ' + s); });
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  return results;
+}
+
+/**
+ * QRシステム全体の健全性チェック（一発診断）
+ *   - QR_CODES シートの有効行の有無と画像取得可否・共有設定
+ *   - 予約Bot のトークン有効性（getMe）
+ *   - 予約シートのヘッダー整合性
+ *   - 結果を Admin グループにも自動通知
+ *
+ * 使い方（GAS コンソール）:
+ *   diagnoseQRSystem()
+ */
+function diagnoseQRSystem() {
+  var lines = [];
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  lines.push('🔍 QRシステム診断');
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+
+  // 1. QR_CODES シート
+  try {
+    var qr = getActiveQR();
+    if (!qr) {
+      lines.push('❌ QR_CODES: 有効=TRUE の行が 0 件');
+      lines.push('   → QRコードシートで有効列を TRUE にする必要があります');
+    } else {
+      lines.push('✅ QR_CODES: 有効行あり');
+      lines.push('   qrId=' + qr.qrId + ' / bank=' + qr.bank);
+      lines.push('   imageUrl=' + qr.imageUrl);
+      var driveMatch = qr.imageUrl.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (driveMatch) {
+        var fileId = driveMatch[1] || driveMatch[2];
+        try {
+          var file = DriveApp.getFileById(fileId);
+          var blob = file.getBlob();
+          lines.push('   ✅ Drive取得OK: ' + file.getName() + ' (' + blob.getBytes().length + ' bytes)');
+          try {
+            var access = String(file.getSharingAccess());
+            var perm = String(file.getSharingPermission());
+            lines.push('   共有: access=' + access + ' / permission=' + perm);
+            if (access !== 'ANYONE_WITH_LINK' && access !== 'ANYONE') {
+              lines.push('   ⚠️ 共有設定が「リンクを知っている全員」でない可能性あり');
+            }
+          } catch (e) {
+            lines.push('   ⚠️ 共有設定取得失敗: ' + e);
+          }
+        } catch (e) {
+          lines.push('   ❌ Drive取得失敗: ' + e);
+        }
+      } else {
+        lines.push('   ⚠️ Drive URL 形式ではない（外部URL経由）');
+      }
+    }
+  } catch (e) {
+    lines.push('❌ QR_CODES 確認エラー: ' + e);
+  }
+
+  // 2. 予約Bot トークン (getMe)
+  try {
+    var token = getBotToken(BOT_TYPE.BOOKING);
+    if (!token) {
+      lines.push('❌ 予約Botトークン未登録');
+    } else {
+      var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getMe', {
+        muteHttpExceptions: true
+      });
+      var body = JSON.parse(res.getContentText());
+      if (body.ok) {
+        lines.push('✅ 予約Bot: @' + body.result.username + ' (ID=' + body.result.id + ')');
+      } else {
+        lines.push('❌ 予約Bot getMe 失敗: ' + res.getContentText());
+      }
+    }
+  } catch (e) {
+    lines.push('❌ Bot確認エラー: ' + e);
+  }
+
+  // 3. 予約シートヘッダー
+  try {
+    var headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
+    var required = ['予約ID', 'チャットID', '進行状態', '決済状態', 'QR送信日時'];
+    var missing = [];
+    required.forEach(function(h) { if (!headers[h]) missing.push(h); });
+    if (missing.length === 0) {
+      lines.push('✅ 予約シート: 必須列すべて存在');
+    } else {
+      lines.push('❌ 予約シート: 欠損列=' + missing.join(', '));
+    }
+  } catch (e) {
+    lines.push('❌ 予約シート確認エラー: ' + e);
+  }
+
+  lines.push('━━━━━━━━━━━━━━━━━━━━');
+  var output = lines.join('\n');
+  Logger.log(output);
+
+  // Admin グループにも通知
+  try {
+    var cfg = getConfig();
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, '🔍 QRシステム診断結果\n' + output);
+  } catch (e) {
+    Logger.log('⚠️ Admin通知失敗: ' + e);
+  }
+
+  return output;
+}
