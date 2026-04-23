@@ -398,8 +398,50 @@ function doPost(e) {
 - 不明点・曖昧な点は作業前に確認
 - エラーは原因と解決策を日本語で説明
 - コードのコメントは日本語
-- `.js` ファイル更新時は `.txt` コピーも同期（手動コピペ用）
 - コード変更後は必ず `git add` → `git commit` → `git push`
+
+---
+
+## 🚀 GAS デプロイ運用（clasp）
+
+2026-04-23 から **clasp（Google 公式 CLI）** で v7 / v7-operations の双方を自動デプロイする運用に移行。**手動コピペは廃止**。
+
+### 作業ディレクトリ
+
+- 本リポジトリの**唯一の作業場所**：`C:\Users\drymp\dev\samurai-motors-app\`
+- `C:\Users\drymp\OneDrive\Desktop\samurai-motors-app\` は**旧スナップショット**（戻る必要が出たときの保険、編集しない）
+
+### 必要ツール
+
+- `clasp` v3.3.0 が `C:\nodejs-global\clasp.cmd` にインストール済み
+- ログイン済みアカウント：`ec20921@gmail.com`（GAS 開発系の所有者）
+- Google Apps Script API は本人アカウントで有効化済み
+
+### push コマンド
+
+```bash
+# v7（顧客系）を反映
+cd "C:/Users/drymp/dev/samurai-motors-app/v7"
+"C:/nodejs-global/clasp.cmd" push --force
+
+# v7-operations（勤務系）を反映
+cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
+"C:/nodejs-global/clasp.cmd" push --force
+```
+
+`--force` は manifest 変更がある場合のプロンプトをスキップする用。通常運用ではあった方が摩擦が少ない。
+
+### 設計上の重要ポイント
+
+- v7 の `Setup.gs` / `SetupProperties.gs` / `GetGroupId.gs` / `WebhookSetup.gs` は **`.claspignore` で除外**。リモート GAS には残さない（コード肥大化防止）
+- v7-operations の `Setup.gs` は本番ファイル扱い（毎回 push される）
+- `.txt` ペアファイルは廃止（`.claspignore` でも除外、ローカルにも置かない）
+
+### 万一壊れた場合の戻し方
+
+1. `C:\Users\drymp\OneDrive\Desktop\samurai-motors-app\` に旧スナップショットあり
+2. `git log` で commit 履歴から復元可能
+3. `clasp clone <scriptId>` でリモート GAS から再取得も可能
 
 ---
 

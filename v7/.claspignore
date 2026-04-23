@@ -1,0 +1,17 @@
+# clasp push 時にリモート GAS へ送らないファイル
+# v7（顧客系）— セットアップ系は初回実行後ローカルのみ保持し、
+# 本番GASからは削除する設計（CLAUDE.md「コード肥大化防止ルール」参照）
+
+# .txt ペアは clasp 移行で不要
+*.txt
+
+# 一度しか使わないセットアップコード（本番GASに残さない）
+Setup.gs
+SetupProperties.gs
+GetGroupId.gs
+WebhookSetup.gs
+
+# その他
+*.md
+.git/**
+node_modules/**

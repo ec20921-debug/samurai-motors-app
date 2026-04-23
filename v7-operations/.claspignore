@@ -1,0 +1,10 @@
+# clasp push 時にリモート GAS へ送らないファイル
+# v7-operations（勤務系）— Setup.gs はリモートにも置く設計
+
+# .txt ペアは clasp 移行で不要
+*.txt
+
+# その他
+*.md
+.git/**
+node_modules/**
