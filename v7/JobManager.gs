@@ -450,6 +450,19 @@ function apiJobFinal(body) {
       }
     }
 
+    // ── QR送信（apiJobEnd が失敗してここにフォールバックした場合の救済）──
+    // sendPaymentQR は ALREADY_SENT でガードされるので二重送信の心配なし
+    if (bookingId && typeof sendPaymentQR === 'function') {
+      try {
+        var qrRes = sendPaymentQR(bookingId);
+        if (!qrRes || !qrRes.ok) {
+          Logger.log('ℹ️ apiJobFinal sendPaymentQR 結果: ' + JSON.stringify(qrRes));
+        }
+      } catch (e) {
+        Logger.log('⚠️ apiJobFinal sendPaymentQR 呼び出しエラー: ' + e);
+      }
+    }
+
     return { status: 'ok' };
   } catch (err) {
     Logger.log('❌ apiJobFinal error: ' + err + ' stack=' + (err.stack || ''));

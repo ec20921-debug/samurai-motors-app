@@ -24,6 +24,9 @@
  * 顧客にQRコード画像と支払い案内を送信する
  * 既に QR送信日時 が記録されている予約には送信しない（重複防止）
  *
+ * 【2026-04-23 強化】
+ *   失敗分岐ではすべて Admin グループに緊急通知を出す（気付き漏れ防止）
+ *
  * @param {string} bookingId - 予約ID
  * @return {{ok: boolean, reason?: string}}
  */
@@ -33,10 +36,11 @@ function sendPaymentQR(bookingId) {
   var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
   if (!bkRow) {
     Logger.log('⚠️ sendPaymentQR: 予約が見つからない bookingId=' + bookingId);
+    notifyAdminQRFailure_(bookingId, 'BOOKING_NOT_FOUND', '予約が見つかりません');
     return { ok: false, reason: 'BOOKING_NOT_FOUND' };
   }
 
-  // 既に送信済みなら何もしない（二重送信防止）
+  // 既に送信済みなら何もしない（二重送信防止）— これは正常系なので Admin 通知なし
   if (bkRow.data['QR送信日時']) {
     Logger.log('⏭️ sendPaymentQR: 既に送信済み bookingId=' + bookingId);
     return { ok: false, reason: 'ALREADY_SENT' };
@@ -45,6 +49,7 @@ function sendPaymentQR(bookingId) {
   var customerChatId = String(bkRow.data['チャットID'] || '');
   if (!customerChatId) {
     Logger.log('⚠️ sendPaymentQR: チャットID無し bookingId=' + bookingId);
+    notifyAdminQRFailure_(bookingId, 'NO_CHAT_ID', '顧客のチャットIDが登録されていません');
     return { ok: false, reason: 'NO_CHAT_ID' };
   }
 
@@ -64,6 +69,8 @@ function sendPaymentQR(bookingId) {
       '⚠️ QR មិនអាចបង្ហាញបាន។ សូមទាក់ទងអ្នកគ្រប់គ្រង។\n' +
       'QR not available. Please contact admin.'
     );
+    notifyAdminQRFailure_(bookingId, 'NO_ACTIVE_QR',
+      'QRコードシートに「有効=TRUE」の行がありません。シートを確認して有効行を1件立ててください。');
     return { ok: false, reason: 'NO_ACTIVE_QR' };
   }
 
@@ -82,6 +89,9 @@ function sendPaymentQR(bookingId) {
 
   if (!sendRes || !sendRes.ok) {
     Logger.log('⚠️ sendPaymentQR: QR画像送信失敗 bookingId=' + bookingId + ' res=' + JSON.stringify(sendRes));
+    notifyAdminQRFailure_(bookingId, 'SEND_FAILED',
+      'QR画像送信がTelegram側で失敗しました。画像URL/Drive共有設定を確認してください。\nerror=' +
+      ((sendRes && (sendRes.error || sendRes.description)) || 'unknown'));
     return { ok: false, reason: 'SEND_FAILED' };
   }
 
@@ -113,6 +123,83 @@ function sendPaymentQR(bookingId) {
   sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
 
   return { ok: true };
+}
+
+/**
+ * QR送信が失敗したときに Admin グループへ緊急通知を送る
+ * （気付き漏れで顧客に QR が届かない事故を即検知するため 2026-04-23 追加）
+ */
+function notifyAdminQRFailure_(bookingId, reason, detail) {
+  try {
+    var cfg = getConfig();
+    var text =
+      '🚨 QR送信失敗\n' +
+      '━━━━━━━━━━━━━━━━━\n' +
+      '🆔 ' + bookingId + '\n' +
+      '❌ 理由: ' + reason + '\n' +
+      '📝 ' + (detail || '') + '\n' +
+      '━━━━━━━━━━━━━━━━━\n' +
+      '👉 復旧コマンド:\n' +
+      '   retryPaymentQR("' + bookingId + '")';
+
+    // 顧客トピックが分かればそこへ、なければグループ直下へ
+    var adminOpts = {};
+    try {
+      var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
+      if (bkRow) {
+        var chatId = String(bkRow.data['チャットID'] || '');
+        if (chatId) {
+          var custRow = findCustomerRow(chatId);
+          if (custRow && custRow.data['トピックID']) {
+            adminOpts.message_thread_id = custRow.data['トピックID'];
+          }
+        }
+      }
+    } catch (e) { /* 通知は最優先、探索失敗は無視 */ }
+
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, adminOpts);
+  } catch (err) {
+    Logger.log('⚠️ notifyAdminQRFailure_ 失敗: ' + err);
+  }
+}
+
+/**
+ * 緊急救済: QR が届いていない顧客に手動で再送する
+ * 「QR送信日時」をクリアしてから sendPaymentQR を呼ぶ
+ *
+ * 使い方（GAS コンソール）:
+ *   retryPaymentQR("BK-20260423-001")
+ *
+ * @param {string} bookingId
+ * @return {Object} sendPaymentQR の結果
+ */
+function retryPaymentQR(bookingId) {
+  if (!bookingId) {
+    Logger.log('使い方: retryPaymentQR("BK-YYYYMMDD-NNN")');
+    return { ok: false, reason: 'NO_BOOKING_ID' };
+  }
+
+  var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
+  if (!bkRow) {
+    Logger.log('❌ 予約が見つかりません: ' + bookingId);
+    return { ok: false, reason: 'BOOKING_NOT_FOUND' };
+  }
+
+  // QR送信日時を強制クリア（二重送信ガードを解除）
+  try {
+    updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
+      'QR送信日時': '',
+      '決済状態':   '未清算'
+    });
+    Logger.log('🔄 QR送信日時をクリア: ' + bookingId);
+  } catch (e) {
+    Logger.log('⚠️ クリア失敗（続行します）: ' + e);
+  }
+
+  // 再送
+  var res = sendPaymentQR(bookingId);
+  Logger.log('📤 sendPaymentQR 再送結果: ' + JSON.stringify(res));
+  return res;
 }
 
 /**
