@@ -7,11 +7,11 @@
  *     - 予約をシート記録(JETROキャンペーン予約 シート)
  *     - Admin グループへ Telegram 通知(業務 Bot 経由)
  *     - ロン君個人へ Telegram 通知(業務 Bot 経由)
- *     - 駐在員にメール送信(確認 + ドライバー転送用クメール語テンプレ)
  *
- * 【駐在員はBotを触らない】
+ * 【駐在員はBotを触らない・メールも送らない】
  *   - Google Form のみで完結
- *   - フォーム送信後の確認とドライバー転送用テンプレはメールで届く
+ *   - 送信後の「送信完了メッセージ」にクメール語ドライバー転送テンプレを静的に表示
+ *   - 駐在員はその文面をコピーしてドライバーに転送する
  *
  * 【シート】
  *   SHEET_NAMES.JETRO_BOOKINGS = 'JETROキャンペーン予約'
@@ -21,7 +21,6 @@
  *   出力: 回答用URL(レター掲載用ディープリンク) + 編集用URL
  *
  * 【手動テスト】
- *   debugSendJetroTestEmail()  — メール文面確認
  *   debugNotifyJetroTest()     — Admin/Ron 通知確認
  */
 
@@ -50,7 +49,6 @@ const JETRO_BOOKING_HEADERS_ = [
   '流入経路',
   '駐在員 Telegram',
   'ドライバー Telegram',
-  'メールアドレス',
   'ステータス',
   '車両情報',
   '施工: 窓フロント3面',
@@ -80,9 +78,8 @@ function ensureJetroBookingSheet() {
     sheet.setColumnWidth(1, 160);   // 予約ID
     sheet.setColumnWidth(2, 160);   // 申込日時
     sheet.setColumnWidth(3, 160);   // 希望日時
-    sheet.setColumnWidth(7, 220);   // メールアドレス
-    sheet.setColumnWidth(9, 200);   // 車両情報
-    sheet.setColumnWidth(12, 240);  // メモ
+    sheet.setColumnWidth(8, 200);   // 車両情報
+    sheet.setColumnWidth(11, 240);  // メモ
     Logger.log('✅ JETROキャンペーン予約シート 作成');
   } else {
     const lastCol = sheet.getLastColumn() || 1;
@@ -116,14 +113,30 @@ function setupJetroCampaign() {
 
   const form = FormApp.create(JETRO_FORM_TITLE);
   form.setDescription(JETRO_FORM_DESCRIPTION);
-  form.setCollectEmail(false);                 // フォームのメール欄で取るので、Google 認証経由は不要
+  form.setCollectEmail(false);
   form.setLimitOneResponsePerUser(false);      // 認証なしで誰でも回答可
   form.setShowLinkToRespondAgain(false);
+
+  // ===== 送信完了メッセージ =====
+  // ドライバー転送用クメール語テンプレと案内をここに静的に表示する。
+  // 駐在員は本文をコピーして、自身でドライバーに Telegram/WhatsApp 転送する。
+  const khmer = buildStaticKhmerDriverTemplate_();
   form.setConfirmationMessage(
-    'ご予約承りました。\n' +
-    'ご登録いただいたメールアドレスに、確認メールとドライバー様への伝達文(クメール語)をお送りしました。\n' +
-    'メールをご確認のうえ、ドライバー様にご転送ください。\n\n' +
-    '当日はサムライモーターズ事務所にてお待ちしております。'
+    'ご予約承りました。当日はサムライモーターズ事務所にてお待ちしております。\n' +
+    '\n' +
+    '━━━━━━━━━━━━━━━━━━\n' +
+    'ドライバー様への伝達(以下をそのままご転送ください)\n' +
+    '━━━━━━━━━━━━━━━━━━\n' +
+    '※ 🕒 の「予約時刻」の部分は、ご予約された時刻にご記入のうえ転送してください。\n' +
+    '\n' +
+    khmer.body + '\n' +
+    '\n' +
+    '【参考: 日本語訳】\n' +
+    khmer.japaneseRef + '\n' +
+    '\n' +
+    '━━━━━━━━━━━━━━━━━━\n' +
+    '当日のお問い合わせ: Ron(' + JETRO_RON_PHONE + ')\n' +
+    'マップ: ' + JETRO_OFFICE_MAP_URL
   );
 
   // ===== 設問 =====
@@ -143,26 +156,15 @@ function setupJetroCampaign() {
   // Q3: ドライバー Telegram
   form.addTextItem()
     .setTitle('ドライバー様の Telegram')
-    .setHelpText('ドライバー様の @username またはリンクをご入力ください。施工日のご案内をドライバー様にお伝えする際に使用させていただきます。')
+    .setHelpText('ドライバー様の @username またはリンクをご入力ください。')
     .setRequired(true);
 
-  // Q4: メールアドレス(形式バリデーション)
-  const emailValidation = FormApp.createTextValidation()
-    .setHelpText('正しいメールアドレスの形式で入力してください')
-    .requireTextIsEmail()
-    .build();
-  form.addTextItem()
-    .setTitle('メールアドレス')
-    .setHelpText('ご予約確認とドライバー様への伝達文を、こちらのアドレスにお送りいたします。')
-    .setRequired(true)
-    .setValidation(emailValidation);
-
-  // Q5: プラン情報(固定表示・編集不可)
+  // Q4: プラン情報(固定表示・編集不可)
   form.addSectionHeaderItem()
     .setTitle('施工内容(固定)')
     .setHelpText(JETRO_PLAN_LABEL + '\n場所: ' + JETRO_OFFICE_NAME + '\nマップ: ' + JETRO_OFFICE_MAP_URL);
 
-  // Q6: 流入経路(隠しフィールド・URL プレフィルで自動入力)
+  // Q5: 流入経路(隠しフィールド・URL プレフィルで自動入力)
   const sourceItem = form.addTextItem()
     .setTitle('流入経路(自動入力)')
     .setHelpText('このフィールドは自動入力されます。変更不要です。')
@@ -248,18 +250,16 @@ function handleJetroFormSubmit(e) {
     const responses = e.response.getItemResponses();
     const submittedAt = e.response.getTimestamp();
 
-    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 5 件)
+    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 4 件)
     //   [0] 希望日時(DateTime)
     //   [1] 駐在員 Telegram
     //   [2] ドライバー Telegram
-    //   [3] メールアドレス
-    //   [4] 流入経路(URL プレフィル / 自動入力 / 手入力なら空)
+    //   [3] 流入経路(URL プレフィル / 自動入力 / 手入力なら空)
     const desiredAtRaw = responses[0] ? responses[0].getResponse() : '';
     const desiredAt    = formatJetroDateTime_(desiredAtRaw);
     const expatTg      = String(responses[1] ? responses[1].getResponse() : '').trim();
     const driverTg     = String(responses[2] ? responses[2].getResponse() : '').trim();
-    const email        = String(responses[3] ? responses[3].getResponse() : '').trim();
-    const sourceValue  = responses[4] ? String(responses[4].getResponse() || '').trim() : '';
+    const sourceValue  = responses[3] ? String(responses[3].getResponse() || '').trim() : '';
     const source       = sourceValue || '(direct)';
 
     const bookingId = generateDateSeqId('JET', SHEET_NAMES.JETRO_BOOKINGS, '予約ID');
@@ -272,7 +272,6 @@ function handleJetroFormSubmit(e) {
       '流入経路':            source,
       '駐在員 Telegram':     expatTg,
       'ドライバー Telegram': driverTg,
-      'メールアドレス':      email,
       'ステータス':          '未対応',
       '車両情報':            '',
       '施工: 窓フロント3面': '',
@@ -286,14 +285,12 @@ function handleJetroFormSubmit(e) {
       desiredAt:   desiredAt,
       expatTg:     expatTg,
       driverTg:    driverTg,
-      email:       email,
       source:      source
     };
 
-    // ===== 通知配信(各々失敗しても他は止めない) =====
+    // ===== Telegram 通知配信(失敗しても他は止めない) =====
     try { notifyJetroAdminGroup_(data); } catch (err) { Logger.log('⚠️ JETRO admin 通知失敗: ' + err); }
     try { notifyJetroRon_(data); }       catch (err) { Logger.log('⚠️ JETRO ロン君通知失敗: ' + err); }
-    try { sendJetroExpatEmail_(data); }  catch (err) { Logger.log('⚠️ JETRO メール送信失敗: ' + err); }
 
   } catch (err) {
     Logger.log('❌ handleJetroFormSubmit: ' + err + ' stack=' + (err.stack || ''));
@@ -321,7 +318,6 @@ function notifyJetroAdminGroup_(data) {
     '📅 希望日時: <b>' + escapeHtml_(data.desiredAt) + '</b>',
     '👤 駐在員: ' + escapeHtml_(data.expatTg),
     '🚖 ドライバー: ' + escapeHtml_(data.driverTg),
-    '📧 ' + escapeHtml_(data.email),
     '🏷 流入: ' + escapeHtml_(data.source),
     '',
     '施工内容: ' + escapeHtml_(JETRO_PLAN_LABEL),
@@ -379,77 +375,22 @@ function notifyJetroRon_(data) {
 }
 
 // ============================================================
-//  メール(駐在員向け)
-// ============================================================
-
-function sendJetroExpatEmail_(data) {
-  const subject = '【サムライモーターズ】無料撥水ガラスコーティング ご予約承り('
-    + data.bookingId + ')';
-
-  const khmer = buildKhmerDriverTemplate_(data);
-
-  const body = [
-    'この度はサムライモーターズの無料撥水ガラスコーティング キャンペーンにお申し込みいただき、',
-    '誠にありがとうございます。',
-    '',
-    '━━━━━━━━━━━━━━━━━━',
-    '■ ご予約内容',
-    '━━━━━━━━━━━━━━━━━━',
-    '予約ID: ' + data.bookingId,
-    'ご希望日時: ' + data.desiredAt,
-    '場所: ' + JETRO_OFFICE_NAME,
-    'マップ: ' + JETRO_OFFICE_MAP_URL,
-    '施工内容: ' + JETRO_PLAN_LABEL,
-    '担当: 撥水コーティング技術者 Ron(連絡先: ' + JETRO_RON_PHONE + ')',
-    '',
-    '━━━━━━━━━━━━━━━━━━',
-    '■ ドライバー様への伝達(以下をそのまま転送してください)',
-    '━━━━━━━━━━━━━━━━━━',
-    'お手数ですが、下記の文面を Telegram または WhatsApp などでドライバー様にお送りください。',
-    'クメール語の文面は、ドライバー様向けの内容になっております。',
-    '',
-    '----- ここから(コピーしてドライバー様に送信) -----',
-    khmer.body,
-    '----- ここまで -----',
-    '',
-    '【参考: 上記文面の日本語訳】',
-    khmer.japaneseRef,
-    '',
-    '━━━━━━━━━━━━━━━━━━',
-    '■ 当日の流れ',
-    '━━━━━━━━━━━━━━━━━━',
-    '1. ドライバー様にご希望日時 ' + data.desiredAt + ' にサムライモーターズ事務所までお越しいただきます。',
-    '2. 到着後、Ron が施工(フロント3面 + サイドミラー2枚)を行います。',
-    '3. 所要時間の目安は約 30〜45 分です。',
-    '4. ご不明点ございましたら、Ron(' + JETRO_RON_PHONE + ')までお問い合わせください。',
-    '',
-    'お会いできるのを楽しみにしております。',
-    '',
-    'サムライモーターズ',
-    'サービスのご案内: ' + JETRO_OFFICE_MAP_URL
-  ].join('\n');
-
-  GmailApp.sendEmail(data.email, subject, body, {
-    name: 'サムライモーターズ'
-  });
-  Logger.log('📧 JETRO 駐在員メール送信: ' + data.email + ' / ' + data.bookingId);
-}
-
-// ============================================================
-//  クメール語テンプレ(ドライバー向け)
+//  クメール語テンプレ(ドライバー向け、フォーム送信完了画面に静的表示)
 //  ※ ロン君のレビュー必須(現地ニュアンス・敬語の確認)
 // ============================================================
 
-function buildKhmerDriverTemplate_(data) {
-  // クメール語素案(ロン君レビュー前)
-  // 内容: 1) マップ、2) 時間、3) ロン君連絡先 — 場所テキストは省略
+/**
+ * フォーム送信完了画面に表示する、駐在員→ドライバー転送用テンプレ。
+ * 予約時刻はプレースホルダー(駐在員が転送時に置換する想定)。
+ */
+function buildStaticKhmerDriverTemplate_() {
   const body = [
     'សួស្តី!',
     '',
     'ម្ចាស់រថយន្តរបស់អ្នកបានកក់សេវាបាញ់ទឹកលើកញ្ចក់ដោយឥតគិតថ្លៃនៅ Samurai Motors។',
     'សូមបើករថយន្តទៅទីតាំងនេះតាមពេលវេលាខាងក្រោម។',
     '',
-    '🕒 ' + data.desiredAt,
+    '🕒 [予約時刻をここに記入してください]',
     '📍 ' + JETRO_OFFICE_MAP_URL,
     '📞 ' + JETRO_RON_PHONE + ' (Ron)',
     '',
@@ -459,14 +400,13 @@ function buildKhmerDriverTemplate_(data) {
     'អរគុណច្រើន!'
   ].join('\n');
 
-  // 駐在員が中身を確認できるように日本語参照
   const japaneseRef = [
     'こんにちは!',
     '',
     'お雇い主様が Samurai Motors にて無料の撥水ガラスコーティングをご予約されました。',
     '下記の場所・時刻にお車をお持ちください。',
     '',
-    '🕒 ' + data.desiredAt,
+    '🕒 [予約時刻]',
     '📍 サムライモーターズ事務所(マップは上記リンク)',
     '📞 ' + JETRO_RON_PHONE + '(担当: Ron)',
     '',
@@ -482,25 +422,6 @@ function buildKhmerDriverTemplate_(data) {
 // ============================================================
 //  デバッグ(手動実行)
 // ============================================================
-
-/**
- * テスト用ダミーデータでメール送信を試す
- * 実行前に下記の TEST_EMAIL を自分のメアドに書き換えてから実行
- */
-function debugSendJetroTestEmail() {
-  const TEST_EMAIL = Session.getActiveUser().getEmail();  // 実行者のメアド宛
-  const data = {
-    bookingId:   'JET-TEST-001',
-    submittedAt: new Date(),
-    desiredAt:   '2026-05-01 14:00',
-    expatTg:     '@test_expat',
-    driverTg:    '@test_driver',
-    email:       TEST_EMAIL,
-    source:      JETRO_DEFAULT_SOURCE
-  };
-  sendJetroExpatEmail_(data);
-  Logger.log('テストメール送信先: ' + TEST_EMAIL);
-}
 
 /**
  * テスト用ダミーデータで Admin/ロン君通知を試す
