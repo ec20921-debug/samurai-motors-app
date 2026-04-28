@@ -660,7 +660,7 @@ function markTaskDone(taskId, actor) {
   const expenseId = String(row.data['関連経費ID'] || '').trim();
   if (expenseId) {
     try {
-      settleExpenseByTask_(expenseId, row.data, actor);
+      settleExpenseByTask_(expenseId, row.data);
     } catch (err) {
       Logger.log('⚠️ 経費連動更新失敗 expenseId=' + expenseId + ' err=' + err);
     }
@@ -671,8 +671,10 @@ function markTaskDone(taskId, actor) {
  * Phase B: 立替精算タスク完了時に経費シートを更新し、立替者へDM通知する
  *   - 経費シート: ステータス→精算済み、精算日=today
  *   - 立替者（登録者）に Telegram DM で精算完了を通知
+ *
+ *   ※ 管理グループへの通知は廃止（週次経費サマリで集約把握する方針）
  */
-function settleExpenseByTask_(expenseId, taskRow, actor) {
+function settleExpenseByTask_(expenseId, taskRow) {
   const row = findRow(SHEET_NAMES.EXPENSES, '経費ID', expenseId);
   if (!row) { Logger.log('⚠️ 経費未発見 ' + expenseId); return; }
 
@@ -689,35 +691,10 @@ function settleExpenseByTask_(expenseId, taskRow, actor) {
 
   // 立替者（登録者）に DM 通知
   const payerChatId = String(expense['登録者 Chat ID'] || '');
-  const payerName   = String(expense['登録者'] || '');
   const reimburseBy = String(taskRow['担当者名'] || expense['精算先'] || '');
   const amount      = Number(expense['金額'] || 0);
   const currency    = String(expense['通貨'] || '');
   const desc        = String(expense['品目・摘要'] || '');
-
-  // 経費トピックへ通知
-  try {
-    const cfg = getConfig();
-    const thread = cfg.adminExpenseThreadId || cfg.adminDailyReportThreadId;
-    if (thread) {
-      const money = currency + ' ' + amount.toLocaleString('en-US');
-      const text = [
-        '✅ <b>立替精算 完了</b>',
-        '━━━━━━━━━━━━━━━━━━',
-        '💸 ' + escapeHtml_(reimburseBy) + ' → ' + escapeHtml_(payerName),
-        '💵 <b>' + escapeHtml_(money) + '</b>',
-        '📝 ' + escapeHtml_(desc.substring(0, 120)),
-        '📅 精算日: ' + todayStr,
-        'ID: <code>' + escapeHtml_(expenseId) + '</code>'
-      ].join('\n');
-      sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
-        parse_mode: 'HTML',
-        message_thread_id: Number(thread)
-      });
-    }
-  } catch (err) {
-    Logger.log('⚠️ 経費トピック通知失敗: ' + err);
-  }
 
   // 立替者にDM
   if (payerChatId) {
