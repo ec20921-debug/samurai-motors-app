@@ -5,7 +5,12 @@
  *   - ミニアプリから送信された経費データ（＋任意のレシート写真）を
  *     「経費」シートに記録
  *   - レシート写真は Drive のフォルダへ保存し、シートにリンク
- *   - 登録後に管理グループ（経費または日報トピック）へ通知
+ *   - 毎週金曜 JST 18:00 に直近7日間の経費サマリを管理グループへ送信
+ *
+ * 【通知方針】
+ *   - 即時通知は廃止（ノイズ削減）
+ *   - 立替精算完了時のみ TaskManager.settleExpenseByTask_ から通知
+ *   - 週次サマリは sendWeeklyExpenseSummary（hourlyTaskScheduler が金曜18:00 JSTで発火）
  *
  * 【OCR について】
  *   本実装では OCR はスキップ（写真は保存するのみ）。
@@ -220,27 +225,6 @@ function submitExpense(chatId, payload) {
     '関連タスクID':  linkedTaskId
   });
 
-  // Admin 通知（失敗してもユーザ登録自体は成功として返す）
-  try {
-    notifyExpenseSubmitted_(staff, {
-      expenseId:    expenseId,
-      txDate:       txDate,
-      desc:         desc,
-      amount:       amount,
-      currency:     currency,
-      vendor:       vendor,
-      category:     category,
-      receiptUrl:   receiptUrl,
-      memo:         memo,
-      paymentType:  paymentType,
-      reimburseTo:  reimburseTo,
-      reimburseDue: reimburseDue,
-      linkedTaskId: linkedTaskId
-    });
-  } catch (err) {
-    Logger.log('⚠️ 経費通知失敗: ' + err);
-  }
-
   return {
     ok: true,
     expenseId: expenseId,
@@ -269,56 +253,127 @@ function saveReceiptPhoto_(base64, mime, name, expenseId) {
 }
 
 /**
- * 管理グループへ通知
+ * 毎週金曜 JST 18:00 に直近7日間の経費サマリを管理グループへ送信
  *
- * 立替の場合は精算先・精算期限を強調表示。会社直払いはシンプルに記録のみ。
+ * - 期間: 実行日を含む直近7日間（取引日ベース）
+ * - 集計: 件数 / 通貨別合計 / カテゴリ別 / 担当者別 / 未精算の立替リスト
+ * - 通知先: ADMIN_EXPENSE_THREAD_ID（未設定なら ADMIN_DAILY_REPORT_THREAD_ID）
+ *
+ * hourlyTaskScheduler から呼ばれる。手動実行は debugSendWeeklyExpenseSummary を使用。
  */
-function notifyExpenseSubmitted_(staff, data) {
+function sendWeeklyExpenseSummary() {
   const cfg = getConfig();
   const thread = cfg.adminExpenseThreadId || cfg.adminDailyReportThreadId;
   if (!thread) {
-    Logger.log('⚠️ 経費通知先トピック未設定、スキップ');
+    Logger.log('⚠️ 経費通知先トピック未設定、週次サマリ送信スキップ');
     return;
   }
 
-  const isReimburse = data.paymentType === '立替';
-  const money = data.currency + ' ' + Number(data.amount).toLocaleString('en-US');
+  const tz = OPS_TZ;
+  const now = new Date();
+  const fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fromStr = Utilities.formatDate(fromDate, tz, 'yyyy-MM-dd');
+  const toStr   = Utilities.formatDate(now,      tz, 'yyyy-MM-dd');
 
-  const headerIcon = isReimburse ? '💸' : '💰';
-  const headerLabel = isReimburse ? '立替経費登録' : '経費登録（会社直払い）';
+  const rows = getAllRows(SHEET_NAMES.EXPENSES);
+  const recent = rows.filter(function(r) {
+    const txDate = formatDateCellTz_(r['取引日'], tz);
+    return txDate && txDate >= fromStr && txDate <= toStr;
+  });
+
+  // 期間内の経費がゼロでもサマリは送る（運用状況の把握のため）
+  if (recent.length === 0) {
+    sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId,
+      '📊 <b>週次経費サマリ</b>\n' +
+      '━━━━━━━━━━━━━━━━━━\n' +
+      '🗓 対象期間: ' + fromStr + ' 〜 ' + toStr + '\n' +
+      'ℹ️ 期間内の経費登録はありません。',
+      { parse_mode: 'HTML', message_thread_id: Number(thread) });
+    Logger.log('📤 週次経費サマリ送信（0件）');
+    return;
+  }
+
+  // 通貨別合計
+  const byCurrency = {};
+  recent.forEach(function(r) {
+    const cur = String(r['通貨'] || 'USD');
+    byCurrency[cur] = (byCurrency[cur] || 0) + Number(r['金額'] || 0);
+  });
+
+  // カテゴリ別（件数 + 通貨別金額）
+  const byCategory = {};
+  recent.forEach(function(r) {
+    const cat = String(r['勘定科目'] || '未分類');
+    if (!byCategory[cat]) byCategory[cat] = { count: 0, byCur: {} };
+    byCategory[cat].count++;
+    const cur = String(r['通貨'] || 'USD');
+    byCategory[cat].byCur[cur] = (byCategory[cat].byCur[cur] || 0) + Number(r['金額'] || 0);
+  });
+
+  // 担当者別
+  const byStaff = {};
+  recent.forEach(function(r) {
+    const name = String(r['登録者'] || '?');
+    if (!byStaff[name]) byStaff[name] = { count: 0, byCur: {} };
+    byStaff[name].count++;
+    const cur = String(r['通貨'] || 'USD');
+    byStaff[name].byCur[cur] = (byStaff[name].byCur[cur] || 0) + Number(r['金額'] || 0);
+  });
+
+  // 未精算の立替経費（期間内に限らず全件 → 滞留把握のため）
+  const unsettled = rows.filter(function(r) {
+    return String(r['立替区分']) === '立替' && String(r['ステータス']) === '未精算';
+  });
+
+  const fmtAmounts = function(byCur) {
+    return Object.keys(byCur).map(function(c) {
+      return c + ' ' + byCur[c].toLocaleString('en-US');
+    }).join(' / ');
+  };
 
   const lines = [
-    headerIcon + ' <b>' + headerLabel + '</b>',
-    '━━━━━━━━━━━━━━━━━━'
+    '📊 <b>週次経費サマリ</b>',
+    '━━━━━━━━━━━━━━━━━━',
+    '🗓 対象期間: ' + fromStr + ' 〜 ' + toStr,
+    '📌 件数: <b>' + recent.length + '件</b>',
+    '',
+    '💵 <b>合計（通貨別）</b>'
   ];
+  Object.keys(byCurrency).forEach(function(cur) {
+    lines.push('　' + cur + ': <b>' + byCurrency[cur].toLocaleString('en-US') + '</b>');
+  });
 
-  if (isReimburse) {
-    lines.push('👤 ' + escapeHtml_(staff.nameJp) + '（立替）→ <b>' + escapeHtml_(data.reimburseTo) + '</b>（精算先）');
-  } else {
-    lines.push('👤 ' + escapeHtml_(staff.nameJp));
-  }
+  lines.push('');
+  lines.push('🏷 <b>カテゴリ別</b>');
+  Object.keys(byCategory)
+    .sort(function(a, b) { return byCategory[b].count - byCategory[a].count; })
+    .forEach(function(cat) {
+      const info = byCategory[cat];
+      lines.push('　' + escapeHtml_(cat) + ': ' + info.count + '件 (' + fmtAmounts(info.byCur) + ')');
+    });
 
-  lines.push('📅 取引日: ' + escapeHtml_(data.txDate));
-  lines.push('💵 <b>' + escapeHtml_(money) + '</b>' + (data.category ? '（' + escapeHtml_(data.category) + '）' : ''));
-  lines.push('📝 ' + escapeHtml_(String(data.desc).substring(0, 200)));
+  lines.push('');
+  lines.push('👥 <b>担当者別</b>');
+  Object.keys(byStaff)
+    .sort(function(a, b) { return byStaff[b].count - byStaff[a].count; })
+    .forEach(function(name) {
+      const info = byStaff[name];
+      lines.push('　' + escapeHtml_(name) + ': ' + info.count + '件 (' + fmtAmounts(info.byCur) + ')');
+    });
 
-  if (data.vendor) lines.push('🏪 取引先: ' + escapeHtml_(data.vendor));
-  if (data.memo)   lines.push('🗒 メモ: ' + escapeHtml_(String(data.memo).substring(0, 200)));
-  if (data.receiptUrl) lines.push('🧾 <a href="' + data.receiptUrl + '">レシート写真</a>');
-
-  if (isReimburse && data.reimburseDue) {
-    lines.push('⏰ 精算期限: <b>' + escapeHtml_(data.reimburseDue) + '</b>');
-  }
-
-  lines.push('ID: <code>' + escapeHtml_(data.expenseId) + '</code>');
-
-  if (isReimburse && data.linkedTaskId) {
+  if (unsettled.length > 0) {
     lines.push('');
-    lines.push('📋 精算タスクを自動生成: <code>' + escapeHtml_(data.linkedTaskId) + '</code>');
-    lines.push('→ ' + escapeHtml_(data.reimburseTo) + ' さんの朝通知（翌日以降のJST 8:00）で届きます。完了ボタンで自動精算処理。');
-  } else if (isReimburse) {
-    lines.push('');
-    lines.push('⚠️ 精算タスクの自動生成に失敗しました（手動フォロー必要）');
+    lines.push('⏳ <b>未精算の立替経費（全期間 ' + unsettled.length + '件）</b>');
+    unsettled.slice(0, 10).forEach(function(r) {
+      const money = String(r['通貨']) + ' ' + Number(r['金額']).toLocaleString('en-US');
+      const due = formatDateCellTz_(r['精算期限'], tz);
+      lines.push('　・<code>' + escapeHtml_(String(r['経費ID'])) + '</code> ' +
+        escapeHtml_(String(r['登録者'])) + ' → ' + escapeHtml_(String(r['精算先'])) +
+        ' / <b>' + money + '</b>' + (due ? ' (期限: ' + escapeHtml_(due) + ')' : ''));
+    });
+    if (unsettled.length > 10) {
+      lines.push('　… 他 ' + (unsettled.length - 10) + '件');
+    }
   }
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, lines.join('\n'), {
@@ -326,6 +381,7 @@ function notifyExpenseSubmitted_(staff, data) {
     message_thread_id: Number(thread),
     disable_web_page_preview: true
   });
+  Logger.log('📤 週次経費サマリ送信: ' + recent.length + '件 / 未精算' + unsettled.length + '件');
 }
 
 /**
@@ -372,6 +428,10 @@ function debugEnsureExpensesSheet() {
 function debugGetOrCreateReceiptFolder() {
   const f = getOrCreateReceiptFolder_();
   Logger.log('📁 ' + f.getName() + ' (' + f.getId() + ')\n' + f.getUrl());
+}
+
+function debugSendWeeklyExpenseSummary() {
+  sendWeeklyExpenseSummary();
 }
 
 function debugSubmitTestExpense() {

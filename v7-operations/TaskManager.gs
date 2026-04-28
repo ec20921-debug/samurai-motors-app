@@ -11,6 +11,7 @@
  *   - Field (role=field):   現地 PP 08:00（ロン個人DMへ）
  *   - Admin (role=admin):   現地 JST 08:00（管理グループ・タスクトピックへ）
  *   - 日報:                  JST 20:00（別実装 Phase 2e）
+ *   - 週次経費サマリ:       金曜 JST 18:00（ExpenseManager.sendWeeklyExpenseSummary）
  *
  *   全て hourlyTaskScheduler()（1時間トリガー）から発火。
  *
@@ -32,8 +33,9 @@ function hourlyTaskScheduler() {
   const now = new Date();
   const ppHour  = Number(Utilities.formatDate(now, 'Asia/Phnom_Penh', 'H'));
   const jstHour = Number(Utilities.formatDate(now, 'Asia/Tokyo',      'H'));
+  const jstDay  = Utilities.formatDate(now, 'Asia/Tokyo', 'u'); // '1'=Mon..'7'=Sun
 
-  Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h');
+  Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay);
 
   if (ppHour === 8) {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(PP): ' + e); }
@@ -46,6 +48,10 @@ function hourlyTaskScheduler() {
   // 日報 (Phase 2e) JST 20:00
   if (jstHour === 20) {
     try { sendDailyReport(); } catch (e) { Logger.log('❌ sendDailyReport: ' + e); }
+  }
+  // 週次経費サマリ 金曜 JST 18:00
+  if (jstHour === 18 && jstDay === '5') {
+    try { sendWeeklyExpenseSummary(); } catch (e) { Logger.log('❌ weeklyExpense: ' + e); }
   }
 }
 
@@ -942,10 +948,9 @@ function processTaskInputRow_(sheet, row) {
 /**
  * ミニアプリからのタスク作成
  *
- * @param {string} creatorChatId 作成者（通知の「作成者」表示用）
  * @param {{ assigneeName:string, targetDate:string, description:string, recurrence:string }} payload
  */
-function createTaskFromUi(creatorChatId, payload) {
+function createTaskFromUi(payload) {
   const assigneeName = String((payload && payload.assigneeName) || '').trim();
   const desc         = String((payload && payload.description)  || '').trim();
   const targetDate   = String((payload && payload.targetDate)   || '').trim();
@@ -981,46 +986,12 @@ function createTaskFromUi(creatorChatId, payload) {
     '関連経費ID':    ''
   });
 
-  // 管理グループへ通知（成功時のみ／失敗してもユーザの作成自体は成功として返す）
-  try {
-    notifyTaskCreated_(staff, taskId, desc, isTemplate ? recurrence : targetDate, isTemplate, creatorChatId);
-  } catch (err) {
-    Logger.log('⚠️ タスク作成通知失敗: ' + err);
-  }
-
   return {
     ok: true,
     taskId: taskId,
     isTemplate: isTemplate,
     assignee: staff.nameJp
   };
-}
-
-/**
- * 作成通知（管理グループ・タスクトピック）
- */
-function notifyTaskCreated_(staff, taskId, desc, dueOrRule, isTemplate, creatorChatId) {
-  const cfg = getConfig();
-  if (!cfg.adminTaskThreadId) return;
-
-  const creator = findStaffByChatId(String(creatorChatId || ''));
-  const creatorName = creator ? creator.nameJp : ('chat_id=' + (creatorChatId || '?'));
-
-  const header = isTemplate ? '🔁 <b>繰返しタスク登録</b>' : '➕ <b>タスク作成</b>';
-  const dueLine = isTemplate ? '繰返し: ' + dueOrRule : '期限: ' + dueOrRule;
-  const text = [
-    header,
-    '━━━━━━━━━━━━━━━━━━',
-    '担当: ' + escapeHtml_(staff.nameJp),
-    dueLine,
-    '内容: ' + escapeHtml_(String(desc).substring(0, 200)),
-    '作成者: ' + escapeHtml_(creatorName)
-  ].join('\n');
-
-  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
-    parse_mode: 'HTML',
-    message_thread_id: Number(cfg.adminTaskThreadId)
-  });
 }
 
 // ============================================================

@@ -145,7 +145,7 @@ function doPost(e) {
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
         const creator = findStaffByChatId(chatId);
         if (!creator) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
-        return jsonOut(createTaskFromUi(chatId, {
+        return jsonOut(createTaskFromUi({
           assigneeName: String(body.assigneeName || ''),
           targetDate:   String(body.targetDate   || ''),
           description:  String(body.description  || ''),
