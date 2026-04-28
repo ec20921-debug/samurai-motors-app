@@ -37,7 +37,14 @@ const CONFIG_KEYS = {
   // 撥水コーティング無料モニター施策（2026年雨季キャンペーン）
   ADMIN_WATER_REPELLENT_THREAD_ID: 'ADMIN_WATER_REPELLENT_THREAD_ID', // 撥水トピック（任意・未設定なら パートナー or タスクトピックへフォールバック）
   WATER_REPELLENT_FORM_URL:        'WATER_REPELLENT_FORM_URL',        // モニター申込フォーム URL（createWaterRepellentMonitorForm 実行時に自動登録）
-  WATER_REPELLENT_SURVEY_URL:      'WATER_REPELLENT_SURVEY_URL'       // 雨季体験アンケート URL（createWaterRepellentSurveyForm 実行時に自動登録）
+  WATER_REPELLENT_SURVEY_URL:      'WATER_REPELLENT_SURVEY_URL',      // 雨季体験アンケート URL（createWaterRepellentSurveyForm 実行時に自動登録）
+
+  // JETRO 駐在員無料撥水キャンペーン
+  ADMIN_JETRO_THREAD_ID:           'ADMIN_JETRO_THREAD_ID',           // JETRO予約通知トピック（任意・未設定なら 撥水 or 日報トピックへフォールバック）
+  JETRO_FORM_ID:                   'JETRO_FORM_ID',                   // setupJetroCampaign 実行時に自動登録
+  JETRO_FORM_URL:                  'JETRO_FORM_URL',                  // 同上（プレフィル付き URL のベース）
+  JETRO_FORM_SOURCE_ENTRY:         'JETRO_FORM_SOURCE_ENTRY',         // 流入経路フィールドの entry ID（hidden field プレフィル用）
+  RON_CHAT_ID:                     'RON_CHAT_ID'                      // ロン君個人 Telegram chat_id（未設定ならスタッフマスターから自動解決）
 };
 
 // ====== Bot種別識別子 ======
@@ -56,7 +63,8 @@ const SHEET_NAMES = {
   EXPENSES:          '経費',
   PARTNERS:          'パートナー',
   REFERRAL_HISTORY:  '紹介履歴',
-  WATER_REPELLENT:   '撥水モニター'
+  WATER_REPELLENT:   '撥水モニター',
+  JETRO_BOOKINGS:    'JETROキャンペーン予約'
 };
 
 // ====== 繰返しルール（新規タスク入力・Tasks シートで使う候補値） ======
@@ -111,7 +119,12 @@ function getConfig() {
     partnerTrialVoucherPrefix: all[CONFIG_KEYS.PARTNER_TRIAL_VOUCHER_PREFIX] || 'SMTRY',
     adminWaterRepellentThreadId: all[CONFIG_KEYS.ADMIN_WATER_REPELLENT_THREAD_ID] || '',
     waterRepellentFormUrl:    all[CONFIG_KEYS.WATER_REPELLENT_FORM_URL] || '',
-    waterRepellentSurveyUrl:  all[CONFIG_KEYS.WATER_REPELLENT_SURVEY_URL] || ''
+    waterRepellentSurveyUrl:  all[CONFIG_KEYS.WATER_REPELLENT_SURVEY_URL] || '',
+    adminJetroThreadId:       all[CONFIG_KEYS.ADMIN_JETRO_THREAD_ID] || '',
+    jetroFormId:              all[CONFIG_KEYS.JETRO_FORM_ID] || '',
+    jetroFormUrl:             all[CONFIG_KEYS.JETRO_FORM_URL] || '',
+    jetroFormSourceEntry:     all[CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY] || '',
+    ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || ''
   };
 }
 
