@@ -8,6 +8,7 @@
  *     - 予約をシート記録(JETROキャンペーン予約 シート)
  *     - Admin グループへ Telegram 通知(業務 Bot 経由)
  *     - 現地スタッフ(ロン君)個人へ Telegram 通知(業務 Bot 経由)
+ *     - 管理者メールアドレスへ通知メール(念のため、Telegram と二重化)
  *
  * 【お客様はBotを触らない・メールも送らない】
  *   - Google Form のみで完結
@@ -31,7 +32,8 @@
  *   updateJetroFormText() — タイトル/説明/送信完了メッセージなどを書き換え
  *
  * 【手動テスト】
- *   debugNotifyJetroTest()     — Admin/現地スタッフ 通知確認
+ *   debugNotifyJetroTest()      — Admin/現地スタッフ Telegram + 管理者メール 通知確認
+ *   debugSendJetroAdminEmail()  — 管理者メールのみ確認
  */
 
 // ============================================================
@@ -375,9 +377,10 @@ function handleJetroFormSubmit(e) {
       source:      source
     };
 
-    // ===== Telegram 通知配信(失敗しても他は止めない) =====
+    // ===== 通知配信(失敗しても他は止めない) =====
     try { notifyJetroAdminGroup_(data); } catch (err) { Logger.log('⚠️ JETRO admin 通知失敗: ' + err); }
     try { notifyJetroRon_(data); }       catch (err) { Logger.log('⚠️ JETRO ロン君通知失敗: ' + err); }
+    try { notifyJetroAdminEmail_(data); } catch (err) { Logger.log('⚠️ JETRO admin メール失敗: ' + err); }
 
   } catch (err) {
     Logger.log('❌ handleJetroFormSubmit: ' + err + ' stack=' + (err.stack || ''));
@@ -470,11 +473,99 @@ function notifyJetroRon_(data) {
 }
 
 // ============================================================
+//  通知(管理者メール / 念のため)
+// ============================================================
+
+/**
+ * フォーム送信時に管理者宛メールで通知する。
+ * 宛先: Script Property JETRO_ADMIN_EMAIL → なければスクリプト実行者のメール。
+ *
+ * Telegram 通知の二重化として動作。Telegram を見落とした場合の保険。
+ */
+function notifyJetroAdminEmail_(data) {
+  const cfg = getConfig();
+  const recipient = cfg.jetroAdminEmail || Session.getActiveUser().getEmail();
+  if (!recipient) {
+    Logger.log('⚠️ JETRO 管理者メールアドレス未解決、メール通知スキップ');
+    return;
+  }
+
+  const subject = '[Samurai Motors] 新規予約: ' + data.fullName + ' 様 / 希望日 ' + data.desiredDate;
+
+  const sheetUrl = cfg.operationsSpreadsheetId
+    ? 'https://docs.google.com/spreadsheets/d/' + cfg.operationsSpreadsheetId + '/edit'
+    : '(スプレッドシートID 未登録)';
+
+  const submittedAtStr = (data.submittedAt instanceof Date)
+    ? Utilities.formatDate(data.submittedAt, OPS_TZ, 'yyyy-MM-dd HH:mm')
+    : String(data.submittedAt || '');
+
+  const body = [
+    '撥水ガラスコーティング 無料体験キャンペーンに新しい予約が入りました。',
+    '',
+    '━━━━━━━━━━━━━━━━━━',
+    '■ 予約内容',
+    '━━━━━━━━━━━━━━━━━━',
+    '予約ID: ' + data.bookingId,
+    '申込日時: ' + submittedAtStr,
+    '希望日: ' + data.desiredDate,
+    '流入経路: ' + data.source,
+    '',
+    '■ お客様',
+    '氏名: ' + data.fullName + ' 様',
+    '会社: ' + data.companyName,
+    '役職: ' + data.jobTitle,
+    'Telegram: ' + data.expatTg,
+    '',
+    '■ ドライバー',
+    'Telegram: ' + data.driverTg,
+    '',
+    '━━━━━━━━━━━━━━━━━━',
+    '■ この後の流れ',
+    '━━━━━━━━━━━━━━━━━━',
+    '1. ロン君のテレグラム(096 713 8456)にドライバーさんから連絡が入ります',
+    '2. ロン君がドライバーさんと施工時刻を調整します',
+    '3. 時刻が確定したらロン君から LINE グループに報告が入ります',
+    '4. 確定時刻をスプレッドシートの「確定時刻」欄に記入してください',
+    '',
+    'スプレッドシート: ' + sheetUrl,
+    '(下部タブ「JETROキャンペーン予約」)',
+    '',
+    '━━━━━━━━━━━━━━━━━━',
+    'Samurai Motors キャンペーン管理システム',
+    '(本メールは自動送信です)'
+  ].join('\n');
+
+  GmailApp.sendEmail(recipient, subject, body, {
+    name: 'Samurai Motors 通知'
+  });
+  Logger.log('📧 JETRO 管理者メール送信: ' + recipient + ' / ' + data.bookingId);
+}
+
+// ============================================================
 //  デバッグ(手動実行)
 // ============================================================
 
 /**
- * テスト用ダミーデータで Admin/ロン君通知を試す
+ * テスト用ダミーデータで管理者メールのみ送信する
+ */
+function debugSendJetroAdminEmail() {
+  const data = {
+    bookingId:   'JET-TEST-001',
+    submittedAt: new Date(),
+    desiredDate: '2026-05-15',
+    fullName:    'テスト 太郎',
+    companyName: 'テスト商事株式会社',
+    jobTitle:    '代表',
+    expatTg:     '@test_expat',
+    driverTg:    '@test_driver',
+    source:      JETRO_DEFAULT_SOURCE
+  };
+  notifyJetroAdminEmail_(data);
+}
+
+/**
+ * テスト用ダミーデータで Admin/ロン君通知 + 管理者メールを試す
  */
 function debugNotifyJetroTest() {
   const data = {
@@ -491,6 +582,7 @@ function debugNotifyJetroTest() {
   };
   notifyJetroAdminGroup_(data);
   notifyJetroRon_(data);
+  notifyJetroAdminEmail_(data);
 }
 
 /**

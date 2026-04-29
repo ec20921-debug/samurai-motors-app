@@ -44,6 +44,7 @@ const CONFIG_KEYS = {
   JETRO_FORM_ID:                   'JETRO_FORM_ID',                   // setupJetroCampaign 実行時に自動登録
   JETRO_FORM_URL:                  'JETRO_FORM_URL',                  // 同上（プレフィル付き URL のベース）
   JETRO_FORM_SOURCE_ENTRY:         'JETRO_FORM_SOURCE_ENTRY',         // 流入経路フィールドの entry ID（hidden field プレフィル用）
+  JETRO_ADMIN_EMAIL:               'JETRO_ADMIN_EMAIL',               // 予約通知メール宛先（任意・未設定ならスクリプト実行者のメール）
   RON_CHAT_ID:                     'RON_CHAT_ID'                      // ロン君個人 Telegram chat_id（未設定ならスタッフマスターから自動解決）
 };
 
@@ -124,6 +125,7 @@ function getConfig() {
     jetroFormId:              all[CONFIG_KEYS.JETRO_FORM_ID] || '',
     jetroFormUrl:             all[CONFIG_KEYS.JETRO_FORM_URL] || '',
     jetroFormSourceEntry:     all[CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY] || '',
+    jetroAdminEmail:          all[CONFIG_KEYS.JETRO_ADMIN_EMAIL] || '',
     ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || ''
   };
 }
