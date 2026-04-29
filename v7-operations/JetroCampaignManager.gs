@@ -1,18 +1,24 @@
 /**
- * JetroCampaignManager.gs — JETRO 駐在員様 無料撥水ガラスコーティング キャンペーン
+ * JetroCampaignManager.gs — Samurai Motors 開業記念 × 雨季前
+ *                           窓ガラス撥水加工 無料体験キャンペーン
  *
  * 【責務】
- *   - 駐在員向け予約 Google Form の生成
+ *   - 日系駐在員向け予約 Google Form の生成
  *   - フォーム送信時の処理:
  *     - 予約をシート記録(JETROキャンペーン予約 シート)
  *     - Admin グループへ Telegram 通知(業務 Bot 経由)
- *     - ロン君個人へ Telegram 通知(業務 Bot 経由)
+ *     - 現地スタッフ(ロン君)個人へ Telegram 通知(業務 Bot 経由)
  *
- * 【駐在員はBotを触らない・メールも送らない】
+ * 【お客様はBotを触らない・メールも送らない】
  *   - Google Form のみで完結
- *   - 送信完了画面には Ron の Telegram 連絡先と場所のみ表示
+ *   - 送信完了画面には弊社現地スタッフの Telegram 連絡先と場所のみ表示
  *   - 駐在員は自身の言葉でドライバーに伝える(クメール語テンプレなし)
- *   - ドライバーは Ron に Telegram で直接連絡し、時刻を調整する
+ *   - ドライバーは現地スタッフに Telegram で直接連絡し、時刻を調整する
+ *
+ * 【表記の方針】
+ *   - 顧客向けの表示は「弊社現地スタッフ」「Samurai Motors」(レターと統一)
+ *   - 内部識別子(関数名・定数名・ファイル名・流入経路タグ)は JETRO のまま
+ *     (キャンペーンの起点が JETRO 経由のため)
  *
  * 【シート】
  *   SHEET_NAMES.JETRO_BOOKINGS = 'JETROキャンペーン予約'
@@ -21,25 +27,30 @@
  *   setupJetroCampaign() — Form 自動生成 + onFormSubmit トリガー設定
  *   出力: 回答用URL(レター掲載用ディープリンク) + 編集用URL
  *
+ * 【既存フォームの文言更新(URLを変えずに反映)】
+ *   updateJetroFormText() — タイトル/説明/送信完了メッセージなどを書き換え
+ *
  * 【手動テスト】
- *   debugNotifyJetroTest()     — Admin/Ron 通知確認
+ *   debugNotifyJetroTest()     — Admin/現地スタッフ 通知確認
  */
 
 // ============================================================
 //  定数
 // ============================================================
 
-const JETRO_FORM_TITLE = 'サムライモーターズ JETRO 駐在員様 無料撥水ガラスコーティング';
+const JETRO_FORM_TITLE = 'Samurai Motors 開業記念 × 雨季前 窓ガラス撥水加工 無料体験キャンペーン';
 const JETRO_FORM_DESCRIPTION =
-  'JETRO を通じてご案内した日系駐在員様限定の無料撥水ガラスコーティング キャンペーンです。\n' +
-  'お忙しいところ恐れ入りますが、下記項目をご入力ください(1 分ほどで完了します)。\n\n' +
-  '【施工内容】無料撥水ガラスコーティング(フロントガラス3面 + サイドミラー2枚 = 計5箇所)\n' +
-  '【場所】サムライモーターズ事務所(プノンペン)\n' +
-  '【対応】撥水コーティング技術者 Ron が対応いたします\n\n' +
-  '※ 具体的な時刻は、ご予約後にドライバー様と Ron が Telegram にて直接調整いたします。';
+  'プノンペン日系コミュニティの皆様へ、Samurai Motors 開業記念のご案内です。\n' +
+  '雨季の安全運転にお役立ていただける「窓ガラス撥水加工」を、無料でご体験ください。\n\n' +
+  '【施工内容】無料 窓ガラス撥水加工(フロントガラス + 左右サイドガラス + サイドミラー / 計4面)\n' +
+  '【場所】Samurai Motors 事務所(プノンペン市トゥールコーク)\n' +
+  '【対象】日系駐在員の皆様、先着30台限定\n' +
+  '【期間】2026年5月1日(木) 〜 5月30日(土) ※日曜日を除く\n' +
+  '【費用】無料(材料・作業すべて含む)\n\n' +
+  '※ 具体的な時刻は、ご予約後にドライバー様と弊社現地スタッフが Telegram にて直接調整いたします。';
 
-const JETRO_PLAN_LABEL = '無料撥水ガラスコーティング(フロント3面 + サイドミラー2枚 = 計5箇所)';
-const JETRO_OFFICE_NAME = 'サムライモーターズ事務所';
+const JETRO_PLAN_LABEL = '無料 窓ガラス撥水加工(フロントガラス + 左右サイドガラス + サイドミラー / 計4面)';
+const JETRO_OFFICE_NAME = 'Samurai Motors 事務所';
 const JETRO_OFFICE_MAP_URL = 'https://maps.app.goo.gl/U2ktnZMmbzJVhXep7';
 const JETRO_RON_PHONE = '096 713 8456';
 const JETRO_DEFAULT_SOURCE = 'jetro2026';
@@ -128,25 +139,15 @@ function setupJetroCampaign() {
   form.setShowLinkToRespondAgain(false);
 
   // ===== 送信完了メッセージ =====
-  // 最小限の確認文のみ。Ron の連絡先と場所だけ記載し、駐在員は
-  // 自身の言葉でドライバーに伝える形にする。
-  form.setConfirmationMessage(
-    'ご予約承りました。\n' +
-    '\n' +
-    '【ドライバー様にお伝えください】\n' +
-    'Ron(Telegram: ' + JETRO_RON_PHONE + ')までご連絡のうえ、\n' +
-    '具体的な時刻をご相談ください。\n' +
-    '\n' +
-    '場所: ' + JETRO_OFFICE_NAME + '\n' +
-    'マップ: ' + JETRO_OFFICE_MAP_URL
-  );
+  // レターの STEP 2 と同じ言い回しで、駐在員はそのままドライバーへ伝達できる。
+  form.setConfirmationMessage(buildJetroConfirmationMessage_());
 
   // ===== 設問 =====
 
   // Q1: 希望日
   form.addDateItem()
     .setTitle('ご希望日')
-    .setHelpText('施工をご希望の日付をお選びください。具体的な時刻は、ご予約後にドライバー様と Ron が Telegram で直接調整いたします。')
+    .setHelpText('施工をご希望の日付をお選びください。具体的な時刻は、ご予約後にドライバー様と弊社現地スタッフが Telegram で直接調整いたします。')
     .setRequired(true);
 
   // Q2: 氏名
@@ -243,6 +244,77 @@ function buildJetroPrefilledUrl_(publishedUrl, entryId, sourceValue) {
   return publishedUrl + sep + 'usp=pp_url&entry.' + entryId + '=' + encodeURIComponent(sourceValue);
 }
 
+/**
+ * フォーム送信完了画面に表示するメッセージ。
+ * レターの STEP 2 と同じ言い回しで揃える。
+ */
+function buildJetroConfirmationMessage_() {
+  return [
+    'ご予約承りました。',
+    '',
+    '【ドライバー様にお伝えください】',
+    '弊社現地スタッフ(Telegram: ' + JETRO_RON_PHONE + ')までご連絡のうえ、',
+    '「Samurai Motors と時間を調整してほしい」とご指示ください。',
+    '',
+    '以降、ドライバー様と弊社現地スタッフがクメール語で直接やり取りし、',
+    'ご都合に合わせて施工時刻を確定いたします。',
+    '',
+    '場所: ' + JETRO_OFFICE_NAME,
+    'マップ: ' + JETRO_OFFICE_MAP_URL
+  ].join('\n');
+}
+
+/**
+ * 既存フォームの文言を一括更新する(URLは変わらない)。
+ *  - タイトル / 説明 / 送信完了メッセージ
+ *  - 希望日設問のヘルプテキスト
+ *  - 施工内容セクションヘッダーのヘルプテキスト
+ *
+ * 想定: setupJetroCampaign 実行後、文面だけ調整したい時に使う。
+ */
+function updateJetroFormText() {
+  const cfg = getConfig();
+  if (!cfg.jetroFormId) {
+    Logger.log('⚠️ JETRO_FORM_ID 未登録。先に setupJetroCampaign を実行してください。');
+    return;
+  }
+  const form = FormApp.openById(cfg.jetroFormId);
+
+  // タイトル / 説明 / 送信完了メッセージ
+  form.setTitle(JETRO_FORM_TITLE);
+  form.setDescription(JETRO_FORM_DESCRIPTION);
+  form.setConfirmationMessage(buildJetroConfirmationMessage_());
+
+  // 各設問のうち、ヘルプテキストを更新するものだけ反映
+  const items = form.getItems();
+  items.forEach(function(item) {
+    const type = item.getType();
+
+    // 希望日のヘルプテキスト
+    if (type === FormApp.ItemType.DATE && item.getTitle() === 'ご希望日') {
+      item.asDateItem().setHelpText(
+        '施工をご希望の日付をお選びください。具体的な時刻は、ご予約後にドライバー様と弊社現地スタッフが Telegram で直接調整いたします。'
+      );
+    }
+
+    // 施工内容セクションヘッダー
+    if (type === FormApp.ItemType.SECTION_HEADER && item.getTitle() === '施工内容(固定)') {
+      item.asSectionHeaderItem().setHelpText(
+        JETRO_PLAN_LABEL + '\n場所: ' + JETRO_OFFICE_NAME + '\nマップ: ' + JETRO_OFFICE_MAP_URL
+      );
+    }
+  });
+
+  Logger.log('================================');
+  Logger.log('フォーム文言を更新しました');
+  Logger.log('================================');
+  Logger.log('タイトル: ' + JETRO_FORM_TITLE);
+  Logger.log('プラン: ' + JETRO_PLAN_LABEL);
+  Logger.log('場所: ' + JETRO_OFFICE_NAME);
+  Logger.log('================================');
+  Logger.log('※ URL は変わりません。既にレターに掲載済みのプレフィル URL も引き続き有効です。');
+}
+
 // ============================================================
 //  フォーム送信ハンドラ(トリガー)
 // ============================================================
@@ -334,7 +406,7 @@ function notifyJetroAdminGroup_(data) {
   }
 
   const lines = [
-    '🌟 <b>JETRO 駐在員予約</b>',
+    '🌟 <b>日系駐在員予約 (撥水キャンペーン)</b>',
     '━━━━━━━━━━━━━━━━━━',
     '🆔 ' + escapeHtml_(data.bookingId),
     '📅 希望日: <b>' + escapeHtml_(data.desiredDate) + '</b>',
@@ -384,7 +456,7 @@ function notifyJetroRon_(data) {
   }
 
   const lines = [
-    '🛻 <b>JETRO 予約が入りました</b>',
+    '🛻 <b>撥水キャンペーン 予約が入りました</b>',
     '━━━━━━━━━━━━━━━━━━',
     '🆔 ' + escapeHtml_(data.bookingId),
     '📅 希望日: ' + escapeHtml_(data.desiredDate),
