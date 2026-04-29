@@ -49,6 +49,9 @@ const JETRO_BOOKING_HEADERS_ = [
   '申込日時',
   '希望日',
   '流入経路',
+  '氏名',
+  '会社名',
+  '役職',
   '駐在員 Telegram',
   'ドライバー Telegram',
   'ステータス',
@@ -81,9 +84,12 @@ function ensureJetroBookingSheet() {
     sheet.setColumnWidth(1, 160);   // 予約ID
     sheet.setColumnWidth(2, 160);   // 申込日時
     sheet.setColumnWidth(3, 130);   // 希望日
-    sheet.setColumnWidth(8, 130);   // 確定時刻
-    sheet.setColumnWidth(9, 200);   // 車両情報
-    sheet.setColumnWidth(12, 240);  // メモ
+    sheet.setColumnWidth(5, 140);   // 氏名
+    sheet.setColumnWidth(6, 200);   // 会社名
+    sheet.setColumnWidth(7, 160);   // 役職
+    sheet.setColumnWidth(11, 130);  // 確定時刻
+    sheet.setColumnWidth(12, 200);  // 車両情報
+    sheet.setColumnWidth(15, 240);  // メモ
     Logger.log('✅ JETROキャンペーン予約シート 作成');
   } else {
     const lastCol = sheet.getLastColumn() || 1;
@@ -143,13 +149,31 @@ function setupJetroCampaign() {
     .setHelpText('施工をご希望の日付をお選びください。具体的な時刻は、ご予約後にドライバー様と Ron が Telegram で直接調整いたします。')
     .setRequired(true);
 
-  // Q2: 駐在員 Telegram
+  // Q2: 氏名
+  form.addTextItem()
+    .setTitle('お名前')
+    .setHelpText('例: 鈴木 太郎')
+    .setRequired(true);
+
+  // Q3: 会社名
+  form.addTextItem()
+    .setTitle('会社名')
+    .setHelpText('所属されている企業名をご記入ください。')
+    .setRequired(true);
+
+  // Q4: 役職
+  form.addTextItem()
+    .setTitle('役職')
+    .setHelpText('例: 代表 / 事業部長 / 駐在員')
+    .setRequired(true);
+
+  // Q5: 駐在員 Telegram
   form.addTextItem()
     .setTitle('お客様の Telegram')
     .setHelpText('@your_username またはリンク https://t.me/your_username の形式でご入力ください。Telegram のプロフィール画面で確認いただけます。')
     .setRequired(true);
 
-  // Q3: ドライバー Telegram
+  // Q6: ドライバー Telegram
   form.addTextItem()
     .setTitle('ドライバー様の Telegram')
     .setHelpText('ドライバー様の @username またはリンクをご入力ください。')
@@ -235,16 +259,22 @@ function handleJetroFormSubmit(e) {
     const responses = e.response.getItemResponses();
     const submittedAt = e.response.getTimestamp();
 
-    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 4 件)
+    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 7 件)
     //   [0] 希望日(Date)
-    //   [1] 駐在員 Telegram
-    //   [2] ドライバー Telegram
-    //   [3] 流入経路(URL プレフィル / 自動入力 / 手入力なら空)
+    //   [1] 氏名
+    //   [2] 会社名
+    //   [3] 役職
+    //   [4] 駐在員 Telegram
+    //   [5] ドライバー Telegram
+    //   [6] 流入経路(URL プレフィル / 自動入力 / 手入力なら空)
     // DateItem.getResponse() は 'yyyy-MM-dd' 形式の文字列を返す
     const desiredDate  = String(responses[0] ? responses[0].getResponse() : '').trim();
-    const expatTg      = String(responses[1] ? responses[1].getResponse() : '').trim();
-    const driverTg     = String(responses[2] ? responses[2].getResponse() : '').trim();
-    const sourceValue  = responses[3] ? String(responses[3].getResponse() || '').trim() : '';
+    const fullName     = String(responses[1] ? responses[1].getResponse() : '').trim();
+    const companyName  = String(responses[2] ? responses[2].getResponse() : '').trim();
+    const jobTitle     = String(responses[3] ? responses[3].getResponse() : '').trim();
+    const expatTg      = String(responses[4] ? responses[4].getResponse() : '').trim();
+    const driverTg     = String(responses[5] ? responses[5].getResponse() : '').trim();
+    const sourceValue  = responses[6] ? String(responses[6].getResponse() || '').trim() : '';
     const source       = sourceValue || '(direct)';
 
     const bookingId = generateDateSeqId('JET', SHEET_NAMES.JETRO_BOOKINGS, '予約ID');
@@ -255,6 +285,9 @@ function handleJetroFormSubmit(e) {
       '申込日時':            submittedAt,
       '希望日':              desiredDate,
       '流入経路':            source,
+      '氏名':                fullName,
+      '会社名':              companyName,
+      '役職':                jobTitle,
       '駐在員 Telegram':     expatTg,
       'ドライバー Telegram': driverTg,
       'ステータス':          '未対応',
@@ -269,6 +302,9 @@ function handleJetroFormSubmit(e) {
       bookingId:   bookingId,
       submittedAt: submittedAt,
       desiredDate: desiredDate,
+      fullName:    fullName,
+      companyName: companyName,
+      jobTitle:    jobTitle,
       expatTg:     expatTg,
       driverTg:    driverTg,
       source:      source
@@ -302,8 +338,11 @@ function notifyJetroAdminGroup_(data) {
     '━━━━━━━━━━━━━━━━━━',
     '🆔 ' + escapeHtml_(data.bookingId),
     '📅 希望日: <b>' + escapeHtml_(data.desiredDate) + '</b>',
-    '👤 駐在員: ' + escapeHtml_(data.expatTg),
-    '🚖 ドライバー: ' + escapeHtml_(data.driverTg),
+    '',
+    '👤 <b>' + escapeHtml_(data.fullName) + '</b> 様',
+    '🏢 ' + escapeHtml_(data.companyName) + ' / ' + escapeHtml_(data.jobTitle),
+    '💬 駐在員 Telegram: ' + escapeHtml_(data.expatTg),
+    '🚖 ドライバー Telegram: ' + escapeHtml_(data.driverTg),
     '🏷 流入: ' + escapeHtml_(data.source),
     '',
     '施工内容: ' + escapeHtml_(JETRO_PLAN_LABEL),
@@ -349,6 +388,7 @@ function notifyJetroRon_(data) {
     '━━━━━━━━━━━━━━━━━━',
     '🆔 ' + escapeHtml_(data.bookingId),
     '📅 希望日: ' + escapeHtml_(data.desiredDate),
+    '👤 ' + escapeHtml_(data.fullName) + ' 様 (' + escapeHtml_(data.companyName) + ')',
     '🚖 ドライバー: ' + escapeHtml_(data.driverTg),
     '',
     '施工: ' + escapeHtml_(JETRO_PLAN_LABEL),
@@ -376,6 +416,9 @@ function debugNotifyJetroTest() {
     bookingId:   'JET-TEST-001',
     submittedAt: new Date(),
     desiredDate: '2026-05-01',
+    fullName:    'テスト 太郎',
+    companyName: 'テスト商事株式会社',
+    jobTitle:    '代表',
     expatTg:     '@test_expat',
     driverTg:    '@test_driver',
     email:       'test@example.com',
