@@ -180,27 +180,17 @@ function setupJetroCampaign() {
     .setHelpText('ドライバー様の @username またはリンクをご入力ください。')
     .setRequired(true);
 
-  // Q4: プラン情報(固定表示・編集不可)
-  form.addSectionHeaderItem()
-    .setTitle('施工内容(固定)')
-    .setHelpText(JETRO_PLAN_LABEL + '\n場所: ' + JETRO_OFFICE_NAME + '\nマップ: ' + JETRO_OFFICE_MAP_URL);
+  // 施工内容・場所・マップはフォーム冒頭の説明文に集約。
+  // 流入経路は廃止し、すべての申込を JETRO_DEFAULT_SOURCE 固定で記録する。
 
-  // Q5: 流入経路(隠しフィールド・URL プレフィルで自動入力)
-  const sourceItem = form.addTextItem()
-    .setTitle('流入経路(自動入力)')
-    .setHelpText('このフィールドは自動入力されます。変更不要です。')
-    .setRequired(false);
-
-  // ===== Form ID と Entry ID を Script Properties に保存 =====
+  // ===== Form ID を Script Properties に保存 =====
   const formId = form.getId();
   const publishedUrl = form.getPublishedUrl();
   const editUrl = form.getEditUrl();
-  const sourceEntryId = sourceItem.getId();   // entry ID(プレフィル URL 用)
 
   PropertiesService.getScriptProperties().setProperties({
-    [CONFIG_KEYS.JETRO_FORM_ID]:           formId,
-    [CONFIG_KEYS.JETRO_FORM_URL]:          publishedUrl,
-    [CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY]: String(sourceEntryId)
+    [CONFIG_KEYS.JETRO_FORM_ID]:  formId,
+    [CONFIG_KEYS.JETRO_FORM_URL]: publishedUrl
   });
 
   // ===== onFormSubmit トリガー =====
@@ -215,33 +205,18 @@ function setupJetroCampaign() {
     .onFormSubmit()
     .create();
 
-  // ===== プレフィル URL 生成 =====
-  const prefilledUrl = buildJetroPrefilledUrl_(publishedUrl, sourceEntryId, JETRO_DEFAULT_SOURCE);
-
   Logger.log('================================');
-  Logger.log('JETRO キャンペーン セットアップ完了');
+  Logger.log('キャンペーン セットアップ完了');
   Logger.log('================================');
-  Logger.log('【フォーム回答用URL(プレーン)】');
+  Logger.log('【フォーム回答用URL(レター掲載用)】');
   Logger.log(publishedUrl);
-  Logger.log('');
-  Logger.log('【プレフィル付きURL(レター掲載用)】');
-  Logger.log(prefilledUrl);
   Logger.log('  → このURLからの申込は流入経路 = ' + JETRO_DEFAULT_SOURCE + ' として自動記録');
   Logger.log('');
   Logger.log('【編集用URL(設問の微修正用)】');
   Logger.log(editUrl);
   Logger.log('================================');
 
-  return { publishedUrl: publishedUrl, editUrl: editUrl, prefilledUrl: prefilledUrl };
-}
-
-/**
- * プレフィル URL を生成
- *  例: https://docs.google.com/forms/d/e/{form}/viewform?usp=pp_url&entry.{id}=jetro2026
- */
-function buildJetroPrefilledUrl_(publishedUrl, entryId, sourceValue) {
-  const sep = publishedUrl.indexOf('?') >= 0 ? '&' : '?';
-  return publishedUrl + sep + 'usp=pp_url&entry.' + entryId + '=' + encodeURIComponent(sourceValue);
+  return { publishedUrl: publishedUrl, editUrl: editUrl };
 }
 
 /**
@@ -285,34 +260,53 @@ function updateJetroFormText() {
   form.setDescription(JETRO_FORM_DESCRIPTION);
   form.setConfirmationMessage(buildJetroConfirmationMessage_());
 
-  // 各設問のうち、ヘルプテキストを更新するものだけ反映
+  // ヘルプ更新 + 不要フィールド(施工内容セクションヘッダー / 流入経路)の削除
+  // 削除中に getItems() のインデックスがズレるので、削除対象を集めてから処理
   const items = form.getItems();
+  const itemsToDelete = [];
+  let removedSourceField = false;
+  let removedPlanSection = false;
+
   items.forEach(function(item) {
     const type = item.getType();
+    const title = item.getTitle();
 
-    // 希望日のヘルプテキスト
-    if (type === FormApp.ItemType.DATE && item.getTitle() === 'ご希望日') {
+    // 希望日のヘルプテキスト更新
+    if (type === FormApp.ItemType.DATE && title === 'ご希望日') {
       item.asDateItem().setHelpText(
         '施工をご希望の日付をお選びください。具体的な時刻は、ご予約後にドライバー様と弊社現地スタッフが Telegram で直接調整いたします。'
       );
     }
 
-    // 施工内容セクションヘッダー
-    if (type === FormApp.ItemType.SECTION_HEADER && item.getTitle() === '施工内容(固定)') {
-      item.asSectionHeaderItem().setHelpText(
-        JETRO_PLAN_LABEL + '\n場所: ' + JETRO_OFFICE_NAME + '\nマップ: ' + JETRO_OFFICE_MAP_URL
-      );
+    // 施工内容セクションヘッダー → 削除(冒頭説明文と重複)
+    if (type === FormApp.ItemType.SECTION_HEADER && title === '施工内容(固定)') {
+      itemsToDelete.push(item);
+      removedPlanSection = true;
+    }
+
+    // 流入経路フィールド → 削除(駐在員には不要)
+    if (type === FormApp.ItemType.TEXT && title === '流入経路(自動入力)') {
+      itemsToDelete.push(item);
+      removedSourceField = true;
     }
   });
+
+  itemsToDelete.forEach(function(item) { form.deleteItem(item); });
+
+  // 流入経路フィールド削除に伴い、関連 Script Property も掃除
+  if (removedSourceField) {
+    PropertiesService.getScriptProperties().deleteProperty(CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY);
+  }
 
   Logger.log('================================');
   Logger.log('フォーム文言を更新しました');
   Logger.log('================================');
   Logger.log('タイトル: ' + JETRO_FORM_TITLE);
-  Logger.log('プラン: ' + JETRO_PLAN_LABEL);
   Logger.log('場所: ' + JETRO_OFFICE_NAME);
+  if (removedPlanSection) Logger.log('🗑 施工内容セクションヘッダーを削除しました');
+  if (removedSourceField) Logger.log('🗑 流入経路フィールドを削除しました');
   Logger.log('================================');
-  Logger.log('※ URL は変わりません。既にレターに掲載済みのプレフィル URL も引き続き有効です。');
+  Logger.log('※ URL は変わりません。');
 }
 
 // ============================================================
@@ -331,23 +325,22 @@ function handleJetroFormSubmit(e) {
     const responses = e.response.getItemResponses();
     const submittedAt = e.response.getTimestamp();
 
-    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 7 件)
+    // 設問順に取得(SectionHeader はレスポンスに含まれないので、有効レスポンスは 6 件)
     //   [0] 希望日(Date)
     //   [1] 氏名
     //   [2] 会社名
     //   [3] 役職
     //   [4] 駐在員 Telegram
     //   [5] ドライバー Telegram
-    //   [6] 流入経路(URL プレフィル / 自動入力 / 手入力なら空)
     // DateItem.getResponse() は 'yyyy-MM-dd' 形式の文字列を返す
+    // 流入経路フィールドは廃止し、固定値 JETRO_DEFAULT_SOURCE で記録する
     const desiredDate  = String(responses[0] ? responses[0].getResponse() : '').trim();
     const fullName     = String(responses[1] ? responses[1].getResponse() : '').trim();
     const companyName  = String(responses[2] ? responses[2].getResponse() : '').trim();
     const jobTitle     = String(responses[3] ? responses[3].getResponse() : '').trim();
     const expatTg      = String(responses[4] ? responses[4].getResponse() : '').trim();
     const driverTg     = String(responses[5] ? responses[5].getResponse() : '').trim();
-    const sourceValue  = responses[6] ? String(responses[6].getResponse() || '').trim() : '';
-    const source       = sourceValue || '(direct)';
+    const source       = JETRO_DEFAULT_SOURCE;
 
     const bookingId = generateDateSeqId('JET', SHEET_NAMES.JETRO_BOOKINGS, '予約ID');
 
@@ -512,15 +505,11 @@ function debugShowJetroFormUrls() {
   const form = FormApp.openById(cfg.jetroFormId);
   const publishedUrl = form.getPublishedUrl();
   const editUrl = form.getEditUrl();
-  const prefilledUrl = cfg.jetroFormSourceEntry
-    ? buildJetroPrefilledUrl_(publishedUrl, cfg.jetroFormSourceEntry, JETRO_DEFAULT_SOURCE)
-    : '(JETRO_FORM_SOURCE_ENTRY 未登録、setupJetroCampaign を再実行してください)';
 
   Logger.log('================================');
-  Logger.log('JETRO フォーム URL');
+  Logger.log('キャンペーン フォーム URL');
   Logger.log('================================');
-  Logger.log('回答用: ' + publishedUrl);
-  Logger.log('プレフィル付き(レター用): ' + prefilledUrl);
+  Logger.log('回答用(レター掲載用): ' + publishedUrl);
   Logger.log('編集用: ' + editUrl);
   Logger.log('================================');
 }
