@@ -352,15 +352,17 @@ function updateJetroFormText() {
       removedSourceField = true;
     }
 
-    // 駐在員 Telegram → 電話番号 へリネーム + ヘルプ更新
-    if (type === FormApp.ItemType.TEXT && title === 'お客様の Telegram') {
+    // 駐在員 電話番号(旧 Telegram タイトルにも対応してリネーム + ヘルプ更新)
+    if (type === FormApp.ItemType.TEXT &&
+        (title === 'お客様の Telegram' || title === 'お客様の電話番号')) {
       item.asTextItem()
         .setTitle('お客様の電話番号')
         .setHelpText('例: +855967138456 (Telegram でもご連絡可能な番号でお願いいたします)');
     }
 
-    // ドライバー Telegram → 電話番号 へリネーム + ヘルプ更新
-    if (type === FormApp.ItemType.TEXT && title === 'ドライバー様の Telegram') {
+    // ドライバー 電話番号(旧 Telegram タイトルにも対応してリネーム + ヘルプ更新)
+    if (type === FormApp.ItemType.TEXT &&
+        (title === 'ドライバー様の Telegram' || title === 'ドライバー様の電話番号')) {
       item.asTextItem()
         .setTitle('ドライバー様の電話番号')
         .setHelpText('ドライバー様の電話番号をご入力ください。例: +855xxxxxxxxx');
