@@ -602,6 +602,59 @@ function notifyJetroAdminEmail_(data) {
   Logger.log('📧 JETRO 管理者メール送信: ' + recipient + ' / ' + data.bookingId);
 }
 
+/**
+ * 鎌田様(JET-20260429-002)の電話番号セルを直接書き戻す一回限りの修復関数。
+ * シート上で手動入力しても #ERROR! / アポストロフィ表示が消えない問題に対する最終手段。
+ *
+ * 動作:
+ *  1. H/I 列全体をプレーンテキスト形式 ('@') に強制
+ *  2. H3 / I3 を完全にクリア(formula も text も)
+ *  3. setValues で配列形式で書き込み(formula 解釈を回避)
+ *  4. 書き込み後の表示値・raw値・formula をログに出力して確認
+ */
+function fixKamadaPhoneCells() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  const sheet = ss.getSheetByName(SHEET_NAMES.JETRO_BOOKINGS);
+  if (!sheet) {
+    Logger.log('⚠️ シート未存在');
+    return;
+  }
+
+  // 鎌田様の番号(画面の数式バーで確認した値)
+  const expatPhone  = '+855 14 222 008';
+  const driverPhone = '+855 12 764 374';
+
+  // ① 列全体をテキスト形式に強制
+  sheet.getRange('H:I').setNumberFormat('@');
+
+  // ② 対象セルを完全クリア
+  sheet.getRange('H3:I3').clearContent();
+  SpreadsheetApp.flush();
+
+  // ③ クリア後にもう一度テキスト形式を確定
+  sheet.getRange('H3:I3').setNumberFormat('@');
+
+  // ④ setValues で配列書き込み(setValue より formula 解釈に強い)
+  sheet.getRange('H3:I3').setValues([[expatPhone, driverPhone]]);
+  SpreadsheetApp.flush();
+
+  // ⑤ 結果検証
+  Logger.log('================================');
+  Logger.log('鎌田様 電話番号セル 修復結果');
+  Logger.log('================================');
+  Logger.log('H3 display      : ' + sheet.getRange('H3').getDisplayValue());
+  Logger.log('H3 value        : ' + sheet.getRange('H3').getValue());
+  Logger.log('H3 formula      : ' + sheet.getRange('H3').getFormula());
+  Logger.log('H3 numberFormat : ' + sheet.getRange('H3').getNumberFormat());
+  Logger.log('--------------------------------');
+  Logger.log('I3 display      : ' + sheet.getRange('I3').getDisplayValue());
+  Logger.log('I3 value        : ' + sheet.getRange('I3').getValue());
+  Logger.log('I3 formula      : ' + sheet.getRange('I3').getFormula());
+  Logger.log('I3 numberFormat : ' + sheet.getRange('I3').getNumberFormat());
+  Logger.log('================================');
+}
+
 // ============================================================
 //  デバッグ(手動実行)
 // ============================================================
