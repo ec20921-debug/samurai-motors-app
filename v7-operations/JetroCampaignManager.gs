@@ -233,13 +233,13 @@ function setupJetroCampaign() {
   // Q5: 駐在員 電話番号
   form.addTextItem()
     .setTitle('お客様の電話番号')
-    .setHelpText('例: +855967138456 (Telegram でもご連絡可能な番号でお願いいたします)')
+    .setHelpText('例: +855xxxxxxxxx (Telegram でもご連絡可能な番号でお願いいたします)')
     .setRequired(true);
 
   // Q6: ドライバー 電話番号
   form.addTextItem()
     .setTitle('ドライバー様の電話番号')
-    .setHelpText('ドライバー様の電話番号をご入力ください。例: +855xxxxxxxxx')
+    .setHelpText('例: +855xxxxxxxxx (Telegram でもご連絡可能な番号でお願いいたします)')
     .setRequired(true);
 
   // 施工内容・場所・マップはフォーム冒頭の説明文に集約。
@@ -357,7 +357,7 @@ function updateJetroFormText() {
         (title === 'お客様の Telegram' || title === 'お客様の電話番号')) {
       item.asTextItem()
         .setTitle('お客様の電話番号')
-        .setHelpText('例: +855967138456 (Telegram でもご連絡可能な番号でお願いいたします)');
+        .setHelpText('例: +855xxxxxxxxx (Telegram でもご連絡可能な番号でお願いいたします)');
     }
 
     // ドライバー 電話番号(旧 Telegram タイトルにも対応してリネーム + ヘルプ更新)
@@ -365,7 +365,7 @@ function updateJetroFormText() {
         (title === 'ドライバー様の Telegram' || title === 'ドライバー様の電話番号')) {
       item.asTextItem()
         .setTitle('ドライバー様の電話番号')
-        .setHelpText('ドライバー様の電話番号をご入力ください。例: +855xxxxxxxxx');
+        .setHelpText('例: +855xxxxxxxxx (Telegram でもご連絡可能な番号でお願いいたします)');
     }
   });
 
