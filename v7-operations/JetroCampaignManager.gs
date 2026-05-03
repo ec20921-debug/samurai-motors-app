@@ -65,8 +65,8 @@ const JETRO_BOOKING_HEADERS_ = [
   '氏名',
   '会社名',
   '役職',
-  '駐在員 Telegram',
-  'ドライバー Telegram',
+  '駐在員 電話番号',
+  'ドライバー 電話番号',
   'ステータス',
   '確定時刻',
   '車両情報',
@@ -100,9 +100,14 @@ function ensureJetroBookingSheet() {
     sheet.setColumnWidth(5, 140);   // 氏名
     sheet.setColumnWidth(6, 200);   // 会社名
     sheet.setColumnWidth(7, 160);   // 役職
+    sheet.setColumnWidth(8, 160);   // 駐在員 電話番号
+    sheet.setColumnWidth(9, 160);   // ドライバー 電話番号
     sheet.setColumnWidth(11, 130);  // 確定時刻
     sheet.setColumnWidth(12, 200);  // 車両情報
     sheet.setColumnWidth(15, 240);  // メモ
+    // 電話番号列(H/I)はプレーンテキスト形式に固定
+    // → '+xxx' 形式が数式として誤認識されて #ERROR! になるのを防ぐ
+    sheet.getRange('H:I').setNumberFormat('@');
     Logger.log('✅ JETROキャンペーン予約シート 作成');
   } else {
     const lastCol = sheet.getLastColumn() || 1;
@@ -115,7 +120,62 @@ function ensureJetroBookingSheet() {
     } else {
       Logger.log('ℹ️ JETROキャンペーン予約シート 変更なし');
     }
+    // 既存シートでも電話番号列のテキスト形式を保証(冪等)
+    sheet.getRange('H:I').setNumberFormat('@');
   }
+}
+
+/**
+ * 既存のシートを最新仕様に移行する一回限りの関数。
+ *  - ヘッダーを最新版(駐在員 電話番号 / ドライバー 電話番号)へ揃える
+ *  - 電話番号列(H/I)をプレーンテキスト形式に変更
+ *  - 数式として誤認識されている #ERROR! セルを元の文字列で復旧
+ *
+ * 仕様変更(Telegram → 電話番号)に伴う既存データ修復用。
+ */
+function migrateJetroSheetForPhone() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  const sheet = ss.getSheetByName(SHEET_NAMES.JETRO_BOOKINGS);
+  if (!sheet) {
+    Logger.log('⚠️ シート未存在: ' + SHEET_NAMES.JETRO_BOOKINGS);
+    return;
+  }
+
+  // ① ヘッダーを最新版に上書き
+  sheet.getRange(1, 1, 1, JETRO_BOOKING_HEADERS_.length).setValues([JETRO_BOOKING_HEADERS_]);
+  Logger.log('✅ ヘッダー更新: ' + JETRO_BOOKING_HEADERS_.join(' / '));
+
+  // ② 電話番号列(H/I)をプレーンテキスト形式に
+  sheet.getRange('H:I').setNumberFormat('@');
+  Logger.log('✅ H/I 列をプレーンテキストに設定');
+
+  // ③ #ERROR! セルを修復
+  //    "+855 ..." と入力された場合、Sheets は "=+855 ..." として保存し評価エラーになる
+  //    → getFormulas で生の式を取得し、先頭の '=' を取り除いて文字列として書き戻す
+  const lastRow = sheet.getLastRow();
+  let fixedCount = 0;
+  if (lastRow >= 2) {
+    const phoneRange = sheet.getRange(2, 8, lastRow - 1, 2); // H2:I_lastRow
+    const formulas = phoneRange.getFormulas();
+
+    for (let i = 0; i < formulas.length; i++) {
+      for (let j = 0; j < formulas[i].length; j++) {
+        const formula = formulas[i][j];
+        if (formula && formula.charAt(0) === '=') {
+          // 数式として保存されている → 元の文字列を復元して上書き
+          const original = formula.substring(1).trim();
+          sheet.getRange(2 + i, 8 + j).setValue(original);
+          fixedCount++;
+        }
+      }
+    }
+  }
+  Logger.log('✅ #ERROR! 修復: ' + fixedCount + ' 件');
+
+  Logger.log('================================');
+  Logger.log('JETROシート 移行完了');
+  Logger.log('================================');
 }
 
 // ============================================================
@@ -170,16 +230,16 @@ function setupJetroCampaign() {
     .setHelpText('例: 代表 / 事業部長 / 駐在員')
     .setRequired(true);
 
-  // Q5: 駐在員 Telegram
+  // Q5: 駐在員 電話番号
   form.addTextItem()
-    .setTitle('お客様の Telegram')
-    .setHelpText('@your_username またはリンク https://t.me/your_username の形式でご入力ください。Telegram のプロフィール画面で確認いただけます。')
+    .setTitle('お客様の電話番号')
+    .setHelpText('例: 096 713 8456 (Telegram でもご連絡可能な番号でお願いいたします)')
     .setRequired(true);
 
-  // Q6: ドライバー Telegram
+  // Q6: ドライバー 電話番号
   form.addTextItem()
-    .setTitle('ドライバー様の Telegram')
-    .setHelpText('ドライバー様の @username またはリンクをご入力ください。')
+    .setTitle('ドライバー様の電話番号')
+    .setHelpText('ドライバー様の電話番号をご入力ください。例: 096 xxx xxxx')
     .setRequired(true);
 
   // 施工内容・場所・マップはフォーム冒頭の説明文に集約。
@@ -332,16 +392,16 @@ function handleJetroFormSubmit(e) {
     //   [1] 氏名
     //   [2] 会社名
     //   [3] 役職
-    //   [4] 駐在員 Telegram
-    //   [5] ドライバー Telegram
+    //   [4] 駐在員 電話番号
+    //   [5] ドライバー 電話番号
     // DateItem.getResponse() は 'yyyy-MM-dd' 形式の文字列を返す
     // 流入経路フィールドは廃止し、固定値 JETRO_DEFAULT_SOURCE で記録する
     const desiredDate  = String(responses[0] ? responses[0].getResponse() : '').trim();
     const fullName     = String(responses[1] ? responses[1].getResponse() : '').trim();
     const companyName  = String(responses[2] ? responses[2].getResponse() : '').trim();
     const jobTitle     = String(responses[3] ? responses[3].getResponse() : '').trim();
-    const expatTg      = String(responses[4] ? responses[4].getResponse() : '').trim();
-    const driverTg     = String(responses[5] ? responses[5].getResponse() : '').trim();
+    const expatPhone   = String(responses[4] ? responses[4].getResponse() : '').trim();
+    const driverPhone  = String(responses[5] ? responses[5].getResponse() : '').trim();
     const source       = JETRO_DEFAULT_SOURCE;
 
     const bookingId = generateDateSeqId('JET', SHEET_NAMES.JETRO_BOOKINGS, '予約ID');
@@ -355,8 +415,8 @@ function handleJetroFormSubmit(e) {
       '氏名':                fullName,
       '会社名':              companyName,
       '役職':                jobTitle,
-      '駐在員 Telegram':     expatTg,
-      'ドライバー Telegram': driverTg,
+      '駐在員 電話番号':     expatPhone,
+      'ドライバー 電話番号': driverPhone,
       'ステータス':          '未対応',
       '確定時刻':            '',
       '車両情報':            '',
@@ -372,8 +432,8 @@ function handleJetroFormSubmit(e) {
       fullName:    fullName,
       companyName: companyName,
       jobTitle:    jobTitle,
-      expatTg:     expatTg,
-      driverTg:    driverTg,
+      expatPhone:  expatPhone,
+      driverPhone: driverPhone,
       source:      source
     };
 
@@ -409,14 +469,14 @@ function notifyJetroAdminGroup_(data) {
     '',
     '👤 <b>' + escapeHtml_(data.fullName) + '</b> 様',
     '🏢 ' + escapeHtml_(data.companyName) + ' / ' + escapeHtml_(data.jobTitle),
-    '💬 駐在員 Telegram: ' + escapeHtml_(data.expatTg),
-    '🚖 ドライバー Telegram: ' + escapeHtml_(data.driverTg),
+    '📞 駐在員 電話: ' + escapeHtml_(data.expatPhone),
+    '🚖 ドライバー 電話: ' + escapeHtml_(data.driverPhone),
     '🏷 流入: ' + escapeHtml_(data.source),
     '',
     '施工内容: ' + escapeHtml_(JETRO_PLAN_LABEL),
     '受け入れ場所: ' + JETRO_OFFICE_NAME,
     '',
-    '※ 具体的な時刻は、ロン君がドライバーと Telegram で直接調整します'
+    '※ 具体的な時刻は、ロン君がドライバーと直接調整します'
   ];
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, lines.join('\n'), {
@@ -457,7 +517,7 @@ function notifyJetroRon_(data) {
     '🆔 ' + escapeHtml_(data.bookingId),
     '📅 希望日: ' + escapeHtml_(data.desiredDate),
     '👤 ' + escapeHtml_(data.fullName) + ' 様 (' + escapeHtml_(data.companyName) + ')',
-    '🚖 ドライバー: ' + escapeHtml_(data.driverTg),
+    '🚖 ドライバー 電話: ' + escapeHtml_(data.driverPhone),
     '',
     '施工: ' + escapeHtml_(JETRO_PLAN_LABEL),
     '',
@@ -515,10 +575,10 @@ function notifyJetroAdminEmail_(data) {
     '氏名: ' + data.fullName + ' 様',
     '会社: ' + data.companyName,
     '役職: ' + data.jobTitle,
-    'Telegram: ' + data.expatTg,
+    '電話番号: ' + data.expatPhone,
     '',
     '■ ドライバー',
-    'Telegram: ' + data.driverTg,
+    '電話番号: ' + data.driverPhone,
     '',
     '━━━━━━━━━━━━━━━━━━',
     '■ この後の流れ',
@@ -557,8 +617,8 @@ function debugSendJetroAdminEmail() {
     fullName:    'テスト 太郎',
     companyName: 'テスト商事株式会社',
     jobTitle:    '代表',
-    expatTg:     '@test_expat',
-    driverTg:    '@test_driver',
+    expatPhone:  '012 345 678',
+    driverPhone: '098 765 432',
     source:      JETRO_DEFAULT_SOURCE
   };
   notifyJetroAdminEmail_(data);
@@ -575,8 +635,8 @@ function debugNotifyJetroTest() {
     fullName:    'テスト 太郎',
     companyName: 'テスト商事株式会社',
     jobTitle:    '代表',
-    expatTg:     '@test_expat',
-    driverTg:    '@test_driver',
+    expatPhone:  '012 345 678',
+    driverPhone: '098 765 432',
     email:       'test@example.com',
     source:      JETRO_DEFAULT_SOURCE
   };
