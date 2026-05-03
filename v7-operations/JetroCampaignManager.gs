@@ -239,7 +239,7 @@ function setupJetroCampaign() {
   // Q6: ドライバー 電話番号
   form.addTextItem()
     .setTitle('ドライバー様の電話番号')
-    .setHelpText('ドライバー様の電話番号をご入力ください。例: 096 xxx xxxx')
+    .setHelpText('ドライバー様の電話番号をご入力ください。例: +855xxxxxxxxx')
     .setRequired(true);
 
   // 施工内容・場所・マップはフォーム冒頭の説明文に集約。
@@ -363,7 +363,7 @@ function updateJetroFormText() {
     if (type === FormApp.ItemType.TEXT && title === 'ドライバー様の Telegram') {
       item.asTextItem()
         .setTitle('ドライバー様の電話番号')
-        .setHelpText('ドライバー様の電話番号をご入力ください。例: 096 xxx xxxx');
+        .setHelpText('ドライバー様の電話番号をご入力ください。例: +855xxxxxxxxx');
     }
   });
 
