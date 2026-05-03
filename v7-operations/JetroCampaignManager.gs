@@ -351,6 +351,20 @@ function updateJetroFormText() {
       itemsToDelete.push(item);
       removedSourceField = true;
     }
+
+    // 駐在員 Telegram → 電話番号 へリネーム + ヘルプ更新
+    if (type === FormApp.ItemType.TEXT && title === 'お客様の Telegram') {
+      item.asTextItem()
+        .setTitle('お客様の電話番号')
+        .setHelpText('例: +855967138456 (Telegram でもご連絡可能な番号でお願いいたします)');
+    }
+
+    // ドライバー Telegram → 電話番号 へリネーム + ヘルプ更新
+    if (type === FormApp.ItemType.TEXT && title === 'ドライバー様の Telegram') {
+      item.asTextItem()
+        .setTitle('ドライバー様の電話番号')
+        .setHelpText('ドライバー様の電話番号をご入力ください。例: 096 xxx xxxx');
+    }
   });
 
   itemsToDelete.forEach(function(item) { form.deleteItem(item); });
