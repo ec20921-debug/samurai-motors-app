@@ -54,7 +54,7 @@ const JETRO_FORM_DESCRIPTION =
 const JETRO_PLAN_LABEL = '無料 窓ガラス撥水加工(フロントガラス + 左右サイドガラス + サイドミラー / 計4面)';
 const JETRO_OFFICE_NAME = 'Samurai Motors 事務所';
 const JETRO_OFFICE_MAP_URL = 'https://maps.app.goo.gl/U2ktnZMmbzJVhXep7';
-const JETRO_RON_PHONE = '096 713 8456';
+const JETRO_RON_PHONE = '+855967138456';
 const JETRO_DEFAULT_SOURCE = 'jetro2026';
 
 const JETRO_BOOKING_HEADERS_ = [
@@ -233,7 +233,7 @@ function setupJetroCampaign() {
   // Q5: 駐在員 電話番号
   form.addTextItem()
     .setTitle('お客様の電話番号')
-    .setHelpText('例: 096 713 8456 (Telegram でもご連絡可能な番号でお願いいたします)')
+    .setHelpText('例: +855967138456 (Telegram でもご連絡可能な番号でお願いいたします)')
     .setRequired(true);
 
   // Q6: ドライバー 電話番号
@@ -583,7 +583,7 @@ function notifyJetroAdminEmail_(data) {
     '━━━━━━━━━━━━━━━━━━',
     '■ この後の流れ',
     '━━━━━━━━━━━━━━━━━━',
-    '1. ロン君のテレグラム(096 713 8456)にドライバーさんから連絡が入ります',
+    '1. ロン君のテレグラム(' + JETRO_RON_PHONE + ')にドライバーさんから連絡が入ります',
     '2. ロン君がドライバーさんと施工時刻を調整します',
     '3. 時刻が確定したらロン君から LINE グループに報告が入ります',
     '4. 確定時刻をスプレッドシートの「確定時刻」欄に記入してください',
