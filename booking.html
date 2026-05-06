@@ -758,12 +758,13 @@ body {
 }
 @keyframes successSealRing { to { transform: rotate(360deg); } }
 .success-seal-mark {
-  font-family: var(--serif);
-  font-size: 38px;
-  color: var(--gold-bright);
-  font-weight: 700;
-  text-shadow: 0 0 18px rgba(201,168,92,0.5);
-  line-height: 1;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 12px rgba(201,168,92,0.45))
+    drop-shadow(0 0 4px rgba(201,168,92,0.25));
+  display: block;
 }
 .success-title {
   text-align: center;
@@ -1211,7 +1212,7 @@ body {
   <!-- 完了 (Brand celebration) -->
   <div class="view" id="view-success">
     <div class="success-seal">
-      <span class="success-seal-mark">侍</span>
+      <img class="success-seal-mark" src="logo.png" alt="Samurai Motors">
     </div>
     <div class="success-title">Reserved</div>
     <div class="success-subtitle">
