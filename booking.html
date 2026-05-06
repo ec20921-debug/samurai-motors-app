@@ -85,14 +85,24 @@ body {
 .view.active { display:block; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
+/* Armor Tokyo インスパイア: 巨大英字 + 小さいサブタイトル */
 .view-title {
-  font-size:18px; font-weight:700;
+  font-size: 26px; font-weight: 800;
   margin-bottom: 4px;
+  letter-spacing: 0.5px;
+  line-height: 1.15;
+  color: var(--text);
+  text-transform: uppercase;
 }
-.view-title .km { display:block; font-size:12px; color:var(--text-dim); font-weight:500; margin-top:2px; }
+.view-title .km {
+  display:block; font-size:12px; color:var(--text-dim);
+  font-weight:400; margin-top:4px;
+  text-transform: none; letter-spacing: 0;
+}
 .view-desc {
-  font-size:12px; color:var(--text-dim);
-  margin-bottom: 16px;
+  font-size: 13px; color: var(--text-dim);
+  margin-bottom: 20px;
+  line-height: 1.5;
 }
 
 /* ───────── セクションタイトル ───────── */
@@ -156,6 +166,80 @@ body {
 }
 .plan-card .plan-fee-note {
   margin-top:4px; font-size:11px; color:var(--text-dim); text-align:right;
+}
+
+/* ───────── オプションカード (Menu v2: GLASS add-on) ───────── */
+.option-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.option-card:active { transform: scale(0.98); }
+.option-card:hover { background: var(--card-hover); border-color: var(--gold); }
+.option-card.selected { border-color: var(--gold); background: var(--gold-soft); }
+.option-card.selected::after {
+  content: '✓';
+  position: absolute; top: 10px; right: 12px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--gold); color: #000;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.option-card .option-info { flex: 1; padding-right: 30px; }
+.option-card .option-name {
+  font-size: 14px; font-weight: 700; color: var(--gold);
+  letter-spacing: 0.3px;
+}
+.option-card .option-name-km {
+  font-size: 11px; color: var(--text-dim); font-weight: 400;
+  margin-top: 2px;
+}
+.option-card .option-desc {
+  font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4;
+}
+.option-card .option-price {
+  font-size: 16px; font-weight: 800; color: var(--gold);
+  margin-left: 12px; white-space: nowrap;
+}
+.option-card.no-option .option-name { color: var(--text); }
+.option-card.no-option .option-price { color: var(--text-dim); font-size: 13px; font-weight: 600; }
+
+/* ───────── Required / Optional バッジ (Armor Tokyo風) ───────── */
+.badge-required, .badge-optional {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  vertical-align: middle;
+}
+.badge-required {
+  background: var(--accent); color: #fff;
+}
+.badge-optional {
+  background: var(--gold-soft); color: var(--gold);
+  border: 1px solid rgba(201,168,76,0.4);
+}
+
+/* セクションタイトルの番号プレフィックス強調 */
+.section-title .step-num {
+  display: inline-block;
+  width: 18px; height: 18px; line-height: 18px;
+  background: var(--gold); color: #000;
+  border-radius: 50%;
+  text-align: center; font-size: 10px; font-weight: 800;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 
 /* ───────── 車種サイズカード ───────── */
@@ -415,18 +499,16 @@ body {
     </div>
   </div>
 
-  <!-- Step 1: プラン + 車種サイズ -->
+  <!-- Step 1: 車種サイズ + SAMURAI WASH (必須) + SAMURAI GLASS (任意) — Menu v2 -->
   <div class="view" id="view-plan">
     <div class="view-title">
       Book Your Wash
       <span class="km">កក់លាងឡានរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Choose a plan and your vehicle size.</div>
+    <div class="view-desc">Premium Japanese quality car care, delivered to you.</div>
 
-    <div class="section-title">Plan <span class="km">កម្មវិធី</span></div>
-    <div class="card-list" id="planList"></div>
-
-    <div class="section-title">Vehicle Size <span class="km">ទំហំឡាន</span></div>
+    <!-- 1. Vehicle Size (FIRST so prices reflect correctly) -->
+    <div class="section-title"><span class="step-num">1</span>Vehicle Size <span class="km">ទំហំឡាន</span></div>
     <div class="size-grid">
       <div class="size-card" id="sizeSedan" onclick="selectSize('セダン以下')">
         <div class="size-icon">🚗</div>
@@ -447,6 +529,14 @@ body {
         <div class="size-hint">↑ Larger</div>
       </div>
     </div>
+
+    <!-- 2. SAMURAI WASH (Required) -->
+    <div class="section-title"><span class="step-num">2</span>SAMURAI WASH <span class="km">លាងសម្អាត</span><span class="badge-required">Required</span></div>
+    <div class="card-list" id="planList"></div>
+
+    <!-- 3. SAMURAI GLASS (Optional Add-on) -->
+    <div class="section-title"><span class="step-num">3</span>+ SAMURAI GLASS <span class="km">ស្រោបកញ្ចក់</span><span class="badge-optional">Optional</span></div>
+    <div class="card-list" id="optionList"></div>
   </div>
 
   <!-- Step 2: 日付 + 時間 -->
@@ -528,7 +618,9 @@ var state = {
   customerName: '',
   customer: null,
   plans: [],
+  options: [],                  // Menu v2: GLASS add-on一覧 (booking_initから取得)
   selectedPlan: null,
+  selectedGlassOption: null,    // Menu v2: 'GLASS_3' / 'GLASS_ALL' / null
   selectedSize: '',
   selectedDate: '',
   selectedSlot: '',
@@ -587,7 +679,10 @@ function loadInit() {
       if (res.status !== 'ok') throw new Error(res.message || 'Init failed');
       state.customer = res.customer;
       state.plans = res.plans || [];
+      state.options = res.options || [];                       // Menu v2: GLASS add-on
       state.dispatchFee = res.dispatchFee || { sedan: 2, suv: 2 };
+      // 単一プラン(WASH のみ)の場合は自動選択(操作削減)
+      if (state.plans.length === 1) state.selectedPlan = state.plans[0].letter;
       // 新規顧客の場合、自動登録
       if (!state.customer && state.customerName) {
         return autoRegister().then(function() { showView('view-plan'); });
@@ -640,7 +735,7 @@ function showView(viewId) {
   updateProgress(viewId);
 
   // 各viewの初期化
-  if (viewId === 'view-plan') renderPlans();
+  if (viewId === 'view-plan') { renderPlans(); renderOptions(); }
   if (viewId === 'view-datetime') renderDates();
   if (viewId === 'view-location') {
     setTimeout(function() { initLocationMap(); }, 100);
@@ -773,8 +868,62 @@ function selectSize(size) {
   // UIの更新
   document.getElementById('sizeSedan').classList.toggle('selected', size === 'セダン以下');
   document.getElementById('sizeSuv').classList.toggle('selected', size === 'SUV以上');
-  // 価格をプランに反映
+  // 価格をプラン・オプションに反映
   renderPlans();
+  renderOptions();
+  updateActionButton();
+}
+
+// ═══════════════════════════════════════════
+//  Step 1-c: SAMURAI GLASS オプション (Menu v2)
+// ═══════════════════════════════════════════
+
+function renderOptions() {
+  var container = document.getElementById('optionList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!state.selectedSize) {
+    container.innerHTML = '<div style="text-align:center; padding:14px; color:var(--text-dim); font-size:11px; border:1px dashed var(--border); border-radius:var(--radius);">Please select vehicle size first<br><span style="opacity:0.6">សូមជ្រើសរើសទំហំឡានជាមុនសិន</span></div>';
+    return;
+  }
+
+  // "No GLASS" カード(デフォルト)
+  var noOptCard = document.createElement('div');
+  noOptCard.className = 'choice-card option-card no-option';
+  if (state.selectedGlassOption === null) noOptCard.classList.add('selected');
+  noOptCard.innerHTML =
+    '<div class="option-info">'
+    + '<div class="option-name">No glass coating</div>'
+    + '<div class="option-name-km">មិនបន្ថែម</div>'
+    + '<div class="option-desc">Just SAMURAI WASH for now.</div>'
+    + '</div>'
+    + '<div class="option-price">—</div>';
+  noOptCard.onclick = function() { selectGlassOption(null); };
+  container.appendChild(noOptCard);
+
+  // GLASS_3 / GLASS_ALL カード
+  (state.options || []).forEach(function(opt) {
+    var card = document.createElement('div');
+    card.className = 'choice-card option-card';
+    if (state.selectedGlassOption === opt.code) card.classList.add('selected');
+    var price = state.selectedSize === 'SUV以上' ? opt.priceSuv : opt.priceSedan;
+    var duration = state.selectedSize === 'SUV以上' ? opt.durationSuv : opt.durationSedan;
+    card.innerHTML =
+      '<div class="option-info">'
+      + '<div class="option-name">' + escapeHtml(opt.nameEn || opt.code) + '</div>'
+      + '<div class="option-name-km">' + escapeHtml(opt.nameKm || '') + '</div>'
+      + '<div class="option-desc">+' + duration + 'min · ' + escapeHtml(opt.description || '') + '</div>'
+      + '</div>'
+      + '<div class="option-price">+$' + price + '</div>';
+    card.onclick = function() { selectGlassOption(opt.code); };
+    container.appendChild(card);
+  });
+}
+
+function selectGlassOption(code) {
+  state.selectedGlassOption = code;
+  renderOptions();
   updateActionButton();
 }
 
@@ -927,23 +1076,37 @@ function selectSlot(time) {
 
 function renderSummary() {
   var plan = state.plans.find(function(p) { return p.letter === state.selectedPlan; });
-  // 基本料金（プラン）
+  var planName = plan ? plan.name : 'SAMURAI WASH';
+  // 基本料金 (WASH)
   var basePrice = (state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
-  // 出張料（料金設定シート由来、ハードコードしない）
+  // GLASS オプション
+  var glassOpt = state.selectedGlassOption
+    ? state.options.find(function(o) { return o.code === state.selectedGlassOption; })
+    : null;
+  var glassPrice = glassOpt
+    ? ((state.selectedSize === 'SUV以上') ? glassOpt.priceSuv : glassOpt.priceSedan)
+    : 0;
+  // 出張料(料金設定シート由来、ハードコードしない)
   var fee = (state.selectedSize === 'SUV以上')
     ? ((state.dispatchFee && state.dispatchFee.suv) || 0)
     : ((state.dispatchFee && state.dispatchFee.sedan) || 0);
-  var total = basePrice + fee;
+  var total = basePrice + glassPrice + fee;
   var sizeLabel = (state.selectedSize === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
 
   var html = '';
-  html += summaryRow('Plan', plan.letter + ' ' + escapeHtml(plan.name));
+  html += summaryRow('Service', escapeHtml(planName));
+  if (glassOpt) {
+    html += summaryRow('+ Add-on', escapeHtml(glassOpt.nameEn));
+  }
   html += summaryRow('Vehicle', sizeLabel);
   html += summaryRow('Date', state.selectedDate);
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
-  // 料金内訳: プラン / 出張料 / 合計
-  html += summaryRow('Plan price / តម្លៃសេវា', '$' + basePrice);
+  // 料金内訳: WASH / GLASS / Delivery / Total
+  html += summaryRow(escapeHtml(planName), '$' + basePrice);
+  if (glassOpt) {
+    html += summaryRow('+ ' + escapeHtml(glassOpt.nameEn), '$' + glassPrice);
+  }
   html += summaryRow('Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee);
   html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + total + '</div></div>';
 
@@ -1016,7 +1179,8 @@ function submitBooking() {
     vehicleId: '',
     vehicleType: state.selectedSize,
     planLetter: state.selectedPlan,
-    optionIds: [],
+    glassOption: state.selectedGlassOption,   // Menu v2: 'GLASS_3' / 'GLASS_ALL' / null
+    optionIds: [],                            // 旧フィールド(後方互換維持)
     date: state.selectedDate,
     startTime: state.selectedSlot,
     location: state.selectedLocation
