@@ -168,8 +168,18 @@ function sendWelcomeMessage(msg) {
   const name = from.first_name || '';
   const cfg = getConfig();
 
-  // 英語メイン+クメール語サブ (Menu v2 / 2026-05-06)
-  // キャンペーンが有効ならバナー行を挿入
+  // ── ① まずブランドチラシを送信(視覚で世界観を伝える) ──
+  // チラシは GitHub Pages にホスト、Telegram は URL でも file_id でも OK
+  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-app/flyer.png';
+  try {
+    sendPhoto(BOT_TYPE.BOOKING, msg.chat.id, FLYER_URL, {
+      caption: '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash'
+    });
+  } catch (e) {
+    Logger.log('⚠️ welcome flyer 送信失敗(継続): ' + e);
+  }
+
+  // ── ② キャンペーンバナー(動的取得、チラシは evergreen)──
   let campaignLine = '';
   try {
     const bcfg = getBookingConfig();
@@ -177,21 +187,21 @@ function sendWelcomeMessage(msg) {
     if (camp && camp.active && camp.percent > 0) {
       campaignLine =
         '━━━━━━━━━━━━━━━━\n' +
-        '🎌 ' + (camp.nameEn || 'Special') + ' — ' + camp.percent + '% OFF (limited time)\n' +
+        '🎌 ' + (camp.nameEn || 'Special') + ' — ' + camp.percent + '% OFF\n' +
+        '   (limited time, services only)\n' +
         '━━━━━━━━━━━━━━━━\n\n';
     }
   } catch (e) { /* 失敗しても welcome は送る */ }
 
   const text =
-    'Hello' + (name ? ' ' + name : '') + '! 🚗\n' +
-    'Welcome to SAMURAI MOTORS — Premium Japanese-style mobile car wash.\n' +
+    'Hello' + (name ? ' ' + name : '') + '! 👋\n' +
+    'Welcome to SAMURAI MOTORS.\n' +
     '\n' +
-    'សួស្តី! សូមស្វាគមន៍មក Samurai Motors\n' +
-    'សេវាលាងឡានតាមផ្ទះកម្រិតខ្ពស់\n' +
+    'សួស្តី! សូមស្វាគមន៍\n' +
     '\n' +
     campaignLine +
-    '👇 Tap the "Booking" button below to reserve your slot\n' +
-    '👇 ចុចប៊ូតុង "Booking" ខាងក្រោមដើម្បីកក់\n' +
+    '👇 Tap the "Booking" button below to reserve your slot now\n' +
+    '👇 ចុចប៊ូតុង "Booking" ខាងក្រោមឆ្វេងដើម្បីកក់\n' +
     '\n' +
     '🗓 Or use /book to start\n' +
     '📸 Or send a photo of your car for questions';
