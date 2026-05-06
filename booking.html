@@ -6,8 +6,9 @@
 <title>Samurai Motors - Booking</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet は Step 3 (場所選択) 進入時に動的ロード(初期ロード短縮) -->
+<link rel="preconnect" href="https://unpkg.com/" crossorigin>
+<link rel="preconnect" href="https://script.google.com/" crossorigin>
 <style>
 :root {
   /* 深黒ベース + シャンパンゴールドの高級感パレット (2026-05-06 premium upgrade) */
@@ -620,14 +621,14 @@ body {
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .toast.error { border-color: var(--accent); }
 
-/* ───────── ローダー ───────── */
+/* ───────── ローダー (Premium splash 兼用) ───────── */
 .loader {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   padding: 60px 20px;
   color: var(--text-dim);
 }
 .spinner {
-  width:36px; height:36px;
+  width: 36px; height: 36px;
   border: 3px solid var(--border);
   border-top-color: var(--gold);
   border-radius: 50%;
@@ -635,6 +636,69 @@ body {
   margin-bottom: 14px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Premium 起動スプラッシュ */
+.splash {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 24px 40px;
+  text-align: center;
+  animation: splashFadeIn 0.5s ease;
+}
+@keyframes splashFadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.splash-mark {
+  width: 60px; height: 60px; border-radius: 50%;
+  border: 1px solid var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-size: 24px; font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 0;
+  margin-bottom: 28px;
+  position: relative;
+  animation: splashPulse 2.4s ease-in-out infinite;
+}
+@keyframes splashPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,168,92,0.30); }
+  50%      { box-shadow: 0 0 0 12px rgba(201,168,92,0); }
+}
+.splash-title {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.splash-tagline {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1.5px;
+  margin-bottom: 36px;
+}
+.splash-tagline-km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+.splash-bar {
+  width: 120px; height: 1px;
+  background: var(--border);
+  position: relative;
+  overflow: hidden;
+  border-radius: 1px;
+}
+.splash-bar::after {
+  content: '';
+  position: absolute; left: -40%; top: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation: splashSweep 1.6s ease-in-out infinite;
+}
+@keyframes splashSweep { to { left: 100%; } }
 </style>
 </head>
 <body>
@@ -658,11 +722,16 @@ body {
 
 <div class="container">
 
-  <!-- ローディング -->
+  <!-- Premium 起動スプラッシュ -->
   <div class="view active" id="view-loading">
-    <div class="loader">
-      <div class="spinner"></div>
-      <div>Loading... / កំពុងផ្ទុក...</div>
+    <div class="splash">
+      <div class="splash-mark">侍</div>
+      <div class="splash-title">Samurai Motors</div>
+      <div class="splash-tagline">
+        Premium Japanese Quality Car Care
+        <span class="splash-tagline-km">សេវាលាងឡានបែបជប៉ុនកម្រិតខ្ពស់</span>
+      </div>
+      <div class="splash-bar"></div>
     </div>
   </div>
 
@@ -1394,9 +1463,48 @@ var savedCoords = null;
 // Leafletマップ関連
 var leafletMap = null;
 var leafletMarker = null;
+var leafletLoadPromise = null;
+
+/**
+ * Leaflet を必要時に動的ロード(初期ロード短縮)
+ *  - CSS と JS を並列に <head> へ inject
+ *  - 同じ Promise を再利用(2回目以降は即時)
+ */
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = new Promise(function(resolve, reject) {
+    // CSS
+    if (!document.querySelector('link[data-leaflet]')) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      css.setAttribute('data-leaflet', '1');
+      document.head.appendChild(css);
+    }
+    // JS
+    var script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = function() { resolve(); };
+    script.onerror = function() { reject(new Error('Leaflet load failed')); };
+    document.head.appendChild(script);
+  });
+  return leafletLoadPromise;
+}
 
 function initLocationMap() {
   if (leafletMap) return; // 初期化済み
+  var el = document.getElementById('leafletMap');
+  if (!el) return;
+  // 動的ロード後に初期化(初回のみ Leaflet をDL)
+  loadLeaflet().then(function() { initLocationMapAfterLoad_(); }).catch(function(err) {
+    Logger.log && Logger.log('Leaflet load error: ' + err);
+    showToast('Map load failed. Please retry.', true);
+  });
+}
+
+function initLocationMapAfterLoad_() {
   var el = document.getElementById('leafletMap');
   if (!el) return;
 
