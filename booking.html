@@ -716,6 +716,81 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ───────── スロットロード演出 (Premium themed, CSS only) ───────── */
+/* Step 2 で日付タップ → スロット取得中の待ち時間を「SAMURAI MOTORS が波打つ + 金の刀の閃き」で演出 */
+.slot-loader {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 50px 20px;
+  text-align: center;
+  animation: splashFadeIn 0.4s ease;
+}
+.slot-loader-brand {
+  font-family: var(--serif);
+  font-size: 18px;
+  letter-spacing: 4px;
+  color: var(--gold);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+  user-select: none;
+}
+.slot-loader-brand span {
+  display: inline-block;
+  animation: sloLetterWave 1.8s ease-in-out infinite;
+}
+.slot-loader-brand .space { width: 8px; animation: none; }
+.slot-loader-brand span:nth-child(1)  { animation-delay: 0.00s; }
+.slot-loader-brand span:nth-child(2)  { animation-delay: 0.07s; }
+.slot-loader-brand span:nth-child(3)  { animation-delay: 0.14s; }
+.slot-loader-brand span:nth-child(4)  { animation-delay: 0.21s; }
+.slot-loader-brand span:nth-child(5)  { animation-delay: 0.28s; }
+.slot-loader-brand span:nth-child(6)  { animation-delay: 0.35s; }
+.slot-loader-brand span:nth-child(7)  { animation-delay: 0.42s; }
+.slot-loader-brand span:nth-child(9)  { animation-delay: 0.49s; }
+.slot-loader-brand span:nth-child(10) { animation-delay: 0.56s; }
+.slot-loader-brand span:nth-child(11) { animation-delay: 0.63s; }
+.slot-loader-brand span:nth-child(12) { animation-delay: 0.70s; }
+.slot-loader-brand span:nth-child(13) { animation-delay: 0.77s; }
+.slot-loader-brand span:nth-child(14) { animation-delay: 0.84s; }
+@keyframes sloLetterWave {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; text-shadow: none; }
+  30% { transform: translateY(-4px); opacity: 1; text-shadow: 0 0 12px rgba(201,168,92,0.55); }
+}
+.slot-loader-katana {
+  width: 160px; height: 1px;
+  background: var(--border);
+  position: relative;
+  margin: 0 auto 20px;
+  overflow: hidden;
+  border-radius: 1px;
+}
+.slot-loader-katana::after {
+  content: '';
+  position: absolute; left: -40%; top: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
+  animation: sloKatanaSweep 1.6s ease-in-out infinite;
+}
+@keyframes sloKatanaSweep { to { left: 100%; } }
+.slot-loader-sub {
+  font-family: var(--serif);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  line-height: 1.7;
+}
+.slot-loader-sub .km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  opacity: 0.65;
+  margin-top: 2px;
+}
+
 /* Premium 起動スプラッシュ */
 .splash {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1399,7 +1474,17 @@ function selectDate(dateStr) {
 
 function loadTimeSlots() {
   var container = document.getElementById('slotContainer');
-  container.innerHTML = '<div class="loader"><div class="spinner"></div><div>Loading times...</div></div>';
+  // Premium themed loader: SAMURAI MOTORS の文字が波打つ + ゴールドの刀閃きライン
+  container.innerHTML =
+    '<div class="slot-loader">'
+    + '<div class="slot-loader-brand">'
+    +   '<span>S</span><span>A</span><span>M</span><span>U</span><span>R</span><span>A</span><span>I</span>'
+    +   '<span class="space">&nbsp;</span>'
+    +   '<span>M</span><span>O</span><span>T</span><span>O</span><span>R</span><span>S</span>'
+    + '</div>'
+    + '<div class="slot-loader-katana"></div>'
+    + '<div class="slot-loader-sub">Finding the perfect time<span class="km">កំពុងស្វែងរកម៉ោងល្អបំផុត</span></div>'
+    + '</div>';
 
   var url = GAS_URL + '?action=booking_slots'
     + '&date=' + encodeURIComponent(state.selectedDate)
