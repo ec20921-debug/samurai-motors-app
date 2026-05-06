@@ -168,21 +168,33 @@ function sendWelcomeMessage(msg) {
   const name = from.first_name || '';
   const cfg = getConfig();
 
+  // 英語メイン+クメール語サブ (Menu v2 / 2026-05-06)
+  // キャンペーンが有効ならバナー行を挿入
+  let campaignLine = '';
+  try {
+    const bcfg = getBookingConfig();
+    const camp = bcfg && bcfg.campaign;
+    if (camp && camp.active && camp.percent > 0) {
+      campaignLine =
+        '━━━━━━━━━━━━━━━━\n' +
+        '🎌 ' + (camp.nameEn || 'Special') + ' — ' + camp.percent + '% OFF (limited time)\n' +
+        '━━━━━━━━━━━━━━━━\n\n';
+    }
+  } catch (e) { /* 失敗しても welcome は送る */ }
+
   const text =
-    'សួស្តី' + (name ? ' ' + name : '') + '! 🚗\n' +
-    'សូមស្វាគមន៍មកកាន់ Samurai Motors — សេវាលាងឡានតាមផ្ទះ។\n' +
+    'Hello' + (name ? ' ' + name : '') + '! 🚗\n' +
+    'Welcome to SAMURAI MOTORS — Premium Japanese-style mobile car wash.\n' +
     '\n' +
-    'Hello! Welcome to Samurai Motors — mobile car wash service.\n' +
+    'សួស្តី! សូមស្វាគមន៍មក Samurai Motors\n' +
+    'សេវាលាងឡានតាមផ្ទះកម្រិតខ្ពស់\n' +
     '\n' +
-    '━━━━━━━━━━━━━━━━\n' +
-    '👇 សូមកក់តាមរយៈប៊ូតុងខាងក្រោមឆ្វេង\n' +
-    '👇 Please book using the button at the bottom-left\n' +
-    '━━━━━━━━━━━━━━━━\n' +
+    campaignLine +
+    '👇 Tap the "Booking" button below to reserve your slot\n' +
+    '👇 ចុចប៊ូតុង "Booking" ខាងក្រោមដើម្បីកក់\n' +
     '\n' +
-    '🗓 ការកក់ / Booking: /book\n' +
-    '\n' +
-    '📸 ឬផ្ញើរូបថតឡានរបស់អ្នកសម្រាប់សំណួរ\n' +
-    '📸 Or send a photo of your car for questions.';
+    '🗓 Or use /book to start\n' +
+    '📸 Or send a photo of your car for questions';
 
   // ── メニューボタンをこの顧客向けに明示設定（booking mini-app 直起動） ──
   // デフォルトでも setupBookingBotMenuButton() で全ユーザーに設定されるが、

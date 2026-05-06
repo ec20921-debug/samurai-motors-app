@@ -538,7 +538,7 @@ function createBooking(params) {
       '予約日':         params.date,
       '予約時刻':       params.startTime,
       '所要時間(分)':   duration,
-      '料金(USD)':      amount,
+      '料金(USD)':      amount,                                    // 割引後の最終請求額
       '進行状態':       '予約確定',
       '緯度':           loc.lat || '',
       '経度':           loc.lng || '',
@@ -554,7 +554,11 @@ function createBooking(params) {
       'QR送信日時':     '',
       '催促回数':       0,
       '最終催促日時':   '',
-      '管理者メモ':     ''
+      '管理者メモ':     '',
+      // ── キャンペーン分析用 3 列 (Menu v2: 2026-05-06) ──
+      '割引前金額(USD)': subtotal,                                  // WASH+GLASS+Delivery の合計(割引前)
+      '割引額(USD)':    discountAmount,                            // 割引で引かれた額(0 = キャンペーンなし)
+      'キャンペーン名': (camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : ''
     });
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──

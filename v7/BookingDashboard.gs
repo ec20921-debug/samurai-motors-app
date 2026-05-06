@@ -79,6 +79,7 @@ function ensureBookingDashboard() {
   row = buildBkDailyBar_(sh, row, ss);
   row = buildBkRankings_(sh, row, ss);
   row = buildBkLtvTop10_(sh, row, ss);
+  row = buildBkMenuV2Analytics_(sh, row, ss);   // Menu v2 (2026-05-06): キャンペーン/GLASS/ファネル
   row = buildBkAlerts_(sh, row);
 
   ss.setActiveSheet(sh);
@@ -547,6 +548,76 @@ function buildBkLtvTop10_(sh, row, ss) {
 // =====================================================
 //  セクション: 経営アラート
 // =====================================================
+/**
+ * Menu v2 分析セクション (2026-05-06)
+ * 3 ブロック横並び: キャンペーン / GLASS 構成 / ファネル CR
+ *
+ * BOOKINGS シート列前提:
+ *   G: オプション (空 / GLASS_3 / GLASS_ALL)
+ *   H: 予約日, L: 進行状態
+ *   AC: 割引額(USD), AD: キャンペーン名
+ * FUNNEL_LOG シート列前提:
+ *   C: イベント (bot_start / miniapp_opened / booking_completed)
+ */
+function buildBkMenuV2Analytics_(sh, row, ss) {
+  drawBkSectionHeader_(sh, row, '📊 Menu v2 分析（キャンペーン / GLASS / ファネル）');
+  row += 2;
+
+  const pStart = "'" + BK_DASH_SHEET + "'!D7";
+  const pEnd   = "'" + BK_DASH_SHEET + "'!E7";
+  const headerStyle = { bg: BK_COLOR.bgSub, fg: BK_COLOR.gold };
+
+  // ── 🎌 キャンペーン (B-C) ──
+  sh.getRange(row, 2, 1, 2).setValues([['🎌 キャンペーン', '値']])
+    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
+  const c1 = row + 1;
+  const campRows = [
+    ['適用件数',   '=IFERROR(COUNTIFS(予約!AD:AD,"<>",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '#,##0"件"'],
+    ['全予約件数', '=IFERROR(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '#,##0"件"'],
+    ['適用率',     '=IFERROR(C' + c1 + '/MAX(C' + (c1 + 1) + ',1),0)', '0.0%'],
+    ['累計割引額', '=IFERROR(SUMIFS(予約!AC:AC,予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '"$"#,##0.00']
+  ];
+  campRows.forEach(function(r, i) {
+    sh.getRange(c1 + i, 2).setValue(r[0]).setFontColor(BK_COLOR.text);
+    sh.getRange(c1 + i, 3).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat(r[2]);
+  });
+
+  // ── ✨ GLASS 構成 (E-F) ──
+  sh.getRange(row, 5, 1, 2).setValues([['✨ GLASS 構成', '件数']])
+    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
+  const glassRows = [
+    ['No glass',   '=IFERROR(COUNTIFS(予約!G:G,"",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
+    ['GLASS_3',    '=IFERROR(COUNTIFS(予約!G:G,"GLASS_3",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
+    ['GLASS_ALL',  '=IFERROR(COUNTIFS(予約!G:G,"GLASS_ALL",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)']
+  ];
+  glassRows.forEach(function(r, i) {
+    sh.getRange(c1 + i, 5).setValue(r[0]).setFontColor(BK_COLOR.text);
+    sh.getRange(c1 + i, 6).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat('#,##0"件"');
+  });
+
+  // ── 📊 ファネル CR (H-I) ── ※ FUNNEL_LOG は累計値(期間フィルタなし)
+  sh.getRange(row, 8, 1, 2).setValues([['📊 ファネル(累計)', '値']])
+    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
+  const f1 = c1;
+  const funnelRows = [
+    ['Bot 来訪',        '=IFERROR(COUNTIF(ファネルログ!C:C,"bot_start"),0)', '#,##0"人"'],
+    ['ミニアプリ開',    '=IFERROR(COUNTIF(ファネルログ!C:C,"miniapp_opened"),0)', '#,##0"回"'],
+    ['予約完了',        '=IFERROR(COUNTIF(ファネルログ!C:C,"booking_completed"),0)', '#,##0"件"'],
+    ['Overall CR',      '=IFERROR(I' + (f1 + 2) + '/MAX(I' + f1 + ',1),0)', '0.0%']
+  ];
+  funnelRows.forEach(function(r, i) {
+    sh.getRange(f1 + i, 8).setValue(r[0]).setFontColor(BK_COLOR.text);
+    sh.getRange(f1 + i, 9).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat(r[2]);
+  });
+
+  // 罫線で 3 ブロックを軽く区切る
+  sh.getRange(row, 2, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(row, 5, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(row, 8, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
+
+  return row + 6;
+}
+
 function buildBkAlerts_(sh, row) {
   drawBkSectionHeader_(sh, row, '🚨 経営アラート');
   row += 2;

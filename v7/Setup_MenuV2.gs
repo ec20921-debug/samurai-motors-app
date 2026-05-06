@@ -37,7 +37,10 @@ function migrateMenuV2() {
     // ── 3. FUNNEL_LOG シートの作成・初期化 ──
     rebuildFunnelLogSheetV2_();
 
-    // ── 4. キャッシュクリア ──
+    // ── 4. BOOKINGS シートにキャンペーン分析用 3 列を追加(冪等) ──
+    ensureBookingCampaignColumnsV2_();
+
+    // ── 5. キャッシュクリア ──
     if (typeof clearBookingConfigCache === 'function') clearBookingConfigCache();
 
     Logger.log('━━━━━━━━━━━━━━━━━━━━');
@@ -208,6 +211,38 @@ function rebuildFunnelLogSheetV2_() {
   sheet.setColumnWidth(6, 400);  // メタデータ
 
   Logger.log('  ✅ ヘッダー設定完了');
+}
+
+/**
+ * BOOKINGS シートに分析用 3 列を追加(冪等)
+ *  - 割引前金額(USD): キャンペーン適用前の合計
+ *  - 割引額(USD): キャンペーンで引かれた額
+ *  - キャンペーン名: 適用したキャンペーン識別子
+ *
+ *  既に存在する列はスキップ。新規列はヘッダー右端に追加。
+ */
+function ensureBookingCampaignColumnsV2_() {
+  Logger.log('📊 BOOKINGS キャンペーン分析列の確認');
+  const sheet = getSheet(SHEET_NAMES.BOOKINGS);
+  const headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
+  const newCols = ['割引前金額(USD)', '割引額(USD)', 'キャンペーン名'];
+
+  let lastCol = sheet.getLastColumn();
+  const added = [];
+  newCols.forEach(function(col) {
+    if (!headers[col]) {
+      lastCol += 1;
+      sheet.getRange(1, lastCol).setValue(col);
+      sheet.getRange(1, lastCol).setFontWeight('bold');
+      added.push(col);
+    }
+  });
+
+  if (added.length > 0) {
+    Logger.log('  ✅ 追加された列: ' + added.join(', '));
+  } else {
+    Logger.log('  ✅ 既存(スキップ)');
+  }
 }
 
 /**

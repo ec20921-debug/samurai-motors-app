@@ -664,25 +664,41 @@ body {
           </label>
         </div>
       </div>
+      <!-- Menu v2 (2026-05-06): SAMURAI WASH 必須 + GLASS 任意 add-on -->
       <div class="plan-grid">
         <div class="plan-option">
-          <input type="radio" name="plan" id="planA" value="清 KIYOME (A)">
-          <label class="plan-card" for="planA"><span class="plan-name-jp">清 KIYOME (A)</span><span class="plan-price">$12 / $15</span></label>
-        </div>
-        <div class="plan-option">
-          <input type="radio" name="plan" id="planB" value="鏡 KAGAMI (B)">
-          <label class="plan-card" for="planB"><span class="plan-name-jp">鏡 KAGAMI (B)</span><span class="plan-price">$17 / $20</span></label>
-        </div>
-        <div class="plan-option">
-          <input type="radio" name="plan" id="planC" value="匠 TAKUMI (C)">
-          <label class="plan-card" for="planC"><span class="plan-name-jp">匠 TAKUMI (C)</span><span class="plan-price">$20 / $23</span></label>
-        </div>
-        <div class="plan-option">
-          <input type="radio" name="plan" id="planD" value="将軍 SHOGUN (D)">
-          <label class="plan-card" for="planD"><span class="plan-name-jp">将軍 SHOGUN (D)</span><span class="plan-price">$32 / $35</span></label>
+          <input type="radio" name="plan" id="planW" value="SAMURAI WASH (W)" checked>
+          <label class="plan-card" for="planW">
+            <span class="plan-name-jp">SAMURAI WASH</span>
+            <span class="plan-price">$12 / $15</span>
+          </label>
         </div>
       </div>
-      <p class="hint" style="margin-top:6px;">💰 + $2 ថ្លៃធ្វើដំណើរ（＋$2 出張費別途）</p>
+      <p class="hint" style="margin-top:8px; margin-bottom:6px;">+ SAMURAI GLASS（オプション・任意）</p>
+      <div class="plan-grid">
+        <div class="plan-option">
+          <input type="radio" name="glassOption" id="glassNone" value="" checked>
+          <label class="plan-card" for="glassNone">
+            <span class="plan-name-jp">No glass coating</span>
+            <span class="plan-price">—</span>
+          </label>
+        </div>
+        <div class="plan-option">
+          <input type="radio" name="glassOption" id="glass3" value="GLASS_3">
+          <label class="plan-card" for="glass3">
+            <span class="plan-name-jp">3 Windows + Mirrors</span>
+            <span class="plan-price">+$15 / +$20</span>
+          </label>
+        </div>
+        <div class="plan-option">
+          <input type="radio" name="glassOption" id="glassAll" value="GLASS_ALL">
+          <label class="plan-card" for="glassAll">
+            <span class="plan-name-jp">All Windows + Mirrors</span>
+            <span class="plan-price">+$30 / +$40</span>
+          </label>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:6px;">💰 + $2 ថ្លៃធ្វើដំណើរ（＋$2 出張費別途）｜🎌 GRAND OPENING -30% 適用中</p>
     </div>
     <div class="section">
       <div class="section-title">📝 កំណត់សម្គាល់（備考）</div>
@@ -1148,6 +1164,7 @@ function startWork() {
     carModel: document.getElementById('carModel').value,
     plate: document.getElementById('plate').value,
     plan: planEl ? planEl.value : '',
+    glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
     startTime: timestamps.start.toISOString(),
     beforePhotos: photos.before.filter(function(p){return p !== null;}),
@@ -1199,6 +1216,7 @@ function endWork() {
     carModel: document.getElementById('carModel').value,
     plate: document.getElementById('plate').value,
     plan: planEl ? planEl.value : '',
+    glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
     endTime: timestamps.end.toISOString(),
     duration: Math.round((timestamps.end - timestamps.start) / 60000),
@@ -1319,6 +1337,7 @@ function submitAll() {
     carModel: document.getElementById('carModel').value,
     plate: document.getElementById('plate').value,
     plan: planEl ? planEl.value : '',
+    glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
     mapUrl: document.getElementById('mapUrl').value,
     notes: document.getElementById('notes').value,
