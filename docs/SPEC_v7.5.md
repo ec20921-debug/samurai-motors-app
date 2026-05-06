@@ -156,10 +156,13 @@ booking.html を 6 領域で昇華(全て CSS only、追加アセットなし):
 | 日付ピッカー | Cinzel 大判数字 + 今日 = ゴールドドット(旧:赤縁) |
 | 時間スロット | Cinzel 数字 + 選択時 text-shadow + ホバー gold-muted |
 | 確認画面 | Editorial layout: 上端ゴールドの hairline + Total 26px serif + textShadow |
-| 完了 seal | 侍ロゴ円章 + bounce 入場 + dashed リング 18s 回転 |
+| 完了 seal | 侍ロゴ画像円章 + bounce 入場 + dashed リング 18s 回転 |
 | 起動 splash | ロゴ + ゴールド pulse animation |
 | スロット待ち | SAMURAI MOTORS 14 文字波 + ゴールド刀閃 sweep |
 | 提出中 overlay | 全画面 backdrop-blur + ceremonial loader |
+| **場所選択マップ** | **height: clamp(420px, 68vh, 620px) ビューポート適応(旧 280px 固定の 2 倍超)、box-shadow 追加** |
+| **車種アイコン** | 🚗 / 🚙 emoji → **ゴールド線画 SVG**(セダン: 短低車高、SUV: 短ボンネット+長キャビン+ルーフレール+大径ホイール) |
+| **キャンペーンバナー** | 赤+ゴールドの sweep アニメ、`getBookingConfig().campaign` 連動で動的表示/非表示 |
 
 ---
 
@@ -238,7 +241,106 @@ booking.html を 6 領域で昇華(全て CSS only、追加アセットなし):
 
 ---
 
-## 11. 🤔 残タスク・将来予定
+## 11. 🤖 Customer Onboarding Flow(/start ウェルカム動線)
+
+### 11.1 設計原則: チラシは evergreen、キャンペーンは動的
+
+**チラシに「30%OFF」を印字しない**。代わりに **Bot welcome で動的にキャンペーン情報を配信**することで、キャンペーン切替時にチラシ刷新が不要(Plan_Prices シート 1 セルだけで運用切替)。
+
+### 11.2 動作フロー(/start 押下時)
+
+```
+1. 顧客が QR スキャン → @SAMURAI_MOTORS_BOOKING_BOT 起動
+2. 顧客が「Start」または「/start」を送信
+   ↓
+3. BookingBot.gs `sendWelcomeMessage(msg)` 実行
+   ┌─ ① sendPhoto(FLYER_URL, caption: "🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash")
+   ├─ ② getBookingConfig().campaign を読み、有効ならバナー文挿入
+   ├─ ③ sendMessage(welcome テキスト + 動的バナー + ミニアプリ誘導)
+   ├─ ④ setChatMenuButton(顧客個別、type: web_app)
+   └─ ⑤ sendMessage(管理グループ, "/start 受信" 通知)
+4. 並行: ensureCustomerTopic で管理グループに顧客トピック作成
+```
+
+### 11.3 配信先と表示内容
+
+| 配信先 | 内容 |
+|---|---|
+| 顧客 DM(予約Bot) | チラシ画像 + welcome 文(英語メイン+クメール語サブ)+ キャンペーン文 |
+| 管理マスターグループ | "/start 受信: {名前} (chat_id={数字})" 通知のみ(チラシは送らない) |
+
+### 11.4 チラシのホスト
+
+`flyer.png`(814 KB)を**リポジトリ直下に配置**:
+- ローカル: `C:\Users\drymp\dev\samurai-motors-app\flyer.png`
+- 配信 URL: `https://ec20921-debug.github.io/samurai-motors-app/flyer.png`(GitHub Pages 自動配信)
+- Drive 経由でも可能だが、GitHub Pages の方が高速かつ簡素
+
+→ **チラシ刷新時**: 同名で `flyer.png` を上書き → `git push` だけで顧客の welcome 画像が更新される。
+
+### 11.5 動的キャンペーンバナー文
+
+`getBookingConfig().campaign.active === true && percent > 0` の場合:
+
+```
+━━━━━━━━━━━━━━━━
+🎌 GRAND OPENING — 30% OFF
+   (limited time, services only)
+━━━━━━━━━━━━━━━━
+```
+
+→ Plan_Prices シートの「キャンペーン有効」を FALSE にすると、welcome から自動的にバナー行が消える。
+
+### 11.6 流入元計測(将来拡張)
+
+QR コードに `?start=flyer_v1` 等の start parameter を付与すれば、チラシ・FB・店頭等の流入元を `FUNNEL_LOG` に記録可能(現状未実装、必要時に拡張)。
+
+---
+
+## 12. 🛡️ 運用ノート(2026-05-06 学習事項)
+
+### 12.1 Telegram フォーラムトピック消失インシデント
+
+#### 何が起きたか
+2026-05-06 の test 中、管理マスターグループから **35 顧客分のトピックが一斉に削除**された(操作系トピック「経費/勤怠/タスク/日報」は無傷)。
+
+#### 原因(推定)
+Daisuke の test 用アカウント(管理者権限保持)が、Bot の chat を「Delete」する際に出現した「**All Delete**」型の確認ダイアログを承諾 → Telegram 側で管理者権限により **顧客トピック群が一斉削除された**可能性が高い。
+
+→ **コード起因ではない**。Telegram の管理者権限と UI の組み合わせによる事故。
+
+#### 復旧
+- ✅ CUSTOMERS シートの thread_id 列は無傷(全 35 顧客分)
+- ✅ 顧客 DM・予約・決済・写真などの**業務データはすべて残存**
+- 🔴 削除された Telegram 内チャット履歴は **復元不可**(Telegram-side deletion is permanent)
+- ✅ v7.3 の `sendToCustomerTopicWithRecovery` が、各顧客の次回メッセージで **新トピック自動作成** → 業務継続に支障なし
+
+#### 顧客側からの脅威評価
+**ゼロ**。一般顧客は管理マスターグループの**メンバーではないため、トピック削除の権限がない**。
+顧客が予約Bot を Delete / Block しても、それは顧客自身の Telegram 側だけの操作で、管理グループには**一切影響しない**。
+
+### 12.2 再発防止策
+
+| 施策 | 内容 |
+|---|---|
+| ① 管理者権限の最小化 | 管理マスターグループの管理者を Daisuke + 飯泉 + 必要最小限に。テスト用アカウントは管理者から外す |
+| ② Bot の権限最小化 | Bot に必要なのは「メッセージ送信」「Manage Topics」のみ。「Delete Messages of Others」などの広い権限は不要 |
+| ③ テスト環境の分離 | テスト用アカウントは管理マスターから除外し、別の test グループでテスト |
+| ④ Pin 警告 | 管理マスター General の Pin に「⚠️ Don't delete topics」を貼って視覚的に防衛 |
+
+### 12.3 v7.3 の `sendToCustomerTopicWithRecovery` の効果
+
+本インシデントで **v7.3 の自動復旧コードが本番で実証された**:
+- 1 回目の送信で「thread not found」エラー検知
+- CUSTOMERS の stale thread_id を自動クリア
+- `createForumTopic` で新トピック作成
+- 新 thread_id を保存 + リトライ送信
+
+→ **ゼロダウンタイム** で復旧可能、過去履歴は失うが業務継続性は完全保証。
+
+---
+
+## 13. 🤔 残タスク・将来予定
 
 | # | 領域 | 内容 |
 |---|---|---|
@@ -255,7 +357,25 @@ booking.html を 6 領域で昇華(全て CSS only、追加アセットなし):
 | バージョン | 日付 | 内容 |
 |---|---|---|
 | v7.4 | 2026-05-03 | clasp 自動デプロイ + QR 配信耐障害性 |
-| **v7.5** | **2026-05-06** | **Menu v2(WASH+GLASS) + GRAND OPENING -30% キャンペーン + UX/UI 監修パス + 祝日営業 + Bot welcome 英語メイン化** |
+| **v7.5** | **2026-05-06** | **Menu v2(WASH+GLASS) + GRAND OPENING -30% キャンペーン + UX/UI 監修パス + 祝日営業 + Bot welcome 英語メイン化 + チラシ画像配信 + Map 大型化 + 運用ノート(Telegram トピック消失インシデント) + 車種 SVG アイコン化** |
+
+### v7.5 内の主要 commit(参考)
+
+| commit | 内容 |
+|---|---|
+| `0820ad4` | Menu v2 GAS 改修(Plan_Prices/OPTIONS/Router) |
+| `675ecad` | booking.html Menu v2 + Armor Tokyo 風 UI |
+| `c7cacca` | GLASS opt-in トグル化 |
+| `f711cab` | premium upgrade(Cinzel + シャンパンゴールド) |
+| `1cf2808` | Leaflet 遅延 + premium splash |
+| `c63ce6f` | ロゴ splash + 車種 SVG アイコン |
+| `7779525` | UX/UI 監修パス 5 領域 |
+| `bcc8c42` | Reserved 完了 seal をロゴ画像化 |
+| `5631a38` | 祝日営業可(日曜のみ定休) |
+| `60db3d5` | GRAND OPENING -30% キャンペーン全層統合 + SUV 再デザイン |
+| `8d77442` | Layer 2 + BOOKINGS 分析列 + ダッシュボード新セクション + SPEC v7.5 |
+| `89ad8e9` | Bot welcome に evergreen チラシ + 動的キャンペーン配信 |
+| `a292ad6` / `db0e23b` | Map 大型化 (280px 固定 → clamp(420px, 68vh, 620px)) |
 
 ---
 
