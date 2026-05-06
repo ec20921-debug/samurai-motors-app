@@ -526,6 +526,16 @@ body {
   letter-spacing: 0.8px;
   text-transform: uppercase;
 }
+/* 祝日: 営業はする(押せる)、ただし情報ラベルだけ控えめにゴールドで表示 */
+.date-cell .d-holiday {
+  font-size: 8px;
+  color: var(--gold);
+  margin-top: 4px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
 
 /* ───────── 時間スロット (Premium serif numerals) ───────── */
 .time-section { margin-top: 24px; }
@@ -1658,10 +1668,9 @@ function renderDates() {
   for (var i = 0; i < 12; i++) {
     var d = new Date(today.getTime() + i * 86400000);
     var dateStr = formatDate(d);
-    var isWeekendClosed = CLOSED_DAYS.indexOf(d.getDay()) >= 0;
-    var holidayName = CAMBODIA_HOLIDAYS[dateStr] || '';
-    var isClosed = isWeekendClosed || !!holidayName;
-    var closedLabel = isWeekendClosed ? 'Closed' : (holidayName ? 'Holiday' : '');
+    // 2026-05-06 Daisuke 判断: 日曜だけ休み、祝日は通常営業
+    var isClosed   = CLOSED_DAYS.indexOf(d.getDay()) >= 0;       // 日曜のみ
+    var holidayName = CAMBODIA_HOLIDAYS[dateStr] || '';            // 情報ラベルのみに使用
 
     var cell = document.createElement('div');
     cell.className = 'date-cell';
@@ -1672,7 +1681,9 @@ function renderDates() {
       '<div class="d-day">' + dayEn[d.getDay()] + '</div>'
       + '<div class="d-num">' + d.getDate() + '</div>'
       + '<div class="d-month">' + monthEn[d.getMonth()] + '</div>'
-      + (isClosed ? '<div class="d-closed" title="' + escapeHtml(holidayName) + '">' + closedLabel + '</div>' : '');
+      + (isClosed
+          ? '<div class="d-closed">Closed</div>'
+          : (holidayName ? '<div class="d-holiday" title="' + escapeHtml(holidayName) + '">Holiday</div>' : ''));
     if (!isClosed) {
       cell.onclick = (function(ds) {
         return function() { selectDate(ds); };

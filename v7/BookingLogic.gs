@@ -328,15 +328,8 @@ function findAvailableSlots(dateStr, planLetter, miniappVt) {
     };
   }
 
-  // ── カンボジア祝日チェック ──
-  if (CAMBODIA_HOLIDAYS.indexOf(dateStr) >= 0) {
-    return {
-      ok: true,
-      slots: [],
-      durationMin: duration,
-      debug: 'closed_day: Public holiday (Cambodia)'
-    };
-  }
+  // ── カンボジア祝日: 営業可(2026-05-06 Daisuke 判断: 日曜だけ休み、祝日は通常営業) ──
+  // 旧: ブロックしていた / 新: 祝日でもスロット生成、UI 側はラベルのみ表示
 
   const cfg = getBookingConfig();
   const buffer = cfg.bufferMinutes || 30;
