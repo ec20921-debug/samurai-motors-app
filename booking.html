@@ -445,70 +445,150 @@ body {
   border: 1px solid rgba(201,168,92,0.2);
 }
 
-/* ───────── 日付ピッカー ───────── */
+/* ───────── 日付ピッカー (Premium typography) ───────── */
 .date-grid {
-  display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
 }
 .date-cell {
-  background: var(--card);
-  border: 1.5px solid var(--border);
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 4px;
-  text-align:center;
-  cursor:pointer;
-  transition: all 0.2s;
+  padding: 12px 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
-.date-cell:active { transform:scale(0.96); }
-.date-cell.selected { border-color: var(--gold); background: var(--gold-soft); }
-.date-cell .d-day { font-size:11px; color:var(--text-dim); }
-.date-cell .d-num { font-size:20px; font-weight:700; color:var(--text); margin-top:2px; }
-.date-cell .d-month { font-size:10px; color:var(--text-dim); margin-top:1px; }
-.date-cell.today { border-color: var(--accent); }
-.date-cell.selected .d-day, .date-cell.selected .d-month { color: var(--gold); }
-.date-cell.selected .d-num { color: var(--gold); }
+.date-cell:active { transform: scale(0.96); }
+.date-cell:hover { border-color: var(--gold-muted); }
+.date-cell.selected {
+  border-color: var(--gold);
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.12) 0%, rgba(201,168,92,0.04) 100%),
+    var(--card);
+  box-shadow: 0 6px 18px rgba(201,168,92,0.15), inset 0 0 16px rgba(201,168,92,0.05);
+}
+.date-cell .d-day {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.date-cell .d-num {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 4px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.date-cell .d-month {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+/* Today: 控えめゴールドドット (旧:赤縁から差し替え) */
+.date-cell.today::before {
+  content: '';
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(201,168,92,0.6);
+}
+.date-cell.selected .d-day,
+.date-cell.selected .d-month { color: var(--gold); }
+.date-cell.selected .d-num {
+  color: var(--gold-bright);
+  text-shadow: 0 0 12px rgba(201,168,92,0.4);
+}
 .date-cell.closed {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
-  background: rgba(255,255,255,0.02);
+  background: rgba(255,255,255,0.015);
+  box-shadow: none;
 }
 .date-cell.closed:active { transform: none; }
 .date-cell.closed .d-num,
 .date-cell.closed .d-day,
 .date-cell.closed .d-month { color: var(--text-dim); }
 .date-cell .d-closed {
-  font-size: 9px;
-  color: #c62828;
-  margin-top: 2px;
-  font-weight: 700;
+  font-size: 8px;
+  color: rgba(248,113,113,0.7);
+  margin-top: 4px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
-/* ───────── 時間スロット ───────── */
-.time-section { margin-top: 20px; }
+/* ───────── 時間スロット (Premium serif numerals) ───────── */
+.time-section { margin-top: 24px; }
 .slot-grid {
-  display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
 }
 .slot-cell {
-  background: var(--card);
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 4px;
-  text-align:center;
-  font-size:15px;
-  font-weight:600;
-  cursor:pointer;
-  transition: all 0.2s;
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 4px;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
-.slot-cell:active { transform:scale(0.96); }
-.slot-cell.selected { border-color: var(--gold); background: var(--gold-soft); color:var(--gold); }
+.slot-cell:active { transform: scale(0.96); }
+.slot-cell:hover { border-color: var(--gold-muted); color: var(--gold); }
+.slot-cell.selected {
+  border-color: var(--gold);
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.14) 0%, rgba(201,168,92,0.04) 100%),
+    var(--card);
+  color: var(--gold-bright);
+  text-shadow: 0 0 12px rgba(201,168,92,0.4);
+  box-shadow: 0 6px 18px rgba(201,168,92,0.18), inset 0 0 16px rgba(201,168,92,0.06);
+}
 .slot-empty {
-  text-align:center; padding:24px 10px;
-  color: var(--text-dim); font-size:13px;
-  line-height: 1.6;
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: 0.3px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.01);
+}
+.slot-empty::before {
+  content: '◇';
+  display: block;
+  font-size: 22px;
+  color: var(--gold-muted);
+  margin-bottom: 8px;
+  opacity: 0.6;
 }
 .duration-info {
-  text-align:center; font-size:12px; color:var(--gold);
-  margin-bottom: 12px; padding: 6px;
-  background: var(--gold-soft); border-radius: 8px;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 14px;
+  padding: 8px;
+  background: var(--gold-soft);
+  border: 1px solid rgba(201,168,92,0.18);
+  border-radius: 6px;
 }
 
 /* ───────── 場所入力 ───────── */
@@ -531,25 +611,70 @@ body {
 .field textarea::placeholder { color:#555; }
 .hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
 
-/* ───────── 確認画面 ───────── */
+/* ───────── 確認画面 (Editorial summary card) ───────── */
 .summary-card {
-  background: var(--card);
-  border: 1.5px solid var(--border);
+  background:
+    linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 20px 18px;
   margin-bottom: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.02);
+  position: relative;
+}
+.summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 24px; right: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-muted), transparent);
 }
 .summary-row {
-  display:flex; justify-content:space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  font-size:13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+  letter-spacing: 0.2px;
 }
-.summary-row:last-child { border-bottom:none; padding-bottom:0; }
-.summary-row .label { color: var(--text-dim); flex-shrink:0; margin-right:12px; }
-.summary-row .value { color: var(--text); text-align:right; font-weight:600; }
-.summary-row.total .label { color: var(--gold); font-size:14px; }
-.summary-row.total .value { color: var(--gold); font-size:20px; font-weight:700; }
+.summary-row:last-child { border-bottom: none; padding-bottom: 0; }
+.summary-row .label {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  margin-right: 12px;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+.summary-row .value {
+  color: var(--text);
+  text-align: right;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.summary-row.total {
+  margin-top: 6px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--gold-muted);
+  border-bottom: none;
+  position: relative;
+}
+.summary-row.total .label {
+  font-family: var(--serif);
+  color: var(--gold);
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.summary-row.total .value {
+  font-family: var(--serif);
+  color: var(--gold-bright);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-shadow: 0 0 16px rgba(201,168,92,0.35);
+}
 
 /* ───────── ボタン ───────── */
 .action-area {
@@ -601,39 +726,102 @@ body {
   border: 1px solid var(--border);
 }
 
-/* ───────── 完了画面 ───────── */
-.success-icon {
-  width:80px; height:80px; border-radius:50%;
-  background: var(--success-bg); color: var(--success);
-  display:flex; align-items:center; justify-content:center;
-  font-size:42px;
-  margin: 30px auto 20px;
+/* ───────── 完了画面 (Brand celebration) ───────── */
+.success-seal {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  margin: 40px auto 24px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(201,168,92,0.18) 0%, transparent 70%),
+    var(--card);
+  border: 1px solid var(--gold);
+  box-shadow:
+    0 0 0 6px rgba(201,168,92,0.06),
+    0 0 0 1px rgba(201,168,92,0.18) inset,
+    0 16px 32px rgba(0,0,0,0.5);
+  animation: successSealEnter 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes successSealEnter {
+  0%   { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+  60%  { transform: scale(1.08) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.success-seal::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  border: 1px dashed rgba(201,168,92,0.25);
+  animation: successSealRing 18s linear infinite;
+}
+@keyframes successSealRing { to { transform: rotate(360deg); } }
+.success-seal-mark {
+  font-family: var(--serif);
+  font-size: 38px;
+  color: var(--gold-bright);
+  font-weight: 700;
+  text-shadow: 0 0 18px rgba(201,168,92,0.5);
+  line-height: 1;
 }
 .success-title {
-  text-align:center; font-size:22px; font-weight:700;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  text-transform: uppercase;
   color: var(--gold);
-  margin-bottom:6px;
+  margin-bottom: 8px;
 }
 .success-subtitle {
-  text-align:center; font-size:13px; color:var(--text-dim);
-  margin-bottom:24px; line-height:1.6;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  line-height: 1.7;
+  letter-spacing: 0.5px;
+}
+.success-subtitle .km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  margin-top: 4px;
+  opacity: 0.75;
 }
 
-/* ───────── トースト ───────── */
+/* ───────── トースト (Premium notification) ───────── */
 .toast {
-  position:fixed; top:60px; left:50%; transform:translateX(-50%);
-  background:var(--card); color:var(--text);
-  padding:10px 18px; border-radius:24px;
-  border:1px solid var(--border);
-  font-size:13px; font-weight:600;
-  opacity:0; pointer-events:none;
-  transition:opacity 0.3s, transform 0.3s;
-  z-index:300;
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%) translateY(-8px);
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  color: var(--text);
+  padding: 12px 22px;
+  border-radius: 28px;
+  border: 1px solid var(--gold-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 300;
   max-width: 88%;
-  text-align:center;
+  text-align: center;
+  box-shadow:
+    0 12px 28px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(201,168,92,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
-.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-.toast.error { border-color: var(--accent); }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.error {
+  border-color: rgba(248,113,113,0.5);
+  box-shadow:
+    0 12px 28px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(248,113,113,0.15),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
 
 /* ───────── キャンペーンバナー (Menu v2: GRAND OPENING -30%) ───────── */
 .campaign-banner {
@@ -790,6 +978,26 @@ body {
   opacity: 0.65;
   margin-top: 2px;
 }
+
+/* ───────── 予約確定中 オーバーレイ (Premium ceremonial) ───────── */
+.submit-overlay {
+  position: fixed; inset: 0;
+  z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 50%, rgba(5,5,5,0.92) 0%, rgba(0,0,0,0.96) 70%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+.submit-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.submit-overlay .slot-loader { padding: 0; }
+.submit-overlay .slot-loader-brand { font-size: 20px; }
+.submit-overlay .slot-loader-katana { width: 200px; }
 
 /* Premium 起動スプラッシュ */
 .splash {
@@ -1000,11 +1208,16 @@ body {
     <div class="summary-card" id="summaryCard"></div>
   </div>
 
-  <!-- 完了 -->
+  <!-- 完了 (Brand celebration) -->
   <div class="view" id="view-success">
-    <div class="success-icon">✓</div>
-    <div class="success-title">Booking Complete!</div>
-    <div class="success-subtitle">Thank you! We'll see you soon.<br>អរគុណ! យើងនឹងជួបអ្នកឆាប់ៗ។</div>
+    <div class="success-seal">
+      <span class="success-seal-mark">侍</span>
+    </div>
+    <div class="success-title">Reserved</div>
+    <div class="success-subtitle">
+      Thank you. Your slot is sealed.
+      <span class="km">អរគុណ! ការកក់របស់អ្នកត្រូវបានបញ្ជាក់</span>
+    </div>
     <div class="summary-card" id="successSummary"></div>
   </div>
 
@@ -1013,6 +1226,17 @@ body {
 <!-- アクションボタン -->
 <div class="action-area" id="actionArea" style="display:none;">
   <button class="btn btn-primary" id="actionBtn" onclick="handleNext()">Next / បន្ទាប់</button>
+</div>
+
+<!-- 提出中オーバーレイ (確定ボタン押下時の premium ceremony) -->
+<div class="submit-overlay" id="submitOverlay">
+  <div class="slot-loader">
+    <div class="slot-loader-brand">
+      <span>S</span><span>A</span><span>M</span><span>U</span><span>R</span><span>A</span><span>I</span><span class="space">&nbsp;</span><span>M</span><span>O</span><span>T</span><span>O</span><span>R</span><span>S</span>
+    </div>
+    <div class="slot-loader-katana"></div>
+    <div class="slot-loader-sub">Sealing your reservation<span class="km">កំពុងបញ្ជាក់ការកក់...</span></div>
+  </div>
 </div>
 
 <!-- トースト -->
@@ -1821,13 +2045,16 @@ function shareLocation() {
 
 function setBtnLoading(loading) {
   var btn = document.getElementById('actionBtn');
+  var overlay = document.getElementById('submitOverlay');
   if (loading) {
     btn.disabled = true;
     btn.dataset.originalText = btn.textContent;
-    btn.textContent = 'Sending...';
+    btn.textContent = '...';
+    if (overlay) overlay.classList.add('show');
   } else {
     btn.disabled = false;
     if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
+    if (overlay) overlay.classList.remove('show');
   }
 }
 
