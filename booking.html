@@ -888,21 +888,8 @@ function renderOptions() {
     return;
   }
 
-  // "No GLASS" カード(デフォルト)
-  var noOptCard = document.createElement('div');
-  noOptCard.className = 'choice-card option-card no-option';
-  if (state.selectedGlassOption === null) noOptCard.classList.add('selected');
-  noOptCard.innerHTML =
-    '<div class="option-info">'
-    + '<div class="option-name">No glass coating</div>'
-    + '<div class="option-name-km">មិនបន្ថែម</div>'
-    + '<div class="option-desc">Just SAMURAI WASH for now.</div>'
-    + '</div>'
-    + '<div class="option-price">—</div>';
-  noOptCard.onclick = function() { selectGlassOption(null); };
-  container.appendChild(noOptCard);
-
-  // GLASS_3 / GLASS_ALL カード
+  // GLASS_3 / GLASS_ALL カード — 純粋な opt-in トグル
+  // 何も選択しない=glass無し(デフォルト)。同じカードを再タップで解除。別カードタップで切替。
   (state.options || []).forEach(function(opt) {
     var card = document.createElement('div');
     card.className = 'choice-card option-card';
@@ -916,9 +903,26 @@ function renderOptions() {
       + '<div class="option-desc">+' + duration + 'min · ' + escapeHtml(opt.description || '') + '</div>'
       + '</div>'
       + '<div class="option-price">+$' + price + '</div>';
-    card.onclick = function() { selectGlassOption(opt.code); };
+    // トグル動作: 既に選択中なら解除、未選択なら選択(別オプションへの切替も可)
+    card.onclick = function() {
+      if (state.selectedGlassOption === opt.code) {
+        selectGlassOption(null);  // 同じものを再タップ → 解除
+      } else {
+        selectGlassOption(opt.code); // 未選択 → 選択 / 別カードへ切替
+      }
+    };
     container.appendChild(card);
   });
+
+  // ヒント表示: 状態に応じてメッセージを変える
+  var hint = document.createElement('div');
+  hint.style.cssText = 'text-align:center; padding:10px 4px 0; color:var(--text-dim); font-size:11px; line-height:1.5;';
+  if (state.selectedGlassOption) {
+    hint.innerHTML = '✓ Tap the selected option again to remove<br><span style="opacity:0.6">ចុចម្តងទៀតដើម្បីដកចេញ</span>';
+  } else {
+    hint.innerHTML = 'Glass coating is optional — skip or tap to add<br><span style="opacity:0.6">ស្រោបកញ្ចក់គឺជាជម្រើសបន្ថែម</span>';
+  }
+  container.appendChild(hint);
 }
 
 function selectGlassOption(code) {
