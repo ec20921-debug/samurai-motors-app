@@ -5,56 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Samurai Motors - Booking</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Sans+Khmer:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
-  --bg: #0f0f0f;
-  --card: #1a1a1a;
-  --card-hover: #232323;
-  --border: #2a2a2a;
-  --accent: #c8102e;
-  --gold: #c9a84c;
-  --gold-soft: rgba(201,168,76,0.12);
-  --gold-strong: rgba(201,168,76,0.25);
-  --text: #e8e8e8;
+  /* 深黒ベース + シャンパンゴールドの高級感パレット (2026-05-06 premium upgrade) */
+  --bg: #050505;
+  --bg-soft: #0a0a0a;
+  --card: #131313;
+  --card-hover: #1a1a1a;
+  --border: #1f1f1f;
+  --border-soft: #161616;
+  --accent: #b91229;            /* refined deep red, samurai */
+  --gold: #c9a85c;              /* champagne gold */
+  --gold-bright: #e3c878;       /* highlight gold */
+  --gold-muted: #8a7843;
+  --gold-soft: rgba(201,168,92,0.10);
+  --gold-strong: rgba(201,168,92,0.22);
+  --silver: #c0c0c0;
+  --text: #f0f0f0;
   --text-dim: #888;
-  --text-label: #bbb;
+  --text-label: #aaa;
   --success: #2ecc71;
   --success-bg: rgba(46,204,113,0.15);
   --blue: #3498db;
-  --radius: 12px;
+  --radius: 10px;
+  --serif: 'Cinzel', 'Noto Serif', Georgia, serif;
 }
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 body {
   font-family: 'Noto Sans','Noto Sans Khmer', sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 50% -10%, rgba(201,168,92,0.06) 0%, transparent 60%),
+    radial-gradient(circle at 50% 100%, rgba(185,18,41,0.04) 0%, transparent 50%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+  background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ───────── ヘッダー ───────── */
+/* ───────── ヘッダー (Premium serif、ゴールド divider) ───────── */
 .header {
-  position: sticky; top:0; z-index:100;
-  background: var(--bg);
+  position: sticky; top: 0; z-index: 100;
+  background: linear-gradient(180deg, rgba(5,5,5,0.96) 0%, rgba(5,5,5,0.85) 100%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 14px 16px 12px;
   display: flex; align-items: center; gap: 12px;
+  position: relative;
+}
+.header::after {
+  content: '';
+  position: absolute; left: 50%; bottom: -1px;
+  width: 80px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  transform: translateX(-50%);
 }
 .back-btn {
-  width:36px; height:36px; border-radius:10px;
-  background: var(--card); border:1px solid var(--border);
-  color: var(--text); font-size:20px; line-height:1;
-  display:flex; align-items:center; justify-content:center;
-  cursor:pointer; flex-shrink:0;
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: all 0.2s;
 }
-.back-btn:active { background:var(--card-hover); }
-.back-btn.hidden { visibility:hidden; }
-.header-title { flex:1; min-width:0; }
-.header-title h1 { font-size:15px; letter-spacing:0.3px; color:var(--gold); }
-.header-title p { font-size:11px; color:var(--text-dim); margin-top:2px; }
+.back-btn:active { background: var(--card-hover); border-color: var(--gold); }
+.back-btn.hidden { visibility: hidden; }
+.header-title { flex: 1; min-width: 0; text-align: center; }
+.header-title h1 {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.header-title p {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  letter-spacing: 0.5px;
+}
 
 /* ───────── プログレスバー ───────── */
 .progress {
@@ -85,211 +120,314 @@ body {
 .view.active { display:block; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
-/* Armor Tokyo インスパイア: 巨大英字 + 小さいサブタイトル */
+/* Premium serif、巨大英字 + 金ヘアライン (Armor Tokyo + 高級カタログ調) */
 .view-title {
-  font-size: 26px; font-weight: 800;
-  margin-bottom: 4px;
-  letter-spacing: 0.5px;
-  line-height: 1.15;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 3px;
+  line-height: 1.2;
   color: var(--text);
   text-transform: uppercase;
+  position: relative;
+  padding-bottom: 14px;
+}
+.view-title::after {
+  content: '';
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 48px; height: 1px;
+  background: linear-gradient(90deg, var(--gold), transparent);
 }
 .view-title .km {
-  display:block; font-size:12px; color:var(--text-dim);
-  font-weight:400; margin-top:4px;
-  text-transform: none; letter-spacing: 0;
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-top: 8px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .view-desc {
-  font-size: 13px; color: var(--text-dim);
-  margin-bottom: 20px;
-  line-height: 1.5;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  line-height: 1.6;
+  letter-spacing: 0.2px;
 }
 
 /* ───────── セクションタイトル ───────── */
 .section-title {
-  font-size:13px; font-weight:700; color:var(--text-label);
-  margin: 20px 0 10px;
+  font-family: var(--serif);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-label);
+  margin: 24px 0 12px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
 }
 .section-title:first-child { margin-top: 0; }
-.section-title .km { font-size:11px; color:var(--text-dim); font-weight:400; text-transform:none; letter-spacing:0; margin-left:6px; }
-
-/* ───────── プランカード ───────── */
-.card-list { display:flex; flex-direction:column; gap:10px; }
-.choice-card {
-  background: var(--card);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
+.section-title .km {
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 8px;
 }
-.choice-card:active { transform:scale(0.98); }
-.choice-card:hover { background: var(--card-hover); border-color: var(--gold); }
-.choice-card.selected { border-color: var(--gold); background: var(--gold-soft); }
+
+/* ───────── 選択カード (Premium: gradient bg + gold hairline + inner glow) ───────── */
+.card-list { display: flex; flex-direction: column; gap: 12px; }
+.choice-card {
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.choice-card:active { transform: scale(0.98); }
+.choice-card:hover {
+  border-color: var(--gold-muted);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.choice-card.selected {
+  border-color: var(--gold);
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.08) 0%, rgba(201,168,92,0.02) 100%),
+    var(--card);
+  box-shadow:
+    inset 0 0 24px rgba(201,168,92,0.06),
+    0 6px 20px rgba(201,168,92,0.10),
+    0 2px 8px rgba(0,0,0,0.3);
+}
 .choice-card.selected::after {
   content: '✓';
-  position: absolute; top:10px; right:12px;
-  width:24px; height:24px; border-radius:50%;
-  background: var(--gold); color:#000;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:700; font-size:14px;
+  position: absolute; top: 12px; right: 12px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  color: #000;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  box-shadow: 0 2px 6px rgba(201,168,92,0.4);
 }
 
 .plan-card .plan-letter {
-  display:inline-block;
-  width:34px; height:34px; line-height:34px; text-align:center;
-  background: var(--accent); color:#fff;
-  border-radius:8px; font-weight:700; font-size:18px;
-  margin-right:10px; vertical-align:middle;
+  display: inline-block;
+  width: 36px; height: 36px; line-height: 34px; text-align: center;
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-family: var(--serif);
+  border-radius: 50%;
+  font-weight: 600; font-size: 16px;
+  margin-right: 12px; vertical-align: middle;
+  letter-spacing: 0;
 }
 .plan-card .plan-name {
-  display:inline-block; vertical-align:middle;
-  font-size:16px; font-weight:700; color:var(--gold);
+  display: inline-block; vertical-align: middle;
+  font-family: var(--serif);
+  font-size: 17px; font-weight: 600; color: var(--gold);
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 .plan-card .plan-desc {
-  font-size:12px; color:var(--text-dim);
-  margin-top:8px; line-height:1.5;
+  font-size: 12px; color: var(--text-dim);
+  margin-top: 10px; line-height: 1.6;
+  letter-spacing: 0.2px;
 }
 .plan-card .plan-meta {
-  display:flex; justify-content:space-between; align-items:center;
-  margin-top:10px; padding-top:10px;
-  border-top: 1px dashed var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
 }
 .plan-card .plan-price {
-  font-size:18px; font-weight:700; color:var(--gold);
+  font-family: var(--serif);
+  font-size: 22px; font-weight: 600; color: var(--gold);
+  letter-spacing: 1px;
 }
 .plan-card .plan-duration {
-  font-size:11px; color:var(--text-dim);
+  font-size: 11px; color: var(--text-dim);
+  letter-spacing: 0.5px;
 }
 .plan-card .plan-fee-note {
-  margin-top:4px; font-size:11px; color:var(--text-dim); text-align:right;
+  margin-top: 6px; font-size: 10px; color: var(--text-dim); text-align: right;
+  letter-spacing: 0.3px;
+  font-style: italic;
 }
 
 /* ───────── オプションカード (Menu v2: GLASS add-on) ───────── */
 .option-card {
-  background: var(--card);
-  border: 1.5px solid var(--border);
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 14px;
+  padding: 14px 16px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .option-card:active { transform: scale(0.98); }
-.option-card:hover { background: var(--card-hover); border-color: var(--gold); }
-.option-card.selected { border-color: var(--gold); background: var(--gold-soft); }
+.option-card:hover { border-color: var(--gold-muted); }
+.option-card.selected {
+  border-color: var(--gold);
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.08) 0%, rgba(201,168,92,0.02) 100%),
+    var(--card);
+  box-shadow:
+    inset 0 0 24px rgba(201,168,92,0.06),
+    0 6px 20px rgba(201,168,92,0.10);
+}
 .option-card.selected::after {
   content: '✓';
   position: absolute; top: 10px; right: 12px;
   width: 22px; height: 22px; border-radius: 50%;
-  background: var(--gold); color: #000;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  color: #000;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 13px;
+  box-shadow: 0 2px 6px rgba(201,168,92,0.4);
 }
 .option-card .option-info { flex: 1; padding-right: 30px; }
 .option-card .option-name {
-  font-size: 14px; font-weight: 700; color: var(--gold);
-  letter-spacing: 0.3px;
+  font-family: var(--serif);
+  font-size: 14px; font-weight: 600; color: var(--gold);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
 }
 .option-card .option-name-km {
-  font-size: 11px; color: var(--text-dim); font-weight: 400;
-  margin-top: 2px;
+  font-size: 10px; color: var(--text-dim); font-weight: 400;
+  margin-top: 4px;
+  letter-spacing: 0.3px;
 }
 .option-card .option-desc {
-  font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4;
+  font-size: 11px; color: var(--text-dim);
+  margin-top: 8px; line-height: 1.6;
+  letter-spacing: 0.2px;
 }
 .option-card .option-price {
-  font-size: 16px; font-weight: 800; color: var(--gold);
+  font-family: var(--serif);
+  font-size: 18px; font-weight: 600; color: var(--gold);
   margin-left: 12px; white-space: nowrap;
+  letter-spacing: 1px;
 }
-.option-card.no-option .option-name { color: var(--text); }
-.option-card.no-option .option-price { color: var(--text-dim); font-size: 13px; font-weight: 600; }
 
-/* ───────── Required / Optional バッジ (Armor Tokyo風) ───────── */
+/* ───────── Required / Optional バッジ (refined) ───────── */
 .badge-required, .badge-optional {
   display: inline-block;
-  margin-left: 8px;
-  font-size: 9px;
-  padding: 2px 7px;
-  border-radius: 3px;
+  margin-left: 10px;
+  font-size: 8px;
+  padding: 3px 8px;
+  border-radius: 2px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.7px;
+  letter-spacing: 1.2px;
   vertical-align: middle;
 }
 .badge-required {
-  background: var(--accent); color: #fff;
+  background: rgba(185,18,41,0.15);
+  color: #f48fa1;
+  border: 1px solid rgba(185,18,41,0.4);
 }
 .badge-optional {
-  background: var(--gold-soft); color: var(--gold);
-  border: 1px solid rgba(201,168,76,0.4);
+  background: var(--gold-soft);
+  color: var(--gold);
+  border: 1px solid rgba(201,168,92,0.4);
 }
 
-/* セクションタイトルの番号プレフィックス強調 */
+/* セクションタイトルのステップ番号 (Roman feel: gold ring + serif) */
 .section-title .step-num {
-  display: inline-block;
-  width: 18px; height: 18px; line-height: 18px;
-  background: var(--gold); color: #000;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
   border-radius: 50%;
-  text-align: center; font-size: 10px; font-weight: 800;
-  margin-right: 8px;
-  vertical-align: middle;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 10px;
+  font-weight: 600;
+  margin-right: 12px;
+  letter-spacing: 0;
 }
 
-/* ───────── 車種サイズカード ───────── */
+/* ───────── 車種サイズカード (Premium gradient + 細部ゴールド) ───────── */
 .size-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
 .size-card {
-  background: var(--card);
-  border: 1.5px solid var(--border);
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 12px;
+  padding: 18px 12px 14px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-.size-card:active { transform:scale(0.97); }
-.size-card.selected { border-color: var(--gold); background: var(--gold-soft); }
+.size-card:active { transform: scale(0.97); }
+.size-card.selected {
+  border-color: var(--gold);
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.08) 0%, rgba(201,168,92,0.02) 100%),
+    var(--card);
+  box-shadow:
+    inset 0 0 24px rgba(201,168,92,0.06),
+    0 6px 20px rgba(201,168,92,0.10);
+}
 .size-card.selected::after {
   content: '✓';
-  position: absolute; top:8px; right:8px;
-  width:22px; height:22px; border-radius:50%;
-  background: var(--gold); color:#000;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:700; font-size:12px;
+  position: absolute; top: 8px; right: 8px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  color: #000;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px;
+  box-shadow: 0 2px 6px rgba(201,168,92,0.4);
 }
-.size-card .size-icon { font-size: 36px; margin-bottom: 8px; }
+.size-card .size-icon { font-size: 38px; margin-bottom: 10px; }
 .size-card .size-label {
-  font-size: 14px; font-weight: 700; color: var(--text);
-  margin-bottom: 2px;
+  font-family: var(--serif);
+  font-size: 14px; font-weight: 600; color: var(--text);
+  margin-bottom: 3px;
+  letter-spacing: 1px;
 }
 .size-card .size-km {
   font-size: 11px; color: var(--text-dim);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
 }
 .size-card .size-examples {
   font-size: 10px; color: var(--text-dim);
-  line-height: 1.5;
-  border-top: 1px dashed var(--border);
-  padding-top: 8px;
+  line-height: 1.6;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 10px;
   margin-top: 4px;
+  letter-spacing: 0.2px;
 }
 .size-card .size-hint {
   display: inline-block;
-  margin-top: 6px;
-  font-size: 10px; font-weight: 600;
+  margin-top: 8px;
+  font-size: 9px; font-weight: 600;
   color: var(--gold);
   background: var(--gold-soft);
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid rgba(201,168,92,0.2);
 }
 
 /* ───────── 日付ピッカー ───────── */
@@ -401,23 +539,52 @@ body {
 /* ───────── ボタン ───────── */
 .action-area {
   position: fixed; bottom: 0; left: 0; right: 0;
-  padding: 12px 16px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: linear-gradient(transparent, var(--bg) 25%);
+  padding: 16px 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(5,5,5,0.95) 30%, var(--bg) 70%);
   z-index: 100;
 }
 .btn {
-  width:100%; padding:14px; border:none; border-radius:var(--radius);
-  font-size:16px; font-weight:700; font-family:inherit;
-  cursor:pointer; transition:all 0.2s;
-  display:flex; align-items:center; justify-content:center; gap:8px;
-  max-width:480px; margin:0 auto;
+  width: 100%;
+  padding: 16px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--serif);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 480px;
+  margin: 0 auto;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
 }
-.btn:active { transform:scale(0.98); }
-.btn:disabled { opacity:0.4; pointer-events:none; }
-.btn-primary { background:var(--accent); color:#fff; box-shadow:0 4px 16px rgba(200,16,46,0.3); }
-.btn-gold { background:var(--gold); color:#000; box-shadow:0 4px 16px rgba(201,168,76,0.3); }
-.btn-secondary { background:var(--card); color:var(--text); border:1.5px solid var(--border); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.35; pointer-events: none; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, #8a0e1f 100%);
+  color: #fff;
+  box-shadow: 0 6px 22px rgba(185,18,41,0.35), inset 0 1px 0 rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.btn-gold {
+  background: linear-gradient(135deg, var(--gold-bright) 0%, var(--gold) 50%, #a08940 100%);
+  color: #000;
+  box-shadow: 0 6px 22px rgba(201,168,92,0.40), inset 0 1px 0 rgba(255,255,255,0.3);
+  border: 1px solid rgba(0,0,0,0.2);
+  font-weight: 700;
+}
+.btn-secondary {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
 
 /* ───────── 完了画面 ───────── */
 .success-icon {
