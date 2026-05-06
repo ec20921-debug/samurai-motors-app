@@ -20,14 +20,19 @@
 const BOOKING_TZ = 'Asia/Phnom_Penh';
 const SLOT_STEP_MIN = 30;   // 空き枠チェックの刻み幅（分）
 
-// ミニアプリ（英語表示）用のプラン説明
-// 料金設定シートの「説明」列は日本語（管理者向け）なので、顧客用は letter 毎にここで訳す
-// Air check は希望者のみ対応（全プラン共通オプション扱い）→ 基本説明からは外す
+// ミニアプリ(英語表示)用のプラン説明
+// Menu v2 (2026-05-06): 旧4プラン(A/B/C/D)廃止、SAMURAI WASH (W) 1本に集約
+// GLASS は OPTIONS シート側で別管理(getActiveOptions 参照)
 const PLAN_DESC_EN = {
-  'A': 'Waterless wash + Tire shine',
-  'B': 'A + Front 3 windows water-repellent (quick)',
-  'C': 'A + All windows water-repellent (quick)',
-  'D': 'A + Oil film removal + All windows water-repellent'
+  'W': 'Waterless body wash + Tire wax (Required base service)'
+};
+
+// 旧プラン letter (legacy) — 履歴表示時のラベル変換のみ使用、新規予約には使わない
+const LEGACY_PLAN_DESC = {
+  'A': 'Legacy: KIYOME (Waterless wash + Tire shine)',
+  'B': 'Legacy: KAGAMI (A + Front 3 windows water-repellent)',
+  'C': 'Legacy: TAKUMI (A + All windows water-repellent)',
+  'D': 'Legacy: SHOGUN (A + Oil film removal + All windows water-repellent)'
 };
 
 // ====== プラン取得 ======
@@ -73,16 +78,39 @@ function getActivePlans() {
 }
 
 /**
- * "清 KIYOME (A)" → { letter:'A', jp:'清', name:'KIYOME', planFull:'清 KIYOME (A)' }
+ * プラン名行をパースして letter / jp / name に分解
+ *
+ * 対応フォーマット:
+ *   - 旧形式: "清 KIYOME (A)"        → { jp:'清', name:'KIYOME', letter:'A' }
+ *   - 新形式: "SAMURAI WASH (W)"     → { jp:'',  name:'SAMURAI WASH', letter:'W' }
+ *   - 新形式: "Samurai Wash (W)"     → { jp:'',  name:'Samurai Wash', letter:'W' }
+ *
+ * 新規予約は Menu v2 (W) のみ生成。A/B/C/D はパースのみ対応(履歴表示用)。
  */
 function parsePlanRow(planName) {
-  // 末尾 (X) を抽出
-  const m = planName.match(/^(\S+)\s+(\S+)\s*\(([A-Z])\)\s*$/);
-  if (!m) return null;
+  // (X) の letter を抽出
+  const letterMatch = planName.match(/^(.+?)\s*\(([A-Z]+)\)\s*$/);
+  if (!letterMatch) return null;
+  const fullName = letterMatch[1].trim();
+  const letter = letterMatch[2];
+
+  // 旧形式判定: 先頭が漢字1〜2文字 + 半角スペース + 英字単語
+  // 例: "清 KIYOME" / "鏡 KAGAMI"
+  const oldFormatMatch = fullName.match(/^([一-龥]{1,3})\s+(\S+)$/);
+  if (oldFormatMatch) {
+    return {
+      jp: oldFormatMatch[1],
+      name: oldFormatMatch[2],
+      letter: letter,
+      planFull: planName
+    };
+  }
+
+  // 新形式: 英字メイン(複数語可)、JP は空
   return {
-    jp: m[1],
-    name: m[2],
-    letter: m[3],
+    jp: '',
+    name: fullName,
+    letter: letter,
     planFull: planName
   };
 }
@@ -104,6 +132,81 @@ function findPlanByLetter(letter) {
 function getDispatchFee() {
   const cfg = getBookingConfig();
   return { sedan: cfg.travelFee, suv: cfg.travelFee };
+}
+
+// ====== オプション取得 (Menu v2: GLASS add-on) ======
+
+/**
+ * OPTIONS シートから有効な追加オプション一覧を取得
+ *
+ * @return {Array<Object>} [{code, nameEn, nameKm, nameJp, priceSedan, priceSuv,
+ *                            durationSedan, durationSuv, requiresPlan, description}]
+ */
+function getActiveOptions() {
+  let sheet;
+  try {
+    sheet = getSheet(SHEET_NAMES.OPTIONS);
+  } catch (e) {
+    // OPTIONS シート未作成 → migrateMenuV2() 未実行の可能性
+    Logger.log('⚠️ getActiveOptions: ' + SHEET_NAMES.OPTIONS + ' シート未作成。migrateMenuV2() を実行してください');
+    return [];
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const lastCol = Math.max(11, sheet.getLastColumn());
+  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const options = [];
+
+  data.forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const active = row[9];
+    if (active !== true && String(active).toUpperCase() !== 'TRUE') return; // 無効行をスキップ
+
+    options.push({
+      code:           code,
+      nameEn:         String(row[1] || ''),
+      nameKm:         String(row[2] || ''),
+      nameJp:         String(row[3] || ''),
+      priceSedan:     Number(row[4]) || 0,
+      priceSuv:       Number(row[5]) || 0,
+      durationSedan:  Number(row[6]) || 0,
+      durationSuv:    Number(row[7]) || 0,
+      requiresPlan:   String(row[8] || '').trim(), // 'W' = SAMURAI WASH 必須
+      description:    String(row[10] || '')
+    });
+  });
+
+  return options;
+}
+
+/**
+ * コード('GLASS_3' 等)からオプションを検索
+ */
+function findOptionByCode(code) {
+  if (!code) return null;
+  const options = getActiveOptions();
+  for (let i = 0; i < options.length; i++) {
+    if (options[i].code === code) return options[i];
+  }
+  return null;
+}
+
+/**
+ * オプション+車種から追加料金(USD)を取得
+ */
+function getOptionPriceFor(option, miniappVt) {
+  if (!option) return 0;
+  return miniappVt === 'SUV以上' ? option.priceSuv : option.priceSedan;
+}
+
+/**
+ * オプション+車種から追加所要時間(分)を取得
+ */
+function getOptionDurationFor(option, miniappVt) {
+  if (!option) return 0;
+  return miniappVt === 'SUV以上' ? option.durationSuv : option.durationSedan;
 }
 
 // ====== 車種タイプ変換 ======
@@ -338,12 +441,36 @@ function createBooking(params) {
       return { status: 'error', message: '車種タイプ不正' };
     }
 
-    const duration = getDurationFor(plan, vehicleType);
-    const baseAmount = getBasePriceFor(plan, vehicleType);
-    const dispatchFeeAmount = getDispatchFeeFor(vehicleType);
-    const amount = baseAmount + dispatchFeeAmount; // 請求総額（シートの出張料を動的加算）
+    // ── 1-b. GLASS オプション(Menu v2)の解決 ──
+    // params.glassOption: null | 'GLASS_3' | 'GLASS_ALL'
+    // 旧クライアント(glassOption 未送信)の場合は WASH のみで処理
+    let glassOpt = null;
+    if (params.glassOption) {
+      glassOpt = findOptionByCode(params.glassOption);
+      if (!glassOpt) {
+        return { status: 'error', message: 'オプション不正: ' + params.glassOption };
+      }
+      // 必須プラン整合性チェック(GLASS は WASH 必須)
+      if (glassOpt.requiresPlan && glassOpt.requiresPlan !== plan.letter) {
+        return {
+          status: 'error',
+          message: 'オプション "' + glassOpt.code + '" は ' + glassOpt.requiresPlan + ' プラン必須'
+        };
+      }
+    }
 
-    // ── 2. 空き枠再確認（ロック後に取り直し） ──
+    // ── 1-c. 料金・所要時間の合算 ──
+    const baseDuration = getDurationFor(plan, vehicleType);
+    const glassDuration = getOptionDurationFor(glassOpt, vehicleType);
+    const duration = baseDuration + glassDuration;
+
+    const baseAmount = getBasePriceFor(plan, vehicleType);
+    const glassAmount = getOptionPriceFor(glassOpt, vehicleType);
+    const dispatchFeeAmount = getDispatchFeeFor(vehicleType);
+    const amount = baseAmount + glassAmount + dispatchFeeAmount; // 請求総額(WASH + GLASS + Delivery)
+
+    // ── 2. 空き枠再確認(ロック後に取り直し) ──
+    // 注: findAvailableSlots は plan の duration のみ使用するため、GLASS 込みの duration で再確認は別途必要
     const avail = findAvailableSlots(params.date, params.planLetter, vehicleType);
     if (!avail.ok) return { status: 'error', message: '空き枠取得失敗: ' + avail.error };
     if (avail.slots.indexOf(params.startTime) < 0) {
@@ -375,15 +502,22 @@ function createBooking(params) {
     // ── 6. カレンダー登録 ──
     const sysCfg = getConfig();
     const calendar = CalendarApp.getCalendarById(sysCfg.bookingCalendarId);
-    const eventTitle = '【' + plan.letter + '】' + (params.name || 'Guest') + ' / ' + normalizeVehicleType(vehicleType);
+    const planLabel = plan.name + (glassOpt ? ' + ' + glassOpt.nameEn : '');
+    const eventTitle = '【' + plan.letter + (glassOpt ? '+' + glassOpt.code : '') + '】' +
+                       (params.name || 'Guest') + ' / ' + normalizeVehicleType(vehicleType);
+    const calendarDesc =
+      '予約ID: ' + bookingId + '\n' +
+      'プラン: ' + plan.planFull + '\n' +
+      (glassOpt ? 'オプション: ' + glassOpt.nameEn + ' (' + glassOpt.code + ')\n' : '') +
+      '車種: ' + vehicleType + '\n' +
+      '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
+      '場所: ' + params.location + '\n' +
+      '料金: $' + baseAmount +
+      (glassOpt ? ' + GLASS $' + glassAmount : '') +
+      ' + 出張料 $' + dispatchFeeAmount +
+      ' = 合計 $' + amount;
     const event = calendar.createEvent(eventTitle, startDt, endDt, {
-      description:
-        '予約ID: ' + bookingId + '\n' +
-        'プラン: ' + plan.planFull + '\n' +
-        '車種: ' + vehicleType + '\n' +
-        '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
-        '場所: ' + params.location + '\n' +
-        '料金: $' + baseAmount + ' + 出張料 $' + dispatchFeeAmount + ' = 合計 $' + amount,
+      description: calendarDesc,
       location: loc.mapsUrl || params.location
     });
     const calendarEventId = event.getId();
@@ -396,7 +530,7 @@ function createBooking(params) {
       '車種タイプ':     normalizeVehicleType(vehicleType),
       '車種名':         '',
       'プラン':         plan.planFull,
-      'オプション':     '',
+      'オプション':     glassOpt ? glassOpt.code : '',
       '予約日':         params.date,
       '予約時刻':       params.startTime,
       '所要時間(分)':   duration,
@@ -419,12 +553,24 @@ function createBooking(params) {
       '管理者メモ':     ''
     });
 
+    // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
+    if (typeof logFunnelEvent === 'function') {
+      logFunnelEvent(params.chatId, 'booking_completed', 'booking.html', bookingId, {
+        plan: plan.letter,
+        glass: glassOpt ? glassOpt.code : null,
+        amount: amount,
+        vehicleType: vehicleType
+      });
+    }
+
     // ── 8. 3方向通知 ──
     notifyBookingCreated({
       bookingId: bookingId,
       chatId: params.chatId,
       name: params.name,
       plan: plan,
+      glassOption: glassOpt,
+      glassAmount: glassAmount,
       vehicleType: vehicleType,
       date: params.date,
       startTime: params.startTime,
@@ -459,22 +605,33 @@ function createBooking(params) {
 function notifyBookingCreated(info) {
   const cfg = getConfig();
 
-  // ── 顧客へ（クメール語 + 英語） ──
-  // 料金は「プラン料金 + 出張料 = 総額」の内訳で表示（シート「出張料」値を動的参照）
+  // ── 顧客へ(英語メイン + クメール語サブ / Menu v2 / 2026-05-06)──
   const baseAmt = (typeof info.baseAmount === 'number') ? info.baseAmount : info.amount;
   const feeAmt  = (typeof info.dispatchFee === 'number') ? info.dispatchFee : 0;
-  const customerText =
-    '✅ ការកក់ទទួលបានជោគជ័យ! / Booking confirmed!\n' +
+  const glassAmt = (typeof info.glassAmount === 'number') ? info.glassAmount : 0;
+  const planDisplayName = (info.plan.jp ? info.plan.jp + ' ' : '') + info.plan.name;
+  const glassOpt = info.glassOption || null;
+
+  let customerText =
+    '✅ Booking confirmed! / ការកក់ទទួលបានជោគជ័យ!\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📋 ' + info.bookingId + '\n' +
-    '📦 Plan: ' + info.plan.jp + ' ' + info.plan.name + ' (' + info.plan.letter + ')\n' +
+    '📦 Plan: ' + planDisplayName + '\n';
+  if (glassOpt) {
+    customerText += '✨ Add-on: ' + glassOpt.nameEn + '\n';
+  }
+  customerText +=
     '📅 ' + info.date + ' ' + info.startTime + ' - ' + info.endTime + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
-    '💰 Plan / តម្លៃសេវា:        $' + baseAmt + '\n' +
-    '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន: $' + feeAmt + '\n' +
-    '💵 Total / សរុប:            $' + info.amount + '\n' +
+    '💰 ' + (info.plan.name || 'Plan') + ':' + '   $' + baseAmt + '\n';
+  if (glassOpt) {
+    customerText += '✨ GLASS (' + glassOpt.nameEn + '):  $' + glassAmt + '\n';
+  }
+  customerText +=
+    '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  $' + feeAmt + '\n' +
+    '💵 Total / សរុប:                  $' + info.amount + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
-    'សូមអរគុណ! / Thank you!';
+    'Thank you! / សូមអរគុណ!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
 
   // ── 駐車場所のヒアリング（カンボジアはビル駐車場で階が多いため必須） ──
@@ -508,15 +665,21 @@ function notifyBookingCreated(info) {
     username:  ''
   };
 
-  const adminText =
+  let adminText =
     '🆕 新規予約\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '予約番号: ' + info.bookingId + '\n' +
     '顧客: ' + (info.name || 'Guest') + ' (chat_id=' + info.chatId + ')\n' +
-    'プラン: ' + info.plan.planFull + '\n' +
+    'プラン: ' + info.plan.planFull + '\n';
+  if (glassOpt) {
+    adminText += 'オプション: ' + glassOpt.nameEn + ' (' + glassOpt.code + ')\n';
+  }
+  adminText +=
     '車種: ' + info.vehicleType + '\n' +
     '日時: ' + info.date + ' ' + info.startTime + '〜' + info.endTime + ' (' + info.duration + '分)\n' +
-    '料金: $' + baseAmt + ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount + '\n' +
+    '料金: $' + baseAmt +
+    (glassOpt ? ' + GLASS $' + glassAmt : '') +
+    ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount + '\n' +
     '場所: ' + info.mapsUrl + '\n' +
     '━━━━━━━━━━━━━━━━';
 

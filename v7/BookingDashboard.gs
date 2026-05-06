@@ -334,7 +334,15 @@ function buildBkPieCharts_(sh, row, ss) {
   // --- プラン別売上（D1:E6） ---
   cache.getRange('D1:E1').setValues([['プラン', '売上']]);
   cache.getRange('D1:E1').setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  const plans = ['清 KIYOME (A)', '鏡 KAGAMI (B)', '匠 TAKUMI (C)', '将軍 SHOGUN (D)'];
+  // Menu v2 (2026-05-06): プラン一覧を Plan_Prices シートから動的取得 (旧4プランハードコード廃止)
+  const plans = (function() {
+    try {
+      const list = getActivePlans().map(function(pl) { return pl.planFull; });
+      return list.length ? list : ['SAMURAI WASH (W)'];
+    } catch (e) {
+      return ['SAMURAI WASH (W)'];
+    }
+  })();
   plans.forEach(function(p, i) {
     cache.getRange('D' + (i + 2)).setValue(p);
     cache.getRange('E' + (i + 2)).setFormula(
@@ -464,7 +472,15 @@ function buildBkRankings_(sh, row, ss) {
   sh.getRange(row, 2, 1, 4).setValues([['プラン', '件数', '売上', '構成比']])
     .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold).setFontWeight('bold')
     .setHorizontalAlignment('center');
-  const plans = ['清 KIYOME (A)', '鏡 KAGAMI (B)', '匠 TAKUMI (C)', '将軍 SHOGUN (D)'];
+  // Menu v2 (2026-05-06): プラン一覧を Plan_Prices シートから動的取得
+  const plans = (function() {
+    try {
+      const list = getActivePlans().map(function(pl) { return pl.planFull; });
+      return list.length ? list : ['SAMURAI WASH (W)'];
+    } catch (e) {
+      return ['SAMURAI WASH (W)'];
+    }
+  })();
   plans.forEach(function(p, i) {
     const r = row + 1 + i;
     sh.getRange(r, 2).setValue(p).setFontColor(BK_COLOR.text).setFontWeight('bold');

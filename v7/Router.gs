@@ -123,11 +123,18 @@ function doPost(e) {
 /**
  * GET booking_init
  * Query: chatId, name, username
- * Response: { status:'ok', customer, plans, dispatchFee }
+ * Response: { status:'ok', customer, plans, options, dispatchFee }
+ *
+ * Menu v2 (2026-05-06): options を追加(GLASS add-on をミニアプリに渡す)
  */
 function apiBookingInit(params) {
   const chatId = String(params.chatId || '');
   if (!chatId) return { status: 'error', message: 'chatId required' };
+
+  // ファネル計測: ミニアプリ起動を記録(失敗しても無視)
+  if (typeof logFunnelEvent === 'function') {
+    logFunnelEvent(chatId, 'miniapp_opened', 'booking.html', '', { params: params });
+  }
 
   let customer = null;
   const row = findCustomerRow(chatId);
@@ -142,12 +149,14 @@ function apiBookingInit(params) {
   }
 
   const plans = getActivePlans();
+  const options = (typeof getActiveOptions === 'function') ? getActiveOptions() : [];
   const dispatchFee = getDispatchFee();
 
   return {
     status: 'ok',
     customer: customer,
     plans: plans,
+    options: options,
     dispatchFee: dispatchFee
   };
 }

@@ -48,7 +48,9 @@ const SHEET_NAMES = {
   STAFF:       'スタッフ',
   CHAT_LOG:    'チャット履歴',
   QR_CODES:    'QRコード',
-  PLAN_PRICES: '料金設定'
+  PLAN_PRICES: '料金設定',
+  OPTIONS:     'オプション',     // Menu v2 (2026-05-06): GLASS 等の add-on サービス
+  FUNNEL_LOG:  'ファネルログ'   // Menu v2 (2026-05-06): Bot来訪/ミニアプリ開/予約完了 の計測
 };
 
 // ====== キュー・重複排除のキープレフィックス ======
