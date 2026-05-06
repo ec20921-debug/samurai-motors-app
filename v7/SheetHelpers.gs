@@ -216,7 +216,14 @@ function getBookingConfig() {
     travelFee: 0,
     bufferMinutes: 30,
     businessHourStart: 9,
-    businessHourEnd: 18
+    businessHourEnd: 18,
+    // Menu v2: キャンペーン設定 (2026-05-06)
+    campaign: {
+      active: false,
+      percent: 0,
+      nameEn: '',
+      nameKm: ''
+    }
   };
 
   data.forEach(function(row) {
@@ -226,6 +233,7 @@ function getBookingConfig() {
     const suv = Number(row[2]);
     const durationSedan = Number(row[3]);
     const durationSuv = Number(row[4]);
+    const rawCol1 = row[1]; // 文字列/真偽のまま参照する用
 
     if (name === '出張料') {
       config.travelFee = sedan; // セダン列に代表値
@@ -235,8 +243,16 @@ function getBookingConfig() {
       config.businessHourStart = sedan;
     } else if (name === '【設定】営業終了時刻') {
       config.businessHourEnd = sedan;
+    } else if (name === '【設定】キャンペーン有効') {
+      config.campaign.active = (rawCol1 === true || String(rawCol1).toUpperCase() === 'TRUE');
+    } else if (name === '【設定】キャンペーン割引(%)') {
+      config.campaign.percent = Number(rawCol1) || 0;
+    } else if (name === '【設定】キャンペーン名(英)') {
+      config.campaign.nameEn = String(rawCol1 || '');
+    } else if (name === '【設定】キャンペーン名(クメール)') {
+      config.campaign.nameKm = String(rawCol1 || '');
     } else {
-      // 通常プラン（清/鏡/匠/将軍）
+      // 通常プラン (新メニュー: SAMURAI WASH のみ / legacy 清/鏡/匠/将軍)
       config.plans[name] = {
         sedan: sedan,
         suv: suv,

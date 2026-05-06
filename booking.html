@@ -635,6 +635,71 @@ body {
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .toast.error { border-color: var(--accent); }
 
+/* ───────── キャンペーンバナー (Menu v2: GRAND OPENING -30%) ───────── */
+.campaign-banner {
+  margin: 4px 0 24px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, var(--accent) 0%, #6e0d18 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 6px 20px rgba(185,18,41,0.32), inset 0 1px 0 rgba(255,255,255,0.10);
+  position: relative;
+  overflow: hidden;
+}
+.campaign-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -50%;
+  width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+  animation: bannerSweep 3.6s ease-in-out infinite;
+}
+@keyframes bannerSweep { 0%, 30% { left: -50%; } 70%, 100% { left: 150%; } }
+.campaign-banner .label {
+  font-family: var(--serif);
+  letter-spacing: 2.5px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  font-size: 11px;
+  position: relative; z-index: 1;
+}
+.campaign-banner .label-km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 9px;
+  color: rgba(255,255,255,0.7);
+  margin-top: 3px;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  font-weight: 400;
+}
+.campaign-banner .discount {
+  font-family: var(--serif);
+  font-weight: 700;
+  color: var(--gold-bright);
+  font-size: 22px;
+  letter-spacing: 1.5px;
+  text-shadow: 0 2px 6px rgba(201,168,92,0.4);
+  position: relative; z-index: 1;
+}
+
+/* ───────── 割引価格表示 ───────── */
+.price-original {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: line-through;
+  margin-right: 6px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.price-discount {
+  color: var(--gold-bright);
+}
+
 /* ───────── ローダー (Premium splash 兼用) ───────── */
 .loader {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -756,6 +821,15 @@ body {
     </div>
     <div class="view-desc">Premium Japanese quality car care, delivered to you.</div>
 
+    <!-- キャンペーンバナー (有効時のみ表示) -->
+    <div class="campaign-banner" id="campaignBanner" style="display:none;">
+      <div>
+        <div class="label" id="campaignLabel">★ GRAND OPENING</div>
+        <div class="label-km" id="campaignLabelKm"></div>
+      </div>
+      <div class="discount" id="campaignDiscount">-30% OFF</div>
+    </div>
+
     <!-- 1. Vehicle Size (FIRST so prices reflect correctly) -->
     <div class="section-title"><span class="step-num">1</span>Vehicle Size <span class="km">ទំហំឡាន</span></div>
     <div class="size-grid">
@@ -778,12 +852,15 @@ body {
       <div class="size-card" id="sizeSuv" onclick="selectSize('SUV以上')">
         <div class="size-icon">
           <svg class="vehicle-svg suv" viewBox="0 0 80 32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
-            <path d="M4 22 L6 13 L11 13 L13 5 Q14 3 17 3 L60 3 Q63 3 64 5 L66 13 L72 13 L74 22"/>
-            <line x1="13" y1="13" x2="66" y2="13" stroke-width="1" opacity="0.5"/>
-            <line x1="28" y1="5" x2="28" y2="13" stroke-width="1" opacity="0.4"/>
-            <line x1="50" y1="5" x2="50" y2="13" stroke-width="1" opacity="0.4"/>
-            <circle cx="18" cy="22" r="4"/>
-            <circle cx="60" cy="22" r="4"/>
+            <!-- SUV: 短ボンネット + 長キャビン + 後部斜めウィンドウ + 大径ホイール -->
+            <path d="M4 22 L8 16 L12 14 L19 5 L55 5 L62 14 L72 16 L76 22"/>
+            <line x1="12" y1="14" x2="62" y2="14" stroke-width="1" opacity="0.4"/>
+            <!-- ルーフレール (SUV 識別) -->
+            <line x1="22" y1="3.2" x2="27" y2="3.2" stroke-width="1.3" opacity="0.55"/>
+            <line x1="47" y1="3.2" x2="52" y2="3.2" stroke-width="1.3" opacity="0.55"/>
+            <!-- 大径ホイール -->
+            <circle cx="18" cy="22" r="4.5"/>
+            <circle cx="60" cy="22" r="4.5"/>
           </svg>
         </div>
         <div class="size-label">SUV & larger</div>
@@ -884,6 +961,7 @@ var state = {
   customer: null,
   plans: [],
   options: [],                  // Menu v2: GLASS add-on一覧 (booking_initから取得)
+  campaign: null,               // Menu v2: { active, percent, nameEn, nameKm } or null
   selectedPlan: null,
   selectedGlassOption: null,    // Menu v2: 'GLASS_3' / 'GLASS_ALL' / null
   selectedSize: '',
@@ -945,6 +1023,7 @@ function loadInit() {
       state.customer = res.customer;
       state.plans = res.plans || [];
       state.options = res.options || [];                       // Menu v2: GLASS add-on
+      state.campaign = res.campaign || null;                   // Menu v2: キャンペーン情報
       state.dispatchFee = res.dispatchFee || { sedan: 2, suv: 2 };
       // 単一プラン(WASH のみ)の場合は自動選択(操作削減)
       if (state.plans.length === 1) state.selectedPlan = state.plans[0].letter;
@@ -1000,7 +1079,21 @@ function showView(viewId) {
   updateProgress(viewId);
 
   // 各viewの初期化
-  if (viewId === 'view-plan') { renderPlans(); renderOptions(); }
+  if (viewId === 'view-plan') {
+    // キャンペーンバナー表示
+    if (state.campaign && state.campaign.active && state.campaign.percent > 0) {
+      var banner = document.getElementById('campaignBanner');
+      var label  = document.getElementById('campaignLabel');
+      var labKm  = document.getElementById('campaignLabelKm');
+      var disc   = document.getElementById('campaignDiscount');
+      if (banner) banner.style.display = 'flex';
+      if (label) label.textContent = '★ ' + (state.campaign.nameEn || 'Campaign');
+      if (labKm) labKm.textContent = state.campaign.nameKm || '';
+      if (disc)  disc.textContent  = '-' + state.campaign.percent + '% OFF';
+    }
+    renderPlans();
+    renderOptions();
+  }
   if (viewId === 'view-datetime') renderDates();
   if (viewId === 'view-location') {
     setTimeout(function() { initLocationMap(); }, 100);
@@ -1082,16 +1175,25 @@ function updateActionButton() {
 function renderPlans() {
   var container = document.getElementById('planList');
   container.innerHTML = '';
+  // キャンペーン割引(案a: サービスのみ -X%)
+  var campActive = state.campaign && state.campaign.active && state.campaign.percent > 0;
   state.plans.forEach(function(plan) {
     var card = document.createElement('div');
     card.className = 'choice-card plan-card';
     if (state.selectedPlan === plan.letter) card.classList.add('selected');
     // 車種サイズに応じて価格表示を変える
-    var priceDisplay = state.selectedSize === 'SUV以上'
-      ? '$' + plan.priceSuv
-      : state.selectedSize === 'セダン以下'
-        ? '$' + plan.priceSedan
-        : '$' + plan.priceSedan + ' ~ $' + plan.priceSuv;
+    var priceDisplay;
+    if (state.selectedSize) {
+      var origPrice = state.selectedSize === 'SUV以上' ? plan.priceSuv : plan.priceSedan;
+      if (campActive) {
+        var discPrice = (origPrice * (1 - state.campaign.percent/100)).toFixed(2);
+        priceDisplay = '<span class="price-original">$' + origPrice + '</span><span class="price-discount">$' + discPrice + '</span>';
+      } else {
+        priceDisplay = '$' + origPrice;
+      }
+    } else {
+      priceDisplay = '$' + plan.priceSedan + ' ~ $' + plan.priceSuv;
+    }
     var durationDisplay = state.selectedSize === 'SUV以上'
       ? plan.durationSuv + 'min'
       : state.selectedSize === 'セダン以下'
@@ -1155,19 +1257,27 @@ function renderOptions() {
 
   // GLASS_3 / GLASS_ALL カード — 純粋な opt-in トグル
   // 何も選択しない=glass無し(デフォルト)。同じカードを再タップで解除。別カードタップで切替。
+  var campActive = state.campaign && state.campaign.active && state.campaign.percent > 0;
   (state.options || []).forEach(function(opt) {
     var card = document.createElement('div');
     card.className = 'choice-card option-card';
     if (state.selectedGlassOption === opt.code) card.classList.add('selected');
     var price = state.selectedSize === 'SUV以上' ? opt.priceSuv : opt.priceSedan;
     var duration = state.selectedSize === 'SUV以上' ? opt.durationSuv : opt.durationSedan;
+    var priceHtml;
+    if (campActive) {
+      var discPrice = (price * (1 - state.campaign.percent/100)).toFixed(2);
+      priceHtml = '<span class="price-original">+$' + price + '</span><span class="price-discount">+$' + discPrice + '</span>';
+    } else {
+      priceHtml = '+$' + price;
+    }
     card.innerHTML =
       '<div class="option-info">'
       + '<div class="option-name">' + escapeHtml(opt.nameEn || opt.code) + '</div>'
       + '<div class="option-name-km">' + escapeHtml(opt.nameKm || '') + '</div>'
       + '<div class="option-desc">+' + duration + 'min · ' + escapeHtml(opt.description || '') + '</div>'
       + '</div>'
-      + '<div class="option-price">+$' + price + '</div>';
+      + '<div class="option-price">' + priceHtml + '</div>';
     // トグル動作: 既に選択中なら解除、未選択なら選択(別オプションへの切替も可)
     card.onclick = function() {
       if (state.selectedGlassOption === opt.code) {
@@ -1359,7 +1469,13 @@ function renderSummary() {
   var fee = (state.selectedSize === 'SUV以上')
     ? ((state.dispatchFee && state.dispatchFee.suv) || 0)
     : ((state.dispatchFee && state.dispatchFee.sedan) || 0);
-  var total = basePrice + glassPrice + fee;
+  // キャンペーン割引(案a: サービスのみ -X%)
+  var serviceSubtotal = basePrice + glassPrice;
+  var camp = state.campaign;
+  var campActive = camp && camp.active && camp.percent > 0;
+  var discount = campActive ? Math.round(serviceSubtotal * camp.percent) / 100 : 0;
+  var serviceAfter = serviceSubtotal - discount;
+  var total = serviceAfter + fee;
   var sizeLabel = (state.selectedSize === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
 
   var html = '';
@@ -1371,13 +1487,17 @@ function renderSummary() {
   html += summaryRow('Date', state.selectedDate);
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
-  // 料金内訳: WASH / GLASS / Delivery / Total
-  html += summaryRow(escapeHtml(planName), '$' + basePrice);
+  // 料金内訳: WASH / GLASS / [Subtotal / Discount / After] / Delivery / Total
+  html += summaryRow(escapeHtml(planName), '$' + basePrice.toFixed(2));
   if (glassOpt) {
-    html += summaryRow('+ ' + escapeHtml(glassOpt.nameEn), '$' + glassPrice);
+    html += summaryRow('+ ' + escapeHtml(glassOpt.nameEn), '$' + glassPrice.toFixed(2));
   }
-  html += summaryRow('Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee);
-  html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + total + '</div></div>';
+  if (campActive) {
+    html += summaryRow('Service subtotal', '$' + serviceSubtotal.toFixed(2));
+    html += '<div class="summary-row" style="color:var(--gold-bright)"><div class="label">★ ' + escapeHtml(camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%)</div><div class="value" style="color:var(--gold-bright)">-$' + discount.toFixed(2) + '</div></div>';
+  }
+  html += summaryRow('Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee.toFixed(2));
+  html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + total.toFixed(2) + '</div></div>';
 
   document.getElementById('summaryCard').innerHTML = html;
 }

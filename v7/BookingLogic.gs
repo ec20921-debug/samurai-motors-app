@@ -467,7 +467,18 @@ function createBooking(params) {
     const baseAmount = getBasePriceFor(plan, vehicleType);
     const glassAmount = getOptionPriceFor(glassOpt, vehicleType);
     const dispatchFeeAmount = getDispatchFeeFor(vehicleType);
-    const amount = baseAmount + glassAmount + dispatchFeeAmount; // 請求総額(WASH + GLASS + Delivery)
+    const serviceSubtotal = baseAmount + glassAmount;            // 割引対象(WASH+GLASS)
+    const subtotal = serviceSubtotal + dispatchFeeAmount;        // 表示上の合計(出張料含む、割引前)
+
+    // ── 1-d. キャンペーン割引(Menu v2 / 2026-05-06: GRAND OPENING -30%) ──
+    // 採用: 案a — サービス料金(WASH+GLASS)のみに -X%。出張料は通常価格(透明性)。
+    const cfg = getBookingConfig();
+    const camp = cfg.campaign || { active: false, percent: 0 };
+    let discountAmount = 0;
+    if (camp.active && camp.percent > 0) {
+      discountAmount = Math.round(serviceSubtotal * camp.percent) / 100;
+    }
+    const amount = Math.max(0, subtotal - discountAmount); // 請求総額(WASH+GLASS×(1-%) + Delivery)
 
     // ── 2. 空き枠再確認(ロック後に取り直し) ──
     // 注: findAvailableSlots は plan の duration のみ使用するため、GLASS 込みの duration で再確認は別途必要
@@ -578,6 +589,9 @@ function createBooking(params) {
       duration: duration,
       baseAmount: baseAmount,
       dispatchFee: dispatchFeeAmount,
+      subtotal: subtotal,
+      discountAmount: discountAmount,
+      campaign: (camp && camp.active && camp.percent > 0) ? camp : null,
       amount: amount,
       mapsUrl: loc.mapsUrl || params.location
     });
@@ -609,8 +623,15 @@ function notifyBookingCreated(info) {
   const baseAmt = (typeof info.baseAmount === 'number') ? info.baseAmount : info.amount;
   const feeAmt  = (typeof info.dispatchFee === 'number') ? info.dispatchFee : 0;
   const glassAmt = (typeof info.glassAmount === 'number') ? info.glassAmount : 0;
+  const subtotal = (typeof info.subtotal === 'number') ? info.subtotal : (baseAmt + glassAmt + feeAmt);
+  const discount = (typeof info.discountAmount === 'number') ? info.discountAmount : 0;
+  const camp = info.campaign || null; // null or {nameEn, nameKm, percent}
   const planDisplayName = (info.plan.jp ? info.plan.jp + ' ' : '') + info.plan.name;
   const glassOpt = info.glassOption || null;
+
+  // 案a: サービス料金のみ -30%、Delivery は通常価格
+  const serviceSubtotal = baseAmt + glassAmt;
+  const serviceAfterDiscount = serviceSubtotal - discount;
 
   let customerText =
     '✅ Booking confirmed! / ការកក់ទទួលបានជោគជ័យ!\n' +
@@ -623,13 +644,21 @@ function notifyBookingCreated(info) {
   customerText +=
     '📅 ' + info.date + ' ' + info.startTime + ' - ' + info.endTime + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
-    '💰 ' + (info.plan.name || 'Plan') + ':' + '   $' + baseAmt + '\n';
+    '💰 ' + (info.plan.name || 'Plan') + ':   $' + baseAmt + '\n';
   if (glassOpt) {
     customerText += '✨ GLASS (' + glassOpt.nameEn + '):  $' + glassAmt + '\n';
   }
+  if (camp && discount > 0) {
+    customerText +=
+      '─────────────────\n' +
+      '📊 Service subtotal:        $' + serviceSubtotal.toFixed(2) + '\n' +
+      '🎌 ' + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -$' + discount.toFixed(2) + '\n' +
+      '✓ Service (after discount): $' + serviceAfterDiscount.toFixed(2) + '\n';
+  }
   customerText +=
     '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  $' + feeAmt + '\n' +
-    '💵 Total / សរុប:                  $' + info.amount + '\n' +
+    '─────────────────\n' +
+    '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
     'Thank you! / សូមអរគុណ!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
@@ -676,11 +705,21 @@ function notifyBookingCreated(info) {
   }
   adminText +=
     '車種: ' + info.vehicleType + '\n' +
-    '日時: ' + info.date + ' ' + info.startTime + '〜' + info.endTime + ' (' + info.duration + '分)\n' +
-    '料金: $' + baseAmt +
-    (glassOpt ? ' + GLASS $' + glassAmt : '') +
-    ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount + '\n' +
-    '場所: ' + info.mapsUrl + '\n' +
+    '日時: ' + info.date + ' ' + info.startTime + '〜' + info.endTime + ' (' + info.duration + '分)\n';
+  if (camp && discount > 0) {
+    // 案a: サービスのみ割引、Delivery は通常価格
+    adminText +=
+      '料金: WASH $' + baseAmt + (glassOpt ? ' + GLASS $' + glassAmt : '') + ' = サービス計 $' + serviceSubtotal.toFixed(2) +
+      '\n🎌 キャンペーン (' + (camp.nameEn || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2) +
+      '\n→ サービス計(割引後): $' + serviceAfterDiscount.toFixed(2) +
+      '\n+ 出張料: $' + feeAmt +
+      '\n→ 請求額: $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount);
+  } else {
+    adminText +=
+      '料金: $' + baseAmt + (glassOpt ? ' + GLASS $' + glassAmt : '') + ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount;
+  }
+  adminText +=
+    '\n場所: ' + info.mapsUrl + '\n' +
     '━━━━━━━━━━━━━━━━';
 
   try {

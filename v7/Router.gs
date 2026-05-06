@@ -151,13 +151,30 @@ function apiBookingInit(params) {
   const plans = getActivePlans();
   const options = (typeof getActiveOptions === 'function') ? getActiveOptions() : [];
   const dispatchFee = getDispatchFee();
+  // Menu v2 (2026-05-06): キャンペーン情報をミニアプリに返す
+  let campaign = null;
+  try {
+    const cfg = getBookingConfig();
+    if (cfg.campaign && cfg.campaign.active && cfg.campaign.percent > 0) {
+      campaign = {
+        active: true,
+        percent: cfg.campaign.percent,
+        nameEn: cfg.campaign.nameEn || '',
+        nameKm: cfg.campaign.nameKm || ''
+      };
+    }
+  } catch (e) {
+    // キャンペーン取得失敗でも予約フローを止めない
+    Logger.log('⚠️ apiBookingInit: campaign 取得エラー(無視可): ' + e);
+  }
 
   return {
     status: 'ok',
     customer: customer,
     plans: plans,
     options: options,
-    dispatchFee: dispatchFee
+    dispatchFee: dispatchFee,
+    campaign: campaign
   };
 }
 

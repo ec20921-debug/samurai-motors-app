@@ -77,7 +77,12 @@ function rebuildPlanPricesV2_() {
     ['出張料',           2,  2,  '', '', 'Delivery fee — flat USD'],
     ['【設定】移動バッファ(分)', 30, '', '', '', 'Buffer between bookings'],
     ['【設定】営業開始時刻',     9,  '', '', '', 'Business hour start (24h)'],
-    ['【設定】営業終了時刻',     18, '', '', '', 'Business hour end (24h)']
+    ['【設定】営業終了時刻',     18, '', '', '', 'Business hour end (24h)'],
+    // ── キャンペーン設定 (2026-05-06 GRAND OPENING -30% 開始) ──
+    ['【設定】キャンペーン有効', true, '', '', '', 'TRUE=キャンペーン適用 / FALSE=通常価格'],
+    ['【設定】キャンペーン割引(%)', 30, '', '', '', '0-99 の整数。例: 30 = 30%引き'],
+    ['【設定】キャンペーン名(英)', 'GRAND OPENING', '', '', '', '顧客に表示する英語名'],
+    ['【設定】キャンペーン名(クメール)', 'ការបើកដំបូង', '', '', '', '顧客に表示するクメール語名(空でも可)']
   ];
 
   sheet.getRange(2, 1, newRows.length, 6).setValues(newRows);
