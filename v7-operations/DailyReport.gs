@@ -195,32 +195,73 @@ function buildTaskSection_() {
           assignee: String(r['担当者名']),
           desc:     String(r['タスク内容']),
           due:      due,
-          overdue:  due < todayStr
+          overdue:  due < todayStr,
+          parentId: String(r['親タスクID'] || '').trim()  // 繰返し親ID
         });
       }
     }
   });
 
+  // ── 繰返しタスクの重複排除 (2026-05-07 追加) ──
+  // 同一「親タスクID」を持つ未着手子タスクは、最も古い期限の1件のみを代表として表示。
+  // 過剰な重複表示を防ぎつつ、溜まり具合は (+N件) で可視化。
+  const dedupedPending = (function dedupeRecurring(tasks) {
+    const byParent = {};   // parentId → { rep: 最古期限の1件, count: 同親の総数 }
+    const standalone = []; // parentId が空(繰返しでない単独タスク)
+
+    tasks.forEach(function(t) {
+      if (!t.parentId) {
+        standalone.push(t);
+        return;
+      }
+      if (!byParent[t.parentId]) {
+        byParent[t.parentId] = { rep: t, count: 1 };
+      } else {
+        byParent[t.parentId].count++;
+        if (t.due < byParent[t.parentId].rep.due) {
+          byParent[t.parentId].rep = t;
+        }
+      }
+    });
+
+    // 代表に集約数を埋め込む
+    Object.keys(byParent).forEach(function(pid) {
+      byParent[pid].rep.recurringCount = byParent[pid].count;
+    });
+
+    return standalone.concat(Object.keys(byParent).map(function(pid) {
+      return byParent[pid].rep;
+    }));
+  })(pending);
+
   const lines = [];
   lines.push('📋 <b>タスク状況</b>');
-  lines.push('　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件');
+  // 残: 総件数(個別実体ベース)+ ユニーク数(繰返し集約後)
+  const uniqueLine = (dedupedPending.length !== pending.length)
+    ? '　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件 (種類: ' + dedupedPending.length + ')'
+    : '　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件';
+  lines.push(uniqueLine);
 
-  if (pending.length > 0) {
+  if (dedupedPending.length > 0) {
     lines.push('');
     lines.push('<b>未完了タスク一覧</b>');
     // 期限超過を先頭に、担当者別にソート
-    pending.sort(function(a, b) {
+    dedupedPending.sort(function(a, b) {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
       if (a.due !== b.due) return a.due < b.due ? -1 : 1;
       return a.assignee.localeCompare(b.assignee);
     });
-    pending.slice(0, 20).forEach(function(t) {
+    dedupedPending.slice(0, 20).forEach(function(t) {
       const mark = t.overdue ? '🔴' : '🟡';
       const descShort = t.desc.length > 40 ? t.desc.substring(0, 40) + '…' : t.desc;
-      lines.push('　' + mark + ' ' + escapeHtml_(t.assignee) + ': ' + escapeHtml_(descShort) + ' <i>(期限 ' + t.due + ')</i>');
+      // 繰返し集約: 「(+N件)」の補足を末尾に
+      const recurrSuffix = (t.recurringCount && t.recurringCount > 1)
+        ? ' <i>+' + (t.recurringCount - 1) + '件溜まり</i>'
+        : '';
+      lines.push('　' + mark + ' ' + escapeHtml_(t.assignee) + ': ' + escapeHtml_(descShort) + ' <i>(期限 ' + t.due + ')</i>' + recurrSuffix);
     });
-    if (pending.length > 20) {
-      lines.push('　…他 ' + (pending.length - 20) + '件');
+    if (dedupedPending.length > 20) {
+      lines.push('　…他 ' + (dedupedPending.length - 20) + '件');
     }
   }
 
