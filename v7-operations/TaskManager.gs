@@ -927,7 +927,7 @@ function processTaskInputRow_(sheet, row) {
  *
  * @param {{ assigneeName:string, targetDate:string, description:string, recurrence:string }} payload
  */
-function createTaskFromUi(payload) {
+function createTaskFromUi(payload, creatorChatId) {
   const assigneeName = String((payload && payload.assigneeName) || '').trim();
   const desc         = String((payload && payload.description)  || '').trim();
   const targetDate   = String((payload && payload.targetDate)   || '').trim();
@@ -963,12 +963,64 @@ function createTaskFromUi(payload) {
     '関連経費ID':    ''
   });
 
+  // 作成者が現場スタッフ(ロン等)の場合のみ管理グループに通知
+  // 日本側(Daisuke / 飯泉)からの追加は無音
+  notifyTaskCreatedIfField_({
+    taskId: taskId,
+    assigneeName: staff.nameJp,
+    desc: desc,
+    isTemplate: isTemplate,
+    recurrence: recurrence,
+    targetDate: targetDate
+  }, creatorChatId);
+
   return {
     ok: true,
     taskId: taskId,
     isTemplate: isTemplate,
     assignee: staff.nameJp
   };
+}
+
+/**
+ * 現場スタッフ(role='field' = ロン等)が追加した時のみ管理グループに通知
+ * 日本側(role='admin' = Daisuke / 飯泉)の追加は無音
+ *
+ * @param {Object} taskInfo - 通知に使うタスク情報
+ * @param {string} creatorChatId - 追加した人の Telegram chat_id
+ */
+function notifyTaskCreatedIfField_(taskInfo, creatorChatId) {
+  if (!creatorChatId) return; // chatId 不明 → 無音(安全側)
+  try {
+    const creator = findStaffByChatId(String(creatorChatId));
+    if (!creator) return;
+    if (creator.role !== 'field') return; // 日本側 admin の追加は通知しない
+
+    const cfg = getConfig();
+    if (!cfg.adminGroupId) return;
+    const threadId = cfg.adminTaskThreadId ? Number(cfg.adminTaskThreadId) : null;
+
+    const descShort = (taskInfo.desc || '').length > 80
+      ? taskInfo.desc.substring(0, 80) + '…'
+      : taskInfo.desc;
+    const dueLine = taskInfo.isTemplate
+      ? '繰返し: ' + escapeHtml_(taskInfo.recurrence)
+      : '期限: ' + escapeHtml_(taskInfo.targetDate);
+
+    const text =
+      '🆕 <b>タスク追加</b>(現場から)\n' +
+      '👤 追加者: ' + escapeHtml_(creator.nameJp) + '\n' +
+      '📋 ID: ' + escapeHtml_(taskInfo.taskId) + '\n' +
+      '👷 担当: ' + escapeHtml_(taskInfo.assigneeName) + '\n' +
+      '📝 内容: ' + escapeHtml_(descShort) + '\n' +
+      '🗓 ' + dueLine;
+
+    const opts = { parse_mode: 'HTML' };
+    if (threadId) opts.message_thread_id = threadId;
+    sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, opts);
+  } catch (err) {
+    Logger.log('⚠️ notifyTaskCreatedIfField_ 失敗(無視可): ' + err);
+  }
 }
 
 // ============================================================

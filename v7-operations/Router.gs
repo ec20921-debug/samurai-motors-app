@@ -150,7 +150,7 @@ function doPost(e) {
           targetDate:   String(body.targetDate   || ''),
           description:  String(body.description  || ''),
           recurrence:   String(body.recurrence   || 'なし')
-        }));
+        }, chatId));
       }
 
       case 'staff_list_for_tasks': {

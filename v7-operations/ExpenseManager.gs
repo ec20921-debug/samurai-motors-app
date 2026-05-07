@@ -225,6 +225,19 @@ function submitExpense(chatId, payload) {
     '関連タスクID':  linkedTaskId
   });
 
+  // 現場スタッフ(ロン等)が追加した時のみ管理グループに通知
+  notifyExpenseCreatedIfField_({
+    expenseId:    expenseId,
+    desc:         desc,
+    amount:       amount,
+    currency:     currency,
+    vendor:       vendor,
+    category:     category,
+    paymentType:  paymentType,
+    reimburseTo:  reimburseTo,
+    reimburseDue: reimburseDue
+  }, chatId);
+
   return {
     ok: true,
     expenseId: expenseId,
@@ -234,6 +247,56 @@ function submitExpense(chatId, payload) {
     reimburseDue: reimburseDue,
     linkedTaskId: linkedTaskId
   };
+}
+
+/**
+ * 現場スタッフ(role='field' = ロン等)が経費追加した時のみ管理グループに通知
+ * 日本側(role='admin' = Daisuke / 飯泉)の追加は無音
+ *
+ * @param {Object} expenseInfo - 通知に使う経費情報
+ * @param {string} creatorChatId - 追加した人の Telegram chat_id
+ */
+function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
+  if (!creatorChatId) return;
+  try {
+    const creator = findStaffByChatId(String(creatorChatId));
+    if (!creator) return;
+    if (creator.role !== 'field') return; // 日本側 admin の追加は通知しない
+
+    const cfg = getConfig();
+    if (!cfg.adminGroupId) return;
+    const threadId = cfg.adminExpenseThreadId ? Number(cfg.adminExpenseThreadId) : null;
+
+    const descShort = (expenseInfo.desc || '').length > 80
+      ? expenseInfo.desc.substring(0, 80) + '…'
+      : expenseInfo.desc;
+
+    const amountStr = expenseInfo.amount.toLocaleString
+      ? expenseInfo.amount.toLocaleString()
+      : String(expenseInfo.amount);
+
+    const reimburseLine = (expenseInfo.paymentType === '立替')
+      ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo) +
+        ' / 期限: ' + escapeHtml_(expenseInfo.reimburseDue)
+      : '';
+
+    const text =
+      '🆕 <b>経費追加</b>(現場から)\n' +
+      '👤 追加者: ' + escapeHtml_(creator.nameJp) + '\n' +
+      '📋 ID: ' + escapeHtml_(expenseInfo.expenseId) + '\n' +
+      '💰 金額: ' + amountStr + ' ' + escapeHtml_(expenseInfo.currency) + '\n' +
+      '📝 内容: ' + escapeHtml_(descShort) +
+      (expenseInfo.vendor ? '\n🏪 取引先: ' + escapeHtml_(expenseInfo.vendor) : '') +
+      (expenseInfo.category ? '\n🏷️ 勘定: ' + escapeHtml_(expenseInfo.category) : '') +
+      '\n💳 区分: ' + escapeHtml_(expenseInfo.paymentType) +
+      reimburseLine;
+
+    const opts = { parse_mode: 'HTML' };
+    if (threadId) opts.message_thread_id = threadId;
+    sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, opts);
+  } catch (err) {
+    Logger.log('⚠️ notifyExpenseCreatedIfField_ 失敗(無視可): ' + err);
+  }
 }
 
 /**
