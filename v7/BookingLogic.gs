@@ -657,6 +657,13 @@ function notifyBookingCreated(info) {
     '─────────────────\n' +
     '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
+    '💳 Payment / ការបង់ប្រាក់\n' +
+    'After service completion, we will send you a QR code via Telegram.\n' +
+    'Please make payment using that QR code.\n' +
+    '\n' +
+    'បន្ទាប់ពីលាងសម្អាតរួច យើងនឹងផ្ញើ QR Code\n' +
+    'តាម Telegram។ សូមបង់ប្រាក់តាម QR Code នោះ។\n' +
+    '━━━━━━━━━━━━━━━━\n' +
     'Thank you! / សូមអរគុណ!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
 

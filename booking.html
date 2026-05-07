@@ -801,6 +801,52 @@ body {
   opacity: 0.75;
 }
 
+/* ───────── 決済案内カード(完了画面) ───────── */
+.payment-notice {
+  margin-top: 18px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(135deg, rgba(201,168,92,0.06) 0%, rgba(201,168,92,0.02) 100%),
+    var(--card);
+  border: 1px solid var(--gold-muted);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.payment-notice-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(201,168,92,0.35));
+}
+.payment-notice-body {
+  flex: 1;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+.payment-notice-body .ttl {
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 6px;
+}
+.payment-notice-body .em { color: var(--gold-bright); font-weight: 600; }
+.payment-notice-body .km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  letter-spacing: 0.3px;
+}
+
 /* ───────── トースト (Premium notification) ───────── */
 .toast {
   position: fixed; top: 70px; left: 50%; transform: translateX(-50%) translateY(-8px);
@@ -1230,6 +1276,17 @@ body {
       <span class="km">អរគុណ! ការកក់របស់អ្នកត្រូវបានបញ្ជាក់</span>
     </div>
     <div class="summary-card" id="successSummary"></div>
+
+    <!-- 決済案内 -->
+    <div class="payment-notice">
+      <div class="payment-notice-icon">💳</div>
+      <div class="payment-notice-body">
+        <span class="ttl">Payment / ការបង់ប្រាក់</span>
+        After service completion, we will send you a <span class="em">QR code via Telegram</span>.
+        Please make payment using that QR code.
+        <span class="km">បន្ទាប់ពីលាងសម្អាតរួច យើងនឹងផ្ញើ QR Code តាម Telegram។ សូមបង់ប្រាក់តាម QR Code នោះ។</span>
+      </div>
+    </div>
   </div>
 
 </div>
