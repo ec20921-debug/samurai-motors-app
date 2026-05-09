@@ -17,8 +17,9 @@
  *
  * 【繰返しルール】
  *   RECURRENCE_OPTIONS = ['なし','毎日','毎週月曜','毎週金曜','毎月1日','毎月10日','毎月末']
- *   テンプレート行（ステータス=繰返し中）を generateRecurringTasks() がスキャンし、
- *   当日ルールに合致 かつ 子タスク未生成なら子タスクを作成する。
+ *   テンプレート行（ステータス=繰返し中）はそのまま「本日のタスク」として
+ *   仮想表示する。子タスク行は新規生成しない（旧仕様で行が積み上がる問題への対応 2026-05-09）。
+ *   完了/未完了は『最終完了日』列に当日日付を書き込んで判定する。
  */
 
 // ============================================================
@@ -38,11 +39,9 @@ function hourlyTaskScheduler() {
   Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay);
 
   if (ppHour === 8) {
-    try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(PP): ' + e); }
     try { sendMorningTaskForField(); } catch (e) { Logger.log('❌ sendField: ' + e); }
   }
   if (jstHour === 8) {
-    try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(JST): ' + e); }
     try { sendMorningTaskForAdmin(); } catch (e) { Logger.log('❌ sendAdmin: ' + e); }
   }
   // 日報 (Phase 2e) JST 20:00
@@ -68,59 +67,51 @@ function setupTaskSchedulerTrigger() {
 }
 
 // ============================================================
-//  繰返しタスクの自動生成
+//  繰返しタスクの仮想表示
 // ============================================================
 
 /**
- * 今日の日付（指定タイムゾーン）に対応する繰返し子タスクを生成する。
- * テンプレート行（ステータス=繰返し中）を全スキャンし、
- * ルールが今日に一致 かつ 今日分の子タスクが未生成なら appendRow する。
+ * 旧仕様の互換用 no-op（呼び出し残存対策）。
+ * v7-ops は「テンプレートを当日のタスクとして仮想表示する」方式に移行済み。
+ * 子タスク行を毎日 appendRow する処理は廃止。
  */
 function generateRecurringTasks() {
-  const all = getAllRows(SHEET_NAMES.TASKS);
-  const templates = all.filter(function(r) { return String(r['ステータス']) === '繰返し中'; });
+  Logger.log('ℹ️ generateRecurringTasks: 新仕様では何もしない（仮想表示方式）');
+}
 
-  if (templates.length === 0) {
-    Logger.log('ℹ️ 繰返しテンプレートが無いためスキップ');
-    return;
-  }
-
-  let created = 0;
-  templates.forEach(function(t) {
-    const rule     = String(t['繰返しルール'] || '');
-    const tz       = String(t['担当 timezone'] || 'Asia/Phnom_Penh');
-    const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-
-    if (!matchRecurrenceToday_(rule, tz)) return;
-
-    // 既に同じ親・同じ期限日で子タスクが居ればスキップ
-    const parentId = String(t['タスクID']);
-    const dup = all.some(function(r) {
-      if (String(r['親タスクID']) !== parentId) return false;
-      const d = formatDateCellTz_(r['期限'], tz);
-      return d === todayStr;
-    });
-    if (dup) return;
-
-    appendRow(SHEET_NAMES.TASKS, {
-      'タスクID':      generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID'),
-      '作成日時':      new Date(),
-      '担当者名':      t['担当者名'],
-      '担当 Chat ID':  t['担当 Chat ID'],
-      '担当 role':     t['担当 role'],
-      '担当 timezone': tz,
-      '期限':          todayStr,
-      'タスク内容':    t['タスク内容'],
-      'ステータス':    '未着手',
-      '完了日時':      '',
-      '未完了理由':    '',
-      '繰返しルール':  '',
-      '親タスクID':    parentId
-    });
-    created++;
+/**
+ * 繰返しテンプレートを「本日の仮想タスク」として返す。
+ * - 担当者名 / role / タイムゾーンが一致するもののみ
+ * - 当日ルールに合致するもののみ
+ * - 最終完了日が当日でないもののみ（=未処理）
+ * @param {Object} staff 対象スタッフ
+ * @param {string} todayStr 担当者TZでの yyyy-MM-dd
+ * @return {Array<{id, desc, due, overdue, today, assignee, role, isRecurring}>}
+ */
+function getRecurringVirtualTasksForStaff_(staff, todayStr) {
+  const rows = getAllRows(SHEET_NAMES.TASKS);
+  const tz = staff.timezone || 'Asia/Phnom_Penh';
+  return rows.filter(function(r) {
+    if (String(r['ステータス']) !== '繰返し中') return false;
+    if (String(r['担当者名'])   !== staff.nameJp) return false;
+    const rule = String(r['繰返しルール'] || '');
+    if (!matchRecurrenceToday_(rule, tz)) return false;
+    const lastDone = String(r['最終完了日'] || '').trim();
+    if (lastDone === todayStr) return false;  // 既に今日処理済み
+    return true;
+  }).map(function(r) {
+    return {
+      id:           String(r['タスクID']),
+      desc:         String(r['タスク内容']),
+      due:          todayStr,
+      overdue:      false,
+      today:        true,
+      assignee:     String(r['担当者名']),
+      role:         String(r['担当 role']),
+      isRecurring:  true,
+      recurrence:   String(r['繰返しルール'] || '')
+    };
   });
-
-  if (created > 0) Logger.log('✅ 繰返し子タスク生成: ' + created + '件');
 }
 
 /**
@@ -470,23 +461,50 @@ function getAdminGroupedTasks_(daysAhead) {
     const unregGroups = {};
     const unregRoles  = {};
     rows.forEach(function(r) {
-      if (String(r['ステータス']) !== '未着手') return;
       const name = String(r['担当者名'] || '').trim();
       if (!name || seenNames[name]) return;
+      const status = String(r['ステータス']);
       const role = String(r['担当 role'] || '').trim();
-      const due = formatDateCellTz_(r['期限'], tz);
-      if (!due || due > horizonStr) return;
-      if (!unregGroups[name]) unregGroups[name] = [];
-      unregRoles[name] = role;
-      unregGroups[name].push({
-        id:       String(r['タスクID']),
-        desc:     String(r['タスク内容']),
-        due:      due,
-        overdue:  due < todayStr,
-        today:    due === todayStr,
-        assignee: name,
-        role:     role
-      });
+
+      // 単発(未着手)
+      if (status === '未着手') {
+        const due = formatDateCellTz_(r['期限'], tz);
+        if (!due || due > horizonStr) return;
+        if (!unregGroups[name]) unregGroups[name] = [];
+        unregRoles[name] = role;
+        unregGroups[name].push({
+          id:          String(r['タスクID']),
+          desc:        String(r['タスク内容']),
+          due:         due,
+          overdue:     due < todayStr,
+          today:       due === todayStr,
+          assignee:    name,
+          role:        role,
+          isRecurring: false
+        });
+        return;
+      }
+
+      // 繰返しテンプレート（当日ルール一致 かつ 最終完了日 ≠ 今日）
+      if (status === '繰返し中') {
+        const rule = String(r['繰返しルール'] || '');
+        if (!matchRecurrenceToday_(rule, tz)) return;
+        const lastDone = String(r['最終完了日'] || '').trim();
+        if (lastDone === todayStr) return;
+        if (!unregGroups[name]) unregGroups[name] = [];
+        unregRoles[name] = role;
+        unregGroups[name].push({
+          id:          String(r['タスクID']),
+          desc:        String(r['タスク内容']),
+          due:         todayStr,
+          overdue:     false,
+          today:       true,
+          assignee:    name,
+          role:        role,
+          isRecurring: true,
+          recurrence:  rule
+        });
+      }
     });
     Object.keys(unregGroups).forEach(function(name) {
       groups.push({ assignee: name, nameJp: name, role: unregRoles[name] || '', tasks: unregGroups[name] });
@@ -520,7 +538,8 @@ function getPendingTasksForStaff_(staff, daysAhead) {
     horizonStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
   }
 
-  return rows.filter(function(r) {
+  // 単発（未着手）タスク
+  const oneShot = rows.filter(function(r) {
     if (String(r['ステータス']) !== '未着手') return false;
     if (String(r['担当者名'])   !== staff.nameJp) return false;
     const due = formatDateCellTz_(r['期限'], tz);
@@ -529,15 +548,21 @@ function getPendingTasksForStaff_(staff, daysAhead) {
   }).map(function(r) {
     const due = formatDateCellTz_(r['期限'], tz);
     return {
-      id:        String(r['タスクID']),
-      desc:      String(r['タスク内容']),
-      due:       due,
-      overdue:   due < todayStr,
-      today:     due === todayStr,
-      assignee:  String(r['担当者名']),
-      role:      String(r['担当 role'])
+      id:          String(r['タスクID']),
+      desc:        String(r['タスク内容']),
+      due:         due,
+      overdue:     due < todayStr,
+      today:       due === todayStr,
+      assignee:    String(r['担当者名']),
+      role:        String(r['担当 role']),
+      isRecurring: false
     };
   });
+
+  // 繰返しテンプレート（当日ルール一致 かつ 最終完了日 ≠ 今日）を仮想タスク化
+  const recurring = getRecurringVirtualTasksForStaff_(staff, todayStr);
+
+  return oneShot.concat(recurring);
 }
 
 /**
@@ -648,7 +673,20 @@ function handleTaskCallback_(cb) {
 function markTaskDone(taskId, actor) {
   const row = findRow(SHEET_NAMES.TASKS, 'タスクID', taskId);
   if (!row) { Logger.log('⚠️ タスク未発見 ' + taskId); return; }
-  if (String(row.data['ステータス']) === '完了') return;  // 冪等
+
+  const status = String(row.data['ステータス']);
+
+  // 繰返しテンプレート: ステータスは '繰返し中' のまま、最終完了日のみ更新
+  if (status === '繰返し中') {
+    const tz = String(row.data['担当 timezone'] || OPS_TZ);
+    const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    if (String(row.data['最終完了日'] || '').trim() === todayStr) return; // 冪等
+    updateRow(SHEET_NAMES.TASKS, row.row, { '最終完了日': todayStr });
+    notifyTaskStatusChange_(row.data, '完了', actor);
+    return;
+  }
+
+  if (status === '完了') return;  // 冪等
 
   updateRow(SHEET_NAMES.TASKS, row.row, {
     'ステータス': '完了',
@@ -766,6 +804,25 @@ function markTaskNotDone(taskId, actor, reason) {
   const row = findRow(SHEET_NAMES.TASKS, 'タスクID', taskId);
   if (!row) { Logger.log('⚠️ タスク未発見 ' + taskId); return; }
 
+  const status = String(row.data['ステータス']);
+
+  // 繰返しテンプレート: 当日分を「未完了」として扱い、最終完了日に当日を記録（=今日もう出さない）
+  // 未完了理由は履歴として『yyyy-MM-dd: ...』形式で蓄積
+  if (status === '繰返し中') {
+    const tz = String(row.data['担当 timezone'] || OPS_TZ);
+    const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    if (String(row.data['最終完了日'] || '').trim() === todayStr) return; // 冪等
+    const prev = String(row.data['未完了理由'] || '').trim();
+    const note = todayStr + ': ' + (reason || '(理由なし)');
+    const merged = prev ? (note + '\n' + prev) : note;
+    updateRow(SHEET_NAMES.TASKS, row.row, {
+      '最終完了日': todayStr,
+      '未完了理由': merged
+    });
+    notifyTaskStatusChange_(row.data, '未完了', actor);
+    return;
+  }
+
   updateRow(SHEET_NAMES.TASKS, row.row, {
     'ステータス':   '未完了',
     '未完了理由':   reason || '',
@@ -811,12 +868,10 @@ function handleTextCommand_(message) {
 // ============================================================
 
 function debugSendFieldTaskNow() {
-  generateRecurringTasks();
   sendMorningTaskForField();
 }
 
 function debugSendAdminTaskNow() {
-  generateRecurringTasks();
   sendMorningTaskForAdmin();
 }
 

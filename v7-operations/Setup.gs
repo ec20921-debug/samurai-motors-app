@@ -368,8 +368,9 @@ function seedAdminStaff() {
  *   J: 完了日時
  *   K: 未完了理由
  *   L: 繰返しルール  (RECURRENCE_OPTIONS)
- *   M: 親タスクID    (繰返し元テンプレートID)
+ *   M: 親タスクID    (旧仕様の遺物。新規仕様では使わない)
  *   N: 関連経費ID    (立替経費との連携 / EXP-YYYYMMDD-NNN)
+ *   O: 最終完了日    (yyyy-MM-dd 繰返しテンプレートが当日処理済みかの判定に使う)
  */
 function ensureTasksSheet(ss) {
   const name = SHEET_NAMES.TASKS;
@@ -377,7 +378,7 @@ function ensureTasksSheet(ss) {
   const headers = [
     'タスクID', '作成日時', '担当者名', '担当 Chat ID', '担当 role', '担当 timezone',
     '期限', 'タスク内容', 'ステータス', '完了日時', '未完了理由', '繰返しルール', '親タスクID',
-    '関連経費ID'
+    '関連経費ID', '最終完了日'
   ];
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -385,7 +386,7 @@ function ensureTasksSheet(ss) {
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#f1f3f4');
     sheet.setFrozenRows(1);
     // 列幅
-    [140, 140, 100, 130, 80, 130, 100, 360, 90, 140, 200, 110, 140, 150].forEach(function(w, i) {
+    [140, 140, 100, 130, 80, 130, 100, 360, 90, 140, 200, 110, 140, 150, 110].forEach(function(w, i) {
       sheet.setColumnWidth(i + 1, w);
     });
     Logger.log('✅ タスクシートを新規作成');
@@ -511,6 +512,75 @@ function seedRecurringTaskTemplates() {
     });
     Logger.log('✅ ' + t.id + ' を登録: ' + t.desc.substring(0, 30));
   });
+}
+
+/**
+ * 繰返しタスク設計変更（2026-05-09）の移行ワンショット。
+ *   1. タスクシートに『最終完了日』列を追加（不足してれば）
+ *   2. 旧仕様で蓄積された未着手の子タスク行を一括削除
+ *
+ * 使い方: GAS エディタから 1 回だけ実行する。
+ */
+function migrateRecurringTaskDesign() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🔄 繰返しタスク移行 開始');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  ensureTasksSheet(ss);
+  cleanupAccumulatedRecurringChildren();
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ 移行完了');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
+ * 旧仕様（generateRecurringTasks による日次自動生成）で
+ * 蓄積された未着手の子タスク行を一括削除する。ワンショット運用。
+ *
+ * 対象: ステータス='未着手' かつ 親タスクID が非空
+ * 親テンプレート（ステータス='繰返し中'）と、過去に完了/未完了済みの行は触らない。
+ *
+ * 使い方: GAS エディタから1回だけ実行。実行後はログで件数確認。
+ */
+function cleanupAccumulatedRecurringChildren() {
+  const cfg = getConfig();
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  const sheet = ss.getSheetByName(SHEET_NAMES.TASKS);
+  if (!sheet) { Logger.log('⚠️ タスクシートが見つからない'); return; }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) { Logger.log('ℹ️ データ無し'); return; }
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  const colStatus   = headers.indexOf('ステータス');
+  const colParentId = headers.indexOf('親タスクID');
+  if (colStatus < 0 || colParentId < 0) {
+    Logger.log('⚠️ 必要な列が見つからない (ステータス/親タスクID)');
+    return;
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const toDelete = []; // 1-based row indices
+  data.forEach(function(row, i) {
+    const status   = String(row[colStatus] || '').trim();
+    const parentId = String(row[colParentId] || '').trim();
+    if (status === '未着手' && parentId) {
+      toDelete.push(i + 2); // ヘッダー分 +1 と 0-based→1-based 変換 +1
+    }
+  });
+
+  if (toDelete.length === 0) {
+    Logger.log('ℹ️ 削除対象なし（既にクリーンアップ済み）');
+    return;
+  }
+
+  // 末尾から削除（インデックスがずれないように）
+  toDelete.sort(function(a, b) { return b - a; });
+  toDelete.forEach(function(r) { sheet.deleteRow(r); });
+
+  Logger.log('✅ 旧仕様の蓄積子タスク ' + toDelete.length + ' 行を削除');
 }
 
 // ═══════════════════════════════════════════════════════

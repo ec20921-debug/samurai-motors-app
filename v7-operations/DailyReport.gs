@@ -165,20 +165,36 @@ function buildTaskSection_() {
   const jstToday = Utilities.formatDate(new Date(), 'Asia/Tokyo',       'yyyy-MM-dd');
   const ppToday  = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh',  'yyyy-MM-dd');
 
-  let doneToday   = 0;
+  let doneToday    = 0;
   let notDoneToday = 0;
-  const pending = [];   // 未着手で期限 <= 今日（担当者TZで比較）
+  const pending    = [];
 
   rows.forEach(function(r) {
     const status = String(r['ステータス'] || '');
-    if (status === '繰返し中') return;
-
     const tz = String(r['担当 timezone'] || OPS_TZ);
     const todayStr = (tz === 'Asia/Tokyo') ? jstToday : ppToday;
-    const due = formatDateCellTz_(r['期限'], tz);
+
+    // 繰返しテンプレート: 仮想タスクとして1行のみ扱う
+    if (status === '繰返し中') {
+      const rule = String(r['繰返しルール'] || '');
+      if (!matchRecurrenceToday_(rule, tz)) return;
+      const lastDone = String(r['最終完了日'] || '').trim();
+      if (lastDone === todayStr) {
+        doneToday++;  // 今日のサイクルは処理済み
+        return;
+      }
+      pending.push({
+        assignee:    String(r['担当者名']),
+        desc:        String(r['タスク内容']),
+        due:         todayStr,
+        overdue:     false,
+        isRecurring: true,
+        recurrence:  rule
+      });
+      return;
+    }
 
     if (status === '完了') {
-      // 今日の日付で完了した分だけカウント（完了日時基準、ざっくり）
       const finStr = formatDateCellTz_(r['完了日時'], tz);
       if (finStr === todayStr) doneToday++;
       return;
@@ -189,79 +205,43 @@ function buildTaskSection_() {
       return;
     }
     if (status === '未着手') {
+      const due = formatDateCellTz_(r['期限'], tz);
       if (!due) return;
       if (due <= todayStr) {
         pending.push({
-          assignee: String(r['担当者名']),
-          desc:     String(r['タスク内容']),
-          due:      due,
-          overdue:  due < todayStr,
-          parentId: String(r['親タスクID'] || '').trim()  // 繰返し親ID
+          assignee:    String(r['担当者名']),
+          desc:        String(r['タスク内容']),
+          due:         due,
+          overdue:     due < todayStr,
+          isRecurring: false
         });
       }
     }
   });
 
-  // ── 繰返しタスクの重複排除 (2026-05-07 追加) ──
-  // 同一「親タスクID」を持つ未着手子タスクは、最も古い期限の1件のみを代表として表示。
-  // 過剰な重複表示を防ぎつつ、溜まり具合は (+N件) で可視化。
-  const dedupedPending = (function dedupeRecurring(tasks) {
-    const byParent = {};   // parentId → { rep: 最古期限の1件, count: 同親の総数 }
-    const standalone = []; // parentId が空(繰返しでない単独タスク)
-
-    tasks.forEach(function(t) {
-      if (!t.parentId) {
-        standalone.push(t);
-        return;
-      }
-      if (!byParent[t.parentId]) {
-        byParent[t.parentId] = { rep: t, count: 1 };
-      } else {
-        byParent[t.parentId].count++;
-        if (t.due < byParent[t.parentId].rep.due) {
-          byParent[t.parentId].rep = t;
-        }
-      }
-    });
-
-    // 代表に集約数を埋め込む
-    Object.keys(byParent).forEach(function(pid) {
-      byParent[pid].rep.recurringCount = byParent[pid].count;
-    });
-
-    return standalone.concat(Object.keys(byParent).map(function(pid) {
-      return byParent[pid].rep;
-    }));
-  })(pending);
-
   const lines = [];
   lines.push('📋 <b>タスク状況</b>');
-  // 残: 総件数(個別実体ベース)+ ユニーク数(繰返し集約後)
-  const uniqueLine = (dedupedPending.length !== pending.length)
-    ? '　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件 (種類: ' + dedupedPending.length + ')'
-    : '　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件';
-  lines.push(uniqueLine);
+  lines.push('　✅ 本日完了: ' + doneToday + '件　❌ 未完了申告: ' + notDoneToday + '件　📌 残: ' + pending.length + '件');
 
-  if (dedupedPending.length > 0) {
+  if (pending.length > 0) {
     lines.push('');
     lines.push('<b>未完了タスク一覧</b>');
-    // 期限超過を先頭に、担当者別にソート
-    dedupedPending.sort(function(a, b) {
+    pending.sort(function(a, b) {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      if (a.isRecurring !== b.isRecurring) return a.isRecurring ? 1 : -1; // 繰返しは末尾
       if (a.due !== b.due) return a.due < b.due ? -1 : 1;
       return a.assignee.localeCompare(b.assignee);
     });
-    dedupedPending.slice(0, 20).forEach(function(t) {
-      const mark = t.overdue ? '🔴' : '🟡';
+    pending.slice(0, 20).forEach(function(t) {
+      const mark = t.overdue ? '🔴' : (t.isRecurring ? '🔁' : '🟡');
       const descShort = t.desc.length > 40 ? t.desc.substring(0, 40) + '…' : t.desc;
-      // 繰返し集約: 「(+N件)」の補足を末尾に
-      const recurrSuffix = (t.recurringCount && t.recurringCount > 1)
-        ? ' <i>+' + (t.recurringCount - 1) + '件溜まり</i>'
-        : '';
-      lines.push('　' + mark + ' ' + escapeHtml_(t.assignee) + ': ' + escapeHtml_(descShort) + ' <i>(期限 ' + t.due + ')</i>' + recurrSuffix);
+      const tail = t.isRecurring
+        ? ' <i>(' + escapeHtml_(t.recurrence) + ')</i>'
+        : ' <i>(期限 ' + t.due + ')</i>';
+      lines.push('　' + mark + ' ' + escapeHtml_(t.assignee) + ': ' + escapeHtml_(descShort) + tail);
     });
-    if (dedupedPending.length > 20) {
-      lines.push('　…他 ' + (dedupedPending.length - 20) + '件');
+    if (pending.length > 20) {
+      lines.push('　…他 ' + (pending.length - 20) + '件');
     }
   }
 
