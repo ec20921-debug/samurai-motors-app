@@ -74,7 +74,13 @@ function setupTaskSchedulerTrigger() {
 /**
  * 今日の日付（指定タイムゾーン）に対応する繰返し子タスクを生成する。
  * テンプレート行（ステータス=繰返し中）を全スキャンし、
- * ルールが今日に一致 かつ 今日分の子タスクが未生成なら appendRow する。
+ * ルールが今日に一致 かつ 今日分の子タスクが未生成 かつ 未着手の子タスクが残っていない
+ * 場合のみ appendRow する。
+ *
+ * ── 未着手スキップ (2026-05-11) ──
+ * 既存の未着手子タスクが1件でもあれば新規生成しない。これにより、未対応のまま
+ * 子タスクが毎日積み上がる現象（日報の +N件溜まり が日々膨らむ）を抑止する。
+ * 担当者が完了/未完了マークを付けた翌日以降に、再び新しい子タスクが生成される。
  */
 function generateRecurringTasks() {
   const all = getAllRows(SHEET_NAMES.TASKS);
@@ -86,6 +92,7 @@ function generateRecurringTasks() {
   }
 
   let created = 0;
+  let skippedPending = 0;
   templates.forEach(function(t) {
     const rule     = String(t['繰返しルール'] || '');
     const tz       = String(t['担当 timezone'] || 'Asia/Phnom_Penh');
@@ -93,14 +100,25 @@ function generateRecurringTasks() {
 
     if (!matchRecurrenceToday_(rule, tz)) return;
 
-    // 既に同じ親・同じ期限日で子タスクが居ればスキップ
     const parentId = String(t['タスクID']);
+
+    // 既に同じ親・同じ期限日で子タスクが居ればスキップ（冪等性）
     const dup = all.some(function(r) {
       if (String(r['親タスクID']) !== parentId) return false;
       const d = formatDateCellTz_(r['期限'], tz);
       return d === todayStr;
     });
     if (dup) return;
+
+    // 既存の未着手子タスクが残っていればスキップ（積み上げ防止）
+    const hasPending = all.some(function(r) {
+      if (String(r['親タスクID']) !== parentId) return false;
+      return String(r['ステータス']) === '未着手';
+    });
+    if (hasPending) {
+      skippedPending++;
+      return;
+    }
 
     appendRow(SHEET_NAMES.TASKS, {
       'タスクID':      generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID'),
@@ -121,6 +139,7 @@ function generateRecurringTasks() {
   });
 
   if (created > 0) Logger.log('✅ 繰返し子タスク生成: ' + created + '件');
+  if (skippedPending > 0) Logger.log('⏸ 繰返し生成スキップ(未着手残り): ' + skippedPending + '件');
 }
 
 /**
