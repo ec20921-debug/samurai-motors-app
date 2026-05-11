@@ -269,14 +269,25 @@ booking.html を 6 領域で昇華(全て CSS only、追加アセットなし):
 | 顧客 DM(予約Bot) | チラシ画像 + welcome 文(英語メイン+クメール語サブ)+ キャンペーン文 |
 | 管理マスターグループ | "/start 受信: {名前} (chat_id={数字})" 通知のみ(チラシは送らない) |
 
-### 11.4 チラシのホスト
+### 11.4 チラシのホスト(2026-05-12 改修: Drive 主・GitHub Pages 副)
 
-`flyer.png`(814 KB)を**リポジトリ直下に配置**:
-- ローカル: `C:\Users\drymp\dev\samurai-motors-app\flyer.png`
-- 配信 URL: `https://ec20921-debug.github.io/samurai-motors-app/flyer.png`(GitHub Pages 自動配信)
-- Drive 経由でも可能だが、GitHub Pages の方が高速かつ簡素
+**主**: Drive ファイルから直接 multipart upload(`sendPhotoFromDriveId`)
+- Drive ファイル ID: `1I5hIT2JcjAzpyMuMF4qATEZ0jMx_pAHE`(SamuraiMoters_チラシ.png)
+- Drive の「Manage Versions」または PC 同期で**ローカルファイル上書き**で更新可
+- コード変更・git push・clasp 不要、即反映
 
-→ **チラシ刷新時**: 同名で `flyer.png` を上書き → `git push` だけで顧客の welcome 画像が更新される。
+**副(フォールバック)**: GitHub Pages にホストした `flyer.png` を `sendPhoto` で送信
+- 配信 URL: `https://ec20921-debug.github.io/samurai-motors-app/flyer.png`
+- Drive 取得失敗時に自動的にフォールバック
+
+### 11.4.1 チラシ更新フロー(Daisuke の運用)
+
+| 状況 | 操作 |
+|---|---|
+| **PC でローカル同期している場合** | ローカル Desktop の `SamuraiMoters_チラシ.png` を新ファイルで上書き → Drive Desktop が数秒で同期 → 即反映 |
+| **Web Drive 上で更新する場合** | Drive UI で ファイル右クリック → 「バージョンを管理」→ 新バージョン UP |
+
+→ **どちらも 30 秒で完了、git/clasp 不要**。Telegram キャッシュで 5〜10 分後に確実反映。
 
 ### 11.5 動的キャンペーンバナー文
 
@@ -375,7 +386,13 @@ Daisuke の test 用アカウント(管理者権限保持)が、Bot の chat を
 | `60db3d5` | GRAND OPENING -30% キャンペーン全層統合 + SUV 再デザイン |
 | `8d77442` | Layer 2 + BOOKINGS 分析列 + ダッシュボード新セクション + SPEC v7.5 |
 | `89ad8e9` | Bot welcome に evergreen チラシ + 動的キャンペーン配信 |
-| `a292ad6` / `db0e23b` | Map 大型化 (280px 固定 → clamp(420px, 68vh, 620px)) |
+| `a292ad6` / `db0e23b` / `a40abf8` | Map サイズ調整(最終: clamp(360px, 58vh, 500px)) |
+| `aaaa92e` | 予約完了に決済タイミング案内追加(Telegram + ミニアプリ Reserved) |
+| `b5db391` | v7-operations: 日報の繰返しタスク重複表示を解消 |
+| `e89c352` | v7-operations: 現場スタッフの追加時のみ admin 通知(ロン限定) |
+| `54b4ada` | A1+A2+A3+A4: 顧客体験 4 連発(What's Next/Ron 表示/1h リマインダー/24h フィードバック) |
+| `5ef411e` | **Menu v2.1: GLASS 単体予約に対応**(WASH 任意化、5 パターン) |
+| `940c9a3` | チラシを Drive ベース化(Manage Versions / ローカル同期で差替可) |
 
 ---
 
