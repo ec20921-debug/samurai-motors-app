@@ -28,28 +28,35 @@
 /**
  * 1時間毎に実行するスケジューラ。
  * 現地時刻を見て適切な通知を発火する。冪等性を担保。
+ *
+ * ── 週末スキップ (2026-05-11) ──
+ * 土曜・日曜（JST基準）は朝の通知・日報・繰返しタスク生成をすべてスキップ。
+ * 「毎日」ルールも実質的に平日のみとなる（週末分は積み上げない）。
+ * 金曜 JST 18:00 の週次経費サマリは週末判定の前なので影響しない。
  */
 function hourlyTaskScheduler() {
   const now = new Date();
   const ppHour  = Number(Utilities.formatDate(now, 'Asia/Phnom_Penh', 'H'));
   const jstHour = Number(Utilities.formatDate(now, 'Asia/Tokyo',      'H'));
   const jstDay  = Utilities.formatDate(now, 'Asia/Tokyo', 'u'); // '1'=Mon..'7'=Sun
+  const isWeekend = (jstDay === '6' || jstDay === '7');
 
-  Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay);
+  Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay +
+    (isWeekend ? ' (週末)' : ''));
 
-  if (ppHour === 8) {
+  if (ppHour === 8 && !isWeekend) {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(PP): ' + e); }
     try { sendMorningTaskForField(); } catch (e) { Logger.log('❌ sendField: ' + e); }
   }
-  if (jstHour === 8) {
+  if (jstHour === 8 && !isWeekend) {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(JST): ' + e); }
     try { sendMorningTaskForAdmin(); } catch (e) { Logger.log('❌ sendAdmin: ' + e); }
   }
-  // 日報 (Phase 2e) JST 20:00
-  if (jstHour === 20) {
+  // 日報 (Phase 2e) JST 20:00 — 週末はスキップ
+  if (jstHour === 20 && !isWeekend) {
     try { sendDailyReport(); } catch (e) { Logger.log('❌ sendDailyReport: ' + e); }
   }
-  // 週次経費サマリ 金曜 JST 18:00
+  // 週次経費サマリ 金曜 JST 18:00（金曜固定なので週末スキップ判定不要）
   if (jstHour === 18 && jstDay === '5') {
     try { sendWeeklyExpenseSummary(); } catch (e) { Logger.log('❌ weeklyExpense: ' + e); }
   }
@@ -847,6 +854,71 @@ function debugShowPendingTasks() {
       Logger.log('  - ' + t.id + ' ' + t.desc.substring(0, 40) + ' 期限=' + t.due + ' overdue=' + t.overdue);
     });
   });
+}
+
+// ============================================================
+//  一回限り：繰返し積み上げのクリーンアップ
+// ============================================================
+
+/**
+ * 同じ親タスクから生まれた「未着手」子タスクが2件以上ある場合、
+ * 期限が最も古い1件のみを残し、それ以外を「未完了」にマークする。
+ *
+ * - 残った1件は日報の代表行（最古期限）と一致するため、表示が変わらず
+ *   「+N件溜まり」バッジだけが消える。
+ * - クリーンアップ後、残った1件を担当者が完了/未完了にすれば、平日朝に
+ *   再び新しい子タスクが生成される（generateRecurringTasks の積み上げ防止
+ *   ガードと協調）。
+ *
+ * 【使い方】GAS エディタで `cleanupAccumulatedRecurringTasks` を1回手動実行。
+ *           完了したらこの関数は削除してよい（Git 履歴に残るので復元可能）。
+ */
+function cleanupAccumulatedRecurringTasks() {
+  const rows = getAllRows(SHEET_NAMES.TASKS);
+
+  // parentId → 同じ親を持つ「未着手」子タスクの配列
+  const groups = {};
+  rows.forEach(function(r, i) {
+    const pid = String(r['親タスクID'] || '').trim();
+    if (!pid) return;
+    if (String(r['ステータス']) !== '未着手') return;
+    const tz = String(r['担当 timezone'] || OPS_TZ);
+    const due = formatDateCellTz_(r['期限'], tz);
+    if (!groups[pid]) groups[pid] = [];
+    groups[pid].push({
+      sheetRow: i + 2,                     // getAllRows は row 2 から
+      taskId:   String(r['タスクID']),
+      due:      due,
+      assignee: String(r['担当者名'] || ''),
+      desc:     String(r['タスク内容'] || '')
+    });
+  });
+
+  const today = Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
+  const reason = '積み上げクリーンアップ ' + today;
+  let closedCount = 0;
+  let groupTouched = 0;
+
+  Object.keys(groups).forEach(function(pid) {
+    const list = groups[pid];
+    if (list.length < 2) return;
+    // 期限の昇順（古い→新しい）で並べ、先頭（最古）を残す
+    list.sort(function(a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+    Logger.log('🧹 親=' + pid + ' (' + list[0].assignee + ' / ' +
+      list[0].desc.substring(0, 30) + ') 子=' + list.length + '件 → 1件残し');
+    groupTouched++;
+    for (var k = 1; k < list.length; k++) {
+      updateRow(SHEET_NAMES.TASKS, list[k].sheetRow, {
+        'ステータス':  '未完了',
+        '未完了理由': reason,
+        '完了日時':   new Date()
+      });
+      closedCount++;
+    }
+  });
+
+  Logger.log('✅ クリーンアップ完了: ' + groupTouched + 'グループ / ' + closedCount + '件を未完了化');
+  return { groupTouched: groupTouched, closedCount: closedCount };
 }
 
 // ============================================================
