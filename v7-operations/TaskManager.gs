@@ -44,6 +44,23 @@ function hourlyTaskScheduler() {
   Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay +
     (isWeekend ? ' (週末)' : ''));
 
+  // 【一回限り自動実行】積み上げ子タスクのクリーンアップ (2026-05-11)
+  // ScriptProperty に完了マークが無ければ実行し、マークを書き込む。週末判定の前に
+  // 置いているので Sat/Sun でも初回1回は確実に走る。完了後はこのブロックを削除可。
+  try {
+    const props = PropertiesService.getScriptProperties();
+    if (!props.getProperty('CLEANUP_RECURRING_2026_05_11')) {
+      const result = cleanupAccumulatedRecurringTasks();
+      props.setProperty('CLEANUP_RECURRING_2026_05_11',
+        'done ' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss') +
+        ' groups=' + result.groupTouched + ' closed=' + result.closedCount);
+      Logger.log('🎯 一回限りクリーンアップ自動実行: ' +
+        result.groupTouched + 'グループ / ' + result.closedCount + '件');
+    }
+  } catch (err) {
+    Logger.log('❌ 自動クリーンアップ失敗: ' + err);
+  }
+
   if (ppHour === 8 && !isWeekend) {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(PP): ' + e); }
     try { sendMorningTaskForField(); } catch (e) { Logger.log('❌ sendField: ' + e); }
