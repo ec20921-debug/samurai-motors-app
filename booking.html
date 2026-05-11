@@ -801,6 +801,127 @@ body {
   opacity: 0.75;
 }
 
+/* ───────── 担当者カード(Reserved 画面) ───────── */
+.specialist-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.specialist-avatar {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  display: flex; align-items: center; justify-content: center;
+  color: #000;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 17px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(201,168,92,0.3);
+}
+.specialist-info { flex: 1; min-width: 0; }
+.specialist-label {
+  font-family: var(--serif);
+  font-size: 9px; color: var(--gold);
+  text-transform: uppercase; letter-spacing: 1.5px;
+  margin-bottom: 2px;
+}
+.specialist-name {
+  font-family: var(--serif);
+  font-size: 15px; font-weight: 600;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.specialist-meta {
+  font-size: 10px; color: var(--text-dim);
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+
+/* ───────── What Happens Next タイムライン ───────── */
+.timeline-card {
+  margin-top: 14px;
+  padding: 18px 18px 14px;
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.timeline-title {
+  font-family: var(--serif);
+  font-size: 11px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-align: center;
+  margin-bottom: 14px;
+  position: relative;
+  padding-bottom: 8px;
+}
+.timeline-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 32px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 0;
+  position: relative;
+}
+.timeline-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 28px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--border);
+}
+.timeline-dot {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.timeline-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  letter-spacing: 0.2px;
+  padding-top: 2px;
+}
+.timeline-text .lead {
+  font-weight: 600;
+  color: var(--gold-bright);
+  font-family: var(--serif);
+  letter-spacing: 0.5px;
+}
+.timeline-text .km {
+  display: block;
+  font-family: 'Noto Sans Khmer', sans-serif;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
 /* ───────── 決済案内カード(完了画面) ───────── */
 .payment-notice {
   margin-top: 18px;
@@ -1276,6 +1397,49 @@ body {
       <span class="km">អរគុណ! ការកក់របស់អ្នកត្រូវបានបញ្ជាក់</span>
     </div>
     <div class="summary-card" id="successSummary"></div>
+
+    <!-- 担当者カード -->
+    <div class="specialist-card">
+      <div class="specialist-avatar">R</div>
+      <div class="specialist-info">
+        <div class="specialist-label">Your Specialist</div>
+        <div class="specialist-name">Ron</div>
+        <div class="specialist-meta">Field-trained · Premium care</div>
+      </div>
+    </div>
+
+    <!-- What Happens Next タイムライン -->
+    <div class="timeline-card">
+      <div class="timeline-title">What Happens Next</div>
+      <div class="timeline-item">
+        <div class="timeline-dot">⏰</div>
+        <div class="timeline-text">
+          <span class="lead">1 hour before arrival</span> — Ron will send you a Telegram reminder with map link.
+          <span class="km">មុនពេលមកដល់ 1 ម៉ោង — យើងនឹងផ្ញើសារ Telegram រំលឹក និង Map</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">📷</div>
+        <div class="timeline-text">
+          <span class="lead">Service begins</span> — Before photos delivered via Telegram (4 angles).
+          <span class="km">ការងារចាប់ផ្តើម — រូបថតមុនលាងផ្ញើតាម Telegram</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">✨</div>
+        <div class="timeline-text">
+          <span class="lead">Completion</span> — After photos + QR for payment.
+          <span class="km">បញ្ចប់ — រូបថតបន្ទាប់ + QR Code សម្រាប់បង់ប្រាក់</span>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">🙏</div>
+        <div class="timeline-text">
+          <span class="lead">After 24 hours</span> — We'd love your feedback.
+          <span class="km">24 ម៉ោងក្រោយ — យើងសង្ឃឹមស្ទង់មតិ</span>
+        </div>
+      </div>
+    </div>
 
     <!-- 決済案内 -->
     <div class="payment-notice">

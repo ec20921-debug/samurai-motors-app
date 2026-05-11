@@ -657,6 +657,15 @@ function notifyBookingCreated(info) {
     '─────────────────\n' +
     '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
+    '👤 Your specialist: Ron\n' +
+    '   (Field-trained · Premium care)\n' +
+    '━━━━━━━━━━━━━━━━\n' +
+    '📋 What happens next:\n' +
+    '⏰ 1h before: Reminder + map link\n' +
+    '📷 Service: Before photos via Telegram\n' +
+    '✨ After: After photos + QR for payment\n' +
+    '🙏 24h later: Feedback request\n' +
+    '━━━━━━━━━━━━━━━━\n' +
     '💳 Payment / ការបង់ប្រាក់\n' +
     'After service completion, we will send you a QR code via Telegram.\n' +
     'Please make payment using that QR code.\n' +

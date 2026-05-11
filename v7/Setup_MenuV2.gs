@@ -222,10 +222,16 @@ function rebuildFunnelLogSheetV2_() {
  *  既に存在する列はスキップ。新規列はヘッダー右端に追加。
  */
 function ensureBookingCampaignColumnsV2_() {
-  Logger.log('📊 BOOKINGS キャンペーン分析列の確認');
+  Logger.log('📊 BOOKINGS 拡張列の確認(キャンペーン分析 + 顧客体験トリガー)');
   const sheet = getSheet(SHEET_NAMES.BOOKINGS);
   const headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
-  const newCols = ['割引前金額(USD)', '割引額(USD)', 'キャンペーン名'];
+  const newCols = [
+    '割引前金額(USD)',
+    '割引額(USD)',
+    'キャンペーン名',
+    '1h前リマインダー送信日時',  // A2: 1時間前リマインダー Bot 用
+    'フィードバック送信日時'        // A4: 完了後24h フィードバック Bot 用
+  ];
 
   let lastCol = sheet.getLastColumn();
   const added = [];
