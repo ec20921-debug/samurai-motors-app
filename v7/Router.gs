@@ -183,15 +183,20 @@ function apiBookingInit(params) {
  * Query: date, plan(=letter), vehicleType
  */
 function apiBookingSlots(params) {
+  // Menu v2.1: plan が optional 化、glassOption も受ける
   const date = params.date;
-  const planLetter = params.plan;
+  const planLetter = String(params.plan || '');
   const vehicleType = params.vehicleType;
+  const glassOption = String(params.glassOption || '');
 
-  if (!date || !planLetter || !vehicleType) {
-    return { status: 'error', message: 'date/plan/vehicleType required' };
+  if (!date || !vehicleType) {
+    return { status: 'error', message: 'date/vehicleType required' };
+  }
+  if (!planLetter && !glassOption) {
+    return { status: 'error', message: 'plan or glassOption required' };
   }
 
-  const res = findAvailableSlots(date, planLetter, vehicleType);
+  const res = findAvailableSlots(date, planLetter, vehicleType, glassOption);
   if (!res.ok) {
     return { status: 'error', message: res.error };
   }

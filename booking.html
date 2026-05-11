@@ -1333,13 +1333,19 @@ body {
       </div>
     </div>
 
-    <!-- 2. SAMURAI WASH (Required) -->
-    <div class="section-title"><span class="step-num">2</span>SAMURAI WASH <span class="km">លាងសម្អាត</span><span class="badge-required">Required</span></div>
+    <!-- 2. SAMURAI WASH (Recommended, toggle) -->
+    <div class="section-title"><span class="step-num">2</span>SAMURAI WASH <span class="km">លាងសម្អាត</span><span class="badge-optional">Optional</span></div>
     <div class="card-list" id="planList"></div>
 
     <!-- 3. SAMURAI GLASS (Optional Add-on) -->
-    <div class="section-title"><span class="step-num">3</span>+ SAMURAI GLASS <span class="km">ស្រោបកញ្ចក់</span><span class="badge-optional">Optional</span></div>
+    <div class="section-title"><span class="step-num">3</span>SAMURAI GLASS <span class="km">ស្រោបកញ្ចក់</span><span class="badge-optional">Optional</span></div>
     <div class="card-list" id="optionList"></div>
+
+    <!-- 注意ヒント -->
+    <div style="margin-top:14px; padding:10px 12px; font-size:11px; color:var(--text-dim); text-align:center; border:1px dashed var(--border); border-radius:var(--radius); letter-spacing:0.3px;">
+      Pick at least one — WASH or GLASS (or both)<br>
+      <span class="km" style="opacity:0.7;">ជ្រើសរើសយ៉ាងតិច 1 — WASH ឬ GLASS</span>
+    </div>
   </div>
 
   <!-- Step 2: 日付 + 時間 -->
@@ -1674,7 +1680,8 @@ function updateActionButton() {
   switch (state.currentView) {
     case 'view-plan':
       btn.textContent = 'Next / បន្ទាប់';
-      btn.disabled = !state.selectedPlan || !state.selectedSize;
+      // Menu v2.1 (2026-05-08): WASH か GLASS のどちらか1つ以上 + 車種選択 で next 可
+      btn.disabled = !state.selectedSize || (!state.selectedPlan && !state.selectedGlassOption);
       btn.classList.add('btn-primary');
       break;
     case 'view-datetime':
@@ -1750,14 +1757,22 @@ function renderPlans() {
       + '<div class="plan-price">' + priceDisplay + '</div>'
       + '</div>'
       + feeNote;
-    card.onclick = function() { selectPlan(plan.letter); };
+    // Menu v2.1 (2026-05-08): WASH カードもトグル動作(タップで選択/解除)
+    card.onclick = function() {
+      if (state.selectedPlan === plan.letter) {
+        selectPlan(null); // 再タップで解除
+      } else {
+        selectPlan(plan.letter);
+      }
+    };
     container.appendChild(card);
   });
 }
 
 function selectPlan(letter) {
-  state.selectedPlan = letter;
+  state.selectedPlan = letter; // letter or null
   renderPlans();
+  renderOptions(); // GLASS 側の表示更新(WASH 解除でも GLASS は残せる)
   updateActionButton();
 }
 
@@ -1943,10 +1958,12 @@ function loadTimeSlots() {
     + '<div class="slot-loader-sub">Finding the perfect time<span class="km">កំពុងស្វែងរកម៉ោងល្អបំផុត</span></div>'
     + '</div>';
 
+  // Menu v2.1: plan が null(GLASS-only)でも空文字で送る、glassOption も渡す
   var url = GAS_URL + '?action=booking_slots'
     + '&date=' + encodeURIComponent(state.selectedDate)
-    + '&plan=' + encodeURIComponent(state.selectedPlan)
+    + '&plan=' + encodeURIComponent(state.selectedPlan || '')
     + '&vehicleType=' + encodeURIComponent(state.selectedSize)
+    + '&glassOption=' + encodeURIComponent(state.selectedGlassOption || '')
     + '&options=';
 
   fetch(url)
@@ -1996,10 +2013,13 @@ function selectSlot(time) {
 // ═══════════════════════════════════════════
 
 function renderSummary() {
-  var plan = state.plans.find(function(p) { return p.letter === state.selectedPlan; });
-  var planName = plan ? plan.name : 'SAMURAI WASH';
-  // 基本料金 (WASH)
-  var basePrice = (state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan;
+  // Menu v2.1 (2026-05-08): plan が null(GLASS-only)も対応
+  var plan = state.selectedPlan ? state.plans.find(function(p) { return p.letter === state.selectedPlan; }) : null;
+  var planName = plan ? plan.name : '';
+  // 基本料金 (WASH) — plan が null なら 0
+  var basePrice = plan
+    ? ((state.selectedSize === 'SUV以上') ? plan.priceSuv : plan.priceSedan)
+    : 0;
   // GLASS オプション
   var glassOpt = state.selectedGlassOption
     ? state.options.find(function(o) { return o.code === state.selectedGlassOption; })
@@ -2021,16 +2041,23 @@ function renderSummary() {
   var sizeLabel = (state.selectedSize === 'SUV以上') ? 'SUV & larger' : 'Sedan & smaller';
 
   var html = '';
-  html += summaryRow('Service', escapeHtml(planName));
-  if (glassOpt) {
+  // Service ラベル: plan のみ / glass のみ / plan + glass のいずれでも表示
+  if (plan && glassOpt) {
+    html += summaryRow('Service', escapeHtml(planName));
     html += summaryRow('+ Add-on', escapeHtml(glassOpt.nameEn));
+  } else if (plan) {
+    html += summaryRow('Service', escapeHtml(planName));
+  } else if (glassOpt) {
+    html += summaryRow('Service', 'SAMURAI GLASS — ' + escapeHtml(glassOpt.nameEn));
   }
   html += summaryRow('Vehicle', sizeLabel);
   html += summaryRow('Date', state.selectedDate);
   html += summaryRow('Time', state.selectedSlot + ' (~' + state.selectedDuration + 'min)');
   html += summaryRow('Location', escapeHtml(state.selectedLocation));
   // 料金内訳: WASH / GLASS / [Subtotal / Discount / After] / Delivery / Total
-  html += summaryRow(escapeHtml(planName), '$' + basePrice.toFixed(2));
+  if (plan) {
+    html += summaryRow(escapeHtml(planName), '$' + basePrice.toFixed(2));
+  }
   if (glassOpt) {
     html += summaryRow('+ ' + escapeHtml(glassOpt.nameEn), '$' + glassPrice.toFixed(2));
   }
@@ -2055,8 +2082,13 @@ function summaryRow(label, value) {
 function handleNext() {
   switch (state.currentView) {
     case 'view-plan':
-      if (!state.selectedPlan || !state.selectedSize) {
-        showToast('Please select a plan and vehicle size', true);
+      // Menu v2.1: 車種 必須 + (WASH か GLASS のどちらか1つ以上)
+      if (!state.selectedSize) {
+        showToast('Please select vehicle size', true);
+        return;
+      }
+      if (!state.selectedPlan && !state.selectedGlassOption) {
+        showToast('Please select SAMURAI WASH or SAMURAI GLASS (at least one)', true);
         return;
       }
       showView('view-datetime');
