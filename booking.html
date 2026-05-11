@@ -1796,27 +1796,33 @@ function renderOptions() {
   if (!container) return;
   container.innerHTML = '';
 
-  if (!state.selectedSize) {
-    container.innerHTML = '<div style="text-align:center; padding:14px; color:var(--text-dim); font-size:11px; border:1px dashed var(--border); border-radius:var(--radius);">Please select vehicle size first<br><span style="opacity:0.6">សូមជ្រើសរើសទំហំឡានជាមុនសិន</span></div>';
-    return;
-  }
-
-  // GLASS_3 / GLASS_ALL カード — 純粋な opt-in トグル
-  // 何も選択しない=glass無し(デフォルト)。同じカードを再タップで解除。別カードタップで切替。
+  // Menu v2.1 (2026-05-12 fix): 車種未選択でも GLASS カードを表示・選択可。
+  // 価格は範囲表示(セダン〜SUV)、車種選択後に確定値+割引適用へ更新。
+  var sizeSelected = !!state.selectedSize;
   var campActive = state.campaign && state.campaign.active && state.campaign.percent > 0;
+
   (state.options || []).forEach(function(opt) {
     var card = document.createElement('div');
     card.className = 'choice-card option-card';
     if (state.selectedGlassOption === opt.code) card.classList.add('selected');
-    var price = state.selectedSize === 'SUV以上' ? opt.priceSuv : opt.priceSedan;
-    var duration = state.selectedSize === 'SUV以上' ? opt.durationSuv : opt.durationSedan;
+
+    var duration;
     var priceHtml;
-    if (campActive) {
-      var discPrice = (price * (1 - state.campaign.percent/100)).toFixed(2);
-      priceHtml = '<span class="price-original">+$' + price + '</span><span class="price-discount">+$' + discPrice + '</span>';
+    if (!sizeSelected) {
+      // 車種未選択: 範囲価格(割引前)・時間範囲
+      priceHtml = '+$' + opt.priceSedan + ' ~ +$' + opt.priceSuv;
+      duration = opt.durationSedan + '~' + opt.durationSuv;
     } else {
-      priceHtml = '+$' + price;
+      var price = state.selectedSize === 'SUV以上' ? opt.priceSuv : opt.priceSedan;
+      duration = state.selectedSize === 'SUV以上' ? opt.durationSuv : opt.durationSedan;
+      if (campActive) {
+        var discPrice = (price * (1 - state.campaign.percent/100)).toFixed(2);
+        priceHtml = '<span class="price-original">+$' + price + '</span><span class="price-discount">+$' + discPrice + '</span>';
+      } else {
+        priceHtml = '+$' + price;
+      }
     }
+
     card.innerHTML =
       '<div class="option-info">'
       + '<div class="option-name">' + escapeHtml(opt.nameEn || opt.code) + '</div>'
@@ -1824,12 +1830,12 @@ function renderOptions() {
       + '<div class="option-desc">+' + duration + 'min · ' + escapeHtml(opt.description || '') + '</div>'
       + '</div>'
       + '<div class="option-price">' + priceHtml + '</div>';
-    // トグル動作: 既に選択中なら解除、未選択なら選択(別オプションへの切替も可)
+    // トグル動作: 既に選択中なら解除、未選択なら選択
     card.onclick = function() {
       if (state.selectedGlassOption === opt.code) {
-        selectGlassOption(null);  // 同じものを再タップ → 解除
+        selectGlassOption(null);
       } else {
-        selectGlassOption(opt.code); // 未選択 → 選択 / 別カードへ切替
+        selectGlassOption(opt.code);
       }
     };
     container.appendChild(card);
