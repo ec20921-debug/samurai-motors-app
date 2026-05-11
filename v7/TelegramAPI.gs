@@ -87,6 +87,49 @@ function sendPhoto(botType, chatId, photo, options) {
 }
 
 /**
+ * Drive ファイルから直接 sendPhoto(multipart upload)
+ *
+ * 用途: Drive で「バージョン管理」で差し替えられたファイルを即配信する。
+ * URL 経由だと Drive のリダイレクト/権限問題で Telegram が拾えないため、
+ * GAS 側で Blob を取得し multipart で Telegram にアップする。
+ *
+ * @param {string} botType - BOT_TYPE.BOOKING or BOT_TYPE.FIELD
+ * @param {string|number} chatId
+ * @param {string} driveFileId - Google Drive ファイル ID
+ * @param {Object} [options] - caption / message_thread_id / parse_mode
+ */
+function sendPhotoFromDriveId(botType, chatId, driveFileId, options) {
+  const cfg = getConfig();
+  const token = (botType === BOT_TYPE.FIELD) ? cfg.fieldBotToken : cfg.bookingBotToken;
+  if (!token) throw new Error('Bot token 未設定: ' + botType);
+
+  const file = DriveApp.getFileById(driveFileId);
+  const blob = file.getBlob();
+
+  const payload = {
+    chat_id: String(chatId),
+    photo: blob
+  };
+  if (options && options.caption) payload.caption = options.caption;
+  if (options && options.message_thread_id) payload.message_thread_id = options.message_thread_id;
+  if (options && options.parse_mode) payload.parse_mode = options.parse_mode;
+
+  const res = UrlFetchApp.fetch(
+    'https://api.telegram.org/bot' + token + '/sendPhoto',
+    {
+      method: 'post',
+      payload: payload,
+      muteHttpExceptions: true
+    }
+  );
+  const code = res.getResponseCode();
+  if (code !== 200) {
+    Logger.log('⚠️ sendPhotoFromDriveId HTTP ' + code + ': ' + res.getContentText().substring(0, 200));
+  }
+  return JSON.parse(res.getContentText());
+}
+
+/**
  * 複数写真をまとめて送信（アルバム形式）
  *
  * @param {string} botType

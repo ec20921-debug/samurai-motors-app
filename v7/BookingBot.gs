@@ -169,14 +169,27 @@ function sendWelcomeMessage(msg) {
   const cfg = getConfig();
 
   // ── ① まずブランドチラシを送信(視覚で世界観を伝える) ──
-  // チラシは GitHub Pages にホスト、Telegram は URL でも file_id でも OK
-  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-app/flyer.png';
+  // Drive ファイルから直接 multipart upload。Daisuke が Drive 上で
+  // 「バージョン管理」で差し替えれば、コード変更・push 不要で即反映される。
+  //
+  // Drive ファイル: SamuraiMoters_チラシ.png (固定 ID、内容のみ差替可能)
+  // 差替手順: Drive で当該ファイルを右クリック → バージョン管理 → 新ファイル UP
+  const FLYER_DRIVE_ID = '1I5hIT2JcjAzpyMuMF4qATEZ0jMx_pAHE';
   try {
-    sendPhoto(BOT_TYPE.BOOKING, msg.chat.id, FLYER_URL, {
+    sendPhotoFromDriveId(BOT_TYPE.BOOKING, msg.chat.id, FLYER_DRIVE_ID, {
       caption: '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash'
     });
   } catch (e) {
     Logger.log('⚠️ welcome flyer 送信失敗(継続): ' + e);
+    // Drive 失敗時のフォールバック: GitHub Pages ホスト版
+    try {
+      sendPhoto(BOT_TYPE.BOOKING, msg.chat.id,
+        'https://ec20921-debug.github.io/samurai-motors-app/flyer.png', {
+        caption: '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash'
+      });
+    } catch (e2) {
+      Logger.log('⚠️ flyer fallback も失敗: ' + e2);
+    }
   }
 
   // ── ② キャンペーンバナー(動的取得、チラシは evergreen)──
