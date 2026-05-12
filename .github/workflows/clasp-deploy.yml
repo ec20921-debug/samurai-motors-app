@@ -1,0 +1,84 @@
+name: clasp deploy
+
+# GAS (v7 / v7-operations) を clasp push でデプロイする。
+#
+# トリガー:
+#   - main への push: 両プロジェクトを自動デプロイ
+#   - 手動 (workflow_dispatch): 対象 (v7 / v7-operations / both) とブランチを選んで実行
+#
+# 必要な GitHub Secret:
+#   - CLASPRC_JSON: ローカル Windows の C:\Users\drymp\.clasprc.json の中身をそのまま貼る
+#                   (ec20921@gmail.com で clasp login 済みのもの)
+#
+# 失敗時の戻し方: Setup.gs などローカル限定ファイルは .claspignore で除外済み。
+# クレデンシャル更新が必要な時は再度 Windows で `clasp login` → ~/.clasprc.json を Secret に再投入。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v7/**'
+      - 'v7-operations/**'
+      - '.github/workflows/clasp-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'デプロイ対象'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - v7
+          - v7-operations
+      ref:
+        description: 'デプロイするブランチ/タグ (空なら現在のブランチ)'
+        required: false
+        default: ''
+
+concurrency:
+  group: clasp-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp@3.3.0
+
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::CLASPRC_JSON secret が未設定です。リポジトリ Settings > Secrets and variables > Actions に追加してください。"
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Push v7
+        if: github.event_name == 'push' || github.event.inputs.target == 'v7' || github.event.inputs.target == 'both'
+        working-directory: v7
+        run: clasp push --force
+
+      - name: Push v7-operations
+        if: github.event_name == 'push' || github.event.inputs.target == 'v7-operations' || github.event.inputs.target == 'both'
+        working-directory: v7-operations
+        run: clasp push --force
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
