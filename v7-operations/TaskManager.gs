@@ -38,10 +38,12 @@ function hourlyTaskScheduler() {
   Logger.log('⏰ hourlyTaskScheduler PP=' + ppHour + 'h JST=' + jstHour + 'h day=' + jstDay);
 
   if (ppHour === 8) {
+    try { seedRecurringTaskTemplates(); } catch (e) { Logger.log('⚠️ seedTpl(PP): ' + e); }
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(PP): ' + e); }
     try { sendMorningTaskForField(); } catch (e) { Logger.log('❌ sendField: ' + e); }
   }
   if (jstHour === 8) {
+    try { seedRecurringTaskTemplates(); } catch (e) { Logger.log('⚠️ seedTpl(JST): ' + e); }
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(JST): ' + e); }
     try { sendMorningTaskForAdmin(); } catch (e) { Logger.log('❌ sendAdmin: ' + e); }
   }
