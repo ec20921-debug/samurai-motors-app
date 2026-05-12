@@ -60,7 +60,8 @@
       "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/booking.html\")",
       "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/job-manager.html\")",
       "Bash(curl -sI \"https://ec20921-debug.github.io/samurai-motors-app/home-internal.html\")",
-      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' https://ec20921-debug.github.io/samurai-motors-app/__TRACKED_VAR__)"
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' https://ec20921-debug.github.io/samurai-motors-app/__TRACKED_VAR__)",
+      "mcp__38a6667a-9523-407d-bcba-b53799c43be3__download_file_content"
     ]
   }
 }
