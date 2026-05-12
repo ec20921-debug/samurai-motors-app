@@ -390,6 +390,26 @@ function doPost(e) {
 
 `git push --force` は原則禁止。必要な場合は必ず事前確認。
 
+### 8. デプロイ後に真田の手動操作を要求する
+
+**GAS 関連の変更は必ず「真田が PR を承認するだけ」で完結する設計にすること**。これは絶対原則。
+
+```
+❌ ダメな例:
+- 「PR をマージしたあと、GAS エディタで seedXXX() を実行してください」
+- 「クラスプ push したあと、Apps Script の関数を1個クリックしてください」
+- 「セットアップ関数を1回だけ手動で叩いてください」
+
+✅ 正しい例:
+- 冪等な関数として書き、hourlyTaskScheduler の朝 8 時ブロックに追加
+- 1回限りの migration は ScriptProperty フラグで自己 skip させ、scheduler に組み込む
+- どうしても外部から叩く必要があるなら doPost に endpoint を足し、Actions の curl で呼ぶ
+```
+
+理由：真田は **PR 承認だけ** にコミットする方針。GAS エディタを開かせる設計は運用が破綻する。
+
+詳しくは下記「🚀 GAS デプロイ運用」参照。
+
 ---
 
 ## 💬 コミュニケーションルール
@@ -402,40 +422,84 @@ function doPost(e) {
 
 ---
 
-## 🚀 GAS デプロイ運用（clasp）
+## 🚀 GAS デプロイ運用（GitHub Actions + clasp）
 
-2026-04-23 から **clasp（Google 公式 CLI）** で v7 / v7-operations の双方を自動デプロイする運用に移行。**手動コピペは廃止**。
+2026-05-12 から **GitHub Actions による自動デプロイ** に移行。**真田は PR を承認するだけ**で GAS への反映から関数実行まで完結する運用。
 
-### 作業ディレクトリ
+### 真田の作業はこれだけ
 
-- 本リポジトリの**唯一の作業場所**：`C:\Users\drymp\dev\samurai-motors-app\`
-- `C:\Users\drymp\OneDrive\Desktop\samurai-motors-app\` は**旧スナップショット**（戻る必要が出たときの保険、編集しない）
-
-### 必要ツール
-
-- `clasp` v3.3.0 が `C:\nodejs-global\clasp.cmd` にインストール済み
-- ログイン済みアカウント：`ec20921@gmail.com`（GAS 開発系の所有者）
-- Google Apps Script API は本人アカウントで有効化済み
-
-### push コマンド
-
-```bash
-# v7（顧客系）を反映
-cd "C:/Users/drymp/dev/samurai-motors-app/v7"
-"C:/nodejs-global/clasp.cmd" push --force
-
-# v7-operations（勤務系）を反映
-cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
-"C:/nodejs-global/clasp.cmd" push --force
+```
+1. Claude が作った PR を承認 (merge to main)
+   ↓
+2. GitHub Actions が自動で clasp push (v7 / v7-operations 両方)
+   ↓
+3. 翌朝 8:00 (PP/JST) — hourlyTaskScheduler が冪等な seed/setup を自動実行
 ```
 
-`--force` は manifest 変更がある場合のプロンプトをスキップする用。通常運用ではあった方が摩擦が少ない。
+GAS エディタを開く必要は **一切ない**。
+
+### 必須セットアップ（一度だけ）
+
+GitHub Secret に **`CLASPRC_JSON`** を登録：
+
+1. ローカル Windows で `type C:\Users\drymp\.clasprc.json` の中身をコピー
+2. https://github.com/ec20921-debug/samurai-motors-app/settings/secrets/actions
+3. **New repository secret** → Name: `CLASPRC_JSON` → 中身を貼る
+
+OAuth トークンが期限切れになった場合は、Windows で `clasp login` し直して Secret を更新。
+
+### Workflow ファイル
+
+`.github/workflows/clasp-deploy.yml` が `v7/**` または `v7-operations/**` の変更を検知して自動 push。
+
+トリガー：
+- **main への push**: 両プロジェクトを自動デプロイ
+- **手動 (workflow_dispatch)**: 対象 (v7 / v7-operations / both) とブランチを選んで Actions タブから実行
+
+### Claude が GAS 変更を扱う時の必須ルール
+
+新しい関数を追加する時、以下を満たすこと（できないなら設計を見直す）：
+
+1. **冪等性**: 何度呼んでも副作用なし（既存データ skip / 上書きしない）
+2. **自動実行フック**: 真田の手動操作なしに動くように、以下のいずれかに組み込む
+   - `hourlyTaskScheduler()` の朝 8 時ブロックに `try { fnName(); } catch (e) { ... }` で追加（毎日 1 回・最も簡単）
+   - 別途 `ScriptApp.newTrigger` で時限トリガーを設定
+   - 1回限りの migration は `ScriptProperty` フラグで自己 skip（`if (props.getProperty('MIGRATED_XXX')) return;`）
+3. **失敗時ログ**: try/catch でログ出力。本番影響大なら管理グループへ通知
+
+例（pH 測定タスクテンプレ追加時の実装）:
+```javascript
+// Setup.gs に seedRecurringTaskTemplates() を追加 (冪等)
+// → TaskManager.gs の hourlyTaskScheduler に呼び出し追加
+if (ppHour === 8) {
+  try { seedRecurringTaskTemplates(); } catch (e) { Logger.log('⚠️ seedTpl: ' + e); }
+  try { generateRecurringTasks(); } catch (e) { ... }
+}
+```
+
+これで PR merge → clasp push → 翌朝自動 seed → 動作開始 まで全自動。
 
 ### 設計上の重要ポイント
 
 - v7 の `Setup.gs` / `SetupProperties.gs` / `GetGroupId.gs` / `WebhookSetup.gs` は **`.claspignore` で除外**。リモート GAS には残さない（コード肥大化防止）
 - v7-operations の `Setup.gs` は本番ファイル扱い（毎回 push される）
-- `.txt` ペアファイルは廃止（`.claspignore` でも除外、ローカルにも置かない）
+- v7-operations のセットアップ関数は本番デプロイ後 scheduler から自動呼出しできる
+- v7 でセットアップ関数を追加する場合は、`.claspignore` から外すか別ファイル（例：`Migration.gs`）に置き scheduler 経由で実行する
+
+### 保険：手動 clasp（緊急時のみ）
+
+GitHub Actions が落ちた等の緊急時のみ、ローカルから手動 push：
+
+```bash
+cd "C:/Users/drymp/dev/samurai-motors-app/v7"
+"C:/nodejs-global/clasp.cmd" push --force
+
+cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
+"C:/nodejs-global/clasp.cmd" push --force
+```
+
+- `clasp` v3.3.0 が `C:\nodejs-global\clasp.cmd` にインストール済み
+- ログイン済みアカウント：`ec20921@gmail.com`
 
 ### 万一壊れた場合の戻し方
 
