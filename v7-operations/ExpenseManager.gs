@@ -113,7 +113,18 @@ function getOrCreateReceiptFolder_() {
 /**
  * 経費を登録
  *
- * @param {string} chatId 登録者
+ * 【立替区分の意味（P2 で再定義）】
+ *   - `会社直払い` = 会社カード・会社口座から直接払った（プール影響なし）
+ *   - `立替`       = 自分の財布で払った会社経費
+ *     ・登録者=ロン        → 前払いプールから消費したものと見なす（PoolManager で残高反映）
+ *     ・登録者=ロン以外    → 個人立替（飯泉 AMEX 等）。記録のみ、精算タスクは自動生成しない
+ *
+ * 【精算タスクの自動生成について】
+ *   v6 / 過去の v7-ops では `立替` 時に精算タスクを自動生成していたが、
+ *   ノイズが多すぎたため γ 方針（記録のみ）で廃止。既存の未精算タスクは
+ *   TaskManager.settleExpenseByTask_ 経由で後方互換的に閉じる。
+ *
+ * @param {string} chatId 登録者の Telegram chat_id（Claude Code 経由なら空でも可）
  * @param {Object} payload {
  *   transactionDate: 'yyyy-MM-dd',
  *   description:     string,
@@ -122,56 +133,66 @@ function getOrCreateReceiptFolder_() {
  *   vendor:          string (任意),
  *   category:        string,
  *   memo:            string (任意),
- *   photoBase64:     string (任意) - data URL 先頭なし or あり（あればstrip）,
- *   photoMime:       'image/jpeg'|'image/png' 等 (写真があれば必須),
- *   photoName:       'receipt.jpg' (任意)
+ *   photoBase64:     string (任意),
+ *   photoMime:       'image/jpeg'|'image/png' 等,
+ *   photoName:       'receipt.jpg' (任意),
+ *   paymentType:     '立替'|'会社直払い',
+ *   reimburseTo:     string (任意・参考情報のみ、自動タスクは作らない),
+ *   reimburseDueDate:string (任意・参考情報のみ),
+ *   actorName:       string (chatId なしの時の登録者氏名。例: '飯泉' / '鈴木')
  * }
  */
 function submitExpense(chatId, payload) {
-  const staff = findStaffByChatId(String(chatId));
-  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND', chatId: String(chatId) };
+  payload = payload || {};
 
-  const desc     = String((payload && payload.description) || '').trim();
-  const amount   = Number((payload && payload.amount) || 0);
-  const currency = String((payload && payload.currency) || 'USD').trim().toUpperCase();
-  const vendor   = String((payload && payload.vendor)   || '').trim();
-  const category = String((payload && payload.category) || '').trim();
-  const memo     = String((payload && payload.memo)     || '').trim();
+  // 登録者の解決：chatId 優先、それで見つからない場合は actorName（Claude Code 経由用）
+  let staff = null;
+  if (chatId) {
+    staff = findStaffByChatId(String(chatId));
+  }
+  if (!staff && payload.actorName) {
+    staff = findStaffByNameJp(String(payload.actorName));
+  }
+  if (!staff) {
+    return {
+      ok: false,
+      error: 'STAFF_NOT_FOUND',
+      chatId: String(chatId || ''),
+      actorName: String(payload.actorName || '')
+    };
+  }
 
-  // Phase A: 立替精算関連
-  var paymentType = String((payload && payload.paymentType) || '会社直払い').trim();
+  const desc     = String(payload.description || '').trim();
+  const amount   = Number(payload.amount || 0);
+  const currency = String(payload.currency || 'USD').trim().toUpperCase();
+  const vendor   = String(payload.vendor   || '').trim();
+  const category = String(payload.category || '').trim();
+  const memo     = String(payload.memo     || '').trim();
+
+  // 立替区分（2値）
+  var paymentType = String(payload.paymentType || '会社直払い').trim();
   if (EXPENSE_PAYMENT_TYPES_.indexOf(paymentType) < 0) paymentType = '会社直払い';
   const isReimburse = paymentType === '立替';
-  const reimburseTo = isReimburse ? String((payload && payload.reimburseTo) || '').trim() : '';
+  // 精算先 / 精算期限：自動タスクを作らないので参考情報扱い。立替時も必須にしない
+  const reimburseTo = isReimburse ? String(payload.reimburseTo || '').trim() : '';
 
-  if (!desc)   return { ok: false, error: 'DESC_REQUIRED' };
+  if (!desc) return { ok: false, error: 'DESC_REQUIRED' };
   if (!amount || isNaN(amount) || amount <= 0) return { ok: false, error: 'AMOUNT_INVALID' };
   if (EXPENSE_CURRENCIES_.indexOf(currency) < 0) return { ok: false, error: 'CURRENCY_INVALID' };
-  if (isReimburse && !reimburseTo) return { ok: false, error: 'REIMBURSE_TO_REQUIRED' };
 
   const tz = staff.timezone || OPS_TZ;
   const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  const txDate = String((payload && payload.transactionDate) || todayStr).trim() || todayStr;
+  const txDate = String(payload.transactionDate || todayStr).trim() || todayStr;
 
-  // 精算期限（立替のみ、未指定なら +3日）
-  var reimburseDue = '';
-  if (isReimburse) {
-    const requested = String((payload && payload.reimburseDueDate) || '').trim();
-    if (requested) {
-      reimburseDue = requested;
-    } else {
-      const d = new Date();
-      d.setDate(d.getDate() + REIMBURSE_DUE_DEFAULT_DAYS_);
-      reimburseDue = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    }
-  }
+  // 精算期限は明示指定があれば記録（参考用）。自動デフォルト +3日 は廃止
+  const reimburseDue = isReimburse ? String(payload.reimburseDueDate || '').trim() : '';
 
   const expenseId = generateDateSeqId('EXP', SHEET_NAMES.EXPENSES, '経費ID');
 
   // レシート写真保存（任意）
   let receiptUrl = '';
   let ocrText = '';
-  if (payload && payload.photoBase64) {
+  if (payload.photoBase64) {
     try {
       const saved = saveReceiptPhoto_(payload.photoBase64, payload.photoMime, payload.photoName, expenseId);
       receiptUrl = saved.url;
@@ -181,26 +202,21 @@ function submitExpense(chatId, payload) {
     }
   }
 
-  // 立替なら「未精算」、会社直払いは精算不要なので「会社負担」
-  const statusValue = isReimburse ? '未精算' : '会社負担';
-
-  // Phase B: 立替時は先に精算タスクを自動生成 → 関連タスクIDをシートに書く
-  var linkedTaskId = '';
-  if (isReimburse) {
-    try {
-      const taskResult = createExpenseReimburseTask_(staff, {
-        expenseId:    expenseId,
-        amount:       amount,
-        currency:     currency,
-        desc:         desc,
-        reimburseTo:  reimburseTo,
-        reimburseDue: reimburseDue
-      });
-      if (taskResult && taskResult.ok) linkedTaskId = taskResult.taskId;
-    } catch (err) {
-      Logger.log('⚠️ 精算タスク自動生成失敗: ' + err);
-    }
+  // ステータス判定（新セマンティクス）
+  //   会社直払い            → 会社負担
+  //   立替 + 登録者=ロン    → プール消費（前払い金を使った）
+  //   立替 + その他登録者   → 個人立替（飯泉 AMEX 等。γ=記録のみで精算タスクは作らない）
+  var statusValue;
+  if (!isReimburse) {
+    statusValue = '会社負担';
+  } else if (staff.nameJp === 'ロン') {
+    statusValue = 'プール消費';
+  } else {
+    statusValue = '個人立替';
   }
+
+  // P2: 精算タスク自動生成は廃止（γ＝記録のみ）。既存「未精算」レコードの後方互換は TaskManager 側で維持
+  const linkedTaskId = '';
 
   appendRow(SHEET_NAMES.EXPENSES, {
     '経費ID':        expenseId,
@@ -212,7 +228,7 @@ function submitExpense(chatId, payload) {
     '取引先':        vendor,
     '勘定科目':      category,
     '登録者':        staff.nameJp,
-    '登録者 Chat ID': String(chatId),
+    '登録者 Chat ID': String(chatId || staff.chatId || ''),
     'レシート写真':  receiptUrl ? '=HYPERLINK("' + receiptUrl + '","レシート")' : '',
     'OCR原文':       ocrText,
     'ステータス':    statusValue,
@@ -235,8 +251,15 @@ function submitExpense(chatId, payload) {
     category:     category,
     paymentType:  paymentType,
     reimburseTo:  reimburseTo,
-    reimburseDue: reimburseDue
-  }, chatId);
+    reimburseDue: reimburseDue,
+    statusValue:  statusValue
+  }, staff);
+
+  // ロンの「プール消費」だった場合は更新後の残高も返す（ミニアプリで即時表示できるように）
+  var poolBalanceAfter = null;
+  if (statusValue === 'プール消費' && typeof getPoolBalance === 'function') {
+    try { poolBalanceAfter = getPoolBalance('ロン'); } catch (e) { /* ignore */ }
+  }
 
   return {
     ok: true,
@@ -245,7 +268,10 @@ function submitExpense(chatId, payload) {
     paymentType: paymentType,
     reimburseTo: reimburseTo,
     reimburseDue: reimburseDue,
-    linkedTaskId: linkedTaskId
+    linkedTaskId: linkedTaskId,
+    statusValue: statusValue,
+    actor: staff.nameJp,
+    poolBalanceAfter: poolBalanceAfter
   };
 }
 
@@ -254,13 +280,11 @@ function submitExpense(chatId, payload) {
  * 日本側(role='admin' = Daisuke / 飯泉)の追加は無音
  *
  * @param {Object} expenseInfo - 通知に使う経費情報
- * @param {string} creatorChatId - 追加した人の Telegram chat_id
+ * @param {Object} creator - スタッフ情報（findStaffByChatId/findStaffByNameJp の戻り値）
  */
-function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
-  if (!creatorChatId) return;
+function notifyExpenseCreatedIfField_(expenseInfo, creator) {
+  if (!creator) return;
   try {
-    const creator = findStaffByChatId(String(creatorChatId));
-    if (!creator) return;
     if (creator.role !== 'field') return; // 日本側 admin の追加は通知しない
 
     const cfg = getConfig();
@@ -275,10 +299,21 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       ? expenseInfo.amount.toLocaleString()
       : String(expenseInfo.amount);
 
-    const reimburseLine = (expenseInfo.paymentType === '立替')
-      ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo) +
-        ' / 期限: ' + escapeHtml_(expenseInfo.reimburseDue)
-      : '';
+    // 立替時の追加情報行（精算先・期限は参考情報のみ）
+    var reimburseLine = '';
+    if (expenseInfo.paymentType === '立替' && (expenseInfo.reimburseTo || expenseInfo.reimburseDue)) {
+      reimburseLine = '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo || '-') +
+        (expenseInfo.reimburseDue ? ' / 期限: ' + escapeHtml_(expenseInfo.reimburseDue) : '');
+    }
+
+    // ロンのプール消費は残高も併記（管理者がリアルタイムに把握できるように）
+    var balanceLine = '';
+    if (expenseInfo.statusValue === 'プール消費' && typeof getPoolBalance === 'function') {
+      try {
+        const bal = getPoolBalance('ロン');
+        balanceLine = '\n💼 ロン残高: <b>$' + (bal.balanceUSD).toFixed(2) + '</b>';
+      } catch (e) { /* ignore */ }
+    }
 
     const text =
       '🆕 <b>経費追加</b>(現場から)\n' +
@@ -289,7 +324,9 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       (expenseInfo.vendor ? '\n🏪 取引先: ' + escapeHtml_(expenseInfo.vendor) : '') +
       (expenseInfo.category ? '\n🏷️ 勘定: ' + escapeHtml_(expenseInfo.category) : '') +
       '\n💳 区分: ' + escapeHtml_(expenseInfo.paymentType) +
-      reimburseLine;
+      (expenseInfo.statusValue ? ' / ' + escapeHtml_(expenseInfo.statusValue) : '') +
+      reimburseLine +
+      balanceLine;
 
     const opts = { parse_mode: 'HTML' };
     if (threadId) opts.message_thread_id = threadId;
@@ -319,7 +356,7 @@ function saveReceiptPhoto_(base64, mime, name, expenseId) {
  * 毎週金曜 JST 18:00 に直近7日間の経費サマリを管理グループへ送信
  *
  * - 期間: 実行日を含む直近7日間（取引日ベース）
- * - 集計: 件数 / 通貨別合計 / カテゴリ別 / 担当者別 / 未精算の立替リスト
+ * - 集計: 件数 / 通貨別合計 / カテゴリ別 / 担当者別 / 個人立替リスト
  * - 通知先: ADMIN_EXPENSE_THREAD_ID（未設定なら ADMIN_DAILY_REPORT_THREAD_ID）
  *
  * hourlyTaskScheduler から呼ばれる。手動実行は debugSendWeeklyExpenseSummary を使用。
@@ -383,9 +420,14 @@ function sendWeeklyExpenseSummary() {
     byStaff[name].byCur[cur] = (byStaff[name].byCur[cur] || 0) + Number(r['金額'] || 0);
   });
 
-  // 未精算の立替経費（期間内に限らず全件 → 滞留把握のため）
+  // 個人立替（精算待ち or 記録のみ）— 期間内に限らず全件
+  //   P2 以降: ステータス '個人立替' = 飯泉 AMEX 等の自腹分（γ=記録のみ）
+  //   P2 以前: ステータス '未精算'   = 旧フローの自動タスク連動分（後方互換）
+  //   どちらも管理者目線では「会社→個人へ精算する可能性のあるもの」として一覧表示
   const unsettled = rows.filter(function(r) {
-    return String(r['立替区分']) === '立替' && String(r['ステータス']) === '未精算';
+    if (String(r['立替区分']) !== '立替') return false;
+    const status = String(r['ステータス']);
+    return status === '未精算' || status === '個人立替';
   });
 
   const fmtAmounts = function(byCur) {
@@ -426,7 +468,7 @@ function sendWeeklyExpenseSummary() {
 
   if (unsettled.length > 0) {
     lines.push('');
-    lines.push('⏳ <b>未精算の立替経費（全期間 ' + unsettled.length + '件）</b>');
+    lines.push('⏳ <b>個人立替（記録のみ・全期間 ' + unsettled.length + '件）</b>');
     unsettled.slice(0, 10).forEach(function(r) {
       const money = String(r['通貨']) + ' ' + Number(r['金額']).toLocaleString('en-US');
       const due = formatDateCellTz_(r['精算期限'], tz);
@@ -444,7 +486,7 @@ function sendWeeklyExpenseSummary() {
     message_thread_id: Number(thread),
     disable_web_page_preview: true
   });
-  Logger.log('📤 週次経費サマリ送信: ' + recent.length + '件 / 未精算' + unsettled.length + '件');
+  Logger.log('📤 週次経費サマリ送信: ' + recent.length + '件 / 個人立替' + unsettled.length + '件');
 }
 
 /**

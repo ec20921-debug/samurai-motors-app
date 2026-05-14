@@ -193,8 +193,10 @@ function doPost(e) {
       }
 
       case 'expense_submit': {
-        const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        const chatId    = String(body.chatId    || '');
+        const actorName = String(body.actorName || '');
+        // chatId か actorName のどちらかは必要
+        if (!chatId && !actorName) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID_OR_ACTOR_NAME' });
         return jsonOut(submitExpense(chatId, {
           transactionDate:  String(body.transactionDate  || ''),
           description:      String(body.description      || ''),
@@ -206,10 +208,32 @@ function doPost(e) {
           photoBase64:      String(body.photoBase64      || ''),
           photoMime:        String(body.photoMime        || ''),
           photoName:        String(body.photoName        || ''),
-          // Phase A: 立替精算
           paymentType:      String(body.paymentType      || '会社直払い'),
           reimburseTo:      String(body.reimburseTo      || ''),
-          reimburseDueDate: String(body.reimburseDueDate || '')
+          reimburseDueDate: String(body.reimburseDueDate || ''),
+          actorName:        actorName
+        }));
+      }
+
+      // Claude Code 経由（鈴木さん）の経費入力。token 必須・actorName 必須
+      case 'expense_submit_via_claude': {
+        if (!validatePoolToken_(body.token)) {
+          return jsonOut({ ok: false, error: 'UNAUTHORIZED' });
+        }
+        const actorName = String(body.actorName || '').trim();
+        if (!actorName) return jsonOut({ ok: false, error: 'ACTOR_NAME_REQUIRED' });
+        return jsonOut(submitExpense('', {
+          transactionDate:  String(body.transactionDate  || ''),
+          description:      String(body.description      || ''),
+          amount:           Number(body.amount           || 0),
+          currency:         String(body.currency         || 'USD'),
+          vendor:           String(body.vendor           || ''),
+          category:         String(body.category         || ''),
+          memo:             String(body.memo             || ''),
+          paymentType:      String(body.paymentType      || '立替'),
+          reimburseTo:      String(body.reimburseTo      || ''),
+          reimburseDueDate: String(body.reimburseDueDate || ''),
+          actorName:        actorName
         }));
       }
 

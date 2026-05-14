@@ -717,50 +717,6 @@ function settleExpenseByTask_(expenseId, taskRow) {
   }
 }
 
-/**
- * Phase B: 立替経費登録時に精算タスクを自動生成
- *
- * @param {{nameJp:string, chatId:string, role:string, timezone:string}} payerStaff 立替者（ロン等）
- * @param {{expenseId, amount, currency, desc, reimburseTo, reimburseDue}} data 経費データ
- * @return {{ok:boolean, taskId?:string, error?:string}}
- */
-function createExpenseReimburseTask_(payerStaff, data) {
-  if (!data || !data.reimburseTo)  return { ok: false, error: 'REIMBURSE_TO_REQUIRED' };
-  if (!data.reimburseDue)          return { ok: false, error: 'DUE_REQUIRED' };
-
-  // 精算先スタッフを解決（スタッフマスター未登録でもタスクは作る：chatId/role/tz は空欄）
-  const assignee = (typeof findStaffByNameJp === 'function')
-    ? findStaffByNameJp(data.reimburseTo)
-    : null;
-  const assigneeName = data.reimburseTo;
-  const assigneeChatId = assignee ? assignee.chatId : '';
-  const assigneeRole   = assignee ? assignee.role   : '';
-  const assigneeTz     = (assignee && assignee.timezone) || OPS_TZ;
-
-  const money = data.currency + ' ' + Number(data.amount).toLocaleString('en-US');
-  const desc = payerStaff.nameJp + ' へ立替精算 ' + money +
-    '（' + data.expenseId + (data.desc ? ' / ' + String(data.desc).substring(0, 60) : '') + '）';
-
-  const taskId = generateDateSeqId('TASK', SHEET_NAMES.TASKS, 'タスクID');
-  appendRow(SHEET_NAMES.TASKS, {
-    'タスクID':      taskId,
-    '作成日時':      new Date(),
-    '担当者名':      assigneeName,
-    '担当 Chat ID':  assigneeChatId,
-    '担当 role':     assigneeRole,
-    '担当 timezone': assigneeTz,
-    '期限':          data.reimburseDue,
-    'タスク内容':    desc,
-    'ステータス':    '未着手',
-    '完了日時':      '',
-    '未完了理由':    '',
-    '繰返しルール':  '',
-    '親タスクID':    '',
-    '関連経費ID':    data.expenseId
-  });
-
-  return { ok: true, taskId: taskId };
-}
 
 function markTaskNotDone(taskId, actor, reason) {
   const row = findRow(SHEET_NAMES.TASKS, 'タスクID', taskId);
