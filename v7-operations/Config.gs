@@ -45,7 +45,10 @@ const CONFIG_KEYS = {
   JETRO_FORM_URL:                  'JETRO_FORM_URL',                  // 同上（プレフィル付き URL のベース）
   JETRO_FORM_SOURCE_ENTRY:         'JETRO_FORM_SOURCE_ENTRY',         // 流入経路フィールドの entry ID（hidden field プレフィル用）
   JETRO_ADMIN_EMAIL:               'JETRO_ADMIN_EMAIL',               // 予約通知メール宛先（任意・未設定ならスクリプト実行者のメール）
-  RON_CHAT_ID:                     'RON_CHAT_ID'                      // ロン君個人 Telegram chat_id（未設定ならスタッフマスターから自動解決）
+  RON_CHAT_ID:                     'RON_CHAT_ID',                     // ロン君個人 Telegram chat_id（未設定ならスタッフマスターから自動解決）
+
+  // 前払いプール（鈴木が Claude Code から pool_topup / pool_balance API を叩くための簡易トークン）
+  POOL_TOPUP_TOKEN:                'POOL_TOPUP_TOKEN'                 // setupPoolTopupToken() で生成、ScriptProperties に保存
 };
 
 // ====== Bot種別識別子 ======
@@ -126,7 +129,8 @@ function getConfig() {
     jetroFormUrl:             all[CONFIG_KEYS.JETRO_FORM_URL] || '',
     jetroFormSourceEntry:     all[CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY] || '',
     jetroAdminEmail:          all[CONFIG_KEYS.JETRO_ADMIN_EMAIL] || '',
-    ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || ''
+    ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || '',
+    poolTopupToken:           all[CONFIG_KEYS.POOL_TOPUP_TOKEN] || ''
   };
 }
 

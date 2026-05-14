@@ -213,6 +213,36 @@ function doPost(e) {
         }));
       }
 
+      // ── 前払いプール（鈴木 → Claude Code → 簡易トークン認証）──
+      case 'pool_topup': {
+        if (!validatePoolToken_(body.token)) {
+          return jsonOut({ ok: false, error: 'UNAUTHORIZED' });
+        }
+        return jsonOut(addPoolDeposit({
+          transactionDate: String(body.transactionDate || ''),
+          payer:           String(body.payer           || ''),
+          receiver:        String(body.receiver        || ''),
+          amount:          Number(body.amount          || 0),
+          currency:        String(body.currency        || 'USD'),
+          method:          String(body.method          || 'ABA'),
+          memo:            String(body.memo            || ''),
+          registeredBy:    String(body.registeredBy    || 'Claude')
+        }));
+      }
+
+      case 'pool_balance': {
+        if (!validatePoolToken_(body.token)) {
+          return jsonOut({ ok: false, error: 'UNAUTHORIZED' });
+        }
+        const receiver = String(body.receiver || '');
+        const limit    = Number(body.recentLimit || 5);
+        return jsonOut({
+          ok:      true,
+          balance: getPoolBalance(receiver),
+          recent:  getRecentPoolDeposits(receiver, limit)
+        });
+      }
+
       // ── パートナープログラム ──
       case 'partner_lookup_by_code': {
         // 予約Bot / booking.html からコード検証のみに使う
