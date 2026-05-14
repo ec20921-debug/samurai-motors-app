@@ -267,6 +267,28 @@ function doPost(e) {
         });
       }
 
+      // ── 定期支出（サブスク）──
+      case 'subscription_list': {
+        if (!validatePoolToken_(body.token)) {
+          return jsonOut({ ok: false, error: 'UNAUTHORIZED' });
+        }
+        return jsonOut({ ok: true, subscriptions: getActiveSubscriptions() });
+      }
+
+      case 'subscription_apply': {
+        if (!validatePoolToken_(body.token)) {
+          return jsonOut({ ok: false, error: 'UNAUTHORIZED' });
+        }
+        const tid    = String(body.templateId  || '').trim();
+        const name   = String(body.serviceName || '').trim();
+        const amount = Number(body.amount      || 0);
+        const ym     = String(body.ym          || '').trim();
+        if (!amount) return jsonOut({ ok: false, error: 'AMOUNT_REQUIRED' });
+        if (tid)  return jsonOut(applySubscriptionById(tid, amount, ym));
+        if (name) return jsonOut(applySubscriptionByName(name, amount, ym));
+        return jsonOut({ ok: false, error: 'TEMPLATE_ID_OR_NAME_REQUIRED' });
+      }
+
       // ── パートナープログラム ──
       case 'partner_lookup_by_code': {
         // 予約Bot / booking.html からコード検証のみに使う
