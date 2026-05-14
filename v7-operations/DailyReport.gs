@@ -30,12 +30,14 @@ function sendDailyReport() {
   const ppToday  = Utilities.formatDate(new Date(), OPS_TZ,       'yyyy-MM-dd');
 
   const salesSection = buildSalesSection_(ppToday);
+  const poolSection  = buildPoolBalanceSection_(ppToday);
   const taskSection  = buildTaskSection_();
 
   const text =
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection + '\n\n' +
+    poolSection + '\n\n' +
     taskSection;
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
@@ -154,6 +156,83 @@ function readV7BookingsForDate_(v7SsId, todayStr) {
         : String(d).trim().substring(0, 10);
       return ds === todayStr;
     });
+}
+
+// ============================================================
+//  ロン プール残高セクション（P4）
+// ============================================================
+
+/**
+ * ロン君の前払いプール残高セクションを構築。
+ * - 現在残高（USD換算）
+ * - 今日の入金（あれば）
+ * - 今日の立替消費（あれば、USD/KHR 通貨別 + USD換算）
+ *
+ * PoolManager が無い／例外時は短いフォールバック文字列を返す（日報全体を落とさない）。
+ */
+function buildPoolBalanceSection_(todayStr) {
+  try {
+    if (typeof getPoolBalance !== 'function') {
+      return '💼 <b>ロン手持ち残高</b>\n　（PoolManager 未配置）';
+    }
+    const bal = getPoolBalance('ロン');
+
+    // 今日の入金
+    const deposits = (typeof getAllRows === 'function')
+      ? getAllRows(POOL_SHEET_NAME_).filter(function(r) {
+          if (String(r['受領者']) !== 'ロン') return false;
+          const ds = formatDateCellTz_(r['入金日'], OPS_TZ);
+          return ds === todayStr;
+        })
+      : [];
+
+    // 今日のロン立替消費（経費シート）
+    var todaySpendUSD = 0;
+    var todaySpendCount = 0;
+    var todaySpendByCur = { USD: 0, KHR: 0 };
+    try {
+      const exps = getAllRows(SHEET_NAMES.EXPENSES);
+      exps.forEach(function(r) {
+        if (String(r['登録者']) !== 'ロン') return;
+        if (String(r['立替区分']) !== '立替') return;
+        const ds = formatDateCellTz_(r['取引日'], OPS_TZ);
+        if (ds !== todayStr) return;
+        const amt = Number(r['金額'] || 0);
+        const cur = String(r['通貨'] || 'USD').toUpperCase();
+        if (todaySpendByCur[cur] === undefined) todaySpendByCur[cur] = 0;
+        todaySpendByCur[cur] += amt;
+        if (cur === 'USD') todaySpendUSD += amt;
+        else if (cur === 'KHR') todaySpendUSD += amt / 4000;
+        todaySpendCount++;
+      });
+    } catch (e) { /* ignore */ }
+
+    const lines = [];
+    lines.push('💼 <b>ロン手持ち残高（前払いプール）</b>');
+    lines.push('　現在: <b>$' + bal.balanceUSD.toFixed(2) + '</b>');
+
+    if (deposits.length > 0) {
+      const depositLine = deposits.map(function(d) {
+        const amt = Number(d['金額'] || 0);
+        const cur = String(d['通貨'] || 'USD');
+        return cur + ' ' + amt.toLocaleString('en-US') + '（' + String(d['入金者'] || '') +
+          ' / ' + String(d['方法'] || '') + '）';
+      }).join(', ');
+      lines.push('　🆕 本日入金: ' + escapeHtml_(depositLine));
+    }
+
+    if (todaySpendCount > 0) {
+      const parts = [];
+      if (todaySpendByCur.USD > 0) parts.push('USD ' + todaySpendByCur.USD.toFixed(2));
+      if (todaySpendByCur.KHR > 0) parts.push('KHR ' + todaySpendByCur.KHR.toLocaleString('en-US'));
+      lines.push('　🧾 本日消費: ' + parts.join(' + ') + '（' + todaySpendCount + '件・USD換算 $' + todaySpendUSD.toFixed(2) + '）');
+    }
+
+    return lines.join('\n');
+  } catch (err) {
+    Logger.log('⚠️ buildPoolBalanceSection_ 失敗: ' + err);
+    return '💼 <b>ロン手持ち残高</b>\n　（取得失敗: ' + escapeHtml_(String(err)) + '）';
+  }
 }
 
 // ============================================================
