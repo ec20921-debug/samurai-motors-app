@@ -267,6 +267,21 @@ function doPost(e) {
         });
       }
 
+      // ミニアプリ用：chatId 認証で読み取り専用。トークン不要。
+      // ロン君のプール残高はスタッフ全員が見ても害がないので chatId 検証だけ。
+      case 'pool_balance_for_staff': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        const staff = findStaffByChatId(chatId);
+        if (!staff) return jsonOut({ ok: false, error: 'STAFF_NOT_FOUND' });
+        return jsonOut({
+          ok:      true,
+          balance: getPoolBalance('ロン'),
+          recent:  getRecentPoolDeposits('ロン', 3),
+          viewer:  { nameJp: staff.nameJp, role: staff.role }
+        });
+      }
+
       // ── 定期支出（サブスク）──
       case 'subscription_list': {
         if (!validatePoolToken_(body.token)) {

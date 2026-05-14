@@ -100,10 +100,6 @@ body {
 }
 .toggle-btn:active { transform: scale(0.98); }
 
-/* 立替時のみ表示 */
-.reimburse-only { display:none; }
-.reimburse-only.show { display:block; }
-
 /* 金額＋通貨の特殊レイアウト */
 .amount-row {
   display:flex; gap: 8px;
@@ -166,24 +162,59 @@ body {
 .toast.show { transform: translateX(-50%) translateY(0); }
 .toast.err { border-color: var(--red); }
 .toast.ok  { border-color: var(--green); }
+
+/* 残高バナー（ロンのプール残高） */
+.pool-banner {
+  margin: 0 0 14px;
+  background: linear-gradient(135deg, #1a3a2e, #1f4d3a);
+  border: 1.5px solid #2e7d5b;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: none;
+}
+.pool-banner.show { display: block; }
+.pool-banner .pool-title {
+  font-size: 11px; color: #7fc9a0; font-weight: 600;
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.pool-banner .pool-amount {
+  font-size: 22px; font-weight: 700;
+  background: linear-gradient(135deg, #a8e6cd, #d4f0e0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.pool-banner .pool-warn {
+  color: #ffb74d; font-weight: 700;
+}
+.pool-banner .pool-recent {
+  font-size: 11px; color: #7fc9a0; margin-top: 4px;
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div class="title">💰 経費入力</div>
-  <div class="subtitle">ការចំណាយ / Expense Entry</div>
+  <div class="title">💰 ការចំណាយ / 経費入力</div>
+  <div class="subtitle">Expense Entry</div>
 
   <div class="who" id="whoLine">読み込み中…</div>
 
+  <!-- ロンのプール残高バナー（chatId 確認後に表示） -->
+  <div class="pool-banner" id="poolBanner">
+    <div class="pool-title">💼 ប្រាក់នៅសល់ / ロン手持ち</div>
+    <div class="pool-amount" id="poolAmount">--</div>
+    <div class="pool-recent" id="poolRecent"></div>
+  </div>
+
   <div class="field">
-    <label>📅 取引日 / កាលបរិច្ឆេទ</label>
+    <label>📅 កាលបរិច្ឆេទ / 取引日</label>
     <input type="date" id="inputDate">
     <div class="hint">通常は今日。レシートの日付を入れてOK</div>
   </div>
 
   <div class="field">
-    <label>💵 金額 <span class="req">* 必須</span></label>
+    <label>💵 ចំនួនទឹកប្រាក់ / 金額 <span class="req">* 必須</span></label>
     <div class="amount-row">
       <input type="number" id="inputAmount" class="amount-input" step="0.01" min="0" placeholder="例: 4.50">
       <select id="inputCurrency" class="currency-select">
@@ -193,51 +224,38 @@ body {
   </div>
 
   <div class="field">
-    <label>📝 品目・摘要 <span class="req">* 必須</span></label>
+    <label>📝 មុខទំនិញ / 品目・摘要 <span class="req">* 必須</span></label>
     <input type="text" id="inputDesc" placeholder="例: A4コピー用紙 1束">
   </div>
 
   <div class="field">
-    <label>🗂 勘定科目</label>
+    <label>🗂 ប្រភេទចំណាយ / 勘定科目</label>
     <select id="inputCategory">
-      <option value="">-- 選択してください --</option>
+      <option value="">-- ជ្រើសរើស / 選択 --</option>
     </select>
   </div>
 
   <div class="field">
-    <label>🏪 取引先 / អ្នកលក់</label>
+    <label>🏪 អ្នកលក់ / 取引先</label>
     <input type="text" id="inputVendor" placeholder="例: Aeon Mall">
     <div class="hint">任意</div>
   </div>
 
-  <!-- 立替区分トグル -->
+  <!-- 立替区分トグル（P6: 精算先・期限フィールドは廃止＝自動タスク無し） -->
   <div class="field">
-    <label>💳 支払い区分 / ការទូទាត់</label>
+    <label>💳 ការទូទាត់ / 支払い区分</label>
     <div class="toggle-group">
-      <button type="button" class="toggle-btn active" id="btnPayCompany" data-type="会社直払い">
-        🏢 会社直払い
-      </button>
       <button type="button" class="toggle-btn" id="btnPayReimburse" data-type="立替">
-        💸 立替（精算必要）
+        💸 ខ្ញុំបង់មុន / 立替
+      </button>
+      <button type="button" class="toggle-btn" id="btnPayCompany" data-type="会社直払い">
+        🏢 ក្រុមហ៊ុនបង់ / 会社直払い
       </button>
     </div>
-    <div class="hint">会社カード・会社口座で直接払った場合は「会社直払い」。自分のお金で立て替えた場合は「立替」。</div>
-  </div>
-
-  <!-- 立替時のみ表示：精算先 -->
-  <div class="field reimburse-only" id="fldReimburseTo">
-    <label>👤 精算先（誰から払ってもらう？） <span class="req">* 立替時は必須</span></label>
-    <select id="inputReimburseTo">
-      <option value="">-- 選択してください --</option>
-    </select>
-    <div class="hint">デフォルト：飯泉さん</div>
-  </div>
-
-  <!-- 立替時のみ表示：精算期限 -->
-  <div class="field reimburse-only" id="fldReimburseDue">
-    <label>⏰ 精算期限</label>
-    <input type="date" id="inputReimburseDue">
-    <div class="hint">デフォルトは +3日。変更しなくてOK</div>
+    <div class="hint">
+      <b>立替</b>: 自分の財布で払った（ロン → 前払いプールから消費 / 飯泉 → 個人立替記録）<br>
+      <b>会社直払い</b>: 会社カード・会社口座で払った
+    </div>
   </div>
 
   <!-- レシート写真 -->
@@ -272,8 +290,7 @@ var currentStaff = null;
 var currentPhotoBase64 = '';
 var currentPhotoMime   = '';
 var currentPhotoName   = '';
-var currentPaymentType = '会社直払い'; // '会社直払い' | '立替'
-var REIMBURSE_DUE_DEFAULT_DAYS = 3;
+var currentPaymentType = '立替'; // P6: 立替がデフォルト（ロンの典型ケース。会社直払いは少数）
 
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
@@ -318,6 +335,12 @@ function init() {
       if (d.ok && d.staff) {
         currentStaff = d.staff;
         line.innerHTML = '👤 <strong>' + esc(d.staff.nameJp) + '</strong> (' + esc(d.staff.nameEn) + ')';
+        // role=admin の場合は「会社直払い」をデフォルトに（飯泉/大輔/鈴木は AMEX 立替か会社直払いが多い）
+        // ロン等の field は「立替」がデフォルト（プール消費の典型）
+        if (d.staff.role === 'admin') setPaymentType('会社直払い');
+        else                          setPaymentType('立替');
+        // ロン残高バナーをロード（admin/field 問わず表示。誰でも残高を把握できると便利）
+        loadPoolBalance();
       } else {
         line.innerHTML = '⚠️ スタッフマスター未登録<br>' +
                          '<span style="font-size:11px;color:#ff8c8c">chat_id = ' + esc(currentChatId) + '</span><br>' +
@@ -325,7 +348,7 @@ function init() {
       }
     });
 
-  // カテゴリ・通貨・精算先候補
+  // カテゴリ・通貨
   postJson({ action: 'expense_meta' })
     .then(function(d) {
       if (!d.ok) return;
@@ -342,22 +365,28 @@ function init() {
         opt.value = c; opt.textContent = c;
         curSel.appendChild(opt);
       });
-      // 精算先候補（デフォルトは先頭 = 飯泉）
-      var reimSel = document.getElementById('inputReimburseTo');
-      var candidates = d.reimburseCandidates || ['飯泉'];
-      reimSel.innerHTML = '';
-      candidates.forEach(function(c, i) {
-        var opt = document.createElement('option');
-        opt.value = c; opt.textContent = c;
-        if (i === 0) opt.selected = true;
-        reimSel.appendChild(opt);
-      });
-      if (d.reimburseDueDefaultDays) REIMBURSE_DUE_DEFAULT_DAYS = Number(d.reimburseDueDefaultDays);
-      // 精算期限のデフォルト値
-      var due = new Date();
-      due.setDate(due.getDate() + REIMBURSE_DUE_DEFAULT_DAYS);
-      document.getElementById('inputReimburseDue').value = formatDateLocal(due);
     });
+}
+
+function loadPoolBalance() {
+  postJson({ action: 'pool_balance_for_staff', chatId: currentChatId })
+    .then(function(d) {
+      if (!d || !d.ok || !d.balance) return;
+      var banner = document.getElementById('poolBanner');
+      var amountEl = document.getElementById('poolAmount');
+      var recentEl = document.getElementById('poolRecent');
+      var bal = Number(d.balance.balanceUSD || 0);
+      amountEl.textContent = '$' + bal.toFixed(2);
+      if (bal < 10) amountEl.classList.add('pool-warn');
+      var recent = d.recent || [];
+      if (recent.length > 0) {
+        var last = recent[0];
+        recentEl.textContent = '直近: ' + last.txDate + ' ' + last.currency + ' ' + Number(last.amount).toLocaleString() +
+          '（' + last.payer + ' / ' + last.method + '）';
+      }
+      banner.classList.add('show');
+    })
+    .catch(function() { /* 無視 */ });
 }
 
 // ═══════════════════════════════════════════
@@ -369,9 +398,6 @@ function setPaymentType(type) {
   var btnR = document.getElementById('btnPayReimburse');
   btnC.classList.toggle('active', type === '会社直払い');
   btnR.classList.toggle('active', type === '立替');
-  var show = type === '立替';
-  document.getElementById('fldReimburseTo').classList.toggle('show', show);
-  document.getElementById('fldReimburseDue').classList.toggle('show', show);
 }
 document.getElementById('btnPayCompany').addEventListener('click', function() {
   setPaymentType('会社直払い');
@@ -474,19 +500,10 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
   if (!amount || amount <= 0) { toast('金額を入力してください', 'err'); return; }
   if (!desc)                  { toast('品目・摘要は必須です', 'err'); return; }
 
-  // 立替時は精算先が必須
-  var reimburseTo  = '';
-  var reimburseDue = '';
-  if (currentPaymentType === '立替') {
-    reimburseTo = document.getElementById('inputReimburseTo').value;
-    reimburseDue = document.getElementById('inputReimburseDue').value;
-    if (!reimburseTo) { toast('立替の場合は精算先を選んでください', 'err'); return; }
-  }
-
   var btn = document.getElementById('btnSubmit');
   btn.disabled = true;
   var orig = btn.textContent;
-  btn.textContent = '送信中…（写真あり：少し時間がかかります）';
+  btn.textContent = '送信中… / កំពុងផ្ញើ…';
 
   postJson({
     action: 'expense_submit',
@@ -501,17 +518,20 @@ document.getElementById('btnSubmit').addEventListener('click', function() {
     photoBase64: currentPhotoBase64,
     photoMime:   currentPhotoMime,
     photoName:   currentPhotoName,
-    paymentType:      currentPaymentType,
-    reimburseTo:      reimburseTo,
-    reimburseDueDate: reimburseDue
+    paymentType: currentPaymentType
   })
     .then(function(d) {
       btn.disabled = false;
       btn.textContent = orig;
       if (d.ok) {
-        var msg = '✅ 経費登録完了: ' + d.expenseId;
-        if (d.paymentType === '立替' && d.reimburseTo) {
-          msg += '（' + d.reimburseTo + ' さん精算 / 期限 ' + (d.reimburseDue || '') + '）';
+        var msg = '✅ ' + d.expenseId + ' 登録完了';
+        if (d.statusValue) msg += '（' + d.statusValue + '）';
+        // ロンのプール消費なら新残高もトーストに含める
+        if (d.poolBalanceAfter && d.statusValue === 'プール消費') {
+          msg += ' / 残高 $' + Number(d.poolBalanceAfter.balanceUSD).toFixed(2);
+          // バナーの残高も更新
+          var amountEl = document.getElementById('poolAmount');
+          if (amountEl) amountEl.textContent = '$' + Number(d.poolBalanceAfter.balanceUSD).toFixed(2);
         }
         toast(msg, 'ok');
         // フォームリセット

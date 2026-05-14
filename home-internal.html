@@ -110,6 +110,39 @@ body {
   color: var(--text-dim);
   margin-left: 6px;
 }
+
+/* ロン君の前払いプール残高バナー */
+.pool-banner {
+  margin: 0 16px 14px;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  background: linear-gradient(135deg, #1a3a2e, #1f4d3a);
+  border: 1.5px solid #2e7d5b;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: none;
+}
+.pool-banner.show { display: block; }
+.pool-banner .pool-title {
+  font-size: 11px; color: #7fc9a0; font-weight: 600;
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.pool-banner .pool-amount {
+  font-size: 22px; font-weight: 700;
+  color: #b8e6cd;
+  background: linear-gradient(135deg, #a8e6cd, #d4f0e0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.pool-banner .pool-deposit {
+  font-size: 11px; color: #7fc9a0;
+  margin-top: 4px;
+}
+.pool-banner .pool-warn {
+  color: #ffb74d; font-weight: 600;
+}
 </style>
 </head>
 <body>
@@ -121,6 +154,12 @@ body {
 </div>
 
 <div class="who" id="whoLine">読み込み中…</div>
+
+<div class="pool-banner" id="poolBanner">
+  <div class="pool-title">💼 ロン手持ち / លុយរបស់រ៉ុន</div>
+  <div class="pool-amount" id="poolAmount">--</div>
+  <div class="pool-deposit" id="poolDeposit"></div>
+</div>
 
 <div class="menu-grid">
 
@@ -246,6 +285,7 @@ console.log('📍 expense URL:', expenseHref);
       }
       if (d.ok && d.staff) {
         line.innerHTML = '👤 <strong>' + escapeHtml(d.staff.nameJp) + '</strong> (' + escapeHtml(d.staff.nameEn) + ')';
+        loadPoolBalance();
       } else if (d.ok) {
         line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
       } else {
@@ -256,6 +296,43 @@ console.log('📍 expense URL:', expenseHref);
       line.textContent = '⚠️ 通信エラー: ' + err.message;
     });
 })();
+
+function loadPoolBalance() {
+  if (!GAS_URL || !currentChatId) return;
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'pool_balance_for_staff', chatId: currentChatId })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.ok || !d.balance) return;
+      var banner = document.getElementById('poolBanner');
+      var amountEl = document.getElementById('poolAmount');
+      var depositEl = document.getElementById('poolDeposit');
+      var bal = Number(d.balance.balanceUSD || 0);
+      amountEl.textContent = '$' + bal.toFixed(2);
+      if (bal < 10) {
+        amountEl.classList.add('pool-warn');
+      }
+      // 直近の入金（24h以内）を表示
+      var recent = d.recent || [];
+      var today = new Date();
+      var yyyymmdd = today.toISOString().slice(0, 10);
+      var todayDep = recent.find(function(r) { return r.txDate === yyyymmdd; });
+      if (todayDep) {
+        depositEl.innerHTML = '🆕 本日入金: ' + todayDep.currency + ' ' + Number(todayDep.amount).toLocaleString() +
+          '（' + escapeHtml(todayDep.payer) + ' / ' + escapeHtml(todayDep.method) + '）';
+      } else if (recent.length > 0) {
+        var last = recent[0];
+        depositEl.innerHTML = '直近入金: ' + last.txDate + ' ' + last.currency + ' ' + Number(last.amount).toLocaleString();
+      }
+      banner.classList.add('show');
+    })
+    .catch(function(err) {
+      console.log('pool_balance_for_staff 失敗（無視可）: ' + err);
+    });
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
