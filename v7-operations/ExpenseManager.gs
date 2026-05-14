@@ -218,7 +218,7 @@ function submitExpense(chatId, payload) {
   // P2: 精算タスク自動生成は廃止（γ＝記録のみ）。既存「未精算」レコードの後方互換は TaskManager 側で維持
   const linkedTaskId = '';
 
-  appendRow(SHEET_NAMES.EXPENSES, {
+  const expenseRowDict = {
     '経費ID':        expenseId,
     '登録日時':      new Date(),
     '取引日':        txDate,
@@ -239,7 +239,17 @@ function submitExpense(chatId, payload) {
     '精算日':        '',
     '精算方法':      '',
     '関連タスクID':  linkedTaskId
-  });
+  };
+  appendRow(SHEET_NAMES.EXPENSES, expenseRowDict);
+
+  // P5: 統合明細タブへ自動転記（失敗しても経費登録本流は止めない）
+  if (typeof appendExpenseToConsolidated_ === 'function') {
+    try {
+      appendExpenseToConsolidated_(expenseRowDict);
+    } catch (err) {
+      Logger.log('⚠️ 統合明細転記失敗（経費登録は成功）: ' + err);
+    }
+  }
 
   // 現場スタッフ(ロン等)が追加した時のみ管理グループに通知
   notifyExpenseCreatedIfField_({

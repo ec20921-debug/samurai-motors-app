@@ -48,7 +48,12 @@ const CONFIG_KEYS = {
   RON_CHAT_ID:                     'RON_CHAT_ID',                     // ロン君個人 Telegram chat_id（未設定ならスタッフマスターから自動解決）
 
   // 前払いプール（鈴木が Claude Code から pool_topup / pool_balance API を叩くための簡易トークン）
-  POOL_TOPUP_TOKEN:                'POOL_TOPUP_TOKEN'                 // setupPoolTopupToken() で生成、ScriptProperties に保存
+  POOL_TOPUP_TOKEN:                'POOL_TOPUP_TOKEN',                // setupPoolTopupToken() で生成、ScriptProperties に保存
+
+  // 統合明細（経理母艦スプレッドシート）— 経費追加時に自動転記する
+  CONSOLIDATED_SS_ID:              'CONSOLIDATED_SS_ID',              // 経理用スプレッドシート ID（例: 1UqMg3FkTPZLANc...）
+  CONSOLIDATED_SHEET_NAME:         'CONSOLIDATED_SHEET_NAME',         // タブ名（未設定なら '統合明細'）
+  CONSOLIDATED_SOURCE_LABEL:       'CONSOLIDATED_SOURCE_LABEL'        // 出典列に入れる識別子（未設定なら 'samurai-motors-v7-ops'）
 };
 
 // ====== Bot種別識別子 ======
@@ -130,7 +135,10 @@ function getConfig() {
     jetroFormSourceEntry:     all[CONFIG_KEYS.JETRO_FORM_SOURCE_ENTRY] || '',
     jetroAdminEmail:          all[CONFIG_KEYS.JETRO_ADMIN_EMAIL] || '',
     ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || '',
-    poolTopupToken:           all[CONFIG_KEYS.POOL_TOPUP_TOKEN] || ''
+    poolTopupToken:           all[CONFIG_KEYS.POOL_TOPUP_TOKEN] || '',
+    consolidatedSsId:         all[CONFIG_KEYS.CONSOLIDATED_SS_ID] || '',
+    consolidatedSheetName:    all[CONFIG_KEYS.CONSOLIDATED_SHEET_NAME] || '統合明細',
+    consolidatedSourceLabel:  all[CONFIG_KEYS.CONSOLIDATED_SOURCE_LABEL] || 'samurai-motors-v7-ops'
   };
 }
 
