@@ -142,6 +142,12 @@ Facebook / TikTok / 車QR
 
 **サブ案**: LP 整備の余裕がなければ **B. Telegram Channel 直接**（実績写真の営業力 + フォロワー獲得 + 後から Channel pin で予約Bot 誘導）
 
+**コスト前提（2026-05-17 更新）**:
+- ベンダー候補 KOL PISETH の見積で **片面 100×169cm 印刷 = $22.30**（施工費別）
+- → デザイン試作・小ロットでの貼り直しが現実的なコスト感
+- → 「最初は予約Bot 直接 QR で半年運用 → 結果見て LP に切り替え」というイテレーションも選択肢
+- 詳細は [`docs/vendors.md`](../../../docs/vendors.md) を参照
+
 ---
 
 ## 7. 意思決定ポイント（鈴木さん向け）
@@ -177,9 +183,9 @@ Facebook / TikTok / 車QR
 
 ---
 
-## 9. 参考（観察日: 2026-05-17）
+## 9. 関連資料
 
-CSR Premium Facebook 投稿より:
-- Jetour G700 2026 への内装施工事例（フィルム / VIP マット / UV カット）
-- ハッシュタグ: `#CSRPremiumCambodia` `#Auto` `#denza` `@jetour Cambodia G700`
-- → ハイエンド車ディーラーへの直接営業ルートを持っている可能性
+- 競合詳細: [`docs/competitors.md`](../../../docs/competitors.md)（CSR Premium 含む観察記録）
+- ベンダー詳細: [`docs/vendors.md`](../../../docs/vendors.md)（KOL PISETH 含む見積記録）
+
+これらは出張ごとに上書きせず、恒久的に追記していく参照資料。新しい観察・見積が出るたびに更新する。
