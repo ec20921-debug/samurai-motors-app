@@ -1,9 +1,11 @@
 /**
- * Setup_MenuV2.gs — Menu v2 マイグレーション(2026-05-06 確定版)
+ * Setup_MenuV2.gs — Menu v2/v2.1 マイグレーション(2026-05-12 v2.1 反映)
  *
  * 【役割】
  *   旧4プラン(KIYOME/KAGAMI/TAKUMI/SHOGUN)を廃止し、
- *   新メニュー構造(SAMURAI WASH 必須 + GLASS 任意 add-on)へ切り替える一回限りのスクリプト。
+ *   新メニュー構造(SAMURAI WASH 任意 + GLASS 任意、どちらか1つ以上)へ切り替える。
+ *   v2.1(2026-05-08): GLASS 単独予約に対応(WASH 任意化)。
+ *   v2.1 ラベル整合(2026-05-12): 残骸 "(Required base service)" / 必須プラン='W' を是正。
  *
  * 【実行手順】
  *   1. clasp push で本ファイルをリモートへ反映
@@ -18,6 +20,84 @@
  *   - 確定メニュー: G:\マイドライブ\SuzukiEmpire\Vault\04_Projects\Samurai\04_Businesses\Motors\Menu_v2.md
  *   - 真田メモリ: 04_Projects/Samurai/03_Agents/sanada-memory.md
  */
+
+/**
+ * Menu v2.1 ラベル是正パッチ(2026-05-12)
+ *
+ * 【目的】
+ *   migrateMenuV2() を再実行すると全行クリア&再投入になり、手動編集が消える。
+ *   このパッチは v2 → v2.1 切替時に取り残された 3 セルのみを直接更新する。
+ *
+ * 【更新対象】
+ *   1. 料金設定 F2(備考): "(Required base service)" → "bookable solo or with GLASS add-on"
+ *   2. オプション I2(GLASS_3 必須プラン): 'W' → ''
+ *   3. オプション I3(GLASS_ALL 必須プラン): 'W' → ''
+ *
+ * 【冪等性】
+ *   再実行しても安全(既に正しい値なら "skip" と表示)
+ *
+ * 【実行】
+ *   GAS エディタで関数選択 → ▶ 実行
+ */
+function patchMenuV21Labels() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🔧 Menu v2.1 ラベル是正パッチ');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  let updates = 0;
+
+  // ── 1. 料金設定 F2 (備考) ──
+  try {
+    const pp = getSheet(SHEET_NAMES.PLAN_PRICES);
+    const f2 = pp.getRange('F2');
+    const current = String(f2.getValue() || '');
+    const expected = 'Waterless body wash + Tire wax — bookable solo or with GLASS add-on';
+    if (current === expected) {
+      Logger.log('  ⏭ 料金設定 F2: skip (既に v2.1 表記)');
+    } else {
+      Logger.log('  ✏️ 料金設定 F2: 更新');
+      Logger.log('    旧: ' + current);
+      Logger.log('    新: ' + expected);
+      f2.setValue(expected);
+      updates++;
+    }
+  } catch (e) {
+    Logger.log('  ❌ 料金設定 F2 更新失敗: ' + e);
+  }
+
+  // ── 2/3. オプション 必須プラン列(I列) ──
+  try {
+    const opt = getSheet(SHEET_NAMES.OPTIONS);
+    const lastRow = opt.getLastRow();
+    for (let row = 2; row <= lastRow; row++) {
+      const codeCell = opt.getRange(row, 1).getValue();
+      if (!codeCell) continue;
+      const reqCell = opt.getRange(row, 9); // I列 = 必須プラン
+      const current = String(reqCell.getValue() || '').trim();
+      if (current === '') {
+        Logger.log('  ⏭ オプション ' + codeCell + ' 必須プラン: skip (既に空欄)');
+      } else if (current === 'W') {
+        Logger.log('  ✏️ オプション ' + codeCell + ' 必須プラン: "W" → ""');
+        reqCell.setValue('');
+        updates++;
+      } else {
+        Logger.log('  ⚠️ オプション ' + codeCell + ' 必須プラン: 想定外の値 "' + current + '"、変更せずスキップ');
+      }
+    }
+  } catch (e) {
+    Logger.log('  ❌ オプション 必須プラン 更新失敗: ' + e);
+  }
+
+  // ── キャッシュクリア ──
+  if (typeof clearBookingConfigCache === 'function') {
+    clearBookingConfigCache();
+    Logger.log('  🧹 booking config キャッシュクリア');
+  }
+
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('✅ パッチ完了 (' + updates + ' セル更新)');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
 
 /**
  * Menu v2 への一括マイグレーション
@@ -76,7 +156,7 @@ function rebuildPlanPricesV2_() {
   // 新メニュー構造の行を投入
   const newRows = [
     // [プラン名, セダン価格, SUV価格, セダン所要(分), SUV所要(分), 備考]
-    ['SAMURAI WASH (W)', 12, 15, 30, 45, 'Waterless body wash + Tire wax (Required base service)'],
+    ['SAMURAI WASH (W)', 12, 15, 30, 45, 'Waterless body wash + Tire wax — bookable solo or with GLASS add-on'],
     ['出張料',           2,  2,  '', '', 'Delivery fee — flat USD'],
     ['【設定】移動バッファ(分)', 30, '', '', '', 'Buffer between bookings'],
     ['【設定】営業開始時刻',     9,  '', '', '', 'Business hour start (24h)'],
@@ -136,7 +216,7 @@ function rebuildOptionsSheetV2_() {
       '3面+ドアミラー',
       15, 20,        // 価格
       30, 50,        // 所要時間
-      'W',           // 必須プラン = WASH
+      '',            // v2.1: 必須プラン 空欄(GLASS 単独予約OK)
       true,          // 有効
       'Front 3 windows + both door mirrors: waterless wash + water-repellent coating'
     ],
@@ -147,7 +227,7 @@ function rebuildOptionsSheetV2_() {
       '全面+ドアミラー',
       30, 40,        // 価格
       60, 100,       // 所要時間
-      'W',           // 必須プラン = WASH
+      '',            // v2.1: 必須プラン 空欄(GLASS 単独予約OK)
       true,          // 有効
       'All windows + both door mirrors: waterless wash + water-repellent coating'
     ]
