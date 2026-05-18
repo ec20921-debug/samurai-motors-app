@@ -185,6 +185,7 @@ Facebook / TikTok / 車QR
 
 ## 9. 関連資料
 
+- 成長仮説: [`growth_hypothesis.md`](./growth_hypothesis.md)（信用ギャップ仮説と検証実験 — 本書と対の関係）
 - 競合詳細: [`docs/competitors.md`](../../../docs/competitors.md)（CSR Premium 含む観察記録）
 - ベンダー詳細: [`docs/vendors.md`](../../../docs/vendors.md)（KOL PISETH 含む見積記録）
 
