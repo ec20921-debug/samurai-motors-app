@@ -48,9 +48,10 @@ const SHEET_NAMES = {
   STAFF:       'スタッフ',
   CHAT_LOG:    'チャット履歴',
   QR_CODES:    'QRコード',
-  PLAN_PRICES: '料金設定',
-  OPTIONS:     'オプション',     // Menu v2 (2026-05-06): GLASS 等の add-on サービス
-  FUNNEL_LOG:  'ファネルログ'   // Menu v2 (2026-05-06): Bot来訪/ミニアプリ開/予約完了 の計測
+  PLAN_PRICES: '料金設定',       // 出張料/営業時間/キャンペーン等の設定行を保持(WASH 行は Menu v3 で MENU へ移行)
+  OPTIONS:     'オプション',     // legacy (Menu v2). Menu v3 後は MENU シート優先、これは fallback として温存
+  FUNNEL_LOG:  'ファネルログ',  // Menu v2 (2026-05-06): Bot来訪/ミニアプリ開/予約完了 の計測
+  MENU:        'メニュー'        // Menu v3 (2026-05-19 GLASS と WASH を同列管理する統合シート)
 };
 
 // ====== キュー・重複排除のキープレフィックス ======

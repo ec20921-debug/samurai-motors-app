@@ -38,12 +38,77 @@ const LEGACY_PLAN_DESC = {
 // ====== プラン取得 ======
 
 /**
- * 料金設定シートからプラン一覧を取得
- * 【設定】行と「出張料」行は除外
+ * プラン(WASH 系)一覧を取得
  *
- * @return {Array<Object>} [{ letter, jp, name, desc, planFull, priceSedan, priceSuv, durationSedan, durationSuv }]
+ * Menu v3 (2026-05-19): 「メニュー」シート(統合シート)が存在すればそちらを優先、
+ * なければ旧「料金設定」シートにフォールバックする dual-read 方式。
+ *
+ * 戻り値の形は従来どおり: { letter, jp, name, desc, descEn, planFull, priceSedan, ... }
+ * booking.html / Router.gs は変更不要。
+ *
+ * @return {Array<Object>}
  */
 function getActivePlans() {
+  // ── Menu v3: 統合シート優先 ──
+  const fromMenu = readPlansFromMenuSheet_();
+  if (fromMenu !== null) return fromMenu;
+
+  // ── レガシー(料金設定 シート)フォールバック ──
+  return readPlansFromLegacyPlanPrices_();
+}
+
+/**
+ * 「メニュー」統合シートから WASH 行を読む(種別=WASH のみ抽出)
+ * シートが存在しない場合は null を返し、呼び出し側がフォールバックする
+ */
+function readPlansFromMenuSheet_() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.MENU);
+  if (!sheet) return null;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  // メニューシート列構造 (Setup_MenuV3.gs MENU_HEADERS と同期):
+  // A:コード B:種別 C:名称(英) D:名称(クメール) E:名称(日)
+  // F:セダン価格 G:SUV価格 H:セダン所要 I:SUV所要 J:有効 K:備考
+  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const plans = [];
+
+  data.forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const kind = String(row[1] || '').trim();
+    if (kind !== 'WASH') return; // GLASS は getActiveOptions 側で扱う
+    const active = row[9];
+    const isActive = (active === true || String(active).toUpperCase() === 'TRUE');
+    if (!isActive) return;
+
+    // 旧コード互換: コード 'WASH' → letter='W' に変換(booking.html が letter='W' を送ってくるため)
+    const letter = (code.toUpperCase() === 'WASH') ? 'W' : code;
+    const nameEn = String(row[2] || '');
+    plans.push({
+      letter: letter,
+      jp: String(row[4] || ''),                          // 名称(日)
+      name: nameEn,
+      desc: String(row[10] || ''),                       // 備考(管理用)
+      descEn: String(row[10] || '') || nameEn,           // 顧客向け説明
+      planFull: nameEn + ' (' + letter + ')',
+      priceSedan: Number(row[5]) || 0,
+      priceSuv: Number(row[6]) || 0,
+      durationSedan: Number(row[7]) || 0,
+      durationSuv: Number(row[8]) || 0
+    });
+  });
+
+  return plans;
+}
+
+/**
+ * 旧「料金設定」シートから WASH プランを読む(Menu v3 移行前の動作)
+ * 「メニュー」シート不在時のフォールバック
+ */
+function readPlansFromLegacyPlanPrices_() {
   const sheet = getSheet(SHEET_NAMES.PLAN_PRICES);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -64,8 +129,8 @@ function getActivePlans() {
       letter: parsed.letter,
       jp: parsed.jp,
       name: parsed.name,
-      desc: String(row[5] || ''),                          // 日本語（管理用）
-      descEn: PLAN_DESC_EN[parsed.letter] || parsed.name,  // 英語（顧客ミニアプリ用）
+      desc: String(row[5] || ''),
+      descEn: PLAN_DESC_EN[parsed.letter] || parsed.name,
       planFull: planName,
       priceSedan: Number(row[1]) || 0,
       priceSuv: Number(row[2]) || 0,
@@ -137,18 +202,75 @@ function getDispatchFee() {
 // ====== オプション取得 (Menu v2: GLASS add-on) ======
 
 /**
- * OPTIONS シートから有効な追加オプション一覧を取得
+ * GLASS 等の追加サービス一覧を取得(顧客フローでは WASH と並列扱い)
+ *
+ * Menu v3 (2026-05-19): 「メニュー」シート優先、なければ旧「オプション」シートにフォールバック
+ *
+ * 注: 関数名/戻り値の形は後方互換のため維持(booking.html / Router.gs 変更不要)。
+ * 概念整理(Daisuke 指示 2026-05-19): GLASS は「オプション(add-on)」ではなく
+ * 「WASH と同列の選択肢」。シート上は同じ場所(メニュー)で管理する。
  *
  * @return {Array<Object>} [{code, nameEn, nameKm, nameJp, priceSedan, priceSuv,
  *                            durationSedan, durationSuv, requiresPlan, description}]
  */
 function getActiveOptions() {
+  // ── Menu v3: 統合シート優先 ──
+  const fromMenu = readGlassFromMenuSheet_();
+  if (fromMenu !== null) return fromMenu;
+
+  // ── レガシー(オプション シート)フォールバック ──
+  return readGlassFromLegacyOptions_();
+}
+
+/**
+ * 「メニュー」統合シートから GLASS 行を読む(種別=GLASS のみ抽出)
+ */
+function readGlassFromMenuSheet_() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.MENU);
+  if (!sheet) return null;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const out = [];
+
+  data.forEach(function(row) {
+    const code = String(row[0] || '').trim();
+    if (!code) return;
+    const kind = String(row[1] || '').trim();
+    if (kind !== 'GLASS') return; // WASH は getActivePlans 側
+    const active = row[9];
+    const isActive = (active === true || String(active).toUpperCase() === 'TRUE');
+    if (!isActive) return;
+
+    out.push({
+      code:           code,
+      nameEn:         String(row[2] || ''),
+      nameKm:         String(row[3] || ''),
+      nameJp:         String(row[4] || ''),
+      priceSedan:     Number(row[5]) || 0,
+      priceSuv:       Number(row[6]) || 0,
+      durationSedan:  Number(row[7]) || 0,
+      durationSuv:    Number(row[8]) || 0,
+      requiresPlan:   '',                        // Menu v2.1 以降 GLASS は WASH 不要
+      description:    String(row[10] || '')
+    });
+  });
+
+  return out;
+}
+
+/**
+ * 旧「オプション」シートから GLASS を読む(Menu v3 移行前の動作)
+ */
+function readGlassFromLegacyOptions_() {
   let sheet;
   try {
     sheet = getSheet(SHEET_NAMES.OPTIONS);
   } catch (e) {
-    // OPTIONS シート未作成 → migrateMenuV2() 未実行の可能性
-    Logger.log('⚠️ getActiveOptions: ' + SHEET_NAMES.OPTIONS + ' シート未作成。migrateMenuV2() を実行してください');
+    Logger.log('⚠️ getActiveOptions: ' + SHEET_NAMES.OPTIONS + ' シート未作成。migrateMenuV2() か migrateMenuV3_createUnifiedMenu() を実行してください');
     return [];
   }
   const lastRow = sheet.getLastRow();
@@ -162,7 +284,7 @@ function getActiveOptions() {
     const code = String(row[0] || '').trim();
     if (!code) return;
     const active = row[9];
-    if (active !== true && String(active).toUpperCase() !== 'TRUE') return; // 無効行をスキップ
+    if (active !== true && String(active).toUpperCase() !== 'TRUE') return;
 
     options.push({
       code:           code,
@@ -173,7 +295,7 @@ function getActiveOptions() {
       priceSuv:       Number(row[5]) || 0,
       durationSedan:  Number(row[6]) || 0,
       durationSuv:    Number(row[7]) || 0,
-      requiresPlan:   String(row[8] || '').trim(), // 'W' = SAMURAI WASH 必須
+      requiresPlan:   String(row[8] || '').trim(),
       description:    String(row[10] || '')
     });
   });
