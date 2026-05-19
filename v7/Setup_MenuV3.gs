@@ -287,3 +287,205 @@ function rollbackMenuV3_dropUnifiedMenu() {
   if (typeof clearBookingConfigCache === 'function') clearBookingConfigCache();
   Logger.log('🔄 メニュー シート削除完了。dual-read コードは自動的に旧 料金設定+オプション にフォールバック');
 }
+
+// ====== Menu v3 後処理クリーンアップ (Option α 最終形態へ) ======
+
+/**
+ * オプション シートを削除する(GLASS データはメニューに移行済前提)
+ *
+ * 【安全装置】
+ *   メニューシートに GLASS 行が存在することを確認してから削除する
+ *   存在しない場合は中止して何もしない
+ *
+ * 【実行手順】
+ *   migrateMenuV3_createUnifiedMenu 実行後、本番で booking.html の動作確認 → 本関数実行
+ */
+function cleanupMenuV3_dropOptionsSheet() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🧹 オプション シート削除');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  const ss = getSpreadsheet();
+
+  // pre-flight: メニュー に GLASS 行が存在するか
+  const menuSheet = ss.getSheetByName(SHEET_NAMES.MENU);
+  if (!menuSheet) {
+    Logger.log('❌ メニュー シートが存在しません。先に migrateMenuV3_createUnifiedMenu を実行してください');
+    return;
+  }
+  const lastRow = menuSheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('❌ メニュー シートが空です。削除を中止');
+    return;
+  }
+  const kinds = menuSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  const hasGlass = kinds.some(function(r) { return String(r[0]).trim() === 'GLASS'; });
+  if (!hasGlass) {
+    Logger.log('❌ メニュー シートに GLASS 行がありません。削除を中止(データ消失防止)');
+    return;
+  }
+
+  const optSheet = ss.getSheetByName(SHEET_NAMES.OPTIONS);
+  if (!optSheet) {
+    Logger.log('  ℹ️ オプション シートが既に存在しません(過去に削除済?)');
+    return;
+  }
+  ss.deleteSheet(optSheet);
+  Logger.log('  ✅ オプション シート削除完了');
+  Logger.log('注: dual-read コードはメニューシートから GLASS を読み続けます');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
+ * 料金設定 シートから SAMURAI WASH 行のみを削除する
+ * 設定行(出張料・営業時間・バッファ・キャンペーン4行)は温存
+ *
+ * 【安全装置】
+ *   メニューシートに WASH 行が存在することを確認してから削除する
+ */
+function cleanupMenuV3_removeWashFromPlanPrices() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🧹 料金設定 から WASH 行のみ削除');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  const ss = getSpreadsheet();
+
+  // pre-flight: メニュー に WASH 行が存在するか
+  const menuSheet = ss.getSheetByName(SHEET_NAMES.MENU);
+  if (!menuSheet) {
+    Logger.log('❌ メニュー シートが存在しません。削除を中止');
+    return;
+  }
+  const lastRow = menuSheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('❌ メニュー シートが空です。削除を中止');
+    return;
+  }
+  const kinds = menuSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  const hasWash = kinds.some(function(r) { return String(r[0]).trim() === 'WASH'; });
+  if (!hasWash) {
+    Logger.log('❌ メニュー シートに WASH 行がありません。削除を中止(データ消失防止)');
+    return;
+  }
+
+  // 料金設定 シートを取得 (リネーム済なら 設定)
+  const ppSheet = getPlanPricesSheet_();
+  const ppLastRow = ppSheet.getLastRow();
+  if (ppLastRow < 2) {
+    Logger.log('  ℹ️ ' + ppSheet.getName() + ' シートに削除対象行なし');
+    return;
+  }
+
+  // SAMURAI WASH 行を後ろから探して削除(行削除でインデックスがずれないように)
+  const names = ppSheet.getRange(2, 1, ppLastRow - 1, 1).getValues();
+  let deleted = 0;
+  for (let i = names.length - 1; i >= 0; i--) {
+    const name = String(names[i][0] || '').trim();
+    if (/SAMURAI\s+WASH/i.test(name)) {
+      const sheetRowNum = i + 2;
+      Logger.log('  ✏️ 削除: ' + ppSheet.getName() + ' 行' + sheetRowNum + ' = "' + name + '"');
+      ppSheet.deleteRow(sheetRowNum);
+      deleted++;
+    }
+  }
+
+  if (typeof clearBookingConfigCache === 'function') clearBookingConfigCache();
+  Logger.log('  ✅ WASH 行削除完了 (' + deleted + ' 行)');
+  Logger.log('  ℹ️ 設定行(出張料・営業時間・バッファ・キャンペーン)は温存されています');
+}
+
+/**
+ * メニュー シートの WASH 行 備考から "(Required base service)" を取り除く
+ *
+ * Menu v2.1 以降 WASH は任意化されているが、migrateMenuV3 が旧 料金設定 の
+ * 備考をそのままコピーしたため "Required base service" 文言が残った場合のクリーンアップ。
+ */
+function cleanupMenuV3_patchWashNote() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🧹 メニュー WASH 備考の v2.1 是正');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  const ss = getSpreadsheet();
+  const menuSheet = ss.getSheetByName(SHEET_NAMES.MENU);
+  if (!menuSheet) {
+    Logger.log('❌ メニュー シートが存在しません');
+    return;
+  }
+  const lastRow = menuSheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('  ℹ️ メニュー シートに行なし');
+    return;
+  }
+
+  const data = menuSheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const expectedNote = 'Waterless body wash + Tire wax — bookable solo or with GLASS';
+  let updated = 0;
+  for (let i = 0; i < data.length; i++) {
+    const code = String(data[i][0] || '').trim();
+    if (code !== 'WASH') continue;
+    const currentNote = String(data[i][10] || '');
+    if (currentNote.indexOf('Required base service') !== -1 || currentNote.indexOf('Required') !== -1) {
+      Logger.log('  ✏️ WASH 備考更新');
+      Logger.log('    旧: ' + currentNote);
+      Logger.log('    新: ' + expectedNote);
+      menuSheet.getRange(i + 2, 11).setValue(expectedNote);
+      updated++;
+    } else {
+      Logger.log('  ⏭ WASH 備考: skip (既に v2.1 表記)');
+    }
+  }
+  Logger.log('  ✅ 更新セル数: ' + updated);
+}
+
+/**
+ * 料金設定 シートを 「設定」 にリネームする(Option α 最終形態への完成)
+ *
+ * 【内容】
+ *   - シート名のみ変更(中身は触らない)
+ *   - 既存の getBookingConfig は getPlanPricesSheet_() 経由で
+ *     '設定' を優先試行→なければ '料金設定' にフォールバック → どちらでも動く
+ *
+ * 【実行タイミング】
+ *   cleanupMenuV3_removeWashFromPlanPrices 実行後、シートに設定行だけ残った状態で実行
+ *   = タブ名「料金設定」を「設定」に直して概念を明確化する
+ */
+function cleanupMenuV3_renamePlanPricesToSettings() {
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('🧹 料金設定 → 設定 リネーム');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+
+  const ss = getSpreadsheet();
+  const newName = '設定';
+
+  if (ss.getSheetByName(newName)) {
+    Logger.log('  ℹ️ "' + newName + '" シートが既に存在(過去に実行済?)');
+    return;
+  }
+  const oldSheet = ss.getSheetByName(SHEET_NAMES.PLAN_PRICES);
+  if (!oldSheet) {
+    Logger.log('❌ "' + SHEET_NAMES.PLAN_PRICES + '" シートが見つかりません');
+    return;
+  }
+  oldSheet.setName(newName);
+  Logger.log('  ✅ シート名変更: "' + SHEET_NAMES.PLAN_PRICES + '" → "' + newName + '"');
+
+  if (typeof clearBookingConfigCache === 'function') clearBookingConfigCache();
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('Option α 最終形態:');
+  Logger.log('  📑 メニュー  ← WASH / GLASS など顧客向け商品');
+  Logger.log('  📑 設定      ← 出張料 / 営業時間 / バッファ / キャンペーン');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
+ * クリーンアップ一括実行(便利関数)
+ * 上記4つを順番に実行する。事故防止のため pre-flight チェックは各関数で行う。
+ */
+function cleanupMenuV3_runAll() {
+  Logger.log('🚀 cleanupMenuV3_runAll 開始 — Option α 最終形態へ');
+  cleanupMenuV3_patchWashNote();
+  cleanupMenuV3_dropOptionsSheet();
+  cleanupMenuV3_removeWashFromPlanPrices();
+  cleanupMenuV3_renamePlanPricesToSettings();
+  Logger.log('✅ cleanupMenuV3_runAll 完了');
+}

@@ -109,7 +109,8 @@ function readPlansFromMenuSheet_() {
  * 「メニュー」シート不在時のフォールバック
  */
 function readPlansFromLegacyPlanPrices_() {
-  const sheet = getSheet(SHEET_NAMES.PLAN_PRICES);
+  // Menu v3: 設定/料金設定 どちらの名前でも動くようヘルパー経由
+  const sheet = getPlanPricesSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 

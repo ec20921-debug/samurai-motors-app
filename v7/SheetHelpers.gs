@@ -41,6 +41,22 @@ function getSheet(sheetName) {
   return sheet;
 }
 
+/**
+ * 「料金設定」シートを取得する(Menu v3 リネーム対応)
+ *
+ * Menu v3 で 料金設定 → 設定 のリネームを許容するため、
+ * 両方の名前を順に試す。新しい名前(設定)を優先。
+ * Daisuke が手動 or migrateMenuV3_renameToSettings() でリネームしても壊れない。
+ */
+function getPlanPricesSheet_() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getSheetByName('設定') || ss.getSheetByName(SHEET_NAMES.PLAN_PRICES);
+  if (!sheet) {
+    throw new Error('❌ 設定シート(料金設定 or 設定)が見つかりません');
+  }
+  return sheet;
+}
+
 // ====== ヘッダー列マッピング ======
 
 /**
@@ -204,10 +220,11 @@ function getBookingConfig() {
     }
   }
 
-  const sheet = getSheet(SHEET_NAMES.PLAN_PRICES);
+  // Menu v3 (2026-05-19): シート名のリネームに対応するため alias 解決を経由
+  const sheet = getPlanPricesSheet_();
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    throw new Error('❌ 料金設定シートが空です');
+    throw new Error('❌ 設定シート(料金設定/設定)が空です');
   }
   const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
 
