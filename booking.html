@@ -1371,10 +1371,15 @@ body {
       Your Location
       <span class="km">ទីតាំងរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Tap the map to set your car wash location<br><span class="km">ចុចផែនទីដើម្បីកំណត់ទីតាំង</span></div>
+    <div class="view-desc">Your location will be detected automatically — drag the pin to fine-tune<br><span class="km">ទីតាំងបច្ចុប្បន្នរបស់អ្នកនឹងត្រូវរកឃើញដោយស្វ័យប្រវត្តិ — អូសម្ជុលដើម្បីកែ</span></div>
 
     <div id="leafletMap" style="width:100%; height:clamp(360px, 58vh, 500px); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);"></div>
-    <div style="font-size:11px; color:var(--text-dim); margin-bottom:16px; text-align:center; letter-spacing:0.3px;" id="coordsText">📍 Tap the map to set your location</div>
+    <div style="font-size:11px; color:var(--text-dim); margin-bottom:10px; text-align:center; letter-spacing:0.3px;" id="coordsText">📍 Detecting your location… / កំពុងរកទីតាំង…</div>
+
+    <button id="gpsBtn" type="button" onclick="shareLocation()"
+      style="display:block; margin:0 auto 14px; padding:10px 18px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; cursor:pointer;">
+      📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន
+    </button>
 
     <div style="font-size:13px; color:var(--text-dim); text-align:center; padding:8px 16px; background:var(--card); border-radius:var(--radius); border:1px solid var(--border);">
       Parking details can be shared via chat after booking<br>
@@ -2188,6 +2193,8 @@ function submitBooking() {
 // ═══════════════════════════════════════════
 
 var savedCoords = null;
+var gpsAutoAttempted = false;     // GPS 自動取得を初回のみ実行するフラグ (2026-05-19)
+var gpsJustAutoAttempted = false; // 直近の shareLocation 呼び出しが「自動」か「手動」かを区別
 
 // Leafletマップ関連
 var leafletMap = null;
@@ -2245,13 +2252,26 @@ function initLocationMapAfterLoad_() {
     attribution: '© OpenStreetMap'
   }).addTo(leafletMap);
 
-  // タップで場所を指定
+  // タップでも場所を指定可能(GPS 取得失敗時のフォールバック / 微調整用)
   leafletMap.on('click', function(e) {
     setMapPin(e.latlng.lat, e.latlng.lng);
   });
 
   // 少し遅延してサイズ修正（表示切替時の問題対策）
   setTimeout(function() { leafletMap.invalidateSize(); }, 300);
+
+  // ── ロン君提案フロー (2026-05-19) ──
+  // 地図初期化直後に GPS 自動取得を試みる。
+  // 成功時: 現在地にピン + ズーム16(顧客はドラッグで微調整するだけ)。
+  // 失敗時: プノンペン中心のまま表示、ユーザーはタップ/Recenterボタンで設定可。
+  // 二重起動防止: gpsAutoAttempted フラグで初回のみ実行。
+  if (!gpsAutoAttempted) {
+    gpsAutoAttempted = true;
+    setTimeout(function() {
+      gpsJustAutoAttempted = true; // 自動呼び出しフラグを立てる
+      shareLocation();
+    }, 500);  // 地図描画完了を待つ
+  }
 }
 
 function setMapPin(lat, lng) {
@@ -2279,34 +2299,50 @@ function updateCoordsText() {
 }
 
 function shareLocation() {
+  // ボタンが無い起動経路(自動起動)でも安全に動くよう null チェック
   var btn = document.getElementById('gpsBtn');
-  btn.textContent = '📍 Getting location... / កំពុងរកទីតាំង...';
-  btn.disabled = true;
+  var setBtn = function(text, disabled) {
+    if (!btn) return;
+    btn.textContent = text;
+    btn.disabled = !!disabled;
+  };
+  var coordsEl = document.getElementById('coordsText');
+
+  setBtn('📍 Getting location… / កំពុងរកទីតាំង…', true);
 
   if (!navigator.geolocation) {
-    showToast('GPS not supported on this device', true);
-    btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
-    btn.disabled = false;
+    if (coordsEl) coordsEl.textContent = '📍 Tap the map to set your location';
+    showToast('GPS not supported. Tap the map.', true);
+    setBtn('📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន', false);
     return;
   }
 
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       setMapPin(pos.coords.latitude, pos.coords.longitude);
-      btn.textContent = '✅ Location set! / ទីតាំងបានកំណត់!';
-      btn.disabled = false;
-      showToast('📍 Location set successfully!');
+      setBtn('✅ Got it! Drag pin to fine-tune / អូសម្ជុលដើម្បីកែ', false);
+      // 自動取得成功時はトーストは控えめ(うるさくない)、手動押下時のみ目立たせる
+      if (btn && !gpsJustAutoAttempted) {
+        showToast('📍 Location set successfully!');
+      }
+      gpsJustAutoAttempted = false;
     },
     function(err) {
-      btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
-      btn.disabled = false;
+      setBtn('📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន', false);
+      if (coordsEl && !savedCoords) {
+        coordsEl.textContent = '📍 Tap the map to set your location / ចុចផែនទីដើម្បីកំណត់';
+      }
       if (err.code === 1) {
-        showToast('Please allow location access', true);
-      } else {
+        // 拒否時はトースト出さない(自動取得失敗で連続表示を防ぐ)、ボタン押下時のみ表示
+        if (!gpsJustAutoAttempted) {
+          showToast('Please allow location access, or tap the map', true);
+        }
+      } else if (!gpsJustAutoAttempted) {
         showToast('Could not get location. Please tap the map.', true);
       }
+      gpsJustAutoAttempted = false;
     },
-    { enableHighAccuracy: true, timeout: 10000 }
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
 }
 
