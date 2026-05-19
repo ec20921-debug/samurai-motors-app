@@ -93,7 +93,8 @@
 | 成功条件 | ドライバー経由の紹介で実予約 ≥ 3 件 |
 | コスト | 1 施工あたり原価のみ（数ドル）× 10 台 = $30-50 程度 |
 | 副次効果 | ドライバー自身が SNS フォローしてくれれば長期接点に |
-| 実行ログ | #1: Huy Kearvak（2026-05-18、Grey BYD Sealion 5、PP-2CF-6485、ガラス3面+ミラー）<br>#2 候補: Cheam Channa（2026-05-18、White BYD Sealion 5、PP-2AM-3911、Grab Joined 2020-02／**マンゴー樹脂除去** が刺さるか検証） |
+| 実行ログ | #1: Huy Kearvak（2026-05-18、Grey BYD Sealion 5、PP-2CF-6485、Standard、Joined 2025-08、ガラス3面+ミラー）<br>#2: Cheam Channa（2026-05-18、White BYD Sealion 5、PP-2AM-3911、Standard、Joined 2020-02／マンゴー樹脂検証）<br>#3: Ret Saray（2026-05-18、White Toyota BZ3X、PP-2CI-1148、**Premium**、Joined 2026-01／Premium客層リーチ） |
+| 多様性メモ | Day0 時点で 3 名獲得、**ティア（Standard×2 / Premium×1）と運転歴（新人×2 / ベテラン×1）の分散**を意図せず確保。顧客層の幅をカバー可能 |
 
 #### 実験 3 の追加洞察 — 「特定ペインで刺す」ウェッジ戦略
 
