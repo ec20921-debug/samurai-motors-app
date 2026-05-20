@@ -1499,12 +1499,15 @@ body {
         <div class="store-card-icon">🏪</div>
         <div class="store-card-title">Samurai Motors Office</div>
         <div class="store-card-subtitle"><span class="km">ការិយាល័យ Samurai Motors</span></div>
-        <a href="https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6" target="_blank" rel="noopener" class="store-map-btn">
-          📍 Open in Google Maps
-        </a>
+
+        <!-- 固定地図(店舗位置を表示するだけ、タップ等で外部遷移しない) -->
+        <div id="storeMapEl" style="width:100%; height:220px; border-radius:var(--radius); border:1px solid var(--border); margin:14px 0; background:#1a1410;"></div>
+
         <div class="store-card-note">
           ✅ No delivery fee saved<br>
-          <span class="km">មិនមានថ្លៃដឹកជញ្ជូន</span>
+          <span class="km">មិនមានថ្លៃដឹកជញ្ជូន</span><br>
+          <span style="opacity:0.75; font-size:11px;">📍 Map link will be sent via Telegram after booking</span><br>
+          <span style="opacity:0.75; font-size:11px;" class="km">តំណផែនទីនឹងផ្ញើតាម Telegram បន្ទាប់ពីការកក់</span>
         </div>
       </div>
     </div>
@@ -2397,12 +2400,51 @@ function selectServiceType(type) {
   if (type === '店舗') {
     if (deliveryEl) deliveryEl.style.display = 'none';
     if (inStoreEl) inStoreEl.style.display = 'block';
+    // 店舗マップを初期化(初回のみ)
+    setTimeout(function() { initStoreMap(); }, 100);
   } else {
     if (deliveryEl) deliveryEl.style.display = 'block';
     if (inStoreEl) inStoreEl.style.display = 'none';
     // 出張モードに戻った時、地図がまだ初期化されていなければ初期化
-    setTimeout(function() { initLocationMap(); }, 100);
+    // 既に初期化済みでも invalidateSize で再描画(display:none → block 切替対策)
+    setTimeout(function() {
+      initLocationMap();
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 100);
   }
+}
+
+// 店舗マップ用(固定座標で表示・操作不要)
+var storeMap = null;
+var STORE_COORDS = { lat: 11.5848188, lng: 104.8993556 };
+
+function initStoreMap() {
+  if (storeMap) {
+    // 既に初期化済みなら invalidateSize で再描画のみ
+    storeMap.invalidateSize();
+    return;
+  }
+  var el = document.getElementById('storeMapEl');
+  if (!el) return;
+  loadLeaflet().then(function() {
+    storeMap = L.map(el, {
+      zoomControl: false,
+      scrollWheelZoom: false,
+      dragging: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      keyboard: false,
+      tap: false
+    }).setView([STORE_COORDS.lat, STORE_COORDS.lng], 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(storeMap);
+    L.marker([STORE_COORDS.lat, STORE_COORDS.lng]).addTo(storeMap);
+    setTimeout(function() { storeMap.invalidateSize(); }, 300);
+  }).catch(function(err) {
+    if (window.console) console.log('Store map load error:', err);
+  });
 }
 
 function initLocationMap() {
@@ -2420,7 +2462,7 @@ function initLocationMapAfterLoad_() {
   var el = document.getElementById('leafletMap');
   if (!el) return;
 
-  // プノンペン中心で初期化
+  // プノンペン中心で初期化(GPS取得まではフォールバック)
   leafletMap = L.map(el, { zoomControl: false }).setView([11.5564, 104.9282], 13);
   L.control.zoom({ position: 'topright' }).addTo(leafletMap);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2435,6 +2477,27 @@ function initLocationMapAfterLoad_() {
 
   // 少し遅延してサイズ修正（表示切替時の問題対策）
   setTimeout(function() { leafletMap.invalidateSize(); }, 300);
+
+  // ── 🆕 (2026-05-20) 現在地を自動取得してピン設置 ──
+  // ユーザーが微調整するだけで済むよう、開いた瞬間に GPS で現在地に
+  // ピンを落とす。失敗時はプノンペン中心のままで、タップ操作にフォールバック。
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        // 既に手動でピンを置いていなければ、現在地にピン設置
+        if (!savedCoords) {
+          setMapPin(pos.coords.latitude, pos.coords.longitude);
+        }
+      },
+      function(err) {
+        // 失敗時は何もしない(タップで設定できるのでUXは維持)
+        if (window.console && console.log) {
+          console.log('GPS auto-acquire failed:', err && err.message);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  }
 }
 
 function setMapPin(lat, lng) {
