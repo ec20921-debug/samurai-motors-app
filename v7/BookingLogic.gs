@@ -473,6 +473,12 @@ function createBooking(params) {
       };
     }
 
+    // ── 1-b''. サービスタイプ判定 (2026-05-20: 店舗作業オプション追加) ──
+    // '店舗' = 顧客が店舗に来店してサービスを受ける → 出張料 $0
+    // '出張' = 既存通り、顧客指定場所へ出向く → 出張料あり
+    // デフォルトは '出張'（既存予約との互換性維持）
+    const serviceType = (params.serviceType === '店舗') ? '店舗' : '出張';
+
     // ── 1-c. 料金・所要時間の合算 ──
     const baseDuration = plan ? getDurationFor(plan, vehicleType) : 0;
     const glassDuration = getOptionDurationFor(glassOpt, vehicleType);
@@ -480,7 +486,8 @@ function createBooking(params) {
 
     const baseAmount = plan ? getBasePriceFor(plan, vehicleType) : 0;
     const glassAmount = getOptionPriceFor(glassOpt, vehicleType);
-    const dispatchFeeAmount = getDispatchFeeFor(vehicleType);
+    // 店舗作業は出張料ゼロ、出張作業のみ料金設定シートの「出張料」を加算
+    const dispatchFeeAmount = (serviceType === '店舗') ? 0 : getDispatchFeeFor(vehicleType);
     const serviceSubtotal = baseAmount + glassAmount;            // 割引対象(WASH+GLASS)
     const subtotal = serviceSubtotal + dispatchFeeAmount;        // 表示上の合計(出張料含む、割引前)
 
@@ -588,7 +595,9 @@ function createBooking(params) {
       // ── キャンペーン分析用 3 列 (Menu v2: 2026-05-06) ──
       '割引前金額(USD)': subtotal,                                  // WASH+GLASS+Delivery の合計(割引前)
       '割引額(USD)':    discountAmount,                            // 割引で引かれた額(0 = キャンペーンなし)
-      'キャンペーン名': (camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : ''
+      'キャンペーン名': (camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : '',
+      // ── サービスタイプ (2026-05-20: 店舗/出張区分) ──
+      'サービスタイプ': serviceType                                 // '店舗' or '出張'
     });
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
@@ -620,7 +629,8 @@ function createBooking(params) {
       discountAmount: discountAmount,
       campaign: (camp && camp.active && camp.percent > 0) ? camp : null,
       amount: amount,
-      mapsUrl: loc.mapsUrl || params.location
+      mapsUrl: loc.mapsUrl || params.location,
+      serviceType: serviceType                       // '店舗' or '出張'
     });
 
     return {
@@ -645,6 +655,11 @@ function createBooking(params) {
  */
 function notifyBookingCreated(info) {
   const cfg = getConfig();
+
+  // ── サービスタイプ (2026-05-20: 店舗/出張区分) ──
+  // 互換性のためデフォルトは '出張'。'店舗' のときは出張料を表示しない。
+  const serviceType = info.serviceType || '出張';
+  const isInStore = (serviceType === '店舗');
 
   // ── 顧客へ(英語メイン + クメール語サブ / Menu v2 / 2026-05-06)──
   // Menu v2.1 (2026-05-08): plan が null の場合(GLASS 単体予約)もハンドル
@@ -691,8 +706,13 @@ function notifyBookingCreated(info) {
       '🎌 ' + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -$' + discount.toFixed(2) + '\n' +
       '✓ Service (after discount): $' + serviceAfterDiscount.toFixed(2) + '\n';
   }
+  // サービスタイプによってデリバリー費の表示を分岐
+  if (isInStore) {
+    customerText += '🏪 In-store service / សេវានៅហាង:  $0.00\n';
+  } else {
+    customerText += '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  $' + feeAmt + '\n';
+  }
   customerText +=
-    '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  $' + feeAmt + '\n' +
     '─────────────────\n' +
     '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
@@ -746,8 +766,10 @@ function notifyBookingCreated(info) {
     username:  ''
   };
 
+  const serviceTypeTag = isInStore ? '🏪 店舗作業' : '🚗 出張作業';
+
   let adminText =
-    '🆕 新規予約\n' +
+    '🆕 新規予約 [' + serviceTypeTag + ']\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '予約番号: ' + info.bookingId + '\n' +
     '顧客: ' + (info.name || 'Guest') + ' (chat_id=' + info.chatId + ')\n';
@@ -768,19 +790,21 @@ function notifyBookingCreated(info) {
   if (glassOpt) priceParts.push('GLASS $' + glassAmt);
   const priceJoin = priceParts.join(' + ');
 
+  // サービスタイプによって料金内訳の表示を分岐
+  const feeLabel = isInStore ? '店舗作業(出張料なし)' : ('出張料 $' + feeAmt);
   if (camp && discount > 0) {
     adminText +=
       '料金: ' + priceJoin + ' = サービス計 $' + serviceSubtotal.toFixed(2) +
       '\n🎌 キャンペーン (' + (camp.nameEn || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2) +
       '\n→ サービス計(割引後): $' + serviceAfterDiscount.toFixed(2) +
-      '\n+ 出張料: $' + feeAmt +
+      (isInStore ? '\n🏪 店舗作業のため出張料なし' : ('\n+ 出張料: $' + feeAmt)) +
       '\n→ 請求額: $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount);
   } else {
     adminText +=
-      '料金: ' + priceJoin + ' + 出張料 $' + feeAmt + ' = 合計 $' + info.amount;
+      '料金: ' + priceJoin + ' + ' + feeLabel + ' = 合計 $' + info.amount;
   }
   adminText +=
-    '\n場所: ' + info.mapsUrl + '\n' +
+    '\n場所: ' + (isInStore ? '🏪 店舗 (Samurai Motors 事務所)' : info.mapsUrl) + '\n' +
     '━━━━━━━━━━━━━━━━';
 
   try {
