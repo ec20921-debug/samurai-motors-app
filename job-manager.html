@@ -471,13 +471,16 @@ body {
 .thread-booking-amount { font-size:16px; font-weight:700; color:var(--success); }
 .thread-booking-detail { font-size:13px; color:var(--text-dim); line-height:1.6; }
 .thread-start-job-btn {
-  display:block; width:100%; padding:12px;
-  background:var(--gold); color:#000; border:none;
-  border-radius:var(--radius); font-size:14px; font-weight:700;
+  display:block; width:100%; padding:18px 16px;
+  background:linear-gradient(135deg, var(--gold) 0%, #FFD700 100%);
+  color:#1a1410; border:2px solid #FFD700;
+  border-radius:var(--radius); font-size:16px; font-weight:800;
   font-family:inherit; cursor:pointer; text-align:center;
-  margin-top:10px;
+  margin-top:14px; letter-spacing:0.4px; line-height:1.4;
+  box-shadow:0 4px 18px rgba(255,215,0,0.4);
+  transition:all 0.2s ease;
 }
-.thread-start-job-btn:active { opacity:0.8; transform:scale(0.98); }
+.thread-start-job-btn:active { transform:scale(0.97); box-shadow:0 2px 8px rgba(255,215,0,0.3); }
 
 /* チャットエリア */
 .chat-area {
@@ -554,9 +557,9 @@ body {
       <button class="dash-refresh-btn" onclick="loadDashboardBookings()">🔄 更新</button>
     </div>
     <div class="dash-stat-row" id="dashStats">
-      <div class="dash-stat"><div class="ds-num" id="statTotal">-</div><div class="ds-label">合計</div></div>
-      <div class="dash-stat"><div class="ds-num" id="statPending">-</div><div class="ds-label">待機中</div></div>
-      <div class="dash-stat"><div class="ds-num" id="statDone">-</div><div class="ds-label">完了</div></div>
+      <div class="dash-stat"><div class="ds-num" id="statTotal">-</div><div class="ds-label">សរុប<br><span style="opacity:0.6;font-size:9px">合計</span></div></div>
+      <div class="dash-stat"><div class="ds-num" id="statPending">-</div><div class="ds-label">រង់ចាំ<br><span style="opacity:0.6;font-size:9px">待機中</span></div></div>
+      <div class="dash-stat"><div class="ds-num" id="statDone">-</div><div class="ds-label">បានបញ្ចប់<br><span style="opacity:0.6;font-size:9px">完了</span></div></div>
     </div>
     <div id="dashboardBody">
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
@@ -1549,9 +1552,10 @@ function renderDashboardCard(b) {
 
   // ステータスに応じたプレビューテキスト
   var preview = '🕐 ' + st + ' - ' + et;
-  if (b.status === '作業完了') preview = '✅ 完了 ・ ' + preview;
-  else if (b.status === '駐車情報受領済み') preview = '🚗 出発OK ・ ' + preview;
-  else preview = '⏳ 待機中 ・ ' + preview;
+  // ステータステキスト (クメール語ファースト・日本語サブ)
+  if (b.status === '作業完了') preview = '✅ បានបញ្ចប់ ・ ' + preview;
+  else if (b.status === '駐車情報受領済み') preview = '🚗 ត្រៀមរួច ・ ' + preview;
+  else preview = '⏳ រង់ចាំ ・ ' + preview;
 
   // 2026-05-20: サービスタイプバッジ（現場スタッフが一目で店舗/出張を判別できるよう）
   var isInStore = (b.serviceType === '店舗');
@@ -1606,9 +1610,10 @@ function openThread(b) {
   }
 
   var statusBadge = '';
-  if (b.status === '作業完了') statusBadge = '<span class="bp-status done">✅ 完了</span>';
-  else if (b.status === '駐車情報受領済み') statusBadge = '<span class="bp-status driving">🚗 出発OK</span>';
-  else statusBadge = '<span class="bp-status pending">⏳ 待機中</span>';
+  // クメール語ファースト・日本語サブ
+  if (b.status === '作業完了') statusBadge = '<span class="bp-status done">✅ បានបញ្ចប់ / 完了</span>';
+  else if (b.status === '駐車情報受領済み') statusBadge = '<span class="bp-status driving">🚗 ត្រៀមរួច / 出発OK</span>';
+  else statusBadge = '<span class="bp-status pending">⏳ រង់ចាំ / 待機中</span>';
 
   // 2026-05-20: 詳細ページにもサービスタイプバッジ
   var svcBadgeDetail = isInStoreThread
@@ -1621,15 +1626,15 @@ function openThread(b) {
       '<div style="font-size:13px;color:var(--text-dim);margin-top:4px">🆔 ' + b.bookingId + '</div>' +
     '</div>' + statusBadge +
   '</div>' +
-  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;font-size:13px">' +
-    '<div>🕐 ' + st + ' - ' + et + '</div>' +
-    '<div>💰 $' + (b.amount || '0') + '</div>' +
-    '<div>✨ Plan ' + b.planLetter + '（' + planName + '）</div>' +
-    '<div>🚙 ' + (b.vehicleType || '-') + '</div>' +
-    '<div style="grid-column:1/-1">📍 ' + loc + '</div>' +
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;font-size:13px">' +
+    '<div><span style="color:var(--text-dim);font-size:10px">🕐 ម៉ោង / 時間</span><br><b>' + st + ' - ' + et + '</b></div>' +
+    '<div><span style="color:var(--text-dim);font-size:10px">💰 តម្លៃ / 料金</span><br><b>$' + (b.amount || '0') + '</b></div>' +
+    '<div><span style="color:var(--text-dim);font-size:10px">✨ មុខងារ / Plan</span><br><b>' + (b.planLetter === 'W' ? 'WASH' : (b.planLetter + '（' + planName + '）')) + '</b></div>' +
+    '<div><span style="color:var(--text-dim);font-size:10px">🚙 ប្រភេទរថយន្ត / 車種</span><br><b>' + (b.vehicleType || '-') + '</b></div>' +
+    '<div style="grid-column:1/-1"><span style="color:var(--text-dim);font-size:10px">📍 ទីតាំង / 場所</span><br>' + loc + '</div>' +
   '</div>' +
   (b.status !== '作業完了' ?
-    '<button class="thread-start-job-btn" onclick="startJobFromThread()">🚗 ジョブ開始 / ចាប់ផ្តើមការងារ</button>' : '');
+    '<button class="thread-start-job-btn" onclick="startJobFromThread()">🚗 ចាប់ផ្តើមការងារ<br><span style="font-size:11px;opacity:0.75;font-weight:600;letter-spacing:0.3px">START JOB / ジョブ開始</span></button>' : '');
 
   // チャット履歴を読み込み
   loadChatHistory(b.chatId);
@@ -1891,9 +1896,9 @@ function renderBookingList(bookings) {
 
 function renderBookingCard(b, key) {
   var statusCls = 'pending';
-  var statusText = '予約中';
-  if (b.status === '作業完了') { statusCls = 'done'; statusText = '✅ 完了'; }
-  else if (b.status === '駐車情報受領済み') { statusCls = 'driving'; statusText = '🚗 出発OK'; }
+  var statusText = '⏳ រង់ចាំ';  // 待機中
+  if (b.status === '作業完了') { statusCls = 'done'; statusText = '✅ បានបញ្ចប់'; }  // 完了
+  else if (b.status === '駐車情報受領済み') { statusCls = 'driving'; statusText = '🚗 ត្រៀមរួច'; }  // 出発OK
 
   var linkedCls = (selectedBookingId && selectedBookingId === b.bookingId) ? ' linked' : '';
   var doneCls = (b.status === '作業完了') ? ' done' : '';
