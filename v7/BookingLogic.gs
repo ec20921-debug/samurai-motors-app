@@ -838,16 +838,44 @@ function notifyBookingCreated(info) {
   customerText +=
     '─────────────────\n' +
     '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
-    '━━━━━━━━━━━━━━━━\n' +
-    '👤 Your specialist: Ron\n' +
-    '   (Field-trained · Premium care)\n' +
-    '━━━━━━━━━━━━━━━━\n' +
-    '📋 What happens next:\n' +
-    '⏰ 1h before: Reminder + map link\n' +
-    '📷 Service: Before photos via Telegram\n' +
-    '✨ After: After photos + QR for payment\n' +
-    '🙏 24h later: Feedback request\n' +
-    '━━━━━━━━━━━━━━━━\n' +
+    '━━━━━━━━━━━━━━━━\n';
+
+  // ── 店舗作業: 来店案内 / 出張作業: 通常フロー ──
+  if (isInStore) {
+    customerText +=
+      '🏪 Please come to our office\n' +
+      '   សូមអញ្ជើញមកការិយាល័យ\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '📍 Samurai Motors Office\n' +
+      '   https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6\n' +
+      '\n' +
+      '⏰ Please arrive at ' + info.startTime + '\n' +
+      '   សូមមកដល់នៅម៉ោង ' + info.startTime + '\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '👤 Your specialist: Ron\n' +
+      '   (Field-trained · Premium care)\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '📋 What happens next:\n' +
+      '⏰ 1h before: Reminder + map link\n' +
+      '🏪 On arrival: We greet you at the office\n' +
+      '📷 Service: Before photos via Telegram\n' +
+      '✨ After: After photos + QR for payment\n' +
+      '🙏 24h later: Feedback request\n' +
+      '━━━━━━━━━━━━━━━━\n';
+  } else {
+    customerText +=
+      '👤 Your specialist: Ron\n' +
+      '   (Field-trained · Premium care)\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '📋 What happens next:\n' +
+      '⏰ 1h before: Reminder + map link\n' +
+      '📷 Service: Before photos via Telegram\n' +
+      '✨ After: After photos + QR for payment\n' +
+      '🙏 24h later: Feedback request\n' +
+      '━━━━━━━━━━━━━━━━\n';
+  }
+
+  customerText +=
     '💳 Payment / ការបង់ប្រាក់\n' +
     'After service completion, we will send you a QR code via Telegram.\n' +
     'Please make payment using that QR code.\n' +
@@ -858,20 +886,22 @@ function notifyBookingCreated(info) {
     'Thank you! / សូមអរគុណ!';
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
 
-  // ── 駐車場所のヒアリング（カンボジアはビル駐車場で階が多いため必須） ──
-  // 現場スタッフが「どの階のどの車か」を特定できるよう、車両前面の写真と階数を聞く。
-  // 返信が来なくても個別対応できるので必須応答にはしない。
-  const parkingInfoText =
-    '📍 សូមផ្ញើបន្ថែម / Please also send:\n' +
-    '━━━━━━━━━━━━━━━━\n' +
-    '1️⃣ 📸 រូបថតពីខាងមុខរថយន្តនៅកន្លែងចត\n' +
-    '    Front photo of your car (at parking spot)\n' +
-    '2️⃣ 🏢 ជាន់ទីប៉ុន្មាន?\n' +
-    '    Which floor is your car parked on?\n' +
-    '━━━━━━━━━━━━━━━━\n' +
-    '🙏 ដើម្បីឱ្យក្រុមការងាររបស់យើងរកឃើញរថយន្តរបស់អ្នកបានឆាប់\n' +
-    '🙏 So our team can locate your car quickly.';
-  sendMessage(BOT_TYPE.BOOKING, info.chatId, parkingInfoText);
+  // ── 駐車場所のヒアリング（出張作業のみ、店舗作業は不要） ──
+  // 出張: カンボジアはビル駐車場で階が多いため、車両前面の写真と階数を聞く
+  // 店舗: 顧客が車を持って来るので、階数等は不要
+  if (!isInStore) {
+    const parkingInfoText =
+      '📍 សូមផ្ញើបន្ថែម / Please also send:\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '1️⃣ 📸 រូបថតពីខាងមុខរថយន្តនៅកន្លែងចត\n' +
+      '    Front photo of your car (at parking spot)\n' +
+      '2️⃣ 🏢 ជាន់ទីប៉ុន្មាន?\n' +
+      '    Which floor is your car parked on?\n' +
+      '━━━━━━━━━━━━━━━━\n' +
+      '🙏 ដើម្បីឱ្យក្រុមការងាររបស់យើងរកឃើញរថយន្តរបស់អ្នកបានឆាប់\n' +
+      '🙏 So our team can locate your car quickly.';
+    sendMessage(BOT_TYPE.BOOKING, info.chatId, parkingInfoText);
+  }
 
   // ── 管理グループへ（顧客トピック内） ──
   // stale thread_id が残っている（例: 管理グループのチャットログを消してトピック削除した）ケースに備え、
