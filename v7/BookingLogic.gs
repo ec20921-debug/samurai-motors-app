@@ -854,7 +854,7 @@ function notifyBookingCreated(info) {
       '⏰ Please arrive at ' + info.startTime + '\n' +
       '   សូមមកដល់នៅម៉ោង ' + info.startTime + '\n' +
       '━━━━━━━━━━━━━━━━\n' +
-      '👤 Your specialist: Ron\n' +
+      '👤 Your specialist: Run Kosal\n' +
       '   (Field-trained · Premium care)\n' +
       '━━━━━━━━━━━━━━━━\n' +
       '📋 What happens next:\n' +
@@ -866,7 +866,7 @@ function notifyBookingCreated(info) {
       '━━━━━━━━━━━━━━━━\n';
   } else {
     customerText +=
-      '👤 Your specialist: Ron\n' +
+      '👤 Your specialist: Run Kosal\n' +
       '   (Field-trained · Premium care)\n' +
       '━━━━━━━━━━━━━━━━\n' +
       '📋 What happens next:\n' +
