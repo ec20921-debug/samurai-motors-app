@@ -724,12 +724,14 @@ function createBooking(params) {
     });
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
+    // 2026-05-20 fix: GLASS 単体予約時 plan が null になるため、null ガードを追加
     if (typeof logFunnelEvent === 'function') {
       logFunnelEvent(params.chatId, 'booking_completed', 'booking.html', bookingId, {
-        plan: plan.letter,
+        plan: plan ? plan.letter : null,
         glass: glassOpt ? glassOpt.code : null,
         amount: amount,
-        vehicleType: vehicleType
+        vehicleType: vehicleType,
+        serviceType: serviceType
       });
     }
 
