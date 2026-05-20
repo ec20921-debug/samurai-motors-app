@@ -59,7 +59,12 @@ function send1HourReminders() {
     const rowIndex = idx + 2;
     const status   = String(row[(headers['進行状態'] || 1) - 1] || '');
     const dateStr  = formatBookingDateCell_(row[(headers['予約日'] || 1) - 1], tz);
-    const timeStr  = String(row[(headers['予約時刻'] || 1) - 1] || '');
+    // 2026-05-20 fix: スプレッドシートの時刻セルが Date オブジェクト(1899-12-30 ベース)の
+    // 可能性に対応。Date なら HH:mm に整形、文字列ならそのまま。
+    const rawTime  = row[(headers['予約時刻'] || 1) - 1];
+    const timeStr  = (rawTime instanceof Date)
+      ? Utilities.formatDate(rawTime, tz, 'HH:mm')
+      : String(rawTime || '').trim();
     const chatId   = String(row[(headers['チャットID'] || 1) - 1] || '');
     const reminderSent = row[reminderCol - 1];
 
@@ -72,28 +77,55 @@ function send1HourReminders() {
     // 予約時刻のミリ秒
     const hm = timeStr.split(':');
     if (hm.length < 2) return;
-    const slotStart = parseDateTimePhnomPenh(dateStr, parseInt(hm[0], 10), parseInt(hm[1], 10));
+    const hh = parseInt(hm[0], 10);
+    const mm = parseInt(hm[1], 10);
+    if (isNaN(hh) || isNaN(mm)) {
+      Logger.log('⚠️ 1h reminder skip: invalid timeStr "' + timeStr + '" row=' + rowIndex);
+      return;
+    }
+    const slotStart = parseDateTimePhnomPenh(dateStr, hh, mm);
     const slotMs = slotStart.getTime();
+    if (isNaN(slotMs)) return;
     if (slotMs < lowerMs || slotMs > upperMs) return; // 範囲外
 
     // 場所情報
     const mapsUrl = String(row[(headers['マップリンク'] || 1) - 1] || '');
     const bookingId = String(row[(headers['予約ID'] || 1) - 1] || '');
+    // 2026-05-20 add: serviceType を見て店舗/出張で文面を分岐
+    const serviceType = String(row[(headers['サービスタイプ'] || 1) - 1] || '出張');
+    const isInStore = (serviceType === '店舗');
 
-    // 送信
-    const text =
-      '⏰ <b>Arrival reminder / កំពុងមកដល់</b>\n' +
-      '━━━━━━━━━━━━━━━━\n' +
-      '🚗 Run Kosal will arrive in about 1 hour at ' + timeStr + '\n' +
-      'Run Kosal នឹងមកដល់ប្រហែល 1 ម៉ោងទៀតនៅម៉ោង ' + timeStr + '\n' +
-      '━━━━━━━━━━━━━━━━\n' +
-      '📋 Booking: ' + bookingId + '\n' +
-      (mapsUrl ? '📍 Location: ' + mapsUrl + '\n' : '') +
-      '━━━━━━━━━━━━━━━━\n' +
-      '💡 Please be ready and remove valuable items from your car.\n' +
-      'សូមត្រៀមរួចរាល់ ហើយយកវត្ថុមានតម្លៃចេញពីឡានជាមុន។\n' +
-      '\n' +
-      'See you soon! / ជួបនឹងពេលឆាប់ៗ!';
+    // 送信(店舗/出張で文面を分岐)
+    const text = isInStore
+      ? (
+          '⏰ <b>Arrival reminder / កំពុងមកដល់</b>\n' +
+          '━━━━━━━━━━━━━━━━\n' +
+          '🏪 Your appointment is in about 1 hour at ' + timeStr + '\n' +
+          '🏪 ការណាត់ជួបរបស់អ្នកនឹងចាប់ផ្តើមនៅម៉ោង ' + timeStr + '\n' +
+          '━━━━━━━━━━━━━━━━\n' +
+          '📋 Booking: ' + bookingId + '\n' +
+          '📍 Please come to: Samurai Motors Office\n' +
+          '   https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6\n' +
+          '━━━━━━━━━━━━━━━━\n' +
+          '💡 Please drive carefully and remove valuable items from your car.\n' +
+          'សូមបើកបរដោយប្រុងប្រយ័ត្ន ហើយយកវត្ថុមានតម្លៃចេញពីឡានជាមុន។\n' +
+          '\n' +
+          'See you soon! / ជួបនឹងពេលឆាប់ៗ!'
+        )
+      : (
+          '⏰ <b>Arrival reminder / កំពុងមកដល់</b>\n' +
+          '━━━━━━━━━━━━━━━━\n' +
+          '🚗 Run Kosal will arrive in about 1 hour at ' + timeStr + '\n' +
+          'Run Kosal នឹងមកដល់ប្រហែល 1 ម៉ោងទៀតនៅម៉ោង ' + timeStr + '\n' +
+          '━━━━━━━━━━━━━━━━\n' +
+          '📋 Booking: ' + bookingId + '\n' +
+          (mapsUrl ? '📍 Location: ' + mapsUrl + '\n' : '') +
+          '━━━━━━━━━━━━━━━━\n' +
+          '💡 Please be ready and remove valuable items from your car.\n' +
+          'សូមត្រៀមរួចរាល់ ហើយយកវត្ថុមានតម្លៃចេញពីឡានជាមុន។\n' +
+          '\n' +
+          'See you soon! / ជួបនឹងពេលឆាប់ៗ!'
+        );
 
     try {
       sendMessage(BOT_TYPE.BOOKING, chatId, text, { parse_mode: 'HTML' });
