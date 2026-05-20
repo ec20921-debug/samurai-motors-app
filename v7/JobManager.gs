@@ -99,7 +99,9 @@ function apiBookingToday() {
         status: status,
         location: String(row[(headers['マップリンク'] || 1) - 1] || row[(headers['住所'] || 1) - 1] || ''),
         carModel: String(row[(headers['車種名'] || 1) - 1] || ''),
-        plate: ''
+        plate: '',
+        // 2026-05-20: 現場スタッフが店舗/出張を判別できるよう追加
+        serviceType: String(row[(headers['サービスタイプ'] || 1) - 1] || '出張')
       });
     }
 

@@ -1553,16 +1553,25 @@ function renderDashboardCard(b) {
   else if (b.status === '駐車情報受領済み') preview = '🚗 出発OK ・ ' + preview;
   else preview = '⏳ 待機中 ・ ' + preview;
 
-  var planNames = { 'A': '清', 'B': '輝', 'C': '極', 'D': '匠' };
+  // 2026-05-20: サービスタイプバッジ（現場スタッフが一目で店舗/出張を判別できるよう）
+  var isInStore = (b.serviceType === '店舗');
+  var svcBadge = isInStore
+    ? '<span style="display:inline-block;background:rgba(212,175,55,0.18);color:#D4AF37;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.3px;margin-left:6px;border:1px solid rgba(212,175,55,0.4);">🏪 STORE / នៅហាង</span>'
+    : '<span style="display:inline-block;background:rgba(100,149,237,0.18);color:#7AB8FF;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.3px;margin-left:6px;border:1px solid rgba(100,149,237,0.4);">🚗 DELIVERY / ដឹកជញ្ជូន</span>';
+
+  // プラン名（新形式 W=WASH 優先、旧形式 A/B/C/D も対応）
+  var planNames = { 'A': '清', 'B': '輝', 'C': '極', 'D': '匠', 'W': 'WASH' };
   var planName = planNames[b.planLetter] || b.planLetter || '';
-  var sub = '✨' + b.planLetter + '(' + planName + ') ・ ' + (b.vehicleType || '-');
+  // 'W' は重複を避け、 'WASH' のみ表示。旧 A/B/C/D は letter + 日本語名
+  var planDisplay = (b.planLetter === 'W' || !b.planLetter) ? (planName || 'WASH') : (b.planLetter + '(' + planName + ')');
+  var sub = '✨ ' + planDisplay + ' ・ ' + (b.vehicleType || '-');
 
   var doneCls = (b.status === '作業完了') ? ' opacity:0.5;' : '';
 
   return '<div class="chat-item" data-id="' + b.bookingId + '" style="' + doneCls + '">' +
     '<div class="chat-avatar" style="background:' + color + '">' + initial + '</div>' +
     '<div class="chat-body">' +
-      '<div class="chat-name">' + name + '</div>' +
+      '<div class="chat-name">' + name + svcBadge + '</div>' +
       '<div class="chat-preview">' + preview + '</div>' +
       '<div class="chat-preview" style="font-size:11px;margin-top:2px">' + sub + '</div>' +
     '</div>' +
@@ -1585,17 +1594,30 @@ function openThread(b) {
   var et = formatTimeDisplay(b.endTime);
   var planNames = { 'A': '清 KIYOME', 'B': '輝 KAGAYAKI', 'C': '極 KIWAMI', 'D': '匠 TAKUMI' };
   var planName = planNames[b.planLetter] || b.planLetter || '?';
-  var loc = b.location || '-';
-  if (loc.indexOf('google.com/maps') >= 0) loc = '<a href="' + b.location + '" target="_blank" style="color:var(--blue)">📍 地図を開く</a>';
+  // 2026-05-20: 店舗予約なら「🏪 STORE (顧客来店)」、出張なら住所/マップリンク
+  var isInStoreThread = (b.serviceType === '店舗');
+  var loc;
+  if (isInStoreThread) {
+    loc = '<span style="color:#D4AF37;font-weight:700">🏪 STORE — Customer comes to office / អតិថិជនមកការិយាល័យ</span>';
+  } else if ((b.location || '').indexOf('google.com/maps') >= 0) {
+    loc = '<a href="' + b.location + '" target="_blank" style="color:var(--blue)">📍 地図を開く / បើកផែនទី</a>';
+  } else {
+    loc = b.location || '-';
+  }
 
   var statusBadge = '';
   if (b.status === '作業完了') statusBadge = '<span class="bp-status done">✅ 完了</span>';
   else if (b.status === '駐車情報受領済み') statusBadge = '<span class="bp-status driving">🚗 出発OK</span>';
   else statusBadge = '<span class="bp-status pending">⏳ 待機中</span>';
 
+  // 2026-05-20: 詳細ページにもサービスタイプバッジ
+  var svcBadgeDetail = isInStoreThread
+    ? '<span style="display:inline-block;background:rgba(212,175,55,0.18);color:#D4AF37;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.4px;margin-left:8px;border:1px solid rgba(212,175,55,0.4);">🏪 STORE / នៅហាង</span>'
+    : '<span style="display:inline-block;background:rgba(100,149,237,0.18);color:#7AB8FF;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.4px;margin-left:8px;border:1px solid rgba(100,149,237,0.4);">🚗 DELIVERY / ដឹកជញ្ជូន</span>';
+
   card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
     '<div>' +
-      '<div style="font-size:16px;font-weight:700">👤 ' + (b.customerName || 'Guest') + '</div>' +
+      '<div style="font-size:16px;font-weight:700">👤 ' + (b.customerName || 'Guest') + svcBadgeDetail + '</div>' +
       '<div style="font-size:13px;color:var(--text-dim);margin-top:4px">🆔 ' + b.bookingId + '</div>' +
     '</div>' + statusBadge +
   '</div>' +
