@@ -84,8 +84,8 @@ function send1HourReminders() {
     const text =
       '⏰ <b>Arrival reminder / កំពុងមកដល់</b>\n' +
       '━━━━━━━━━━━━━━━━\n' +
-      '🚗 Ron will arrive in about 1 hour at ' + timeStr + '\n' +
-      'Ron នឹងមកដល់ប្រហែល 1 ម៉ោងទៀតនៅម៉ោង ' + timeStr + '\n' +
+      '🚗 Run Kosal will arrive in about 1 hour at ' + timeStr + '\n' +
+      'Run Kosal នឹងមកដល់ប្រហែល 1 ម៉ោងទៀតនៅម៉ោង ' + timeStr + '\n' +
       '━━━━━━━━━━━━━━━━\n' +
       '📋 Booking: ' + bookingId + '\n' +
       (mapsUrl ? '📍 Location: ' + mapsUrl + '\n' : '') +
