@@ -621,6 +621,100 @@ body {
 .field textarea::placeholder { color:#555; }
 .hint { font-size:11px; color:var(--text-dim); margin-top:4px; }
 
+/* ───────── サービスタイプ タブ (2026-05-20: 店舗/出張切替) ───────── */
+.service-type-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.svc-tab {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: center;
+  line-height: 1.4;
+}
+.svc-tab:hover {
+  border-color: var(--gold-muted);
+  color: var(--text);
+}
+.svc-tab.active {
+  background: linear-gradient(135deg, var(--gold-muted) 0%, var(--gold) 100%);
+  border-color: var(--gold-bright);
+  color: #1a1410;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+}
+.svc-tab .svc-tab-main {
+  font-size: 14px;
+  letter-spacing: 0.8px;
+}
+.svc-tab .km {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* 店舗カード */
+.store-card {
+  background: linear-gradient(135deg, var(--card) 0%, var(--card-hover) 100%);
+  border: 1px solid var(--gold-muted);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+  margin-bottom: 14px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(212, 175, 55, 0.15);
+}
+.store-card-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.store-card-title {
+  font-family: 'Cinzel', 'Cormorant Garamond', serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--gold-bright);
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.store-card-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.store-map-btn {
+  display: inline-block;
+  background: var(--gold);
+  color: #1a1410;
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+  transition: all 0.2s ease;
+}
+.store-map-btn:hover {
+  background: var(--gold-bright);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+}
+.store-card-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 10px 14px;
+  background: rgba(212, 175, 55, 0.08);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
 /* ───────── 確認画面 (Editorial summary card) ───────── */
 .summary-card {
   background:
@@ -1371,19 +1465,48 @@ body {
       Your Location
       <span class="km">ទីតាំងរបស់អ្នក</span>
     </div>
-    <div class="view-desc">Your location will be detected automatically — drag the pin to fine-tune<br><span class="km">ទីតាំងបច្ចុប្បន្នរបស់អ្នកនឹងត្រូវរកឃើញដោយស្វ័យប្រវត្តិ — អូសម្ជុលដើម្បីកែ</span></div>
 
-    <div id="leafletMap" style="width:100%; height:clamp(360px, 58vh, 500px); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);"></div>
-    <div style="font-size:11px; color:var(--text-dim); margin-bottom:10px; text-align:center; letter-spacing:0.3px;" id="coordsText">📍 Detecting your location… / កំពុងរកទីតាំង…</div>
+    <!-- サービスタイプ タブ切替 (2026-05-20: 店舗作業オプション追加) -->
+    <div class="service-type-tabs">
+      <button type="button" class="svc-tab active" data-svctype="出張" onclick="selectServiceType('出張')">
+        🚗 <span class="svc-tab-main">Delivery</span><br>
+        <span class="km">ដឹកជញ្ជូន</span>
+      </button>
+      <button type="button" class="svc-tab" data-svctype="店舗" onclick="selectServiceType('店舗')">
+        🏪 <span class="svc-tab-main">In-store</span><br>
+        <span class="km">នៅហាង</span>
+      </button>
+    </div>
 
-    <button id="gpsBtn" type="button" onclick="shareLocation()"
-      style="display:block; margin:0 auto 14px; padding:10px 18px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; cursor:pointer;">
-      📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន
-    </button>
+    <!-- 出張モード: 地図 + ピン留め -->
+    <div id="locationDelivery" class="location-mode">
+      <div class="view-desc">Tap the map to set your car wash location<br><span class="km">ចុចផែនទីដើម្បីកំណត់ទីតាំង</span></div>
 
-    <div style="font-size:13px; color:var(--text-dim); text-align:center; padding:8px 16px; background:var(--card); border-radius:var(--radius); border:1px solid var(--border);">
-      Parking details can be shared via chat after booking<br>
-      <span class="km">ព័ត៌មានលម្អិតអំពីកន្លែងចតអាចផ្ញើតាម chat បន្ទាប់ពីកក់</span>
+      <div id="leafletMap" style="width:100%; height:clamp(360px, 58vh, 500px); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);"></div>
+      <div style="font-size:11px; color:var(--text-dim); margin-bottom:16px; text-align:center; letter-spacing:0.3px;" id="coordsText">📍 Tap the map to set your location</div>
+
+      <div style="font-size:13px; color:var(--text-dim); text-align:center; padding:8px 16px; background:var(--card); border-radius:var(--radius); border:1px solid var(--border);">
+        Parking details can be shared via chat after booking<br>
+        <span class="km">ព័ត៌មានលម្អិតអំពីកន្លែងចតអាចផ្ញើតាម chat បន្ទាប់ពីកក់</span>
+      </div>
+    </div>
+
+    <!-- 店舗モード: 事務所カード -->
+    <div id="locationInStore" class="location-mode" style="display:none;">
+      <div class="view-desc">Bring your car to our office — no delivery fee<br><span class="km">នាំរថយន្តមកការិយាល័យ — មិនមានថ្លៃដឹកជញ្ជូន</span></div>
+
+      <div class="store-card">
+        <div class="store-card-icon">🏪</div>
+        <div class="store-card-title">Samurai Motors Office</div>
+        <div class="store-card-subtitle"><span class="km">ការិយាល័យ Samurai Motors</span></div>
+        <a href="https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6" target="_blank" rel="noopener" class="store-map-btn">
+          📍 Open in Google Maps
+        </a>
+        <div class="store-card-note">
+          ✅ No delivery fee saved<br>
+          <span class="km">មិនមានថ្លៃដឹកជញ្ជូន</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1511,8 +1634,17 @@ var state = {
   selectedSlot: '',
   selectedDuration: 0,
   selectedLocation: '',
+  serviceType: '出張',           // '出張' (default) or '店舗' — 店舗作業は出張料 $0
   currentView: 'view-loading',
   history: []
+};
+
+// 店舗（事務所）情報
+var STORE_INFO = {
+  nameEn: 'Samurai Motors Office',
+  nameKm: 'ការិយាល័យ Samurai Motors',
+  mapsUrl: 'https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6',
+  locationLabel: '🏪 Samurai Motors Office (Store)'
 };
 
 var STEPS = ['view-plan', 'view-datetime', 'view-location', 'view-confirm'];
@@ -2039,9 +2171,12 @@ function renderSummary() {
     ? ((state.selectedSize === 'SUV以上') ? glassOpt.priceSuv : glassOpt.priceSedan)
     : 0;
   // 出張料(料金設定シート由来、ハードコードしない)
-  var fee = (state.selectedSize === 'SUV以上')
+  // 2026-05-20: 店舗作業は出張料 $0
+  var isInStore = (state.serviceType === '店舗');
+  var baseFee = (state.selectedSize === 'SUV以上')
     ? ((state.dispatchFee && state.dispatchFee.suv) || 0)
     : ((state.dispatchFee && state.dispatchFee.sedan) || 0);
+  var fee = isInStore ? 0 : baseFee;
   // キャンペーン割引(案a: サービスのみ -X%)
   var serviceSubtotal = basePrice + glassPrice;
   var camp = state.campaign;
@@ -2076,7 +2211,12 @@ function renderSummary() {
     html += summaryRow('Service subtotal', '$' + serviceSubtotal.toFixed(2));
     html += '<div class="summary-row" style="color:var(--gold-bright)"><div class="label">★ ' + escapeHtml(camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%)</div><div class="value" style="color:var(--gold-bright)">-$' + discount.toFixed(2) + '</div></div>';
   }
-  html += summaryRow('Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee.toFixed(2));
+  // 出張: Delivery fee 表示 / 店舗: In-store ラベル + $0
+  if (isInStore) {
+    html += '<div class="summary-row" style="color:var(--gold-bright)"><div class="label">🏪 In-store / នៅហាង</div><div class="value" style="color:var(--gold-bright)">$0.00 (saved $' + baseFee.toFixed(2) + ')</div></div>';
+  } else {
+    html += summaryRow('🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន', '$' + fee.toFixed(2));
+  }
   html += '<div class="summary-row total"><div class="label">Total / សរុប</div><div class="value">$' + total.toFixed(2) + '</div></div>';
 
   document.getElementById('summaryCard').innerHTML = html;
@@ -2114,12 +2254,17 @@ function handleNext() {
       break;
 
     case 'view-location':
-      if (!savedCoords) {
-        showToast('Please set your location on the map', true);
-        return;
+      // 店舗作業の場合は地図ピン留め不要、出張作業の場合はピン留め必須
+      if (state.serviceType === '店舗') {
+        state.selectedLocation = STORE_INFO.locationLabel + ' ' + STORE_INFO.mapsUrl;
+      } else {
+        if (!savedCoords) {
+          showToast('Please set your location on the map', true);
+          return;
+        }
+        var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
+        state.selectedLocation = '📍 ' + mapsUrl;
       }
-      var mapsUrl = 'https://www.google.com/maps?q=' + savedCoords.lat + ',' + savedCoords.lng;
-      state.selectedLocation = '📍 ' + mapsUrl;
       showView('view-confirm');
       break;
 
@@ -2157,7 +2302,8 @@ function submitBooking() {
     optionIds: [],                            // 旧フィールド(後方互換維持)
     date: state.selectedDate,
     startTime: state.selectedSlot,
-    location: state.selectedLocation
+    location: state.selectedLocation,
+    serviceType: state.serviceType            // '出張' or '店舗' (2026-05-20)
   };
 
   bookingSubmitted = true; // 送信開始で即座にフラグを立てる
@@ -2193,8 +2339,6 @@ function submitBooking() {
 // ═══════════════════════════════════════════
 
 var savedCoords = null;
-var gpsAutoAttempted = false;     // GPS 自動取得を初回のみ実行するフラグ (2026-05-19)
-var gpsJustAutoAttempted = false; // 直近の shareLocation 呼び出しが「自動」か「手動」かを区別
 
 // Leafletマップ関連
 var leafletMap = null;
@@ -2229,6 +2373,38 @@ function loadLeaflet() {
   return leafletLoadPromise;
 }
 
+// ═══════════════════════════════════════════
+//  サービスタイプ タブ切替 (2026-05-20)
+// ═══════════════════════════════════════════
+
+function selectServiceType(type) {
+  if (type !== '出張' && type !== '店舗') return;
+  state.serviceType = type;
+
+  // タブの active 切替
+  var tabs = document.querySelectorAll('.svc-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].getAttribute('data-svctype') === type) {
+      tabs[i].classList.add('active');
+    } else {
+      tabs[i].classList.remove('active');
+    }
+  }
+
+  // モード切替: 地図 or 店舗カード
+  var deliveryEl = document.getElementById('locationDelivery');
+  var inStoreEl = document.getElementById('locationInStore');
+  if (type === '店舗') {
+    if (deliveryEl) deliveryEl.style.display = 'none';
+    if (inStoreEl) inStoreEl.style.display = 'block';
+  } else {
+    if (deliveryEl) deliveryEl.style.display = 'block';
+    if (inStoreEl) inStoreEl.style.display = 'none';
+    // 出張モードに戻った時、地図がまだ初期化されていなければ初期化
+    setTimeout(function() { initLocationMap(); }, 100);
+  }
+}
+
 function initLocationMap() {
   if (leafletMap) return; // 初期化済み
   var el = document.getElementById('leafletMap');
@@ -2252,26 +2428,13 @@ function initLocationMapAfterLoad_() {
     attribution: '© OpenStreetMap'
   }).addTo(leafletMap);
 
-  // タップでも場所を指定可能(GPS 取得失敗時のフォールバック / 微調整用)
+  // タップで場所を指定
   leafletMap.on('click', function(e) {
     setMapPin(e.latlng.lat, e.latlng.lng);
   });
 
   // 少し遅延してサイズ修正（表示切替時の問題対策）
   setTimeout(function() { leafletMap.invalidateSize(); }, 300);
-
-  // ── ロン君提案フロー (2026-05-19) ──
-  // 地図初期化直後に GPS 自動取得を試みる。
-  // 成功時: 現在地にピン + ズーム16(顧客はドラッグで微調整するだけ)。
-  // 失敗時: プノンペン中心のまま表示、ユーザーはタップ/Recenterボタンで設定可。
-  // 二重起動防止: gpsAutoAttempted フラグで初回のみ実行。
-  if (!gpsAutoAttempted) {
-    gpsAutoAttempted = true;
-    setTimeout(function() {
-      gpsJustAutoAttempted = true; // 自動呼び出しフラグを立てる
-      shareLocation();
-    }, 500);  // 地図描画完了を待つ
-  }
 }
 
 function setMapPin(lat, lng) {
@@ -2299,50 +2462,34 @@ function updateCoordsText() {
 }
 
 function shareLocation() {
-  // ボタンが無い起動経路(自動起動)でも安全に動くよう null チェック
   var btn = document.getElementById('gpsBtn');
-  var setBtn = function(text, disabled) {
-    if (!btn) return;
-    btn.textContent = text;
-    btn.disabled = !!disabled;
-  };
-  var coordsEl = document.getElementById('coordsText');
-
-  setBtn('📍 Getting location… / កំពុងរកទីតាំង…', true);
+  btn.textContent = '📍 Getting location... / កំពុងរកទីតាំង...';
+  btn.disabled = true;
 
   if (!navigator.geolocation) {
-    if (coordsEl) coordsEl.textContent = '📍 Tap the map to set your location';
-    showToast('GPS not supported. Tap the map.', true);
-    setBtn('📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន', false);
+    showToast('GPS not supported on this device', true);
+    btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
+    btn.disabled = false;
     return;
   }
 
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       setMapPin(pos.coords.latitude, pos.coords.longitude);
-      setBtn('✅ Got it! Drag pin to fine-tune / អូសម្ជុលដើម្បីកែ', false);
-      // 自動取得成功時はトーストは控えめ(うるさくない)、手動押下時のみ目立たせる
-      if (btn && !gpsJustAutoAttempted) {
-        showToast('📍 Location set successfully!');
-      }
-      gpsJustAutoAttempted = false;
+      btn.textContent = '✅ Location set! / ទីតាំងបានកំណត់!';
+      btn.disabled = false;
+      showToast('📍 Location set successfully!');
     },
     function(err) {
-      setBtn('📍 Recenter to My Location / ប្រើទីតាំងបច្ចុប្បន្ន', false);
-      if (coordsEl && !savedCoords) {
-        coordsEl.textContent = '📍 Tap the map to set your location / ចុចផែនទីដើម្បីកំណត់';
-      }
+      btn.textContent = '📍 Use My Current Location / ប្រើទីតាំងបច្ចុប្បន្ន';
+      btn.disabled = false;
       if (err.code === 1) {
-        // 拒否時はトースト出さない(自動取得失敗で連続表示を防ぐ)、ボタン押下時のみ表示
-        if (!gpsJustAutoAttempted) {
-          showToast('Please allow location access, or tap the map', true);
-        }
-      } else if (!gpsJustAutoAttempted) {
+        showToast('Please allow location access', true);
+      } else {
         showToast('Could not get location. Please tap the map.', true);
       }
-      gpsJustAutoAttempted = false;
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    { enableHighAccuracy: true, timeout: 10000 }
   );
 }
 
