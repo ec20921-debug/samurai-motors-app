@@ -107,8 +107,8 @@ function send1HourReminders() {
           '📍 Please come to: Samurai Motors Office\n' +
           '   https://maps.app.goo.gl/wEHuqw2fry4QJQ5y6\n' +
           '━━━━━━━━━━━━━━━━\n' +
-          '💡 Please drive carefully and remove valuable items from your car.\n' +
-          'សូមបើកបរដោយប្រុងប្រយ័ត្ន ហើយយកវត្ថុមានតម្លៃចេញពីឡានជាមុន។\n' +
+          '💡 Please drive safely on your way to our office.\n' +
+          'សូមបើកបរដោយប្រុងប្រយ័ត្នពេលមកការិយាល័យ។\n' +
           '\n' +
           'See you soon! / ជួបនឹងពេលឆាប់ៗ!'
         )
@@ -121,8 +121,8 @@ function send1HourReminders() {
           '📋 Booking: ' + bookingId + '\n' +
           (mapsUrl ? '📍 Location: ' + mapsUrl + '\n' : '') +
           '━━━━━━━━━━━━━━━━\n' +
-          '💡 Please be ready and remove valuable items from your car.\n' +
-          'សូមត្រៀមរួចរាល់ ហើយយកវត្ថុមានតម្លៃចេញពីឡានជាមុន។\n' +
+          '💡 Please be ready a few minutes before arrival.\n' +
+          'សូមត្រៀមរួចរាល់មុនពេលមកដល់ប្រហែលប៉ុន្មាននាទី។\n' +
           '\n' +
           'See you soon! / ជួបនឹងពេលឆាប់ៗ!'
         );
