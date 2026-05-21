@@ -452,18 +452,21 @@ function apiJobFinal(body) {
       }
     }
 
-    // ── QR送信（apiJobEnd が失敗してここにフォールバックした場合の救済）──
-    // sendPaymentQR は ALREADY_SENT でガードされるので二重送信の心配なし
-    if (bookingId && typeof sendPaymentQR === 'function') {
-      try {
-        var qrRes = sendPaymentQR(bookingId);
-        if (!qrRes || !qrRes.ok) {
-          Logger.log('ℹ️ apiJobFinal sendPaymentQR 結果: ' + JSON.stringify(qrRes));
-        }
-      } catch (e) {
-        Logger.log('⚠️ apiJobFinal sendPaymentQR 呼び出しエラー: ' + e);
-      }
-    }
+    // ── QR送信は apiJobEnd で実施済み。apiJobFinal では二重送信防止のため呼ばない ──
+    // 2026-05-20 fix: apiJobEnd と apiJobFinal の両方が sendPaymentQR を呼ぶと、
+    //   シート更新タイミングの競合で QR メッセージが顧客に2回届くケースがあった。
+    //   PaymentManager.gs 側に LockService を追加済みだが、念のため呼び出し自体を
+    //   停止し、apiJobEnd が失敗した場合は retryPaymentQR("BK-XXX") で手動復旧する運用に。
+    // if (bookingId && typeof sendPaymentQR === 'function') {
+    //   try {
+    //     var qrRes = sendPaymentQR(bookingId);
+    //     if (!qrRes || !qrRes.ok) {
+    //       Logger.log('ℹ️ apiJobFinal sendPaymentQR 結果: ' + JSON.stringify(qrRes));
+    //     }
+    //   } catch (e) {
+    //     Logger.log('⚠️ apiJobFinal sendPaymentQR 呼び出しエラー: ' + e);
+    //   }
+    // }
 
     return { status: 'ok' };
   } catch (err) {

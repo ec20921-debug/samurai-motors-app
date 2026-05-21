@@ -33,6 +33,27 @@
 function sendPaymentQR(bookingId) {
   if (!bookingId) return { ok: false, reason: 'NO_BOOKING_ID' };
 
+  // 2026-05-20: 同時実行による二重送信を完全防止するため LockService で排他制御
+  // (apiJobEnd と apiJobFinal の両方から呼ばれた場合、シート更新の前に2回目が
+  //  ガードを通過してしまうケースの根本対応)
+  var lock = LockService.getScriptLock();
+  var acquired = lock.tryLock(10 * 1000); // 10秒待つ
+  if (!acquired) {
+    Logger.log('⏭️ sendPaymentQR: ロック取得失敗(他プロセスが処理中) bookingId=' + bookingId);
+    return { ok: false, reason: 'LOCKED' };
+  }
+
+  try {
+    return sendPaymentQR_locked_(bookingId);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * sendPaymentQR の本体(ロック獲得後に呼ばれる)
+ */
+function sendPaymentQR_locked_(bookingId) {
   var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
   if (!bkRow) {
     Logger.log('⚠️ sendPaymentQR: 予約が見つからない bookingId=' + bookingId);
