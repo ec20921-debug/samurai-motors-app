@@ -188,14 +188,15 @@ function send24HoursFeedback() {
       '━━━━━━━━━━━━━━━━\n' +
       '📋 ' + bookingId + '\n' +
       '\n' +
-      '⭐ <b>Your feedback helps us improve:</b>\n' +
-      'Please reply with: ⭐⭐⭐⭐⭐ (1-5 stars)\n' +
-      'or share thoughts / photos with friends.\n' +
+      '⭐ <b>Please give us 5 stars on Google Maps!</b>\n' +
+      '🙏 <b>សូមផ្តល់ផ្កាយ 5 នៅ Google Maps!</b>\n' +
       '\n' +
-      'សូមឆ្លើយតបជាមួយផ្កាយ ⭐ (1-5) ឬចែករំលែក រូបថត ឱ្យមិត្ត។\n' +
+      '👉 https://maps.app.goo.gl/KkW1CZUcUr3a4jx78\n' +
       '━━━━━━━━━━━━━━━━\n' +
-      '🎁 Refer a friend → both get bonus rewards!\n' +
-      '🎁 ណែនាំមិត្ត → ទាំងពីរនាក់ទទួលរង្វាន់!';
+      '📸 <b>Share us with your friends!</b>\n' +
+      '🙏 <b>ណែនាំមិត្តរបស់អ្នកអំពីយើង!</b>\n' +
+      '\n' +
+      'We truly appreciate your support / យើងពិតជាដឹងគុណ 🙏';
 
     try {
       sendMessage(BOT_TYPE.BOOKING, chatId, text, { parse_mode: 'HTML' });
