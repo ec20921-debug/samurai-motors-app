@@ -191,7 +191,7 @@ function send24HoursFeedback() {
       '⭐ <b>Please give us 5 stars on Google Maps!</b>\n' +
       '🙏 <b>សូមផ្តល់ផ្កាយ 5 នៅ Google Maps!</b>\n' +
       '\n' +
-      '👉 https://maps.app.goo.gl/KkW1CZUcUr3a4jx78\n' +
+      '👉 https://g.page/r/CY63HpvX2buXEAI/review\n' +
       '━━━━━━━━━━━━━━━━\n' +
       '📸 <b>Share us with your friends!</b>\n' +
       '🙏 <b>ណែនាំមិត្តរបស់អ្នកអំពីយើង!</b>\n' +
