@@ -30,20 +30,22 @@ function sendDailyReport() {
   const ppToday  = Utilities.formatDate(new Date(), OPS_TZ,       'yyyy-MM-dd');
 
   const salesSection = buildSalesSection_(ppToday);
-  const taskSection  = buildTaskSection_();
+  // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
+  // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
+  //   const taskSection = buildTaskSection_();
+  //   text += '\n\n' + taskSection;
 
   const text =
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
-    salesSection + '\n\n' +
-    taskSection;
+    salesSection;
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
     parse_mode: 'HTML',
     message_thread_id: Number(cfg.adminDailyReportThreadId),
     disable_web_page_preview: true
   });
-  Logger.log('📤 日報送信完了 (JST ' + jstToday + ')');
+  Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスクセクション停止中]');
 }
 
 // ============================================================
