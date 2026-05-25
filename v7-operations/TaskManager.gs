@@ -168,6 +168,11 @@ function formatDateCellTz_(v, tz) {
  * 【v7.4】本日の洗車予約スケジュール + タスクをセットで通知
  */
 function sendMorningTaskForField() {
+  // ⏸ 2026-05-21: ユーザー要望「タスク通知うざい、いったん止めて」で一時停止
+  // 再開時はこの3行を削除
+  Logger.log('⏸ sendMorningTaskForField: 一時停止中 (2026-05-21〜)');
+  return;
+
   const staff = getActiveStaff().filter(function(s) { return s.role === 'field'; });
   if (staff.length === 0) return;
 
@@ -385,6 +390,11 @@ function buildFieldMorningMessage_(staff, bookings, tasks) {
  * 全 admin のタスクを1メッセージにまとめる。
  */
 function sendMorningTaskForAdmin() {
+  // ⏸ 2026-05-21: ユーザー要望「タスク通知うざい、いったん止めて」で一時停止
+  // 再開時はこの3行を削除
+  Logger.log('⏸ sendMorningTaskForAdmin: 一時停止中 (2026-05-21〜)');
+  return;
+
   const cfg = getConfig();
   if (!cfg.adminTaskThreadId) {
     Logger.log('⚠️ ADMIN_TASK_THREAD_ID が未設定 — 送信スキップ');
