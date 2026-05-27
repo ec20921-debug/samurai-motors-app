@@ -61,7 +61,7 @@ const SHEET_NAMES = {
   TASKS:             'タスク',
   TASK_INPUT:        '新規タスク入力',
   DAILY_REPORTS:     '日報',
-  EXPENSES:          '経費',
+  EXPENSES:          '経費（ロン入力）',
   PARTNERS:          'パートナー',
   REFERRAL_HISTORY:  '紹介履歴',
   WATER_REPELLENT:   '撥水モニター',

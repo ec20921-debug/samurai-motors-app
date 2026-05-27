@@ -18,7 +18,7 @@
  *   performOcrOnFile_() を差し込むだけで OCR 連携できる構造にしてある。
  *
  * 【シート】
- *   SHEET_NAMES.EXPENSES = '経費'
+ *   SHEET_NAMES.EXPENSES = '経費（ロン入力）'
  */
 
 const EXPENSE_HEADERS_ = [
