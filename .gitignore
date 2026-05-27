@@ -6,3 +6,6 @@ node_modules/
 *.p12
 .DS_Store
 Thumbs.db
+
+# Claude Code local settings — may contain tokens/secrets in allowed commands list
+.claude/
