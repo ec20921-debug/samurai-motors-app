@@ -225,6 +225,26 @@ function submitExpense(chatId, payload) {
     '関連タスクID':  linkedTaskId
   });
 
+  // 経費マスターへの自動転記（Phase 2: 集約SoT用、失敗しても本処理に影響させない）
+  try {
+    appendToExpenseMaster_({
+      expenseId:    expenseId,
+      txDate:       txDate,
+      desc:         desc,
+      amount:       amount,
+      currency:     currency,
+      vendor:       vendor,
+      category:     category,
+      memo:         memo,
+      paymentType:  paymentType,
+      reimburseTo:  reimburseTo,
+      receiptUrl:   receiptUrl,
+      staff:        staff
+    });
+  } catch (err) {
+    Logger.log('⚠️ 経費マスター転記失敗: ' + err);
+  }
+
   // 現場スタッフ(ロン等)が追加した時のみ管理グループに通知
   notifyExpenseCreatedIfField_({
     expenseId:    expenseId,
@@ -509,4 +529,169 @@ function debugSubmitTestExpense() {
     memo: 'テスト登録'
   });
   Logger.log(JSON.stringify(r));
+}
+
+// ============================================================
+//  経費マスター 自動転記（Phase 2）
+//  Bot入力された経費を「経費マスター」シートにも書き込む
+//  - カテゴリは 9 カテゴリに正規化
+//  - 集計対象=○ デフォルト / 経費計上=● デフォルト
+//  - テスト文字列は集計対象=- に
+// ============================================================
+
+const EXPENSE_MASTER_SHEET_ = '経費マスター';
+
+/**
+ * 旧カテゴリ → v7 9カテゴリへの正規化
+ * @param {string} catRaw 元のカテゴリ名（勘定科目）
+ * @param {string} itemName 項目・摘要（手数料の振り分けに使用）
+ * @returns {string} 正規化されたカテゴリ
+ */
+function normalizeCategoryV7_(catRaw, itemName) {
+  const cat = String(catRaw || '').trim();
+  const item = String(itemName || '');
+
+  // 手数料の項目別振り分け
+  if (cat === '手数料') {
+    if (/採用|人材|紹介料|派遣|給与/.test(item)) return '人件費';
+    if (/敷金|賃貸|不動産|家賃/.test(item))       return '賃貸・水道光熱';
+    if (/ロゴ|デザイン|チラシ|広告/.test(item))   return '広告・販促';
+    if (/スターリンク|設置|システム/.test(item))  return 'システム・IT';
+    return 'その他';
+  }
+
+  const map = {
+    '消耗品費':   '備品・消耗品',
+    '消耗品':     '備品・消耗品',
+    '日用品':     '備品・消耗品',
+    '備品':       '備品・消耗品',
+    '設備・備品': '備品・消耗品',
+    '家電':       '備品・消耗品',
+    '家具':       '備品・消耗品',
+    '食料品':     '備品・消耗品',
+    '作業用品':   '備品・消耗品',
+    '事務用品':   '備品・消耗品',
+    '雑費':       'その他',
+    '会議費':     'その他',
+    '飲食費':     'その他',
+    '試作費':     '試作・R&D',
+    '渡航費':     '渡航・出張',
+    '視察費':     '渡航・出張',
+    '宿泊費':     '渡航・出張',
+    '賃貸費':     '賃貸・水道光熱',
+    '賃貸料':     '賃貸・水道光熱',
+    '公共料金':   '賃貸・水道光熱',
+    'システム費': 'システム・IT',
+    '広告宣伝費': '広告・販促',
+    '洗車用品':   '車両・洗車',
+    '人件費':     '人件費',
+    '給与':       '人件費'
+  };
+  return map[cat] || 'その他';
+}
+
+/**
+ * 経費マスターシートに1行追記
+ * @param {Object} p { expenseId, txDate, desc, amount, currency, vendor, category, memo, paymentType, reimburseTo, receiptUrl, staff }
+ */
+function appendToExpenseMaster_(p) {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(EXPENSE_MASTER_SHEET_);
+  if (!sheet) {
+    Logger.log('⚠️ 経費マスターシートなし、転記スキップ');
+    return;
+  }
+
+  // 9カテゴリ正規化
+  const cat9 = normalizeCategoryV7_(p.category, p.desc);
+
+  // 集計対象判定（テスト系を除外）
+  const desc = String(p.desc || '');
+  const isTestLike = /テスト|かきコピー/.test(desc);
+  const includeFlag = isTestLike ? '-' : '○';
+
+  // 入力者名（短縮形）
+  const inputUser = (p.staff && p.staff.nameJp) || '不明';
+
+  // 負担先決定:
+  //   立替: 実際に立て替えた現場スタッフ（ロンなど）
+  //   会社直払い: '会社'
+  let payer = '会社';
+  if (p.paymentType === '立替') {
+    // 現場スタッフ名を統一: 「ロン」→「ロン君」（経費マスターの既存表記に合わせる）
+    payer = (inputUser === 'ロン') ? 'ロン君' : inputUser;
+  }
+
+  // レシート (HYPERLINK 形式の式が来る場合もそのまま入れる)
+  const receiptCell = p.receiptUrl ? ('=HYPERLINK("' + p.receiptUrl + '","レシート")') : '';
+
+  // 備考: メモ + 取引先 + 精算先（あれば）
+  const noteParts = [];
+  if (p.vendor)       noteParts.push('取引先: ' + p.vendor);
+  if (p.memo)         noteParts.push(p.memo);
+  if (p.reimburseTo)  noteParts.push('精算先: ' + p.reimburseTo);
+  const noteText = noteParts.join(' / ');
+
+  // 末尾行に追記
+  const lastRow = sheet.getLastRow();
+  const newRow = lastRow + 1;
+  const rowIndex = newRow; // 1-based
+
+  // 数式（K列: JPY換算 / L列: 月）
+  const jpyFormula =
+    '=IF(P' + rowIndex + '<>"○",0,IF(Q' + rowIndex + '<>"●",0,' +
+    'IF(E' + rowIndex + '="USD",D' + rowIndex + '*設定!$B$4,' +
+    'IF(E' + rowIndex + '="KHR",D' + rowIndex + '*設定!$B$5,' +
+    'IF(E' + rowIndex + '="JPY",D' + rowIndex + ',0)))))';
+  const monthFormula = '=IFERROR(TEXT(A' + rowIndex + ',"yyyy-mm"),"")';
+
+  // ID（連番）= 既存最終行のM列 +1
+  let nextId = 1;
+  if (lastRow >= 4) {
+    const prevId = sheet.getRange(lastRow, 13).getValue();
+    if (typeof prevId === 'number') nextId = prevId + 1;
+    else if (prevId) nextId = (Number(prevId) || 0) + 1;
+  }
+
+  // A〜Q（17列）の値を一括書き込み
+  const rowValues = [[
+    p.txDate,                              // A: 日付
+    cat9,                                  // B: カテゴリ
+    desc,                                  // C: 項目・摘要
+    p.amount,                              // D: 金額
+    p.currency,                            // E: 通貨
+    payer,                                 // F: 負担先
+    p.paymentType,                         // G: 支払方法
+    receiptCell,                           // H: レシート
+    noteText,                              // I: 備考
+    inputUser,                             // J: 入力者
+    jpyFormula,                            // K: JPY換算
+    monthFormula,                          // L: 月
+    nextId,                                // M: ID
+    'サムライモーターズ_Bot経費登録',     // N: 出典
+    p.expenseId,                           // O: 元ID
+    includeFlag,                           // P: 集計対象
+    '●'                                    // Q: 経費計上（デフォルト●）
+  ]];
+
+  sheet.getRange(newRow, 1, 1, 17).setValues(rowValues);
+  Logger.log('📋 経費マスター転記: row=' + newRow + ' id=' + p.expenseId + ' cat=' + cat9);
+}
+
+function debugAppendToExpenseMaster() {
+  // テスト用: ダミーデータで appendToExpenseMaster_ を実行
+  appendToExpenseMaster_({
+    expenseId:    'EXP-TEST-001',
+    txDate:       Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd'),
+    desc:         'テスト: 経費マスター転記',
+    amount:       12.34,
+    currency:     'USD',
+    vendor:       'TestVendor',
+    category:     '事務用品',
+    memo:         'デバッグ',
+    paymentType:  '立替',
+    reimburseTo:  '飯泉',
+    receiptUrl:   '',
+    staff:        { nameJp: 'ロン' }
+  });
 }
