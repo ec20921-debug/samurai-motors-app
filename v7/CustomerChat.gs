@@ -189,6 +189,16 @@ function handleAdminReply(msg) {
   const customer = findCustomerByThreadId(msg.message_thread_id);
   if (!customer) {
     Logger.log('⚠️ handleAdminReply: thread_id=' + msg.message_thread_id + ' に対応する顧客なし（顧客シートのトピックID列を確認）');
+    // 管理者は自分の返信が届いていないことに気付けないため、同じトピックに警告を返す
+    try {
+      const cfg = getConfig();
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+        '⚠️ このトピックは顧客と紐付いていません。\n' +
+        '顧客シートの「トピックID」列を確認するか、顧客にスタンプ等で再アクションしてもらってトピックを作り直してください。',
+        { message_thread_id: msg.message_thread_id });
+    } catch (e) {
+      Logger.log('⚠️ handleAdminReply: 警告送信失敗 ' + e);
+    }
     return;
   }
 
