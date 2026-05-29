@@ -1,0 +1,112 @@
+# GAS 自動デプロイ（clasp）
+#
+# ローカル Windows での手動 `clasp push` を、CI から実行できるようにするワークフロー。
+# クラウド（Claude Code on the web）や GitHub からブランチを更新しただけで
+# GAS へ反映できるようにするのが目的。
+#
+# 【前提：シークレット登録が必要】
+#   Settings → Secrets and variables → Actions → New repository secret
+#     - 名前 : CLASPRC_JSON
+#     - 値   : ローカルの ~/.clasprc.json（または C:\Users\drymp\.clasprc.json）の中身まるごと
+#              ＝ clasp login 済みアカウント（ec20921@gmail.com）の認証トークン
+#   ※ このファイルにはリフレッシュトークンが含まれるため、必ず Secrets で管理すること。
+#     コミットやログに出さない。漏れたら `clasp login` で再発行して差し替える。
+#
+# 【トリガー】
+#   - main へ push され、v7/** または v7-operations/** が変わったとき → 該当プロジェクトのみ自動デプロイ
+#   - 手動実行（Actions タブ → Run workflow）→ 任意のブランチ・対象を選んでデプロイ
+#     （今いるブランチからそのまま反映できるので、main にマージする前の確認デプロイにも使える）
+
+name: Deploy GAS (clasp)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v7/**'
+      - 'v7-operations/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'デプロイ対象'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - v7
+          - v7-operations
+
+# 同一ブランチの多重デプロイを防止（後発を待たせる）
+concurrency:
+  group: deploy-gas-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # どのプロジェクトが変わったかを判定（push 時のみ使用）
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      v7: ${{ steps.filter.outputs.v7 }}
+      v7-operations: ${{ steps.filter.outputs.v7-operations }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            v7:
+              - 'v7/**'
+            v7-operations:
+              - 'v7-operations/**'
+
+  deploy:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      # 片方の失敗でもう片方を止めない
+      fail-fast: false
+      matrix:
+        project: [v7, v7-operations]
+    # 手動実行は target 指定で、push は変更があったプロジェクトのみ実行
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' &&
+          (github.event.inputs.target == 'both' || github.event.inputs.target == matrix.project))
+        ||
+        (github.event_name == 'push' &&
+          needs.changes.outputs[matrix.project] == 'true')
+      }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ローカルと同じ clasp v3.3.0 に固定（バージョン差での挙動ブレを避ける）
+      - name: Install clasp
+        run: npm install -g @google/clasp@3.3.0
+
+      - name: Show clasp version
+        run: clasp --version
+
+      # 認証情報をホームに復元（シークレットから）
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::CLASPRC_JSON シークレットが未設定です。README/ワークフロー冒頭のコメント手順に従って登録してください。"
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+
+      # 対象プロジェクトを GAS へ反映（.claspignore は自動で尊重される）
+      - name: clasp push (${{ matrix.project }})
+        working-directory: ${{ matrix.project }}
+        run: clasp push --force
