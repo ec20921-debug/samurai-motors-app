@@ -208,6 +208,9 @@ function buildKpiCards_(sh, row, cols) {
 
   const today = "TEXT(TODAY(),\"yyyy-MM-dd\")";
 
+  // 経費シート名は SHEET_NAMES.EXPENSES から取得（全角括弧を含むため数式内ではシングルクォート必須）
+  const EXP = "'" + SHEET_NAMES.EXPENSES + "'!";
+
   // 出勤中カード（A5:B6）
   drawCard_(sh, row, 1,
     '🕐 出勤中スタッフ',
@@ -235,8 +238,8 @@ function buildKpiCards_(sh, row, cols) {
   // 本日経費（G5:H6）
   drawCard_(sh, row, 7,
     '💵 本日経費 (USD相当)',
-    '=IFERROR(SUMIFS(経費!E:E,経費!C:C,' + today + ',経費!F:F,"USD"),0)',
-    'KHR合計: =IFERROR(SUMIFS(経費!E:E,経費!C:C,' + today + ',経費!F:F,"KHR"),0)',
+    '=IFERROR(SUMIFS(' + EXP + 'E:E,' + EXP + 'C:C,' + today + ',' + EXP + 'F:F,"USD"),0)',
+    'KHR合計: =IFERROR(SUMIFS(' + EXP + 'E:E,' + EXP + 'C:C,' + today + ',' + EXP + 'F:F,"KHR"),0)',
     DB_COLOR.red
   );
 
@@ -503,24 +506,27 @@ function buildMonthlyExpenses_(sh, row) {
   const monthStart = '"&TEXT(EOMONTH(TODAY(),-1)+1,"yyyy-MM-dd")&"';
   const monthEnd   = '"&TEXT(EOMONTH(TODAY(),0),"yyyy-MM-dd")&"';
 
+  // 経費シート名は SHEET_NAMES.EXPENSES から取得（全角括弧を含むため数式内ではシングルクォート必須）
+  const EXP = "'" + SHEET_NAMES.EXPENSES + "'!";
+
   categories.forEach(function(cat, i) {
     const r = row + i;
     sh.getRange(r, 1).setValue(cat);
     // 件数
     sh.getRange(r, 2).setFormula(
-      '=IFERROR(COUNTIFS(経費!H:H,"' + cat + '",経費!C:C,">=' + monthStart + '",経費!C:C,"<=' + monthEnd + '"),0)'
+      '=IFERROR(COUNTIFS(' + EXP + 'H:H,"' + cat + '",' + EXP + 'C:C,">=' + monthStart + '",' + EXP + 'C:C,"<=' + monthEnd + '"),0)'
     );
     // USD合計
     sh.getRange(r, 3).setFormula(
-      '=IFERROR(SUMIFS(経費!E:E,経費!H:H,"' + cat + '",経費!F:F,"USD",経費!C:C,">=' + monthStart + '",経費!C:C,"<=' + monthEnd + '"),0)'
+      '=IFERROR(SUMIFS(' + EXP + 'E:E,' + EXP + 'H:H,"' + cat + '",' + EXP + 'F:F,"USD",' + EXP + 'C:C,">=' + monthStart + '",' + EXP + 'C:C,"<=' + monthEnd + '"),0)'
     );
     // KHR合計
     sh.getRange(r, 4).setFormula(
-      '=IFERROR(SUMIFS(経費!E:E,経費!H:H,"' + cat + '",経費!F:F,"KHR",経費!C:C,">=' + monthStart + '",経費!C:C,"<=' + monthEnd + '"),0)'
+      '=IFERROR(SUMIFS(' + EXP + 'E:E,' + EXP + 'H:H,"' + cat + '",' + EXP + 'F:F,"KHR",' + EXP + 'C:C,">=' + monthStart + '",' + EXP + 'C:C,"<=' + monthEnd + '"),0)'
     );
     // JPY合計
     sh.getRange(r, 5).setFormula(
-      '=IFERROR(SUMIFS(経費!E:E,経費!H:H,"' + cat + '",経費!F:F,"JPY",経費!C:C,">=' + monthStart + '",経費!C:C,"<=' + monthEnd + '"),0)'
+      '=IFERROR(SUMIFS(' + EXP + 'E:E,' + EXP + 'H:H,"' + cat + '",' + EXP + 'F:F,"JPY",' + EXP + 'C:C,">=' + monthStart + '",' + EXP + 'C:C,"<=' + monthEnd + '"),0)'
     );
     // USD割合
     sh.getRange(r, 6).setFormula(
