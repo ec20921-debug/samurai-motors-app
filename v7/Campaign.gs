@@ -24,7 +24,10 @@
  *
  * 【設計方針】
  *   - 顧客接点は予約Bot1本に統一（BOT_TYPE.BOOKING を使う）
- *   - 顧客「言語」列に応じてクメール語/英語を出し分け
+ *   - 全員に同じ内容を送る。何語で送るかは下書きB4の「言語」設定で決まる:
+ *       クメール語＋英語（デフォルト/推奨）= 1通に両方をまとめて送信
+ *       クメール語のみ / 英語のみ = その言語だけ
+ *     （顧客の「言語」列での絞り込みはしない。2026-05-30 Daisuke 指示）
  *   - 「配信対象」チェックボックス=FALSE の顧客は一斉送信から除外（苦情客/ブロック客）
  *   - 50ms 間隔 = 20msg/秒 で送信（Telegram レート制限 30msg/秒 の安全圏）
  *   - 429（Too Many Requests）は retry_after に従って1回リトライ
@@ -49,8 +52,13 @@ const CAMPAIGN_LOG_SHEET   = 'キャンペーン配信履歴';
 const CAMPAIGN_SEND_INTERVAL_MS = 50;   // 送信間ウェイト（20msg/秒）
 const CAMPAIGN_MAX_RECIPIENTS   = 2000; // 1回の上限（6分制限の安全マージン）
 
-// === 「送信対象」セル（B4）の選択肢 ===
-const CAMPAIGN_AUDIENCE_OPTIONS = ['全員', 'クメール語のみ', '英語のみ'];
+// === 「言語」セル（B4）の選択肢 ===
+// 2026-05-30 Daisuke 指示: クメール語＋英語を1通にまとめて全員に送るのがデフォルト。
+// ここは「どの言語で送るか」の選択であり、送る相手は常に配信対象=☑ の全員。
+const CAMPAIGN_LANG_BOTH    = 'クメール語＋英語（推奨）';
+const CAMPAIGN_LANG_KM_ONLY = 'クメール語のみ';
+const CAMPAIGN_LANG_EN_ONLY = '英語のみ';
+const CAMPAIGN_AUDIENCE_OPTIONS = [CAMPAIGN_LANG_BOTH, CAMPAIGN_LANG_KM_ONLY, CAMPAIGN_LANG_EN_ONLY];
 
 // === 下書きシートのセル位置（レイアウト変更時はここを直す） ===
 const CAMPAIGN_CELL = {
@@ -82,6 +90,7 @@ function setupCampaign() {
   setupCampaignDriveFolder_();   // 素材フォルダ作成 + 下書きシートにリンク記載（冪等）
   ensureCampaignAssetsSheet_();  // 素材カタログシート（CampaignAssets.gs）
   applyAssetDropdowns_();        // 下書き B8/B9/B10 に素材名ドロップダウン
+  repairCampaignLanguageCell();  // 既存シートの B4 言語ドロップダウンを最新仕様へ
   setupCampaignMenu_();
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('✅ キャンペーン機能 セットアップ完了');
@@ -127,6 +136,33 @@ function setupCampaignDriveFolder_() {
   }
   Logger.log('  📁 素材フォルダ: ' + folder.getUrl());
   return folder;
+}
+
+/**
+ * 既存の「キャンペーン下書き」シートを壊さずに、B4の言語ドロップダウンと
+ * A4/C4ラベルだけを最新仕様に貼り直す（2026-05-30 の言語モード変更の反映用）。
+ * setupCampaign は既存シートを作り直さないため、この軽量修復を別途用意。
+ */
+function repairCampaignLanguageCell() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CAMPAIGN_DRAFT_SHEET);
+  if (!sh) {
+    SpreadsheetApp.getUi().alert('「' + CAMPAIGN_DRAFT_SHEET + '」シートがありません。先に setupCampaign を実行してください。');
+    return;
+  }
+  sh.getRange('A4').setValue('言語').setFontWeight('bold').setBackground('#f0e8d0');
+  const b4 = sh.getRange('B4');
+  // 旧値（全員 等）なら新デフォルトに置換。新3択のいずれかなら尊重。
+  const cur = String(b4.getValue() || '').trim();
+  if (CAMPAIGN_AUDIENCE_OPTIONS.indexOf(cur) < 0) b4.setValue(CAMPAIGN_LANG_BOTH);
+  b4.setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(CAMPAIGN_AUDIENCE_OPTIONS, true)
+      .setAllowInvalid(false).build()
+  );
+  sh.getRange('C4').setValue('← 配信対象=☑ の全員に、この言語で送ります（推奨=クメール語＋英語を1通に）')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+  SpreadsheetApp.getActiveSpreadsheet().toast('言語セル(B4)を最新仕様に更新しました', '修復完了', 5);
 }
 
 function setupCampaignMenu_() {
@@ -189,15 +225,17 @@ function ensureCampaignDraftSheet_() {
     .setFontColor('#666').setFontSize(10)
     .setHorizontalAlignment('center');
 
-  // 送信対象
-  sh.getRange('A4').setValue('送信対象').setFontWeight('bold').setBackground('#f0e8d0');
+  // 言語（どの言語で全員に送るか）
+  sh.getRange('A4').setValue('言語').setFontWeight('bold').setBackground('#f0e8d0');
   const audience = sh.getRange('B4');
-  audience.setValue('全員');
+  audience.setValue(CAMPAIGN_LANG_BOTH); // デフォルト=クメール語＋英語
   audience.setDataValidation(
     SpreadsheetApp.newDataValidation()
       .requireValueInList(CAMPAIGN_AUDIENCE_OPTIONS, true)
       .setAllowInvalid(false).build()
   );
+  sh.getRange('C4').setValue('← 配信対象=☑ の全員に、この言語で送ります（推奨=クメール語＋英語を1通に）')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
   // 本文（クメール語）
   sh.getRange('A6').setValue('本文（クメール語）').setFontWeight('bold').setBackground('#f0e8d0').setVerticalAlignment('top');
@@ -241,7 +279,7 @@ function ensureCampaignDraftSheet_() {
 
   // 注釈
   sh.getRange('A12:B12').merge()
-    .setValue('💡 顧客の「言語」列で自動振り分け。英語版が空ならクメール語版を全員に送信。' +
+    .setValue('💡 B4の「言語」設定で全員に同じ内容を送ります（推奨=クメール語＋英語を1通に）。' +
               '「顧客」シートの「配信対象」=☑ の人だけに届きます。')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic')
     .setHorizontalAlignment('center');
@@ -343,14 +381,12 @@ function previewCampaign() {
   const ui = SpreadsheetApp.getUi();
   try {
     const draft = readCampaignDraft_();
-    const recipients = buildRecipientList_(draft.audience);
+    const recipients = buildRecipientList_();
     const total = recipients.length;
-    const enCount = recipients.filter(function(r) { return r.language === '英語'; }).length;
-    const kmCount = total - enCount;
 
     if (total === 0) {
       ui.alert('⚠️ 送信先が0名です',
-        '「' + draft.audience + '」かつ「配信対象=☑」に該当する顧客がいません。', ui.ButtonSet.OK);
+        '「配信対象=☑」の顧客がいません。', ui.ButtonSet.OK);
       return;
     }
     if (!draft.textKm && !draft.textEn) {
@@ -359,8 +395,14 @@ function previewCampaign() {
       return;
     }
 
-    const previewKm = draft.textKm ? draft.textKm.substring(0, 300) : '(空 → 英語版を流用)';
-    const previewEn = draft.textEn ? draft.textEn.substring(0, 300) : '(空 → クメール語版を流用)';
+    // 実際に送られる言語の説明
+    let langDesc;
+    if (draft.audience === CAMPAIGN_LANG_KM_ONLY)      langDesc = 'クメール語のみ';
+    else if (draft.audience === CAMPAIGN_LANG_EN_ONLY) langDesc = '英語のみ';
+    else langDesc = 'クメール語＋英語（1通にまとめて）';
+
+    const previewKm = draft.textKm ? draft.textKm.substring(0, 300) : '(空)';
+    const previewEn = draft.textEn ? draft.textEn.substring(0, 300) : '(空)';
 
     // 素材名がリンクに解決できたか（名前のまま残っている＝フォルダ未更新/ファイル名違い）
     var assetWarn = '';
@@ -378,9 +420,8 @@ function previewCampaign() {
     const msg =
       assetWarn +
       '🎯 送信先\n' +
-      '  合計: ' + total + '名（配信対象=☑ のみ）\n' +
-      '  クメール語向け: ' + kmCount + '名\n' +
-      '  英語向け: ' + enCount + '名\n' +
+      '  合計: ' + total + '名（配信対象=☑ の全員）\n' +
+      '  送信言語: ' + langDesc + '\n' +
       '\n' +
       '📎 添付\n' +
       '  動画: ' + (draft.videoUrl ? 'あり ✅（画像より優先）' : 'なし') + '\n' +
@@ -413,7 +454,7 @@ function sendCampaign() {
   let draft, recipients;
   try {
     draft = readCampaignDraft_();
-    recipients = buildRecipientList_(draft.audience);
+    recipients = buildRecipientList_();
   } catch (err) {
     ui.alert('❌ 設定読込失敗', String(err && err.message || err), ui.ButtonSet.OK);
     return;
@@ -421,7 +462,7 @@ function sendCampaign() {
 
   if (recipients.length === 0) {
     ui.alert('⚠️ 送信先が0名です',
-      '「' + draft.audience + '」かつ「配信対象=☑」に該当する顧客がいません。', ui.ButtonSet.OK);
+      '「配信対象=☑」の顧客がいません。', ui.ButtonSet.OK);
     return;
   }
   if (!draft.textKm && !draft.textEn) {
@@ -565,7 +606,7 @@ function readCampaignDraft_() {
     ? resolveAssetValue_
     : function(x) { return String(x || '').trim(); };
   return {
-    audience: String(sh.getRange(CAMPAIGN_CELL.AUDIENCE).getValue() || '全員').trim(),
+    audience: String(sh.getRange(CAMPAIGN_CELL.AUDIENCE).getValue() || CAMPAIGN_LANG_BOTH).trim(),
     textKm:   String(sh.getRange(CAMPAIGN_CELL.TEXT_KM).getValue() || '').trim(),
     textEn:   String(sh.getRange(CAMPAIGN_CELL.TEXT_EN).getValue() || '').trim(),
     imageUrl: resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),
@@ -578,10 +619,13 @@ function readCampaignDraft_() {
  * 顧客シートから配信対象リストを構築
  *   - チャットID が空の顧客は除外（Bot から送信不可能）
  *   - 「配信対象」=FALSE の顧客は除外（空欄/未設定は送る扱い=後方互換）
- *   - 言語フィルタを適用
  *   - rowIndex を保持（送信後に「最終配信日時」を書き戻すため）
+ *
+ * 2026-05-30: 顧客の「言語」列での絞り込みは廃止。送る相手は常に
+ * 「配信対象=☑ の全員」。何語で送るかは下書きの「言語」設定(B4)で決まり、
+ * 全員に同じ内容（クメール語＋英語 など）が届く。
  */
-function buildRecipientList_(audience) {
+function buildRecipientList_() {
   const sheet = getSheet(SHEET_NAMES.CUSTOMERS);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -590,7 +634,6 @@ function buildRecipientList_(audience) {
   const idCol     = headers['顧客ID'];
   const chatCol   = headers['チャットID'];
   const nameCol   = headers['氏名'];
-  const langCol   = headers['言語'];
   const targetCol = headers['配信対象'];   // 無い場合もある（後方互換）
   if (!chatCol) throw new Error('「顧客」シートに「チャットID」列が見つかりません');
 
@@ -606,15 +649,10 @@ function buildRecipientList_(audience) {
       if (t === false || String(t).toUpperCase() === 'FALSE') return;
     }
 
-    const language = String((langCol ? row[langCol - 1] : '') || 'クメール語').trim();
-    if (audience === 'クメール語のみ' && language === '英語') return;
-    if (audience === '英語のみ'      && language !== '英語') return;
-
     list.push({
       customerId: idCol  ? String(row[idCol  - 1] || '') : '',
       chatId:     chatId,
       name:       nameCol ? String(row[nameCol - 1] || '') : '',
-      language:   language,
       rowIndex:   idx + 2   // データは2行目開始
     });
   });
@@ -622,15 +660,22 @@ function buildRecipientList_(audience) {
 }
 
 /**
- * 顧客1件あたりの本文を決定
- *   - 英語顧客は英語版、なければクメール語版
- *   - クメール語顧客はクメール語版、なければ英語版
+ * 顧客1件あたりの本文を決定（全員に同じ内容を送る）
+ *
+ * 2026-05-30 Daisuke 指示で「言語」設定ベースに変更:
+ *   - クメール語＋英語（デフォルト）: 両方を区切り線でつないで1通に
+ *   - クメール語のみ / 英語のみ: その言語だけ
+ * いずれも顧客の「言語」列は見ない（全員に同じものを送る）。
+ * 片方の本文が空なら、もう片方だけを送る（フォールバック）。
  */
 function pickCampaignText_(draft, recipient) {
-  if (recipient.language === '英語') {
-    return draft.textEn || draft.textKm;
-  }
-  return draft.textKm || draft.textEn;
+  const km = draft.textKm || '';
+  const en = draft.textEn || '';
+  if (draft.audience === CAMPAIGN_LANG_KM_ONLY) return km || en;
+  if (draft.audience === CAMPAIGN_LANG_EN_ONLY) return en || km;
+  // デフォルト = クメール語＋英語を1通にまとめる
+  if (km && en) return km + '\n\n━━━━━━━━━━\n\n' + en;
+  return km || en;
 }
 
 /**
@@ -663,6 +708,11 @@ function executeBroadcast_(draft, recipients) {
   if (draft.imageUrl) attachParts.push('画像');
   if (draft.voiceUrl) attachParts.push('ボイス');
   const attachLabel = attachParts.length ? attachParts.join('+') : '—';
+  // 配信履歴の「言語」列に入れるラベル（全員に同じ内容を送るため配信単位で1つ）
+  let langLabel;
+  if (draft.audience === CAMPAIGN_LANG_KM_ONLY)      langLabel = 'クメール語';
+  else if (draft.audience === CAMPAIGN_LANG_EN_ONLY) langLabel = '英語';
+  else langLabel = 'クメール語＋英語';
 
   let success = 0, failed = 0, blocked = 0;
   const logRows = [];
@@ -677,7 +727,7 @@ function executeBroadcast_(draft, recipients) {
 
     if (!text && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
       failed += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, r.language,
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
                     attachLabel, 'failed', '本文・添付すべて空', '']);
       continue;
     }
@@ -702,15 +752,15 @@ function executeBroadcast_(draft, recipients) {
     if (cls.ok) {
       success += 1;
       sentRowIndexes.push(r.rowIndex);
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, r.language,
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
                     attachLabel, 'success', '', preview]);
     } else if (cls.blocked) {
       blocked += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, r.language,
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
                     attachLabel, 'blocked', cls.error || 'bot blocked', preview]);
     } else {
       failed += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, r.language,
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
                     attachLabel, 'failed', cls.error || 'unknown', preview]);
     }
 
