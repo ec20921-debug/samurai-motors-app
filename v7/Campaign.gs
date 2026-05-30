@@ -91,7 +91,7 @@ function setupCampaign() {
   ensureCustomerBroadcastColumns_();
   setupCampaignDriveFolder_();   // 素材フォルダ作成 + 下書きシートにリンク記載（冪等）
   ensureCampaignAssetsSheet_();  // 素材カタログシート（CampaignAssets.gs）
-  applyAssetDropdowns_();        // 下書き B8/B9/B10 に素材名ドロップダウン
+  scanCampaignAssets_();         // フォルダ走査→一覧更新→B8/B9/B10 ドロップダウン適用
   repairCampaignLanguageCell();  // 既存シートの B4 言語ドロップダウンを最新仕様へ
   setupCampaignMenu_();
   Logger.log('━━━━━━━━━━━━━━━━━━━━');

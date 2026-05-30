@@ -36,15 +36,35 @@ function refreshCampaignAssets() {
     ui.alert('素材フォルダが未作成です', 'メニュー「🔧 シート再生成」または setupCampaign を先に実行してください。', ui.ButtonSet.OK);
     return;
   }
+  const n = scanCampaignAssets_();
+  if (n < 0) {
+    ui.alert('素材フォルダが見つかりません', '「🔧 シート再生成」を実行してください。', ui.ButtonSet.OK);
+    return;
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    n + ' 件の素材を読み込みました（B8/B9/B10 で選べます）', '素材一覧 更新', 6);
+}
+
+/**
+ * 素材フォルダを走査して「キャンペーン素材」シートを更新し、ドロップダウンを適用する（UI非依存）。
+ * setupCampaign からも呼べるよう refreshCampaignAssets から分離。
+ *
+ * @return {number} 読み込んだ素材件数。フォルダ未作成/不正なら -1。
+ */
+function scanCampaignAssets_() {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty('DRIVE_FOLDER_CAMPAIGN');
+  if (!folderId) return -1;
   let folder;
   try {
     folder = DriveApp.getFolderById(folderId);
   } catch (e) {
-    ui.alert('素材フォルダが見つかりません', String(e), ui.ButtonSet.OK);
-    return;
+    Logger.log('⚠️ scanCampaignAssets_: フォルダ取得失敗 ' + e);
+    return -1;
   }
 
   const sh = ensureCampaignAssetsSheet_();
+  // 既存内容（プレースホルダ含む）を一旦クリア
   const last = sh.getLastRow();
   if (last >= 2) sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
 
@@ -61,22 +81,22 @@ function refreshCampaignAssets() {
       f.getUrl()
     ]);
   }
-  // 種別→名前 順に並べる（一覧を見やすく）
   rows.sort(function(a, b) { return (a[0] + '\t' + a[1]).localeCompare(b[0] + '\t' + b[1]); });
 
   if (rows.length > 0) {
     sh.getRange(2, 1, rows.length, 5).setValues(rows);
-    // 動画が50MB超なら赤字で警告（送信時にブロックされる）
     for (var i = 0; i < rows.length; i++) {
       if (rows[i][0] === '動画' && Number(rows[i][2]) > 50) {
         sh.getRange(i + 2, 3).setFontColor('#cc0000').setFontWeight('bold');
       }
     }
+  } else {
+    sh.getRange('A2').setValue('（素材フォルダにファイルを入れて「📂 素材一覧を更新」を実行してください）')
+      .setFontColor('#999').setFontStyle('italic');
   }
 
   applyAssetDropdowns_();
-  SpreadsheetApp.getActiveSpreadsheet().toast(
-    rows.length + ' 件の素材を読み込みました（B8/B9/B10 で選べます）', '素材一覧 更新', 6);
+  return rows.length;
 }
 
 /**
