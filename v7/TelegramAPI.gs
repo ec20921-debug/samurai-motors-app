@@ -130,6 +130,68 @@ function sendPhotoFromDriveId(botType, chatId, driveFileId, options) {
 }
 
 /**
+ * Drive リンク or 外部URL から音声を送信する
+ *
+ * 用途: キャンペーン一斉送信でクメール語ボイスメッセージを添付する。
+ * Drive 共有リンクは Blob を取得して multipart upload、外部URLはそのまま渡す。
+ * Telegram の sendVoice は OGG/OPUS 専用のため、失敗時は sendAudio
+ * (MP3/M4A 等の一般音声に対応)へ自動フォールバックする。
+ *
+ * @param {string} botType - BOT_TYPE.BOOKING or BOT_TYPE.FIELD
+ * @param {string|number} chatId
+ * @param {string} voiceUrl - Drive 共有リンク or 外部URL
+ * @param {Object} [options] - message_thread_id
+ * @return {Object} Telegram API レスポンス（ok フィールドで成否判定）
+ */
+function sendVoiceFromUrl(botType, chatId, voiceUrl, options) {
+  if (!voiceUrl) return { ok: false, error: 'NO_URL' };
+  const token = getBotToken(botType);
+  if (!token) return { ok: false, error: 'NO_TOKEN' };
+
+  // Drive リンク判定（?id=xxx / /file/d/xxx の両形式に対応）
+  const driveMatch = voiceUrl.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const driveFileId = driveMatch ? (driveMatch[1] || driveMatch[2]) : '';
+
+  function buildMedia() {
+    if (!driveFileId) return voiceUrl; // 外部URLはそのまま
+    try {
+      return DriveApp.getFileById(driveFileId).getBlob();
+    } catch (err) {
+      Logger.log('⚠️ sendVoiceFromUrl: Drive 取得失敗 fileId=' + driveFileId + ' err=' + err);
+      return null;
+    }
+  }
+
+  // sendVoice(OGG/OPUS) → sendAudio(一般音声) の順でフォールバック
+  const methods = [['sendVoice', 'voice'], ['sendAudio', 'audio']];
+  let last = null;
+  for (let i = 0; i < methods.length; i++) {
+    const media = buildMedia(); // Blob は消費されるため毎回取得し直す
+    if (media === null) return { ok: false, error: 'DRIVE_FETCH_FAILED' };
+
+    const payload = { chat_id: String(chatId) };
+    payload[methods[i][1]] = media;
+    if (options && options.message_thread_id) {
+      payload.message_thread_id = String(options.message_thread_id);
+    }
+    try {
+      const res = UrlFetchApp.fetch(
+        'https://api.telegram.org/bot' + token + '/' + methods[i][0],
+        { method: 'post', payload: payload, muteHttpExceptions: true }
+      );
+      const data = JSON.parse(res.getContentText());
+      if (data.ok) return data;
+      last = data;
+      Logger.log('⚠️ ' + methods[i][0] + ' failed: ' + res.getContentText().substring(0, 200));
+    } catch (err) {
+      last = { ok: false, error: String(err) };
+      Logger.log('❌ ' + methods[i][0] + ' error: ' + err);
+    }
+  }
+  return last || { ok: false, error: 'voice send failed' };
+}
+
+/**
  * 複数写真をまとめて送信（アルバム形式）
  *
  * @param {string} botType
