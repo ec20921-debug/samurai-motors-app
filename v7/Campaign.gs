@@ -45,8 +45,9 @@
  */
 
 // === シート名 ===
-const CAMPAIGN_DRAFT_SHEET = 'キャンペーン下書き';
-const CAMPAIGN_LOG_SHEET   = 'キャンペーン配信履歴';
+const CAMPAIGN_DRAFT_SHEET  = 'キャンペーン下書き';
+const CAMPAIGN_LOG_SHEET    = 'キャンペーン配信履歴'; // 1人×1配信=1行（誰に届いたか）
+const CAMPAIGN_LEDGER_SHEET = 'キャンペーン台帳';     // 1配信=1行（いつ何を送ったか・全文保存）
 
 // === 設定 ===
 const CAMPAIGN_SEND_INTERVAL_MS = 50;   // 送信間ウェイト（20msg/秒）
@@ -86,6 +87,7 @@ const CAMPAIGN_CELL = {
 function setupCampaign() {
   ensureCampaignDraftSheet_();
   ensureCampaignLogSheet_();
+  ensureCampaignLedgerSheet_();   // 配信台帳（いつ何を送ったか・全文）
   ensureCustomerBroadcastColumns_();
   setupCampaignDriveFolder_();   // 素材フォルダ作成 + 下書きシートにリンク記載（冪等）
   ensureCampaignAssetsSheet_();  // 素材カタログシート（CampaignAssets.gs）
@@ -195,7 +197,8 @@ function campaignOnOpen_() {
       .addItem('選択した行だけ OFF', 'setSelectedBroadcastOff'))
     .addSeparator()
     .addItem('📂 素材一覧を更新（フォルダから読込）', 'refreshCampaignAssets')
-    .addItem('📋 配信履歴シートを開く', 'openCampaignLogSheet')
+    .addItem('📒 配信台帳を開く（いつ何を送ったか）', 'openCampaignLedgerSheet')
+    .addItem('📋 配信履歴を開く（誰に届いたか）', 'openCampaignLogSheet')
     .addItem('❓ 使い方', 'showCampaignHelp_')
     .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign')
     .addToUi();
@@ -327,6 +330,94 @@ function ensureCampaignLogSheet_() {
 }
 
 /**
+ * 「キャンペーン台帳」シートを用意（1配信=1行・全文保存）
+ * 「いつ・何を・何語で・誰に・成否」を1行で振り返れる台帳。
+ * 本文は全文、添付はファイル名（解決できた場合）を残す。
+ */
+function ensureCampaignLedgerSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(CAMPAIGN_LEDGER_SHEET);
+  if (sh) return sh;
+
+  sh = ss.insertSheet(CAMPAIGN_LEDGER_SHEET);
+  const headers = [
+    'キャンペーンID', '送信日時', '言語',
+    '本文(クメール語)', '本文(英語)', '添付ファイル',
+    '送信数', '成功', '失敗', 'ブロック', '反応メモ'
+  ];
+  sh.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
+  sh.setFrozenRows(1);
+
+  const widths = [180, 160, 120, 360, 360, 260, 70, 70, 70, 80, 300];
+  widths.forEach(function(w, i) { sh.setColumnWidth(i + 1, w); });
+  return sh;
+}
+
+/**
+ * 台帳に1配信ぶんの行を追記する（全文・添付名・集計を1行で）
+ *
+ * @param {Object} draft     readCampaignDraft_ の結果
+ * @param {Object} result    executeBroadcast_ の戻り（campaignId/sentAt/total/success/failed/blocked）
+ * @param {string} langLabel 'クメール語＋英語' 等
+ */
+function appendCampaignLedger_(draft, result, langLabel) {
+  try {
+    const sh = ensureCampaignLedgerSheet_();
+    // 添付は「ファイル名（あれば）/ 無ければURL」を種別ラベル付きで連結
+    const parts = [];
+    if (draft.videoUrl) parts.push('動画: ' + assetLabelForLedger_(draft.videoUrl));
+    if (draft.imageUrl) parts.push('画像: ' + assetLabelForLedger_(draft.imageUrl));
+    if (draft.voiceUrl) parts.push('ボイス: ' + assetLabelForLedger_(draft.voiceUrl));
+    const attach = parts.length ? parts.join('\n') : '—';
+
+    const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+    sh.appendRow([
+      result.campaignId,
+      Utilities.formatDate(result.sentAt, tz, 'yyyy-MM-dd HH:mm:ss'),
+      langLabel,
+      draft.textKm || '',
+      draft.textEn || '',
+      attach,
+      result.total,
+      result.success,
+      result.failed,
+      result.blocked,
+      ''  // 反応メモ（週末に人が追記）
+    ]);
+  } catch (e) {
+    Logger.log('⚠️ appendCampaignLedger_ 失敗（配信自体は完了）: ' + e);
+  }
+}
+
+/**
+ * 台帳の添付表示用ラベル。素材一覧から名前を逆引きできればファイル名、
+ * できなければURL末尾やURLそのものを返す。
+ */
+function assetLabelForLedger_(url) {
+  // 素材一覧でリンク→名前の逆引きを試みる
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const a = ss.getSheetByName('キャンペーン素材');
+    if (a && a.getLastRow() >= 2) {
+      const data = a.getRange(2, 1, a.getLastRow() - 1, 5).getValues();
+      // URL から Drive fileId を抽出して突合
+      const m = String(url).match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+      const fid = m ? (m[1] || m[2]) : '';
+      for (let i = 0; i < data.length; i++) {
+        const link = String(data[i][4] || '');
+        const lm = link.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+        const lfid = lm ? (lm[1] || lm[2]) : '';
+        if ((fid && lfid && fid === lfid) || link === url) {
+          return String(data[i][1]); // ファイル名
+        }
+      }
+    }
+  } catch (e) { /* 逆引き失敗時は URL を返す */ }
+  return String(url);
+}
+
+/**
  * 「顧客」シートに「配信対象」「最終配信日時」列を追加（冪等）
  *   - 配信対象: チェックボックス。既存顧客はデフォルト ☑（送る）
  *   - 最終配信日時: 直近配信日時の記録用
@@ -368,6 +459,16 @@ function openCampaignLogSheet() {
   const sh = ss.getSheetByName(CAMPAIGN_LOG_SHEET);
   if (!sh) {
     SpreadsheetApp.getUi().alert('履歴シートが存在しません。「🔧 シート再生成」を実行してください。');
+    return;
+  }
+  ss.setActiveSheet(sh);
+}
+
+function openCampaignLedgerSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CAMPAIGN_LEDGER_SHEET);
+  if (!sh) {
+    SpreadsheetApp.getUi().alert('台帳シートが存在しません。「🔧 シート再生成」を実行してください。');
     return;
   }
   ss.setActiveSheet(sh);
@@ -515,8 +616,9 @@ function sendCampaign() {
     '❌ 失敗: ' + result.failed + ' 件\n' +
     '🚫 ブロック済み: ' + result.blocked + ' 件\n' +
     '\n' +
-    'キャンペーンID: ' + result.campaignId + '\n' +
-    '詳細は「' + CAMPAIGN_LOG_SHEET + '」シートをご確認ください。',
+    'キャンペーンID: ' + result.campaignId + '\n\n' +
+    '📒 何を送ったか →「' + CAMPAIGN_LEDGER_SHEET + '」（1配信=1行・全文）\n' +
+    '👥 誰に届いたか →「' + CAMPAIGN_LOG_SHEET + '」（1人=1行・成否）',
     ui.ButtonSet.OK
   );
 }
@@ -779,14 +881,20 @@ function executeBroadcast_(draft, recipients) {
   // 顧客シートの「最終配信日時」を成功分だけ更新
   updateCustomerLastBroadcast_(sentRowIndexes, sentAt);
 
-  return {
+  const result = {
     campaignId: campaignId,
     sentAt:     sentAt,
     total:      recipients.length,
     success:    success,
     failed:     failed,
-    blocked:    blocked
+    blocked:    blocked,
+    langLabel:  langLabel
   };
+
+  // 台帳に1行追記（いつ・何を・何語で・送信数/成否を全文保存）
+  appendCampaignLedger_(draft, result, langLabel);
+
+  return result;
 }
 
 /**
