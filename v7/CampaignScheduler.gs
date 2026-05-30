@@ -1,0 +1,318 @@
+/**
+ * CampaignScheduler.gs — キャンペーンの予約投稿（スケジュール配信）
+ *
+ * 【責務】
+ *   「キャンペーン予約」シートに登録した配信を、指定の曜日・時刻に自動送信する。
+ *   - 単発: 指定日(YYYY-MM-DD)＋時刻に1回だけ送って「送信済」にする
+ *   - 毎週: 指定曜日＋時刻に毎週送る（送信後また待機に戻る）
+ *
+ * 【仕組み】
+ *   15分ごとの時間主導トリガー processCampaignSchedule() が起動し、
+ *   「今が送信タイミングを過ぎた未送信の予約」を探して executeBroadcast_ で配信。
+ *   GAS は「正確にこの分」が苦手なため、15分の窓内に入ったものを送る方式。
+ *
+ * 【二重送信防止】
+ *   - 単発: 状態=送信済 になったら二度と送らない
+ *   - 毎週: 「最終送信日時」が同じ日付内なら再送しない（1日1回ガード）
+ *   - 実行はロックで直列化（トリガー重複起動対策）
+ *
+ * 【再利用】
+ *   送信は Campaign.gs の executeBroadcast_ / buildRecipientList_ をそのまま使う。
+ *   素材名→リンク解決は CampaignAssets.gs の resolveAssetValue_。
+ *   送り先は「配信対象=☑ の全員」（送信時点の状態で判定）。言語は予約行で指定。
+ *
+ * 【セットアップ】
+ *   setupCampaignSchedule() を1回実行 → シート生成 + 15分トリガー登録。
+ */
+
+const CAMPAIGN_SCHEDULE_SHEET = 'キャンペーン予約';
+
+// 予約シートの列（1-based）。レイアウト変更時はここを直す。
+const SCHED_COL = {
+  ID:        1,  // 予約ID
+  ENABLED:   2,  // 有効（チェックボックス）
+  TYPE:      3,  // 単発 / 毎週
+  DATE:      4,  // 単発の送信日 YYYY-MM-DD
+  WEEKDAY:   5,  // 毎週の曜日（日〜土）
+  TIME:      6,  // 時刻 HH:mm（15分刻み推奨）
+  LANG:      7,  // 言語（CAMPAIGN_AUDIENCE_OPTIONS）
+  TEXT_KM:   8,  // 本文(クメール語)
+  TEXT_EN:   9,  // 本文(英語)
+  IMAGE:    10,  // 画像 ファイル名 or リンク
+  VOICE:    11,  // ボイス ファイル名 or リンク
+  VIDEO:    12,  // 動画 ファイル名 or リンク
+  STATUS:   13,  // 状態（待機/送信済/エラー/スキップ）
+  LAST_SENT:14,  // 最終送信日時
+  NOTE:     15   // メモ（エラー詳細など）
+};
+
+const SCHED_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+const SCHED_WINDOW_MIN = 15; // この分数の窓に入ったら送る（トリガー間隔と合わせる）
+
+// =====================================================
+//  セットアップ
+// =====================================================
+
+/**
+ * 予約投稿機能のセットアップ（1回だけ実行）
+ *   - 「キャンペーン予約」シート生成
+ *   - 15分間隔トリガー登録（既存の同名トリガーは張り替え）
+ */
+function setupCampaignSchedule() {
+  ensureCampaignScheduleSheet_();
+
+  // 既存の processCampaignSchedule トリガーを掃除して張り直し
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'processCampaignSchedule') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('processCampaignSchedule')
+    .timeBased().everyMinutes(SCHED_WINDOW_MIN).create();
+
+  Logger.log('✅ キャンペーン予約投稿 セットアップ完了');
+  Logger.log('  - 「' + CAMPAIGN_SCHEDULE_SHEET + '」シート 準備OK');
+  Logger.log('  - ' + SCHED_WINDOW_MIN + '分ごとに processCampaignSchedule を実行');
+}
+
+/**
+ * 「キャンペーン予約」シートを用意（冪等・ヘッダーとドロップダウン整備）
+ */
+function ensureCampaignScheduleSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
+  if (sh) { applyCampaignScheduleValidations_(sh); return sh; }
+
+  sh = ss.insertSheet(CAMPAIGN_SCHEDULE_SHEET);
+  const headers = [
+    '予約ID', '有効', '種別', '送信日(単発)', '曜日(毎週)', '時刻',
+    '言語', '本文(クメール語)', '本文(英語)', '画像', 'ボイス', '動画',
+    '状態', '最終送信日時', 'メモ'
+  ];
+  sh.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
+  sh.setFrozenRows(1);
+
+  // 案内行
+  sh.getRange('A2').setValue('（1行=1予約。種別を選び、単発なら送信日、毎週なら曜日を入れ、時刻はHH:mm。有効=☑で稼働）')
+    .setFontColor('#999').setFontStyle('italic');
+
+  const widths = [150, 50, 70, 110, 90, 70, 150, 320, 320, 180, 180, 180, 90, 150, 220];
+  widths.forEach(function(w, i) { sh.setColumnWidth(i + 1, w); });
+
+  applyCampaignScheduleValidations_(sh);
+  return sh;
+}
+
+/**
+ * 予約シートのドロップダウン/チェックボックスを設定（行3〜500に適用）
+ */
+function applyCampaignScheduleValidations_(sh) {
+  const lastApply = 500;
+  const n = lastApply - 3 + 1;
+
+  // 有効: チェックボックス
+  sh.getRange(3, SCHED_COL.ENABLED, n, 1)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+
+  // 種別: 単発 / 毎週
+  sh.getRange(3, SCHED_COL.TYPE, n, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(['単発', '毎週'], true).setAllowInvalid(false).build());
+
+  // 曜日: 日〜土
+  sh.getRange(3, SCHED_COL.WEEKDAY, n, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(SCHED_WEEKDAYS, true).setAllowInvalid(false).build());
+
+  // 言語: 既存の選択肢を流用（CampaignSheets.gs の定数）
+  sh.getRange(3, SCHED_COL.LANG, n, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(CAMPAIGN_AUDIENCE_OPTIONS, true).setAllowInvalid(false).build());
+
+  // 画像/ボイス/動画: 素材一覧のファイル名から選べる（直貼りも可）。素材シートがあれば適用。
+  const assets = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('キャンペーン素材');
+  if (assets) {
+    const namesRange = assets.getRange('B2:B500');
+    const rule = SpreadsheetApp.newDataValidation().requireValueInRange(namesRange, true).setAllowInvalid(true).build();
+    [SCHED_COL.IMAGE, SCHED_COL.VOICE, SCHED_COL.VIDEO].forEach(function(c) {
+      sh.getRange(3, c, n, 1).setDataValidation(rule);
+    });
+  }
+}
+
+// =====================================================
+//  スケジュール処理（15分トリガーから呼ばれる）
+// =====================================================
+
+/**
+ * 予約シートを走査し、送信タイミングに入った予約を配信する。
+ * 15分間隔トリガーで起動。
+ */
+function processCampaignSchedule() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    Logger.log('⏭️ processCampaignSchedule: 別実行がロック中、スキップ');
+    return;
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
+    if (!sh) return;
+    const lastRow = sh.getLastRow();
+    if (lastRow < 3) return;
+
+    const tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+    const now = new Date();
+    const nowMin = Number(Utilities.formatDate(now, tz, 'H')) * 60 + Number(Utilities.formatDate(now, tz, 'm'));
+    const todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+    // 曜日: GAS 'u' は 1=月..7=日。SCHED_WEEKDAYS は 0=日..6=土。u%7 で 7(日)→0, 1(月)→1...6(土)→6 に変換。
+    const todayWeekday = SCHED_WEEKDAYS[Number(Utilities.formatDate(now, tz, 'u')) % 7];
+
+    const data = sh.getRange(3, 1, lastRow - 2, SCHED_COL.NOTE).getValues();
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const sheetRow = i + 3;
+      const enabled = (row[SCHED_COL.ENABLED - 1] === true || String(row[SCHED_COL.ENABLED - 1]).toUpperCase() === 'TRUE');
+      if (!enabled) continue;
+
+      const type = String(row[SCHED_COL.TYPE - 1] || '').trim();
+      const timeStr = normalizeTime_(row[SCHED_COL.TIME - 1], tz);
+      if (!timeStr) continue;
+      const schedMin = Number(timeStr.split(':')[0]) * 60 + Number(timeStr.split(':')[1]);
+
+      // 送信タイミング判定: 今が [schedMin, schedMin+window) に入っているか
+      const inWindow = (nowMin >= schedMin && nowMin < schedMin + SCHED_WINDOW_MIN);
+      if (!inWindow) continue;
+
+      const status = String(row[SCHED_COL.STATUS - 1] || '').trim();
+      const lastSent = row[SCHED_COL.LAST_SENT - 1];
+      const lastSentDay = lastSent ? Utilities.formatDate(new Date(lastSent), tz, 'yyyy-MM-dd') : '';
+
+      // 当日すでに送っていれば二重送信しない（窓が複数トリガーにまたがっても安全）
+      if (lastSentDay === todayStr) continue;
+
+      let shouldSend = false;
+      if (type === '単発') {
+        const dateStr = normalizeDate_(row[SCHED_COL.DATE - 1], tz);
+        if (dateStr === todayStr && status !== '送信済') shouldSend = true;
+      } else if (type === '毎週') {
+        const wd = String(row[SCHED_COL.WEEKDAY - 1] || '').trim();
+        if (wd === todayWeekday) shouldSend = true;
+      }
+      if (!shouldSend) continue;
+
+      // 配信実行
+      sendScheduledRow_(sh, sheetRow, row, type, todayStr);
+    }
+  } catch (err) {
+    Logger.log('❌ processCampaignSchedule error: ' + err + ' stack=' + (err.stack || ''));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 予約1行を配信する（既存 executeBroadcast_ を再利用）
+ */
+function sendScheduledRow_(sh, sheetRow, row, type, todayStr) {
+  const resolve = (typeof resolveAssetValue_ === 'function')
+    ? resolveAssetValue_ : function(x) { return String(x || '').trim(); };
+
+  const draft = {
+    audience: String(row[SCHED_COL.LANG - 1] || CAMPAIGN_LANG_BOTH).trim(),
+    textKm:   String(row[SCHED_COL.TEXT_KM - 1] || '').trim(),
+    textEn:   String(row[SCHED_COL.TEXT_EN - 1] || '').trim(),
+    imageUrl: resolve(row[SCHED_COL.IMAGE - 1]),
+    voiceUrl: resolve(row[SCHED_COL.VOICE - 1]),
+    videoUrl: resolve(row[SCHED_COL.VIDEO - 1])
+  };
+
+  // 本文も添付も無ければスキップ（事故防止）
+  if (!draft.textKm && !draft.textEn && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
+    sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('エラー');
+    sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('本文・添付がすべて空');
+    return;
+  }
+  // 動画サイズ上限チェック
+  if (draft.videoUrl && typeof driveSizeMB_ === 'function') {
+    const mb = driveSizeMB_(draft.videoUrl);
+    if (mb > 50) {
+      sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('エラー');
+      sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('動画が50MB超（' + mb.toFixed(1) + 'MB）');
+      return;
+    }
+  }
+
+  let recipients = [];
+  try {
+    recipients = buildRecipientList_(); // 配信対象=☑ の全員（送信時点の状態）
+  } catch (e) {
+    sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('エラー');
+    sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('対象取得失敗: ' + e);
+    return;
+  }
+  if (recipients.length === 0) {
+    sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('スキップ');
+    sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('配信対象=☑ が0名');
+    sh.getRange(sheetRow, SCHED_COL.LAST_SENT).setValue(new Date()); // 当日再試行を防ぐ
+    return;
+  }
+
+  let result;
+  try {
+    result = executeBroadcast_(draft, recipients); // 台帳/履歴記録も既存どおり走る
+  } catch (e) {
+    sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('エラー');
+    sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('配信失敗: ' + e);
+    return;
+  }
+
+  // 状態更新: 単発は「送信済」、毎週は「待機（毎週）」に戻す
+  sh.getRange(sheetRow, SCHED_COL.STATUS).setValue(type === '単発' ? '送信済' : '待機（毎週）');
+  sh.getRange(sheetRow, SCHED_COL.LAST_SENT).setValue(new Date());
+  sh.getRange(sheetRow, SCHED_COL.NOTE).setValue(
+    '✅ ' + result.success + ' / ❌ ' + result.failed + ' / 🚫 ' + result.blocked +
+    '（' + result.campaignId + '）');
+}
+
+// =====================================================
+//  ヘルパー
+// =====================================================
+
+/**
+ * 時刻セルを 'HH:mm' に正規化。
+ * Date(セルが時刻型)も '8:00'/'08:00' 文字列も受ける。失敗時 ''。
+ */
+function normalizeTime_(v, tz) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, tz, 'HH:mm');
+  }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const h = Math.min(23, Number(m[1]));
+  const mi = Math.min(59, Number(m[2]));
+  return (h < 10 ? '0' + h : '' + h) + ':' + (mi < 10 ? '0' + mi : '' + mi);
+}
+
+/**
+ * 日付セルを 'yyyy-MM-dd' に正規化。Date型も文字列も受ける。失敗時 ''。
+ */
+function normalizeDate_(v, tz) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (!m) return '';
+  const mo = m[2].length === 1 ? '0' + m[2] : m[2];
+  const d = m[3].length === 1 ? '0' + m[3] : m[3];
+  return m[1] + '-' + mo + '-' + d;
+}
+
+/** 「キャンペーン予約」シートを開く（メニューから） */
+function openCampaignScheduleSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
+  if (!sh) { ss.toast('予約シートがありません。setupCampaignSchedule を実行してください。'); return; }
+  ss.setActiveSheet(sh);
+}

@@ -61,6 +61,7 @@ function setupCampaign() {
   ensureCampaignAssetsSheet_();  // 素材カタログシート（CampaignAssets.gs）
   scanCampaignAssets_();         // フォルダ走査→一覧更新→B8/B9/B10 ドロップダウン適用
   repairCampaignLanguageCell();  // 既存シートの B4 言語ドロップダウンを最新仕様へ
+  ensureCampaignScheduleSheet_();// 予約投稿シート（CampaignScheduler.gs）。トリガーは別途 setupCampaignSchedule
   setupCampaignMenu_();
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('✅ キャンペーン機能 セットアップ完了');
@@ -166,6 +167,8 @@ function campaignOnOpen_() {
       .addItem('選択した行だけ ON', 'setSelectedBroadcastOn')
       .addItem('選択した行だけ OFF', 'setSelectedBroadcastOff'))
     .addSeparator()
+    .addItem('🗓 予約投稿を開く（曜日・時刻で自動配信）', 'openCampaignScheduleSheet')
+    .addSeparator()
     .addItem('📂 素材一覧を更新（フォルダから読込）', 'refreshCampaignAssets')
     .addItem('📒 配信台帳を開く（いつ何を送ったか）', 'openCampaignLedgerSheet')
     .addItem('📋 配信履歴を開く（失敗・ブロックのみ）', 'openCampaignLogSheet')
@@ -173,6 +176,7 @@ function campaignOnOpen_() {
     .addItem('❓ 使い方', 'showCampaignHelp_')
     .addSubMenu(ui.createMenu('⚙️ その他・メンテ')
       .addItem('📤 1人だけに手入力で送る（下書き不使用）', 'sendMessageToSelectedCustomer')
+      .addItem('🗓 予約投稿のセットアップ（初回/トリガー再登録）', 'setupCampaignSchedule')
       .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign'))
     .addToUi();
 }
