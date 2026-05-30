@@ -211,11 +211,17 @@ function processCampaignSchedule() {
 /**
  * 予約1行を配信する（既存 executeBroadcast_ を再利用）
  */
-function sendScheduledRow_(sh, sheetRow, row, type, todayStr) {
+/**
+ * 予約シートの1行を、送信に使う draft オブジェクトへ変換する
+ * （送信・プレビュー・テスト送信で共通利用）
+ *
+ * @param {Array} row - SCHED_COL の並びの1行（0-based 配列）
+ * @return {Object} {audience,textKm,textEn,imageUrl,voiceUrl,videoUrl}
+ */
+function scheduledRowToDraft_(row) {
   const resolve = (typeof resolveAssetValue_ === 'function')
     ? resolveAssetValue_ : function(x) { return String(x || '').trim(); };
-
-  const draft = {
+  return {
     audience: String(row[SCHED_COL.LANG - 1] || CAMPAIGN_LANG_BOTH).trim(),
     textKm:   String(row[SCHED_COL.TEXT_KM - 1] || '').trim(),
     textEn:   String(row[SCHED_COL.TEXT_EN - 1] || '').trim(),
@@ -223,6 +229,10 @@ function sendScheduledRow_(sh, sheetRow, row, type, todayStr) {
     voiceUrl: resolve(row[SCHED_COL.VOICE - 1]),
     videoUrl: resolve(row[SCHED_COL.VIDEO - 1])
   };
+}
+
+function sendScheduledRow_(sh, sheetRow, row, type, todayStr) {
+  const draft = scheduledRowToDraft_(row);
 
   // 本文も添付も無ければスキップ（事故防止）
   if (!draft.textKm && !draft.textEn && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
@@ -315,4 +325,125 @@ function openCampaignScheduleSheet() {
   const sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
   if (!sh) { ss.toast('予約シートがありません。setupCampaignSchedule を実行してください。'); return; }
   ss.setActiveSheet(sh);
+}
+
+// =====================================================
+//  予約行ごとのプレビュー / テスト送信
+// =====================================================
+
+/**
+ * 「キャンペーン予約」シートで選択中の行の内容をプレビュー表示する。
+ * 予約ごとに別々の本文・画像を確認できる（下書きタブとは独立）。
+ */
+function previewScheduledRow() {
+  const ui = SpreadsheetApp.getUi();
+  const ctx = getSelectedScheduleRow_();
+  if (!ctx) return;
+
+  const draft = scheduledRowToDraft_(ctx.row);
+  if (!draft.textKm && !draft.textEn && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
+    ui.alert('⚠️ この予約は空です', '本文も添付も入っていません（' + ctx.sheetRow + '行目）。', ui.ButtonSet.OK);
+    return;
+  }
+
+  let total = 0;
+  try { total = buildRecipientList_().length; } catch (e) { total = 0; }
+
+  // スケジュール情報の見出し
+  const type = String(ctx.row[SCHED_COL.TYPE - 1] || '').trim();
+  const when = (type === '毎週')
+    ? ('毎週 ' + String(ctx.row[SCHED_COL.WEEKDAY - 1] || '?') + '曜 ' + String(ctx.row[SCHED_COL.TIME - 1] || ''))
+    : ('単発 ' + String(ctx.row[SCHED_COL.DATE - 1] || '?') + ' ' + String(ctx.row[SCHED_COL.TIME - 1] || ''));
+  const enabled = (ctx.row[SCHED_COL.ENABLED - 1] === true) ? '✅有効' : '⏸無効（送られません）';
+
+  const head =
+    '🗓 予約: ' + (String(ctx.row[SCHED_COL.ID - 1] || '(' + ctx.sheetRow + '行目)')) + '\n' +
+    '  タイミング: ' + when + '\n' +
+    '  状態: ' + enabled + '\n' +
+    '────────────────\n\n';
+
+  const msg = head + buildDraftPreviewText_(draft, total) +
+    '\n\n※ 実物を自分に送って確認するには「🧪 この予約をテスト送信」を使ってください。';
+  ui.alert('🗓 予約プレビュー', msg, ui.ButtonSet.OK);
+}
+
+/**
+ * 選択中の予約行の内容を、自分のチャットIDだけに実物として送る（見え方確認）。
+ * 配信履歴・台帳には記録するが、予約の状態は変更しない。
+ */
+function testSendScheduledRow() {
+  const ui = SpreadsheetApp.getUi();
+  const ctx = getSelectedScheduleRow_();
+  if (!ctx) return;
+
+  const draft = scheduledRowToDraft_(ctx.row);
+  if (!draft.textKm && !draft.textEn && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
+    ui.alert('⚠️ この予約は空です', '本文も添付もありません（' + ctx.sheetRow + '行目）。', ui.ButtonSet.OK);
+    return;
+  }
+  if (draft.videoUrl && typeof driveSizeMB_ === 'function') {
+    const mb = driveSizeMB_(draft.videoUrl);
+    if (mb > 50) { ui.alert('⚠️ 動画が大きすぎます', mb.toFixed(1) + 'MB は上限50MB超。圧縮してください。', ui.ButtonSet.OK); return; }
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  const saved = props.getProperty('CAMPAIGN_TEST_CHAT_ID') || '';
+  const resp = ui.prompt('🧪 この予約をテスト送信',
+    'テスト送信先の Telegram チャットID（自分）を入力してください。' +
+    (saved ? '\n\n空欄OKで前回のID（' + saved + '）を使います。' : ''),
+    ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  let chatId = String(resp.getResponseText() || '').trim() || saved;
+  if (!chatId) { ui.alert('⚠️ チャットIDが空です'); return; }
+  props.setProperty('CAMPAIGN_TEST_CHAT_ID', chatId);
+
+  const text = (draft.audience === CAMPAIGN_LANG_EN_ONLY)
+    ? (draft.textEn || draft.textKm)
+    : (draft.audience === CAMPAIGN_LANG_KM_ONLY)
+      ? (draft.textKm || draft.textEn)
+      : [draft.textKm, draft.textEn].filter(function(s){return s;}).join('\n\n━━━━━━━━━━\n\n');
+
+  let res, cache = { id: '' };
+  if (draft.videoUrl)      res = sendCampaignVideo_(chatId, draft.videoUrl, text, cache);
+  else if (draft.imageUrl) res = sendCampaignPhoto_(chatId, draft.imageUrl, text);
+  else                     res = sendCampaignText_(chatId, text);
+  if (draft.voiceUrl) { try { sendVoiceFromUrl(BOT_TYPE.BOOKING, chatId, draft.voiceUrl, {}); } catch (e) {} }
+
+  const cls = classifyTgResult_(res);
+  ui.alert(cls.ok ? '🧪 テスト送信 完了' : '❌ テスト送信 失敗',
+    cls.ok ? ('チャットID ' + chatId + ' に送信しました。Telegram を確認してください。\n※ 予約の状態は変更していません。')
+           : ('原因: ' + (cls.error || '不明') + '\n相手が予約Botを /start 済みか確認してください。'),
+    ui.ButtonSet.OK);
+}
+
+/**
+ * 「キャンペーン予約」シート上で選択中の予約行を取得する。
+ * 取得できなければ alert を出して null を返す。
+ * @return {{sheetRow:number, row:Array}|null}
+ */
+function getSelectedScheduleRow_() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getActiveSheet();
+  if (sh.getName() !== CAMPAIGN_SCHEDULE_SHEET) {
+    ui.alert('⚠️ シートが違います',
+      '「' + CAMPAIGN_SCHEDULE_SHEET + '」シートで対象の予約行を選んでから実行してください。',
+      ui.ButtonSet.OK);
+    return null;
+  }
+  const sheetRow = sh.getActiveCell().getRow();
+  if (sheetRow < 3) {
+    ui.alert('⚠️ 予約の行（3行目以降）を選択してください。');
+    return null;
+  }
+  const row = sh.getRange(sheetRow, 1, 1, SCHED_COL.NOTE).getValues()[0];
+  // 空行チェック（種別も本文も無い）
+  const hasAny = String(row[SCHED_COL.TYPE - 1] || '').trim() ||
+                 String(row[SCHED_COL.TEXT_KM - 1] || '').trim() ||
+                 String(row[SCHED_COL.TEXT_EN - 1] || '').trim();
+  if (!hasAny) {
+    ui.alert('⚠️ この行は空です', sheetRow + '行目に予約が入っていません。', ui.ButtonSet.OK);
+    return null;
+  }
+  return { sheetRow: sheetRow, row: row };
 }

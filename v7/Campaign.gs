@@ -110,53 +110,60 @@ function previewCampaign() {
       return;
     }
 
-    // 実際に送られる言語の説明
-    let langDesc;
-    if (draft.audience === CAMPAIGN_LANG_KM_ONLY)      langDesc = 'クメール語のみ';
-    else if (draft.audience === CAMPAIGN_LANG_EN_ONLY) langDesc = '英語のみ';
-    else langDesc = 'クメール語＋英語（1通にまとめて）';
-
-    const previewKm = draft.textKm ? draft.textKm.substring(0, 300) : '(空)';
-    const previewEn = draft.textEn ? draft.textEn.substring(0, 300) : '(空)';
-
-    // 素材名がリンクに解決できたか（名前のまま残っている＝フォルダ未更新/ファイル名違い）
-    var assetWarn = '';
-    if (typeof isAssetUrl_ === 'function') {
-      var bad = [];
-      if (draft.imageUrl && !isAssetUrl_(draft.imageUrl)) bad.push('画像「' + draft.imageUrl + '」');
-      if (draft.voiceUrl && !isAssetUrl_(draft.voiceUrl)) bad.push('ボイス「' + draft.voiceUrl + '」');
-      if (draft.videoUrl && !isAssetUrl_(draft.videoUrl)) bad.push('動画「' + draft.videoUrl + '」');
-      if (bad.length) {
-        assetWarn = '⚠️ 素材が見つかりません: ' + bad.join(', ') + '\n' +
-          '　「📂 素材一覧を更新」してから正しいファイル名を選んでください\n\n';
-      }
-    }
-
-    const msg =
-      assetWarn +
-      '🎯 送信先\n' +
-      '  合計: ' + total + '名（配信対象=☑ の全員）\n' +
-      '  送信言語: ' + langDesc + '\n' +
-      '\n' +
-      '📎 添付\n' +
-      '  動画: ' + (draft.videoUrl ? 'あり ✅（画像より優先）' : 'なし') + '\n' +
-      '  画像: ' + (draft.imageUrl ? 'あり ✅' : 'なし') + '\n' +
-      '  ボイス: ' + (draft.voiceUrl ? 'あり ✅' : 'なし') + '\n' +
-      '\n' +
-      '📝 本文（クメール語）\n' +
-      '────────────────\n' +
-      previewKm + '\n' +
-      '\n' +
-      '📝 本文（英語）\n' +
-      '────────────────\n' +
-      previewEn + '\n' +
-      '\n' +
-      '※ これはプレビューです。送信は「② 一斉送信を実行」から。';
-
-    ui.alert('📢 キャンペーン プレビュー', msg, ui.ButtonSet.OK);
+    const msg = buildDraftPreviewText_(draft, total) +
+      '\n\n※ これはプレビューです。送信は「④ 一斉送信を実行」から。';
+    ui.alert('📢 キャンペーン プレビュー（下書き）', msg, ui.ButtonSet.OK);
   } catch (err) {
     ui.alert('❌ プレビュー失敗', String(err && err.message || err), ui.ButtonSet.OK);
   }
+}
+
+/**
+ * draft オブジェクトからプレビュー本文を組み立てる（下書き・予約行で共通利用）
+ *
+ * @param {Object} draft - {audience,textKm,textEn,imageUrl,voiceUrl,videoUrl}
+ * @param {number} total - 送信先人数（配信対象=☑ の数）
+ * @return {string}
+ */
+function buildDraftPreviewText_(draft, total) {
+  let langDesc;
+  if (draft.audience === CAMPAIGN_LANG_KM_ONLY)      langDesc = 'クメール語のみ';
+  else if (draft.audience === CAMPAIGN_LANG_EN_ONLY) langDesc = '英語のみ';
+  else langDesc = 'クメール語＋英語（1通にまとめて）';
+
+  const previewKm = draft.textKm ? draft.textKm.substring(0, 300) : '(空)';
+  const previewEn = draft.textEn ? draft.textEn.substring(0, 300) : '(空)';
+
+  // 素材名がリンクに解決できたか（名前のまま残っている＝フォルダ未更新/ファイル名違い）
+  let assetWarn = '';
+  if (typeof isAssetUrl_ === 'function') {
+    const bad = [];
+    if (draft.imageUrl && !isAssetUrl_(draft.imageUrl)) bad.push('画像「' + draft.imageUrl + '」');
+    if (draft.voiceUrl && !isAssetUrl_(draft.voiceUrl)) bad.push('ボイス「' + draft.voiceUrl + '」');
+    if (draft.videoUrl && !isAssetUrl_(draft.videoUrl)) bad.push('動画「' + draft.videoUrl + '」');
+    if (bad.length) {
+      assetWarn = '⚠️ 素材が見つかりません: ' + bad.join(', ') + '\n' +
+        '　「📂 素材一覧を更新」してから正しいファイル名を選んでください\n\n';
+    }
+  }
+
+  return assetWarn +
+    '🎯 送信先\n' +
+    '  合計: ' + total + '名（配信対象=☑ の全員）\n' +
+    '  送信言語: ' + langDesc + '\n' +
+    '\n' +
+    '📎 添付\n' +
+    '  動画: ' + (draft.videoUrl ? 'あり ✅（画像より優先）' : 'なし') + '\n' +
+    '  画像: ' + (draft.imageUrl ? 'あり ✅' : 'なし') + '\n' +
+    '  ボイス: ' + (draft.voiceUrl ? 'あり ✅' : 'なし') + '\n' +
+    '\n' +
+    '📝 本文（クメール語）\n' +
+    '────────────────\n' +
+    previewKm + '\n' +
+    '\n' +
+    '📝 本文（英語）\n' +
+    '────────────────\n' +
+    previewEn;
 }
 
 // =====================================================
