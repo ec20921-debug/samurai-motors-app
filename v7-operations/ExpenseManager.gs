@@ -9,7 +9,7 @@
  *
  * 【通知方針】
  *   - 即時通知は廃止（ノイズ削減）
- *   - 立替精算完了時のみ TaskManager.settleExpenseByTask_ から通知
+ *   - 立替精算の自動タスク生成／タスク完了連動は廃止（2026-05-30、経費マスター一本化のため）
  *   - 週次サマリは sendWeeklyExpenseSummary（hourlyTaskScheduler が金曜18:00 JSTで発火）
  *
  * 【OCR について】
@@ -184,23 +184,10 @@ function submitExpense(chatId, payload) {
   // 立替なら「未精算」、会社直払いは精算不要なので「会社負担」
   const statusValue = isReimburse ? '未精算' : '会社負担';
 
-  // Phase B: 立替時は先に精算タスクを自動生成 → 関連タスクIDをシートに書く
+  // 立替精算タスクの自動生成は廃止（2026-05-30、経費マスター一本化のため）。
+  // 立替情報は本シート＋経費マスターに記録し、精算は手動運用とする。
+  // 未精算の立替は週次経費サマリ（sendWeeklyExpenseSummary）で滞留把握する。
   var linkedTaskId = '';
-  if (isReimburse) {
-    try {
-      const taskResult = createExpenseReimburseTask_(staff, {
-        expenseId:    expenseId,
-        amount:       amount,
-        currency:     currency,
-        desc:         desc,
-        reimburseTo:  reimburseTo,
-        reimburseDue: reimburseDue
-      });
-      if (taskResult && taskResult.ok) linkedTaskId = taskResult.taskId;
-    } catch (err) {
-      Logger.log('⚠️ 精算タスク自動生成失敗: ' + err);
-    }
-  }
 
   appendRow(SHEET_NAMES.EXPENSES, {
     '経費ID':        expenseId,
