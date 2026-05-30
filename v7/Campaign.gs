@@ -31,6 +31,9 @@
  *   - 403（bot blocked）は履歴に「blocked」と記録して継続
  *   - 画像は既存 sendQRImage() を流用（Driveリンク/外部URL両対応）
  *   - ボイスは sendVoiceFromUrl()（sendVoice→sendAudio フォールバック）
+ *   - 動画は sendVideoFromUrl()。初回アップロードの file_id を再利用して
+ *     再アップロードを避ける（50名×動画でも6分制限内に収める）。50MB上限。
+ *   - メイン送信の優先順位: 動画 > 画像 > テキスト（本文=キャプション）
  *   - 6分実行制限に備え、CAMPAIGN_MAX_RECIPIENTS で上限ガード
  *
  * 【2価格分離の原則（SPEC_CampaignBroadcast.md）】
@@ -56,9 +59,10 @@ const CAMPAIGN_CELL = {
   TEXT_EN:   'B7',
   IMAGE_URL: 'B8',
   VOICE_URL: 'B9',
-  RESULT_AT:    'B13',
-  RESULT_STATS: 'B14',
-  RESULT_ID:    'B15'
+  VIDEO_URL: 'B10',
+  RESULT_AT:    'B14',
+  RESULT_STATS: 'B15',
+  RESULT_ID:    'B16'
 };
 
 // =====================================================
@@ -181,23 +185,29 @@ function ensureCampaignDraftSheet_() {
   sh.getRange('C9').setValue('← クメール語ボイス。OGG推奨（MP3/M4Aも自動対応）')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
+  // 動画 Drive リンク（任意）
+  sh.getRange('A10').setValue('動画 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  sh.getRange('B10').setValue('').setWrap(true).setFontSize(10);
+  sh.getRange('C10').setValue('← before/after等。必ず50MB以内に圧縮。動画がある時は画像より優先')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+
   // 注釈
-  sh.getRange('A11:B11').merge()
+  sh.getRange('A12:B12').merge()
     .setValue('💡 顧客の「言語」列で自動振り分け。英語版が空ならクメール語版を全員に送信。' +
               '「顧客」シートの「配信対象」=☑ の人だけに届きます。')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic')
     .setHorizontalAlignment('center');
-  sh.setRowHeight(11, 30);
+  sh.setRowHeight(12, 30);
 
   // 最終結果
-  sh.getRange('A12:B12').merge()
+  sh.getRange('A13:B13').merge()
     .setValue('━━━ 最終配信結果（自動更新） ━━━')
     .setBackground('#1a1a1a').setFontColor('#c9a84c')
     .setFontWeight('bold').setHorizontalAlignment('center');
-  sh.getRange('A13').setValue('送信日時');
-  sh.getRange('A14').setValue('成功 / 失敗 / ブロック');
-  sh.getRange('A15').setValue('キャンペーンID');
-  ['A13', 'A14', 'A15'].forEach(function(a) {
+  sh.getRange('A14').setValue('送信日時');
+  sh.getRange('A15').setValue('成功 / 失敗 / ブロック');
+  sh.getRange('A16').setValue('キャンペーンID');
+  ['A14', 'A15', 'A16'].forEach(function(a) {
     sh.getRange(a).setFontWeight('bold').setBackground('#f8f4e8');
   });
 
@@ -311,6 +321,7 @@ function previewCampaign() {
       '  英語向け: ' + enCount + '名\n' +
       '\n' +
       '📎 添付\n' +
+      '  動画: ' + (draft.videoUrl ? 'あり ✅（画像より優先）' : 'なし') + '\n' +
       '  画像: ' + (draft.imageUrl ? 'あり ✅' : 'なし') + '\n' +
       '  ボイス: ' + (draft.voiceUrl ? 'あり ✅' : 'なし') + '\n' +
       '\n' +
@@ -362,8 +373,21 @@ function sendCampaign() {
     return;
   }
 
+  // 動画サイズ事前チェック（Telegram Bot のアップロード上限は 50MB）
+  if (draft.videoUrl) {
+    const mb = driveSizeMB_(draft.videoUrl);
+    if (mb > 50) {
+      ui.alert('⚠️ 動画が大きすぎます',
+        '動画サイズ ' + mb.toFixed(1) + 'MB は Telegram の上限 50MB を超えています。\n' +
+        '50MB以内（推奨20MB以下）に圧縮してから再実行してください。',
+        ui.ButtonSet.OK);
+      return;
+    }
+  }
+
   // 最終確認
   const attachNote =
+    (draft.videoUrl ? '\n🎬 動画添付あり（画像より優先）' : '') +
     (draft.imageUrl ? '\n📷 画像添付あり' : '') +
     (draft.voiceUrl ? '\n🎤 ボイス添付あり' : '');
   const confirm = ui.alert(
@@ -410,7 +434,8 @@ function readCampaignDraft_() {
     textKm:   String(sh.getRange(CAMPAIGN_CELL.TEXT_KM).getValue() || '').trim(),
     textEn:   String(sh.getRange(CAMPAIGN_CELL.TEXT_EN).getValue() || '').trim(),
     imageUrl: String(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue() || '').trim(),
-    voiceUrl: String(sh.getRange(CAMPAIGN_CELL.VOICE_URL).getValue() || '').trim()
+    voiceUrl: String(sh.getRange(CAMPAIGN_CELL.VOICE_URL).getValue() || '').trim(),
+    videoUrl: String(sh.getRange(CAMPAIGN_CELL.VIDEO_URL).getValue() || '').trim()
   };
 }
 
@@ -498,30 +523,35 @@ function executeBroadcast_(draft, recipients) {
     new Date(), 'Asia/Phnom_Penh', 'yyyyMMdd-HHmmss'
   );
   const sentAt = new Date();
-  const attachLabel =
-    (draft.imageUrl ? '画像' : '') +
-    (draft.imageUrl && draft.voiceUrl ? '+' : '') +
-    (draft.voiceUrl ? 'ボイス' : '') || '—';
+  const attachParts = [];
+  if (draft.videoUrl) attachParts.push('動画');
+  if (draft.imageUrl) attachParts.push('画像');
+  if (draft.voiceUrl) attachParts.push('ボイス');
+  const attachLabel = attachParts.length ? attachParts.join('+') : '—';
 
   let success = 0, failed = 0, blocked = 0;
   const logRows = [];
   const sentRowIndexes = [];
+  // 動画は初回アップロードで得た file_id を再利用（再アップロード回避→6分制限のタイムアウト防止）
+  const videoCache = { id: '' };
 
   for (let i = 0; i < recipients.length; i++) {
     const r = recipients[i];
     const text = pickCampaignText_(draft, r);
     const preview = text ? (text.length > 80 ? text.substring(0, 80) + '…' : text) : '';
 
-    if (!text && !draft.imageUrl && !draft.voiceUrl) {
+    if (!text && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
       failed += 1;
       logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, r.language,
                     attachLabel, 'failed', '本文・添付すべて空', '']);
       continue;
     }
 
-    // メイン送信: 画像があれば写真(本文=キャプション)、なければテキスト
+    // メイン送信の優先順位: 動画 > 画像 > テキスト（本文=キャプション）
     let mainRes;
-    if (draft.imageUrl) {
+    if (draft.videoUrl) {
+      mainRes = sendCampaignVideo_(r.chatId, draft.videoUrl, text, videoCache);
+    } else if (draft.imageUrl) {
       mainRes = sendCampaignPhoto_(r.chatId, draft.imageUrl, text);
     } else {
       mainRes = sendCampaignText_(r.chatId, text);
@@ -604,6 +634,54 @@ function sendCampaignPhoto_(chatId, imageUrl, caption) {
 }
 
 /**
+ * 動画1件送信（本文をキャプションに）。429リトライ込み。
+ *
+ * 初回は Drive からアップロードして file_id を取得し cache に保存、
+ * 2回目以降は file_id で送信（再アップロード回避＝6分制限のタイムアウト防止）。
+ * 50名に30MB動画を毎回アップすると6分制限を超えるため、この最適化は必須。
+ *
+ * @param {Object} cache - { id: string } 配信ループ内で file_id を共有する
+ */
+function sendCampaignVideo_(chatId, videoUrl, caption, cache) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res;
+    if (cache && cache.id) {
+      // 2回目以降: file_id を再利用（高速・再アップロードなし）
+      const p = { chat_id: String(chatId), video: cache.id, supports_streaming: true };
+      if (caption) p.caption = caption;
+      res = callTelegramApi(BOT_TYPE.BOOKING, 'sendVideo', p);
+    } else {
+      // 初回: Drive からアップロードし file_id を確保
+      res = sendVideoFromUrl(BOT_TYPE.BOOKING, chatId, videoUrl, { caption: caption });
+      if (res && res.ok && res.result && res.result.video && cache) {
+        cache.id = res.result.video.file_id;
+      }
+    }
+    const cls = classifyTgResult_(res);
+    if (cls.ok) return res;
+    if (cls.retryAfter > 0) { Utilities.sleep((cls.retryAfter + 1) * 1000); continue; }
+    return res;
+  }
+  return { ok: false, description: '429 リトライ後も失敗' };
+}
+
+/**
+ * Drive リンクの動画サイズ(MB)を返す。Drive でない/取得失敗時は -1。
+ * 送信前の 50MB 上限チェックに使う。
+ */
+function driveSizeMB_(url) {
+  const m = url.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) return -1; // 外部URL等はサイズ不明
+  const fileId = m[1] || m[2];
+  try {
+    return DriveApp.getFileById(fileId).getSize() / (1024 * 1024);
+  } catch (e) {
+    Logger.log('⚠️ driveSizeMB_ 取得失敗: ' + e);
+    return -1;
+  }
+}
+
+/**
  * 成功した顧客行の「最終配信日時」を更新（バッチ）
  */
 function updateCustomerLastBroadcast_(rowIndexes, when) {
@@ -647,7 +725,8 @@ function showCampaignHelp_() {
     '📢 キャンペーン — 使い方',
     '【一斉送信】\n' +
     '1. 「キャンペーン下書き」シートで本文を編集\n' +
-    '   （任意で 画像/ボイス の Driveリンクも貼れます）\n' +
+    '   （任意で 画像/ボイス/動画 の Driveリンクも貼れます）\n' +
+    '   ※ 動画は50MB以内に圧縮。動画がある時は画像より優先\n' +
     '2. メニュー「① プレビュー」で送信先と内容を確認\n' +
     '3. 「② 一斉送信を実行」→ 最終確認 → 配信\n' +
     '4. 結果は「キャンペーン配信履歴」シートに記録\n\n' +

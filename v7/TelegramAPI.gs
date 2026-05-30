@@ -192,6 +192,60 @@ function sendVoiceFromUrl(botType, chatId, voiceUrl, options) {
 }
 
 /**
+ * Drive リンク or 外部URL から動画を送信する
+ *
+ * 用途: キャンペーン一斉送信で before/after 動画やプロモ動画を添付する。
+ * Drive 共有リンクは Blob を取得して multipart upload、外部URLはそのまま渡す。
+ *
+ * ⚠️ Telegram Bot のアップロード上限は 50MB。これを超える動画は送れないため、
+ *    配信用に短く・低解像度に圧縮しておくこと（呼び出し側でサイズ警告を出す想定）。
+ *
+ * @param {string} botType - BOT_TYPE.BOOKING or BOT_TYPE.FIELD
+ * @param {string|number} chatId
+ * @param {string} videoUrl - Drive 共有リンク or 外部URL
+ * @param {Object} [options] - caption / message_thread_id
+ * @return {Object} Telegram API レスポンス（ok フィールドで成否判定）
+ */
+function sendVideoFromUrl(botType, chatId, videoUrl, options) {
+  if (!videoUrl) return { ok: false, error: 'NO_URL' };
+  const token = getBotToken(botType);
+  if (!token) return { ok: false, error: 'NO_TOKEN' };
+
+  // Drive リンク判定（?id=xxx / /file/d/xxx の両形式に対応）
+  const driveMatch = videoUrl.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const driveFileId = driveMatch ? (driveMatch[1] || driveMatch[2]) : '';
+
+  const payload = { chat_id: String(chatId), supports_streaming: true };
+  if (driveFileId) {
+    try {
+      payload.video = DriveApp.getFileById(driveFileId).getBlob();
+    } catch (err) {
+      Logger.log('⚠️ sendVideoFromUrl: Drive 取得失敗 fileId=' + driveFileId + ' err=' + err);
+      return { ok: false, error: 'DRIVE_FETCH_FAILED: ' + err };
+    }
+  } else {
+    payload.video = videoUrl; // 外部URLはそのまま（Telegram が取得）
+  }
+  if (options && options.caption) payload.caption = options.caption;
+  if (options && options.message_thread_id) payload.message_thread_id = String(options.message_thread_id);
+
+  try {
+    const res = UrlFetchApp.fetch(
+      'https://api.telegram.org/bot' + token + '/sendVideo',
+      { method: 'post', payload: payload, muteHttpExceptions: true }
+    );
+    const data = JSON.parse(res.getContentText());
+    if (!data.ok) {
+      Logger.log('⚠️ sendVideo failed: ' + res.getContentText().substring(0, 300));
+    }
+    return data;
+  } catch (err) {
+    Logger.log('❌ sendVideoFromUrl error: ' + err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
  * 複数写真をまとめて送信（アルバム形式）
  *
  * @param {string} botType
