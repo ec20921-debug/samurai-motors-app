@@ -80,12 +80,15 @@ function setupCampaign() {
   ensureCampaignLogSheet_();
   ensureCustomerBroadcastColumns_();
   setupCampaignDriveFolder_();   // 素材フォルダ作成 + 下書きシートにリンク記載（冪等）
+  ensureCampaignAssetsSheet_();  // 素材カタログシート（CampaignAssets.gs）
+  applyAssetDropdowns_();        // 下書き B8/B9/B10 に素材名ドロップダウン
   setupCampaignMenu_();
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('✅ キャンペーン機能 セットアップ完了');
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('  - 「' + CAMPAIGN_DRAFT_SHEET + '」シート 準備OK');
   Logger.log('  - 「' + CAMPAIGN_LOG_SHEET + '」シート 準備OK');
+  Logger.log('  - 「' + CAMPAIGN_ASSETS_SHEET + '」シート 準備OK（📂 素材一覧を更新 で読込）');
   Logger.log('  - 「顧客」シートに 配信対象 / 最終配信日時 列 準備OK');
   Logger.log('  - 素材フォルダ リンクを下書きシート B11 に記載');
   Logger.log('  - onOpen メニュー登録済み → シートを開き直してください');
@@ -155,6 +158,7 @@ function campaignOnOpen_() {
       .addItem('選択した行だけ ON', 'setSelectedBroadcastOn')
       .addItem('選択した行だけ OFF', 'setSelectedBroadcastOff'))
     .addSeparator()
+    .addItem('📂 素材一覧を更新（フォルダから読込）', 'refreshCampaignAssets')
     .addItem('📋 配信履歴シートを開く', 'openCampaignLogSheet')
     .addItem('❓ 使い方', 'showCampaignHelp_')
     .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign')
@@ -358,7 +362,21 @@ function previewCampaign() {
     const previewKm = draft.textKm ? draft.textKm.substring(0, 300) : '(空 → 英語版を流用)';
     const previewEn = draft.textEn ? draft.textEn.substring(0, 300) : '(空 → クメール語版を流用)';
 
+    // 素材名がリンクに解決できたか（名前のまま残っている＝フォルダ未更新/ファイル名違い）
+    var assetWarn = '';
+    if (typeof isAssetUrl_ === 'function') {
+      var bad = [];
+      if (draft.imageUrl && !isAssetUrl_(draft.imageUrl)) bad.push('画像「' + draft.imageUrl + '」');
+      if (draft.voiceUrl && !isAssetUrl_(draft.voiceUrl)) bad.push('ボイス「' + draft.voiceUrl + '」');
+      if (draft.videoUrl && !isAssetUrl_(draft.videoUrl)) bad.push('動画「' + draft.videoUrl + '」');
+      if (bad.length) {
+        assetWarn = '⚠️ 素材が見つかりません: ' + bad.join(', ') + '\n' +
+          '　「📂 素材一覧を更新」してから正しいファイル名を選んでください\n\n';
+      }
+    }
+
     const msg =
+      assetWarn +
       '🎯 送信先\n' +
       '  合計: ' + total + '名（配信対象=☑ のみ）\n' +
       '  クメール語向け: ' + kmCount + '名\n' +
@@ -541,13 +559,18 @@ function readCampaignDraft_() {
     throw new Error('「' + CAMPAIGN_DRAFT_SHEET +
       '」シートが見つかりません。メニューの「🔧 シート再生成」を実行してください。');
   }
+  // 画像/ボイス/動画は「ファイル名」でも「リンク直貼り」でもOK。
+  // resolveAssetValue_(CampaignAssets.gs) が ファイル名→リンク へ自動解決する。
+  const resolve = (typeof resolveAssetValue_ === 'function')
+    ? resolveAssetValue_
+    : function(x) { return String(x || '').trim(); };
   return {
     audience: String(sh.getRange(CAMPAIGN_CELL.AUDIENCE).getValue() || '全員').trim(),
     textKm:   String(sh.getRange(CAMPAIGN_CELL.TEXT_KM).getValue() || '').trim(),
     textEn:   String(sh.getRange(CAMPAIGN_CELL.TEXT_EN).getValue() || '').trim(),
-    imageUrl: String(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue() || '').trim(),
-    voiceUrl: String(sh.getRange(CAMPAIGN_CELL.VOICE_URL).getValue() || '').trim(),
-    videoUrl: String(sh.getRange(CAMPAIGN_CELL.VIDEO_URL).getValue() || '').trim()
+    imageUrl: resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),
+    voiceUrl: resolve(sh.getRange(CAMPAIGN_CELL.VOICE_URL).getValue()),
+    videoUrl: resolve(sh.getRange(CAMPAIGN_CELL.VIDEO_URL).getValue())
   };
 }
 
@@ -894,8 +917,11 @@ function showCampaignHelp_() {
     '📢 キャンペーン — 使い方',
     '【一斉送信】\n' +
     '1. 「キャンペーン下書き」シートで本文を編集\n' +
-    '   （任意で 画像/ボイス/動画 の Driveリンクも貼れます）\n' +
-    '   ※ 素材は B11 の「📁 素材フォルダ」に入れてリンクを貼ると楽\n' +
+    '   画像/ボイス/動画を付ける場合:\n' +
+    '   ① B11「📁 素材フォルダ」にファイルを入れる\n' +
+    '   ② メニュー「📂 素材一覧を更新」を実行\n' +
+    '   ③ B8/B9/B10 のドロップダウンからファイル名を選ぶ\n' +
+    '   （Driveリンクの直貼りも従来どおり可）\n' +
     '   ※ 動画は50MB以内に圧縮。動画がある時は画像より優先\n' +
     '2. メニュー「① プレビュー」で送信先と内容を確認\n' +
     '3. 「② 一斉送信を実行」→ 最終確認 → 配信\n' +
