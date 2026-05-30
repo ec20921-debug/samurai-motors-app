@@ -14,7 +14,8 @@
 
 // === シート名 ===
 const CAMPAIGN_DRAFT_SHEET  = 'キャンペーン下書き';
-const CAMPAIGN_LOG_SHEET    = 'キャンペーン配信履歴'; // 1人×1配信=1行（誰に届いたか）
+const CAMPAIGN_LOG_SHEET    = 'キャンペーン送信エラー'; // 失敗・ブロックした人だけ（届かなかった人）
+const CAMPAIGN_LOG_SHEET_OLD = 'キャンペーン配信履歴';  // 旧名（自動リネーム用）
 const CAMPAIGN_LEDGER_SHEET = 'キャンペーン台帳';     // 1配信=1行（いつ何を送ったか・全文保存）
 
 // === 設定 ===
@@ -171,7 +172,7 @@ function campaignOnOpen_() {
     .addSeparator()
     .addItem('📂 素材一覧を更新（フォルダから読込）', 'refreshCampaignAssets')
     .addItem('📒 配信台帳を開く（いつ何を送ったか）', 'openCampaignLedgerSheet')
-    .addItem('📋 配信履歴を開く（失敗・ブロックのみ）', 'openCampaignLogSheet')
+    .addItem('📋 送信エラーを開く（失敗・ブロックのみ）', 'openCampaignLogSheet')
     .addSeparator()
     .addItem('❓ 使い方', 'showCampaignHelp_')
     .addSubMenu(ui.createMenu('⚙️ その他・メンテ')
@@ -284,6 +285,14 @@ function ensureCampaignDraftSheet_() {
 
 function ensureCampaignLogSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 旧名「キャンペーン配信履歴」が残っていれば新名へリネーム（自動移行）。
+  // 新名が未作成のときだけ。両方ある場合は触らない（手動対応を優先）。
+  const oldSh = ss.getSheetByName(CAMPAIGN_LOG_SHEET_OLD);
+  if (oldSh && !ss.getSheetByName(CAMPAIGN_LOG_SHEET)) {
+    oldSh.setName(CAMPAIGN_LOG_SHEET);
+  }
+
   let sh = ss.getSheetByName(CAMPAIGN_LOG_SHEET);
   if (sh) {
     // 旧10列フォーマットが残っていたら新7列ヘッダーに作り替える（データはまだ無い前提）
