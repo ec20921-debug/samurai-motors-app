@@ -179,10 +179,11 @@ function sendWelcomeMessage(msg) {
   //   ※ ファイル名を変える理由: Telegram の URL キャッシュ回避(同名上書きだと
   //      旧画像がキャッシュ配信される恐れがあるため、毎回ファイル名を変える)
   //
-  // フォールバックとして旧 Drive 版も残す(GitHub Pages 障害時の保険)。
-  // Drive 版を最新化したい場合は Drive で当該ファイルを Manage Versions。
+  // フォールバックは Drive 版(GitHub Pages 障害時の保険)。
+  // 2026-05-30: Drive 版も新チラシへ同期済(キャンペーン素材フォルダ内の
+  //   SamuraiMoters_チラシ_2026-05.jpg を指す)。旧 ...pAHE は未使用(残置)。
   const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-app/flyer-2026-05.jpg';
-  const FLYER_DRIVE_ID = '1I5hIT2JcjAzpyMuMF4qATEZ0jMx_pAHE';
+  const FLYER_DRIVE_ID = '1ttiP6z9gUlxD-_0aPefChnUBOeYIf3MS';
   const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash';
   let flyerSent = false;
   try {
