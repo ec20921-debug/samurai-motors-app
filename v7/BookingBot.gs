@@ -169,26 +169,35 @@ function sendWelcomeMessage(msg) {
   const cfg = getConfig();
 
   // ── ① まずブランドチラシを送信(視覚で世界観を伝える) ──
-  // Drive ファイルから直接 multipart upload。Daisuke が Drive 上で
-  // 「バージョン管理」で差し替えれば、コード変更・push 不要で即反映される。
+  // 2026-05-30: 新メニュー版チラシ(SAMURAI CAR CARE / GLASS + WASH)へ差し替え。
+  // ソース = GitHub Pages ホストの flyer-2026-05.jpg(リポジトリ管理)。
   //
-  // Drive ファイル: SamuraiMoters_チラシ.png (固定 ID、内容のみ差替可能)
-  // 差替手順: Drive で当該ファイルを右クリック → バージョン管理 → 新ファイル UP
+  // 【差替手順】新しいチラシに変えるとき:
+  //   1. 新画像をリポジトリに「別名(バージョン入り)」で追加 例: flyer-2026-07.jpg
+  //   2. 下の FLYER_URL のファイル名を新しいものに更新
+  //   3. clasp push + git push
+  //   ※ ファイル名を変える理由: Telegram の URL キャッシュ回避(同名上書きだと
+  //      旧画像がキャッシュ配信される恐れがあるため、毎回ファイル名を変える)
+  //
+  // フォールバックとして旧 Drive 版も残す(GitHub Pages 障害時の保険)。
+  // Drive 版を最新化したい場合は Drive で当該ファイルを Manage Versions。
+  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-app/flyer-2026-05.jpg';
   const FLYER_DRIVE_ID = '1I5hIT2JcjAzpyMuMF4qATEZ0jMx_pAHE';
+  const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash';
+  let flyerSent = false;
   try {
-    sendPhotoFromDriveId(BOT_TYPE.BOOKING, msg.chat.id, FLYER_DRIVE_ID, {
-      caption: '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash'
-    });
+    const r = sendPhoto(BOT_TYPE.BOOKING, msg.chat.id, FLYER_URL, { caption: FLYER_CAPTION });
+    flyerSent = !!(r && r.ok);
+    if (!flyerSent) Logger.log('⚠️ welcome flyer (GitHub) ok=false: ' + JSON.stringify(r).substring(0, 200));
   } catch (e) {
-    Logger.log('⚠️ welcome flyer 送信失敗(継続): ' + e);
-    // Drive 失敗時のフォールバック: GitHub Pages ホスト版
+    Logger.log('⚠️ welcome flyer (GitHub) 例外: ' + e);
+  }
+  if (!flyerSent) {
+    // フォールバック: 旧 Drive 版(Manage Versions で更新していればこちらが最新)
     try {
-      sendPhoto(BOT_TYPE.BOOKING, msg.chat.id,
-        'https://ec20921-debug.github.io/samurai-motors-app/flyer.png', {
-        caption: '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash'
-      });
+      sendPhotoFromDriveId(BOT_TYPE.BOOKING, msg.chat.id, FLYER_DRIVE_ID, { caption: FLYER_CAPTION });
     } catch (e2) {
-      Logger.log('⚠️ flyer fallback も失敗: ' + e2);
+      Logger.log('⚠️ flyer fallback (Drive) も失敗: ' + e2);
     }
   }
 
