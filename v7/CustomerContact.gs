@@ -79,9 +79,11 @@ function sendMessageToSelectedCustomer() {
   }
 
   // 4. 本文入力
-  const title  = '📤 ' + (name || '(名前未登録)') + (username ? ' / @' + username : '');
+  const title  = '📤 個別送信（1人だけ・テキストのみ）: ' + (name || '(名前未登録)') + (username ? ' / @' + username : '');
   const prompt =
-    '本文を入力してください\n\n' +
+    '⚠️ これは「キャンペーン下書き」を使いません（画像・動画は送れません）。\n' +
+    '　 画像つきで一斉に送りたい時は、メニュー「④ 一斉送信を実行」を使ってください。\n\n' +
+    'この1人にテキストだけ送ります。本文を入力してください:\n\n' +
     '🆔 チャットID: ' + chatId + '\n' +
     (topicId ? '🧵 トピックID: ' + topicId + '\n' : '') +
     '\n※ 改行も使えます。最大4096文字。';

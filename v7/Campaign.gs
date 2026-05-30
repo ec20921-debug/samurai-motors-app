@@ -184,11 +184,13 @@ function setupCampaignMenu_() {
 function campaignOnOpen_() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📢 キャンペーン')
-    .addItem('① プレビュー（送信先と内容を確認）', 'previewCampaign')
-    .addItem('② 一斉送信を実行', 'sendCampaign')
-    .addItem('🧪 テスト送信（自分のチャットIDへ）', 'testSendCampaign')
+    // ── 一斉送信フロー（下書き → 配信対象 → 送信）が主役 ──
+    .addItem('① 下書きを準備（このタブで本文・画像を編集）', 'openCampaignDraftSheet')
+    .addItem('② 配信対象を選ぶ（顧客タブで一括ON/OFF）', 'openCustomerSheetForTargeting')
+    .addItem('③ プレビュー（送信先と内容を確認）', 'previewCampaign')
+    .addItem('④ 一斉送信を実行', 'sendCampaign')
     .addSeparator()
-    .addItem('📤 選択した顧客に1通だけ送信', 'sendMessageToSelectedCustomer')
+    .addItem('🧪 テスト送信（自分のチャットIDへ）', 'testSendCampaign')
     .addSubMenu(ui.createMenu('☑ 配信対象 一括操作')
       .addItem('全員を ON（☑）', 'setAllBroadcastOn')
       .addItem('全員を OFF（☐）', 'setAllBroadcastOff')
@@ -198,10 +200,30 @@ function campaignOnOpen_() {
     .addSeparator()
     .addItem('📂 素材一覧を更新（フォルダから読込）', 'refreshCampaignAssets')
     .addItem('📒 配信台帳を開く（いつ何を送ったか）', 'openCampaignLedgerSheet')
-    .addItem('📋 配信履歴を開く（誰に届いたか）', 'openCampaignLogSheet')
+    .addItem('📋 配信履歴を開く（失敗・ブロックのみ）', 'openCampaignLogSheet')
+    .addSeparator()
     .addItem('❓ 使い方', 'showCampaignHelp_')
-    .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign')
+    .addSubMenu(ui.createMenu('⚙️ その他・メンテ')
+      .addItem('📤 1人だけに手入力で送る（下書き不使用）', 'sendMessageToSelectedCustomer')
+      .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign'))
     .addToUi();
+}
+
+/** 下書きシートを開く（メニュー①） */
+function openCampaignDraftSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CAMPAIGN_DRAFT_SHEET);
+  if (!sh) { ss.toast('下書きシートがありません。🔧シート再生成を実行してください。'); return; }
+  ss.setActiveSheet(sh);
+}
+
+/** 顧客シートを開いて配信対象選択へ誘導（メニュー②） */
+function openCustomerSheetForTargeting() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEET_NAMES.CUSTOMERS);
+  if (!sh) { ss.toast('顧客シートが見つかりません。'); return; }
+  ss.setActiveSheet(sh);
+  ss.toast('「配信対象」列(L)で送る人に☑。メニュー「☑配信対象 一括操作」で一括ON/OFFも可。', '配信対象を選ぶ', 8);
 }
 
 // =====================================================
@@ -312,18 +334,35 @@ function ensureCampaignDraftSheet_() {
 function ensureCampaignLogSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(CAMPAIGN_LOG_SHEET);
-  if (sh) return sh;
+  if (sh) {
+    // 旧10列フォーマットが残っていたら新7列ヘッダーに作り替える（データはまだ無い前提）
+    const firstHeader = String(sh.getRange(1, 7).getValue() || '');
+    if (firstHeader === '添付' || firstHeader === '結果') {
+      // 7列目が「理由」でなければ旧版 → ヘッダーだけ貼り直す
+      const want = ['キャンペーンID', '送信日時', '顧客ID', 'チャットID', '氏名', '結果', '理由'];
+      if (String(sh.getRange(1, 6).getValue()) !== '結果' || String(sh.getRange(1, 7).getValue()) !== '理由') {
+        if (sh.getLastRow() >= 1) sh.getRange(1, 1, 1, Math.max(10, sh.getLastColumn())).clearContent();
+        sh.getRange(1, 1, 1, want.length).setValues([want])
+          .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
+      }
+    }
+    return sh;
+  }
 
   sh = ss.insertSheet(CAMPAIGN_LOG_SHEET);
+  // 失敗・ブロックのみ記録するスリム版（成功は台帳の件数で見る）
   const headers = [
-    'キャンペーンID', '送信日時', '顧客ID', 'チャットID', '氏名',
-    '言語', '添付', '結果', 'エラー詳細', '本文プレビュー'
+    'キャンペーンID', '送信日時', '顧客ID', 'チャットID', '氏名', '結果', '理由'
   ];
   sh.getRange(1, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
   sh.setFrozenRows(1);
 
-  const widths = [180, 160, 100, 130, 140, 90, 100, 80, 220, 400];
+  // 説明メモ（このシートは例外だけが載る、を明示）
+  sh.getRange('A2').setValue('（このシートには「失敗・ブロックされた人」だけが記録されます。空＝全員成功）')
+    .setFontColor('#999').setFontStyle('italic');
+
+  const widths = [180, 160, 100, 130, 140, 80, 320];
   widths.forEach(function(w, i) { sh.setColumnWidth(i + 1, w); });
 
   return sh;
@@ -617,8 +656,8 @@ function sendCampaign() {
     '🚫 ブロック済み: ' + result.blocked + ' 件\n' +
     '\n' +
     'キャンペーンID: ' + result.campaignId + '\n\n' +
-    '📒 何を送ったか →「' + CAMPAIGN_LEDGER_SHEET + '」（1配信=1行・全文）\n' +
-    '👥 誰に届いたか →「' + CAMPAIGN_LOG_SHEET + '」（1人=1行・成否）',
+    '📒 内容と件数 →「' + CAMPAIGN_LEDGER_SHEET + '」（1配信=1行・本文全文）\n' +
+    '📋 失敗/ブロックした人 →「' + CAMPAIGN_LOG_SHEET + '」（例外のみ。空＝全員成功）',
     ui.ButtonSet.OK
   );
 }
@@ -827,10 +866,11 @@ function executeBroadcast_(draft, recipients) {
     const text = pickCampaignText_(draft, r);
     const preview = text ? (text.length > 80 ? text.substring(0, 80) + '…' : text) : '';
 
+    // 配信履歴は「失敗・ブロックのみ」記録（成功はカウントのみ＝台帳で件数を見る）。
+    // 重複を避け、対応が必要な例外だけが履歴に残るようにする。
     if (!text && !draft.imageUrl && !draft.voiceUrl && !draft.videoUrl) {
       failed += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
-                    attachLabel, 'failed', '本文・添付すべて空', '']);
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, 'failed', '本文・添付すべて空']);
       continue;
     }
 
@@ -854,16 +894,13 @@ function executeBroadcast_(draft, recipients) {
     if (cls.ok) {
       success += 1;
       sentRowIndexes.push(r.rowIndex);
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
-                    attachLabel, 'success', '', preview]);
+      // 成功は履歴に書かない（件数は台帳へ）
     } else if (cls.blocked) {
       blocked += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
-                    attachLabel, 'blocked', cls.error || 'bot blocked', preview]);
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, 'blocked', cls.error || 'bot blocked']);
     } else {
       failed += 1;
-      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, langLabel,
-                    attachLabel, 'failed', cls.error || 'unknown', preview]);
+      logRows.push([campaignId, sentAt, r.customerId, r.chatId, r.name, 'failed', cls.error || 'unknown']);
     }
 
     if (i < recipients.length - 1) {
@@ -1073,29 +1110,27 @@ function bulkSetBroadcastTarget_(value, selectedOnly) {
 function showCampaignHelp_() {
   SpreadsheetApp.getUi().alert(
     '📢 キャンペーン — 使い方',
-    '【一斉送信】\n' +
-    '1. 「キャンペーン下書き」シートで本文を編集\n' +
-    '   画像/ボイス/動画を付ける場合:\n' +
-    '   ① B11「📁 素材フォルダ」にファイルを入れる\n' +
-    '   ② メニュー「📂 素材一覧を更新」を実行\n' +
-    '   ③ B8/B9/B10 のドロップダウンからファイル名を選ぶ\n' +
-    '   （Driveリンクの直貼りも従来どおり可）\n' +
-    '   ※ 動画は50MB以内に圧縮。動画がある時は画像より優先\n' +
-    '2. メニュー「① プレビュー」で送信先と内容を確認\n' +
-    '3. 「② 一斉送信を実行」→ 最終確認 → 配信\n' +
-    '4. 結果は「キャンペーン配信履歴」シートに記録\n\n' +
-    '【テスト送信（おすすめ）】\n' +
-    '「🧪 テスト送信」で、自分のチャットIDだけに実物を送れます。\n' +
-    '本番前に動画・画像・本文の見え方を安全に確認できます。\n\n' +
-    '【個別送信】\n' +
-    '1. 「顧客」シートで対象の行をクリック\n' +
-    '2. メニュー「📤 選択した顧客に1通だけ送信」\n' +
-    '3. 本文を入力して送信\n\n' +
-    '【配信対象の一括ON/OFF】\n' +
-    'メニュー「☑ 配信対象 一括操作」で\n' +
-    '・全員を ON / 全員を OFF\n' +
-    '・選択した行だけ ON / OFF（範囲選択してから実行）\n' +
-    '配信対象=☐ の人は一斉送信から除外されます。\n\n' +
+    '【基本の流れ（メニュー①→④の順）】\n' +
+    '① 下書きを準備：「キャンペーン下書き」で本文を編集\n' +
+    '   画像/動画/ボイスを付ける場合:\n' +
+    '   ・B11「📁 素材フォルダ」にファイルを入れる\n' +
+    '   ・メニュー「📂 素材一覧を更新」\n' +
+    '   ・B8/B9/B10 のドロップダウンで選ぶ\n' +
+    '   ※ 動画は50MB以内。動画があれば画像より優先\n' +
+    '② 配信対象を選ぶ：「顧客」シートの「配信対象」列で☑\n' +
+    '   （メニュー「☑ 配信対象 一括操作」で全員ON/OFFも可）\n' +
+    '③ プレビュー：送信先の人数と内容を確認\n' +
+    '④ 一斉送信を実行：最終確認 → 配信\n\n' +
+    '★ ②③④はどのタブにいても実行OK。④が下書きの本文＋画像を\n' +
+    '　 配信対象=☑ の全員に送ります。\n\n' +
+    '【テスト送信（本番前におすすめ）】\n' +
+    '「🧪 テスト送信」で自分のチャットIDだけに実物を確認できます。\n\n' +
+    '【結果の見方】\n' +
+    '📒「キャンペーン台帳」= いつ・何を送ったか（本文全文＋件数）\n' +
+    '📋「キャンペーン配信履歴」= 失敗・ブロックした人だけ（空＝全員成功）\n\n' +
+    '【1人だけに送りたい時】\n' +
+    'メニュー「⚙️ その他・メンテ → 📤 1人だけに手入力で送る」\n' +
+    '※ これは下書きを使わずテキストのみ。画像は送れません。\n\n' +
     '【重要】テレグラム限定特価（5ドル等）は本文に手書きするだけ。\n' +
     '料金設定/メニューシートには絶対に入れないでください（公開客に漏れます）。',
     SpreadsheetApp.getUi().ButtonSet.OK
