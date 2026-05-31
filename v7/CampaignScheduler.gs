@@ -41,9 +41,10 @@ const SCHED_COL = {
   IMAGE:    10,  // 画像 ファイル名 or リンク
   VOICE:    11,  // ボイス ファイル名 or リンク
   VIDEO:    12,  // 動画 ファイル名 or リンク
-  STATUS:   13,  // 状態（待機/送信済/エラー/スキップ）
-  LAST_SENT:14,  // 最終送信日時
-  NOTE:     15   // メモ（エラー詳細など）
+  NOTE_JP:  13,  // 内容(日本語) — 振り返り用メモ。台帳に転記
+  STATUS:   14,  // 状態（待機/送信済/エラー/スキップ）
+  LAST_SENT:15,  // 最終送信日時
+  NOTE:     16   // メモ（エラー詳細など）
 };
 
 const SCHED_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -78,15 +79,26 @@ function setupCampaignSchedule() {
  */
 function ensureCampaignScheduleSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
-  if (sh) { applyCampaignScheduleValidations_(sh); return sh; }
-
-  sh = ss.insertSheet(CAMPAIGN_SCHEDULE_SHEET);
   const headers = [
     '予約ID', '有効', '種別', '送信日(単発)', '曜日(毎週)', '時刻',
     '言語', '本文(クメール語)', '本文(英語)', '画像', 'ボイス', '動画',
-    '状態', '最終送信日時', 'メモ'
+    '内容(日本語)', '状態', '最終送信日時', 'メモ'
   ];
+  let sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
+  if (sh) {
+    // 旧ヘッダー（内容(日本語)なし＝M列(13)が「状態」）なら M列を挿入して移行
+    if (String(sh.getRange(1, SCHED_COL.NOTE_JP).getValue()) === '状態') {
+      sh.insertColumnBefore(SCHED_COL.NOTE_JP);
+      sh.getRange(1, SCHED_COL.NOTE_JP).setValue('内容(日本語)');
+      sh.getRange(1, 1, 1, headers.length)
+        .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
+      sh.setColumnWidth(SCHED_COL.NOTE_JP, 220);
+    }
+    applyCampaignScheduleValidations_(sh);
+    return sh;
+  }
+
+  sh = ss.insertSheet(CAMPAIGN_SCHEDULE_SHEET);
   sh.getRange(1, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
   sh.setFrozenRows(1);
@@ -95,7 +107,7 @@ function ensureCampaignScheduleSheet_() {
   sh.getRange('A2').setValue('（1行=1予約。種別を選び、単発なら送信日、毎週なら曜日を入れ、時刻はHH:mm。有効=☑で稼働）')
     .setFontColor('#999').setFontStyle('italic');
 
-  const widths = [150, 50, 70, 110, 90, 70, 150, 320, 320, 180, 180, 180, 90, 150, 220];
+  const widths = [150, 50, 70, 110, 90, 70, 150, 320, 320, 180, 180, 180, 220, 90, 150, 220];
   widths.forEach(function(w, i) { sh.setColumnWidth(i + 1, w); });
 
   applyCampaignScheduleValidations_(sh);
@@ -223,6 +235,7 @@ function scheduledRowToDraft_(row) {
     ? resolveAssetValue_ : function(x) { return String(x || '').trim(); };
   return {
     audience: String(row[SCHED_COL.LANG - 1] || CAMPAIGN_LANG_BOTH).trim(),
+    noteJp:   String(row[SCHED_COL.NOTE_JP - 1] || '').trim(),
     textKm:   String(row[SCHED_COL.TEXT_KM - 1] || '').trim(),
     textEn:   String(row[SCHED_COL.TEXT_EN - 1] || '').trim(),
     imageUrl: resolve(row[SCHED_COL.IMAGE - 1]),

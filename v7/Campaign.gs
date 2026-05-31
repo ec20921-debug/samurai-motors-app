@@ -148,6 +148,7 @@ function buildDraftPreviewText_(draft, total) {
   }
 
   return assetWarn +
+    (draft.noteJp ? '📝 内容(日本語): ' + draft.noteJp + '\n\n' : '') +
     '🎯 送信先\n' +
     '  合計: ' + total + '名（配信対象=☑ の全員）\n' +
     '  送信言語: ' + langDesc + '\n' +
@@ -330,6 +331,7 @@ function readCampaignDraft_() {
     : function(x) { return String(x || '').trim(); };
   return {
     audience: String(sh.getRange(CAMPAIGN_CELL.AUDIENCE).getValue() || CAMPAIGN_LANG_BOTH).trim(),
+    noteJp:   String(sh.getRange(CAMPAIGN_CELL.NOTE_JP).getValue() || '').trim(),
     textKm:   String(sh.getRange(CAMPAIGN_CELL.TEXT_KM).getValue() || '').trim(),
     textEn:   String(sh.getRange(CAMPAIGN_CELL.TEXT_EN).getValue() || '').trim(),
     imageUrl: resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),
