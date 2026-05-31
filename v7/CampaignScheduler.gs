@@ -2,7 +2,7 @@
  * CampaignScheduler.gs — キャンペーンの予約投稿（スケジュール配信）
  *
  * 【責務】
- *   「キャンペーン予約」シートに登録した配信を、指定の曜日・時刻に自動送信する。
+ *   「キャンペーン配信予約」シートに登録した配信を、指定の曜日・時刻に自動送信する。
  *   - 単発: 指定日(YYYY-MM-DD)＋時刻に1回だけ送って「送信済」にする
  *   - 毎週: 指定曜日＋時刻に毎週送る（送信後また待機に戻る）
  *
@@ -25,7 +25,10 @@
  *   setupCampaignSchedule() を1回実行 → シート生成 + 15分トリガー登録。
  */
 
-const CAMPAIGN_SCHEDULE_SHEET = 'キャンペーン予約';
+const CAMPAIGN_SCHEDULE_SHEET = 'キャンペーン配信予約';   // 配信の予約投稿（日本側が使う）
+const CAMPAIGN_SCHEDULE_SHEET_OLD = 'キャンペーン予約';  // 旧名（自動リネーム用）
+// ※「特価キャンペーン」(CampaignBooking.gs) は別物＝ロンが$5受注を手入力する受注台帳。
+//   混同を避けるため、配信側は「配信予約」と明示する。
 
 // 予約シートの列（1-based）。レイアウト変更時はここを直す。
 const SCHED_COL = {
@@ -56,7 +59,7 @@ const SCHED_WINDOW_MIN = 15; // この分数の窓に入ったら送る（トリ
 
 /**
  * 予約投稿機能のセットアップ（1回だけ実行）
- *   - 「キャンペーン予約」シート生成
+ *   - 「キャンペーン配信予約」シート生成
  *   - 15分間隔トリガー登録（既存の同名トリガーは張り替え）
  */
 function setupCampaignSchedule() {
@@ -75,7 +78,7 @@ function setupCampaignSchedule() {
 }
 
 /**
- * 「キャンペーン予約」シートを用意（冪等・ヘッダーとドロップダウン整備）
+ * 「キャンペーン配信予約」シートを用意（冪等・ヘッダーとドロップダウン整備）
  */
 function ensureCampaignScheduleSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -84,6 +87,14 @@ function ensureCampaignScheduleSheet_() {
     '言語', '本文(クメール語)', '本文(英語)', '画像', 'ボイス', '動画',
     '内容(日本語)', '状態', '最終送信日時', 'メモ'
   ];
+
+  // 旧名「キャンペーン予約」が残っていれば新名「キャンペーン配信予約」へリネーム（自動移行）。
+  // 新名が未作成のときだけ。両方ある異常時は触らない。
+  const oldSh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET_OLD);
+  if (oldSh && !ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET)) {
+    oldSh.setName(CAMPAIGN_SCHEDULE_SHEET);
+  }
+
   let sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
   if (sh) {
     // 旧ヘッダー（内容(日本語)なし＝M列(13)が「状態」）なら M列を挿入して移行
@@ -332,11 +343,11 @@ function normalizeDate_(v, tz) {
   return m[1] + '-' + mo + '-' + d;
 }
 
-/** 「キャンペーン予約」シートを開く（メニューから） */
+/** 「キャンペーン配信予約」シートを開く（メニューから） */
 function openCampaignScheduleSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
-  if (!sh) { ss.toast('予約シートがありません。setupCampaignSchedule を実行してください。'); return; }
+  if (!sh) { ss.toast('配信予約シートがありません。setupCampaignSchedule を実行してください。'); return; }
   ss.setActiveSheet(sh);
 }
 
@@ -345,7 +356,7 @@ function openCampaignScheduleSheet() {
 // =====================================================
 
 /**
- * 「キャンペーン予約」シートで選択中の行の内容をプレビュー表示する。
+ * 「キャンペーン配信予約」シートで選択中の行の内容をプレビュー表示する。
  * 予約ごとに別々の本文・画像を確認できる（下書きタブとは独立）。
  */
 function previewScheduledRow() {
@@ -430,7 +441,7 @@ function testSendScheduledRow() {
 }
 
 /**
- * 「キャンペーン予約」シート上で選択中の予約行を取得する。
+ * 「キャンペーン配信予約」シート上で選択中の予約行を取得する。
  * 取得できなければ alert を出して null を返す。
  * @return {{sheetRow:number, row:Array}|null}
  */
