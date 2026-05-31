@@ -586,46 +586,60 @@ body {
         <select id="campaignSelect"><option value="">— ⏳ —</option></select>
         <p class="hint" id="campaignHint">⏳ កំពុងផ្ទុក...（読み込み中...）</p>
       </div>
-      <div class="field">
-        <label>ប្រភេទសេវាកម្ម <span class="jp">（サービスタイプ）</span><span class="req">*</span></label>
-        <div class="vehicle-grid">
-          <div class="vehicle-option">
-            <input type="radio" name="campaignServiceType" id="cstStore" value="店舗" checked>
-            <label class="vehicle-card" for="cstStore">
-              <span class="vehicle-name-km">🏪 នៅហាង</span>
-              <span class="vehicle-name-jp">店舗（その場完結）</span>
-            </label>
-          </div>
-          <div class="vehicle-option">
-            <input type="radio" name="campaignServiceType" id="cstDelivery" value="出張">
-            <label class="vehicle-card" for="cstDelivery">
-              <span class="vehicle-name-km">🚗 ដឹកជញ្ជូន</span>
-              <span class="vehicle-name-jp">出張（後日訪問）</span>
-            </label>
-          </div>
+    </div>
+
+    <!-- サービスタイプ（予約Bot booking.html と同じ表記） -->
+    <div class="section">
+      <div class="section-title">🚗 ប្រភេទសេវាកម្ម（サービスタイプ）</div>
+      <div class="vehicle-grid">
+        <div class="vehicle-option">
+          <input type="radio" name="campaignServiceType" id="cstStore" value="店舗" checked>
+          <label class="vehicle-card" for="cstStore">
+            <span class="vehicle-name-km">🏪 In-store / នៅហាង</span>
+            <span class="vehicle-name-jp">店舗（その場完結）</span>
+          </label>
+        </div>
+        <div class="vehicle-option">
+          <input type="radio" name="campaignServiceType" id="cstDelivery" value="出張">
+          <label class="vehicle-card" for="cstDelivery">
+            <span class="vehicle-name-km">🚗 Delivery / ដឹកជញ្ជូន</span>
+            <span class="vehicle-name-jp">出張（後日訪問）</span>
+          </label>
         </div>
       </div>
     </div>
+
+    <!-- 車種（予約Bot booking.html と同じ表記、固定価格なので分析用） -->
+    <div class="section">
+      <div class="section-title">🚙 ប្រភេទរថយន្ត（車種）</div>
+      <div class="vehicle-grid">
+        <div class="vehicle-option">
+          <input type="radio" name="campaignVehicleType" id="cvtSedan" value="セダン以下" checked>
+          <label class="vehicle-card" for="cvtSedan">
+            <span class="vehicle-name-km">🚙 Sedan & smaller</span>
+            <span class="vehicle-name-jp">セダン以下（小型）</span>
+          </label>
+        </div>
+        <div class="vehicle-option">
+          <input type="radio" name="campaignVehicleType" id="cvtSuv" value="SUV以上">
+          <label class="vehicle-card" for="cvtSuv">
+            <span class="vehicle-name-km">🚘 SUV & larger</span>
+            <span class="vehicle-name-jp">SUV以上（大型）</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 顧客名 -->
     <div class="section">
       <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客情報）</div>
       <div class="field">
         <label>ឈ្មោះអតិថិជន <span class="jp">（顧客名）</span><span class="req">*</span></label>
         <input type="text" id="campaignName" placeholder="ឧ. Sok Chanthy">
       </div>
-      <div class="field">
-        <label>Chat ID <span class="jp">（顧客チャットID・任意）</span></label>
-        <input type="text" id="campaignChatId" placeholder="任意（既存顧客のみ）">
-        <p class="hint">既に予約Botに連絡をくれた顧客のIDを入れると、管理者通知が顧客トピックに表示されます</p>
-      </div>
-      <div class="field">
-        <label>ប្រភេទរថយន្ត <span class="jp">（車種・任意）</span></label>
-        <select id="campaignVehicleType">
-          <option value="">— មិនបញ្ជាក់（未指定）—</option>
-          <option value="セダン以下">🚙 សេដាន ឬ តូចជាង / セダン以下</option>
-          <option value="SUV以上">🚘 SUV ឬ ធំជាង / SUV以上</option>
-        </select>
-      </div>
     </div>
+
+    <!-- 出張のみ表示 -->
     <div class="section" id="campaignDeliveryFields" style="display:none;">
       <div class="section-title">📅 កាលវិភាគ（出張スケジュール）</div>
       <div class="field">
@@ -643,13 +657,6 @@ body {
       <div class="field">
         <label>ទីតាំង <span class="jp">（場所 / Google Maps URL）</span><span class="req">*</span></label>
         <input type="text" id="campaignLocation" placeholder="https://maps.google.com/... または住所">
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-title">👷 បុគ្គលិក（スタッフ）</div>
-      <div class="field">
-        <label>ឈ្មោះបុគ្គលិក <span class="jp">（スタッフ名・任意）</span></label>
-        <input type="text" id="campaignStaff" placeholder="Ron">
       </div>
     </div>
   </div>
@@ -1970,15 +1977,14 @@ function submitManualCampaign() {
   var serviceType = (document.querySelector('input[name="campaignServiceType"]:checked') || {}).value || '店舗';
   var name = (document.getElementById('campaignName').value || '').trim();
   if (!name) { showToast('顧客名を入力してください'); return; }
+  var vehicleType = (document.querySelector('input[name="campaignVehicleType"]:checked') || {}).value || '';
 
   var body = {
     action: 'manual_campaign_create',
     campaignId: campaignId,
     serviceType: serviceType,
     name: name,
-    chatId: (document.getElementById('campaignChatId').value || '').trim(),
-    vehicleType: document.getElementById('campaignVehicleType').value || '',
-    staff: (document.getElementById('campaignStaff').value || '').trim()
+    vehicleType: vehicleType
   };
 
   if (serviceType === '出張') {
@@ -2009,9 +2015,10 @@ function submitManualCampaign() {
       if (res.status === 'ok') {
         showToast('✅ 作成: ' + res.bookingId + ' / $' + res.priceUsd);
         // 入力をリセット
-        ['campaignName','campaignChatId','campaignDate','campaignStartTime','campaignDuration','campaignLocation','campaignStaff']
+        ['campaignName','campaignDate','campaignStartTime','campaignDuration','campaignLocation']
           .forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
-        var vt = document.getElementById('campaignVehicleType'); if (vt) vt.value = '';
+        // 車種はセダン以下に戻す
+        var cvtSedan = document.getElementById('cvtSedan'); if (cvtSedan) cvtSedan.checked = true;
         // ダッシュボードへ
         currentStep = 0;
         renderStep();
