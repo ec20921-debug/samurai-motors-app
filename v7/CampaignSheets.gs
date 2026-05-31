@@ -33,6 +33,7 @@ const CAMPAIGN_AUDIENCE_OPTIONS = [CAMPAIGN_LANG_BOTH, CAMPAIGN_LANG_KM_ONLY, CA
 // === 下書きシートのセル位置（レイアウト変更時はここを直す） ===
 const CAMPAIGN_CELL = {
   AUDIENCE:  'B4',
+  NOTE_JP:   'B5',  // 内容(日本語) — 振り返り用の端的なメモ
   TEXT_KM:   'B6',
   TEXT_EN:   'B7',
   IMAGE_URL: 'B8',
@@ -134,7 +135,14 @@ function repairCampaignLanguageCell() {
   );
   sh.getRange('C4').setValue('← 配信対象=☑ の全員に、この言語で送ります（推奨=クメール語＋英語を1通に）')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
-  SpreadsheetApp.getActiveSpreadsheet().toast('言語セル(B4)を最新仕様に更新しました', '修復完了', 5);
+
+  // 内容（日本語）行を既存シートにも追加（無ければ）
+  if (String(sh.getRange('A5').getValue() || '').trim() !== '内容（日本語）') {
+    sh.getRange('A5').setValue('内容（日本語）').setFontWeight('bold').setBackground('#f0e8d0');
+    sh.getRange('C5').setValue('← 例:「6/1 ローンチ告知 $5/$10」。台帳に残り日本側で振り返れる（任意）')
+      .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast('言語セル(B4)・内容(日本語)行を最新仕様に更新しました', '修復完了', 5);
 }
 
 function setupCampaignMenu_() {
@@ -216,6 +224,12 @@ function ensureCampaignDraftSheet_() {
       .setAllowInvalid(false).build()
   );
   sh.getRange('C4').setValue('← 配信対象=☑ の全員に、この言語で送ります（推奨=クメール語＋英語を1通に）')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+
+  // 内容（日本語）— 振り返り用メモ。台帳に転記される
+  sh.getRange('A5').setValue('内容（日本語）').setFontWeight('bold').setBackground('#f0e8d0');
+  sh.getRange('B5').setValue('');
+  sh.getRange('C5').setValue('← 例:「6/1 ローンチ告知 $5/$10」。台帳に残り日本側で振り返れる（任意）')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
   // 本文（クメール語）
@@ -339,20 +353,30 @@ function ensureCampaignLogSheet_() {
  */
 function ensureCampaignLedgerSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(CAMPAIGN_LEDGER_SHEET);
-  if (sh) return sh;
-
-  sh = ss.insertSheet(CAMPAIGN_LEDGER_SHEET);
   const headers = [
-    'キャンペーンID', '送信日時', '言語',
+    'キャンペーンID', '送信日時', '言語', '内容(日本語)',
     '本文(クメール語)', '本文(英語)', '添付ファイル',
     '送信数', '成功', '失敗', 'ブロック', '反応メモ'
   ];
+  const widths = [180, 160, 120, 260, 340, 340, 240, 70, 70, 70, 80, 280];
+
+  let sh = ss.getSheetByName(CAMPAIGN_LEDGER_SHEET);
+  if (sh) {
+    // 旧ヘッダー（内容(日本語)なし＝D列が「本文(クメール語)」）なら D列を挿入して移行
+    if (String(sh.getRange(1, 4).getValue()) === '本文(クメール語)') {
+      sh.insertColumnBefore(4);
+      sh.getRange(1, 4).setValue('内容(日本語)');
+      sh.getRange(1, 1, 1, headers.length)
+        .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
+      sh.setColumnWidth(4, 260);
+    }
+    return sh;
+  }
+
+  sh = ss.insertSheet(CAMPAIGN_LEDGER_SHEET);
   sh.getRange(1, 1, 1, headers.length).setValues([headers])
     .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
   sh.setFrozenRows(1);
-
-  const widths = [180, 160, 120, 360, 360, 260, 70, 70, 70, 80, 300];
   widths.forEach(function(w, i) { sh.setColumnWidth(i + 1, w); });
   return sh;
 }
@@ -379,6 +403,7 @@ function appendCampaignLedger_(draft, result, langLabel) {
       result.campaignId,
       Utilities.formatDate(result.sentAt, tz, 'yyyy-MM-dd HH:mm:ss'),
       langLabel,
+      draft.noteJp || '',   // 内容(日本語) — 振り返り用の端的な日本語メモ
       draft.textKm || '',
       draft.textEn || '',
       attach,
