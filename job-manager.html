@@ -108,7 +108,7 @@ body {
 /* Plan grid */
 .plan-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .plan-option { position:relative; }
-.plan-option input[type="radio"] { position:absolute; opacity:0; width:0; height:0; }
+.plan-option input[type="radio"], .plan-option input[type="checkbox"] { position:absolute; opacity:0; width:0; height:0; }
 .plan-option label.plan-card {
   display:flex; flex-direction:column; align-items:center;
   padding:12px 8px; background:var(--card);
@@ -758,17 +758,17 @@ body {
           </label>
         </div>
       </div>
-      <!-- Menu v2 (2026-05-06): SAMURAI WASH 必須 + GLASS 任意 add-on -->
+      <!-- Menu v2.1 (2026-05-08): WASH 任意化。タップで選択解除でき GLASS 単体予約も可 -->
       <div class="plan-grid">
         <div class="plan-option">
-          <input type="radio" name="plan" id="planW" value="SAMURAI WASH (W)" checked>
+          <input type="checkbox" name="plan" id="planW" value="SAMURAI WASH (W)" checked>
           <label class="plan-card" for="planW">
             <span class="plan-name-jp">SAMURAI WASH</span>
             <span class="plan-price">$12 / $15</span>
           </label>
         </div>
       </div>
-      <p class="hint" style="margin-top:8px; margin-bottom:6px;">+ SAMURAI GLASS（オプション・任意）</p>
+      <p class="hint" style="margin-top:8px; margin-bottom:6px;">👆 ចុចដើម្បីបិទ/បើក（タップで選択解除可）｜+ SAMURAI GLASS（オプション・任意）</p>
       <div class="plan-grid">
         <div class="plan-option">
           <input type="radio" name="glassOption" id="glassNone" value="" checked>
@@ -1198,6 +1198,11 @@ function goNext() {
     var building = document.getElementById('building').value;
     if (!name) { showToast('ឈ្មោះអតិថិជន（顧客名）を入力してください'); return; }
     if (!building) { showToast('អគារ（建物）を選択してください'); return; }
+    // WASH 任意化に伴い、WASH か GLASS のどちらか1つは必須
+    var hasWash = document.getElementById('planW') && document.getElementById('planW').checked;
+    var glassSel = document.querySelector('input[name="glassOption"]:checked');
+    var hasGlass = glassSel && glassSel.value !== '';
+    if (!hasWash && !hasGlass) { showToast('សេវាកម្ម（WASH か GLASS）を1つ以上選んでください'); return; }
     timestamps.registered = new Date();
   }
   if (currentStep === 2) {
@@ -1536,6 +1541,9 @@ function resetAll() {
   document.getElementById('schedTime').value = '';
   var radios = document.querySelectorAll('input[name="plan"]');
   radios.forEach(function(r){ r.checked = false; });
+  // WASH は既定で ON に戻す（よく使うため）。GLASS 単体予約時はユーザーがタップで解除。
+  var planWReset = document.getElementById('planW');
+  if (planWReset) planWReset.checked = true;
   // Reset photo slots
   var labels = ['មុខ（前面）','ក្រោយ（背面）','ឆ្វេង（左側）','ស្ដាំ（右側）'];
   ['beforePhotos','afterPhotos'].forEach(function(id) {
