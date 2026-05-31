@@ -276,7 +276,9 @@ function sendScheduledRow_(sh, sheetRow, row, type, todayStr) {
 
   let recipients = [];
   try {
-    recipients = buildRecipientList_(); // 配信対象=☑ の全員（送信時点の状態）
+    // スケジュール配信は「当日登録の新規客」を除外（登録直後にキャンペーンが飛ぶバグ対策）。
+    // 翌日からは通常どおり配信対象に入る。手動一斉送信は意図的なので除外しない。
+    recipients = buildRecipientList_({ excludeRegisteredOnDate: todayStr });
   } catch (e) {
     sh.getRange(sheetRow, SCHED_COL.STATUS).setValue('エラー');
     sh.getRange(sheetRow, SCHED_COL.NOTE).setValue('対象取得失敗: ' + e);
