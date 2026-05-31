@@ -564,10 +564,94 @@ body {
     <div id="dashboardBody">
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
     </div>
+    <button class="dash-manual-btn" onclick="startCampaignFlow()"
+            style="background:linear-gradient(135deg,#8b0000 0%,#c9a84c 100%); border-color:#c9a84c; margin-bottom:10px;">
+      <span style="font-size:22px;">🎫</span>
+      <span>ការកក់ពិសេស（特価予約）</span>
+    </button>
     <button class="dash-manual-btn" onclick="startManualEntry()">
       <span style="font-size:22px;">✍️</span>
       <span>បញ្ចូលដោយដៃ（手動で新規登録）</span>
     </button>
+  </div>
+
+  <!-- ==================== CAMPAIGN: 手動特価キャンペーン予約 ==================== -->
+  <div class="step" id="stepCampaign">
+    <button class="back-to-list-btn" onclick="backToList()">‹ ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
+    <div class="section">
+      <div class="section-title">🎫 ការកក់ពិសេស（特価予約・テレグラム限定）</div>
+      <p class="hint" style="margin-bottom:12px;">📢 ការផ្តល់ពិសេសសម្រាប់អតិថិជន Telegram（テレグラム限定特価。公開価格には影響しません）</p>
+      <div class="field">
+        <label>ការផ្តល់ពិសេស <span class="jp">（キャンペーン）</span><span class="req">*</span></label>
+        <select id="campaignSelect"><option value="">— ⏳ —</option></select>
+        <p class="hint" id="campaignHint">⏳ កំពុងផ្ទុក...（読み込み中...）</p>
+      </div>
+      <div class="field">
+        <label>ប្រភេទសេវាកម្ម <span class="jp">（サービスタイプ）</span><span class="req">*</span></label>
+        <div class="vehicle-grid">
+          <div class="vehicle-option">
+            <input type="radio" name="campaignServiceType" id="cstStore" value="店舗" checked>
+            <label class="vehicle-card" for="cstStore">
+              <span class="vehicle-name-km">🏪 នៅហាង</span>
+              <span class="vehicle-name-jp">店舗（その場完結）</span>
+            </label>
+          </div>
+          <div class="vehicle-option">
+            <input type="radio" name="campaignServiceType" id="cstDelivery" value="出張">
+            <label class="vehicle-card" for="cstDelivery">
+              <span class="vehicle-name-km">🚗 ដឹកជញ្ជូន</span>
+              <span class="vehicle-name-jp">出張（後日訪問）</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客情報）</div>
+      <div class="field">
+        <label>ឈ្មោះអតិថិជន <span class="jp">（顧客名）</span><span class="req">*</span></label>
+        <input type="text" id="campaignName" placeholder="ឧ. Sok Chanthy">
+      </div>
+      <div class="field">
+        <label>Chat ID <span class="jp">（顧客チャットID・任意）</span></label>
+        <input type="text" id="campaignChatId" placeholder="任意（既存顧客のみ）">
+        <p class="hint">既に予約Botに連絡をくれた顧客のIDを入れると、管理者通知が顧客トピックに表示されます</p>
+      </div>
+      <div class="field">
+        <label>ប្រភេទរថយន្ត <span class="jp">（車種・任意）</span></label>
+        <select id="campaignVehicleType">
+          <option value="">— មិនបញ្ជាក់（未指定）—</option>
+          <option value="セダン以下">🚙 សេដាន ឬ តូចជាង / セダン以下</option>
+          <option value="SUV以上">🚘 SUV ឬ ធំជាង / SUV以上</option>
+        </select>
+      </div>
+    </div>
+    <div class="section" id="campaignDeliveryFields" style="display:none;">
+      <div class="section-title">📅 កាលវិភាគ（出張スケジュール）</div>
+      <div class="field">
+        <label>ថ្ងៃកំណត់ <span class="jp">（予約日）</span><span class="req">*</span></label>
+        <input type="date" id="campaignDate">
+      </div>
+      <div class="field">
+        <label>ម៉ោងចាប់ផ្តើម <span class="jp">（開始時刻）</span><span class="req">*</span></label>
+        <input type="time" id="campaignStartTime">
+      </div>
+      <div class="field">
+        <label>រយៈពេល <span class="jp">（所要分・空欄なら60）</span></label>
+        <input type="number" id="campaignDuration" placeholder="60" min="15" step="15">
+      </div>
+      <div class="field">
+        <label>ទីតាំង <span class="jp">（場所 / Google Maps URL）</span><span class="req">*</span></label>
+        <input type="text" id="campaignLocation" placeholder="https://maps.google.com/... または住所">
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">👷 បុគ្គលិក（スタッフ）</div>
+      <div class="field">
+        <label>ឈ្មោះបុគ្គលិក <span class="jp">（スタッフ名・任意）</span></label>
+        <input type="text" id="campaignStaff" placeholder="Ron">
+      </div>
+    </div>
   </div>
 
   <!-- ==================== THREAD: 顧客スレッド ==================== -->
@@ -1015,25 +1099,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===== NAVIGATION =====
 function renderStep() {
-  // Hide all steps（Step 0, Thread, Step 1-5）
+  // Hide all steps（Step 0, Thread, Campaign, Step 1-5）
   for (var i = 0; i <= totalSteps; i++) {
     var el = document.getElementById('step'+i);
     if (el) el.classList.remove('active');
   }
   var threadEl = document.getElementById('stepThread');
   if (threadEl) threadEl.classList.remove('active');
+  var campEl = document.getElementById('stepCampaign');
+  if (campEl) campEl.classList.remove('active');
 
   if (currentStep === 'thread') {
     threadEl.classList.add('active');
+  } else if (currentStep === 'campaign') {
+    if (campEl) campEl.classList.add('active');
   } else {
     var active = document.getElementById('step'+currentStep);
     if (active) active.classList.add('active');
   }
 
-  // Step 0/threadではプログレスバーとステップラベルを非表示
+  // Step 0/thread/campaignではプログレスバーとステップラベルを非表示
   var progressBar = document.getElementById('progressBar');
   var stepLabel = document.getElementById('stepLabel');
-  if (currentStep === 0 || currentStep === 'thread') {
+  if (currentStep === 0 || currentStep === 'thread' || currentStep === 'campaign') {
     progressBar.style.display = 'none';
     stepLabel.style.display = 'none';
   } else {
@@ -1071,6 +1159,11 @@ function renderButtons() {
     case 0:
     case 'thread':
       area.innerHTML = ''; // ダッシュボード・スレッドでは下部ボタンなし
+      break;
+    case 'campaign':
+      area.innerHTML =
+        '<button class="btn btn-secondary" onclick="backToList()">← ថយក្រោយ（戻る）</button>' +
+        '<button class="btn btn-primary" id="campaignSubmitBtn" onclick="submitManualCampaign()">✅ បង្កើត（特価予約を作成）</button>';
       break;
     case 1:
       area.innerHTML = '<button class="btn btn-primary" onclick="goNext()">បន្ទាប់（次へ）→</button>';
@@ -1572,10 +1665,30 @@ function renderDashboardCard(b) {
 
   var doneCls = (b.status === '作業完了') ? ' opacity:0.5;' : '';
 
-  return '<div class="chat-item" data-id="' + b.bookingId + '" style="' + doneCls + '">' +
+  // 2026-05-31: 手動特価キャンペーンの清算ボタン（手動特価 ＆ 作業完了 ＆ 未清算 の時のみ）
+  var settleBtn = '';
+  if (b.manualCampaign && b.status === '作業完了' && b.paymentStatus && b.paymentStatus !== '清算済み') {
+    settleBtn = '<button onclick="settleCampaignBooking(\'' + b.bookingId + '\', event)" ' +
+      'style="display:block;margin-top:6px;width:100%;padding:8px 12px;' +
+      'background:linear-gradient(135deg,#8b0000 0%,#c9a84c 100%);color:#fff;' +
+      'border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;' +
+      'letter-spacing:0.3px;opacity:1;">' +
+      '💵 ការទូទាត់រួច / 清算する</button>';
+  }
+
+  // 手動特価バッジ
+  var campBadge = '';
+  if (b.manualCampaign) {
+    campBadge = '<span style="display:inline-block;background:rgba(139,0,0,0.25);' +
+      'color:#ffb88a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;' +
+      'letter-spacing:0.3px;margin-left:6px;border:1px solid rgba(201,168,76,0.5);">' +
+      '🎫 ' + (b.campaignName || 'SPECIAL') + '</span>';
+  }
+
+  return '<div class="chat-item" data-id="' + b.bookingId + '" style="' + doneCls + 'flex-wrap:wrap;">' +
     '<div class="chat-avatar" style="background:' + color + '">' + initial + '</div>' +
     '<div class="chat-body">' +
-      '<div class="chat-name">' + name + svcBadge + '</div>' +
+      '<div class="chat-name">' + name + svcBadge + campBadge + '</div>' +
       '<div class="chat-preview">' + preview + '</div>' +
       '<div class="chat-preview" style="font-size:11px;margin-top:2px">' + sub + '</div>' +
     '</div>' +
@@ -1583,6 +1696,7 @@ function renderDashboardCard(b) {
       '<div class="chat-time">' + st + '</div>' +
       (amountStr ? '<div class="chat-badge">' + amountStr + '</div>' : '') +
     '</div>' +
+    (settleBtn ? '<div style="flex-basis:100%;margin-top:6px;">' + settleBtn + '</div>' : '') +
   '</div>';
 }
 
@@ -1791,6 +1905,144 @@ function startManualEntry() {
   cameFromThread = false;
   currentStep = 1;
   renderStep();
+}
+
+// ===== 手動特価キャンペーン =====
+var campaignCache = null;
+
+function startCampaignFlow() {
+  cameFromThread = false;
+  currentStep = 'campaign';
+  renderStep();
+  loadCampaignList();
+  // 出張フィールドの初期表示（店舗チェック済みなので非表示）
+  var dlv = document.getElementById('campaignDeliveryFields');
+  if (dlv) dlv.style.display = 'none';
+}
+
+function loadCampaignList() {
+  var sel = document.getElementById('campaignSelect');
+  var hint = document.getElementById('campaignHint');
+  if (!sel || !hint) return;
+  sel.innerHTML = '<option value="">— ⏳ —</option>';
+  hint.textContent = '⏳ កំពុងផ្ទុក...（読み込み中...）';
+
+  if (!APPS_SCRIPT_URL) {
+    hint.textContent = '⚠️ APPS_SCRIPT_URL が未設定';
+    return;
+  }
+  fetch(APPS_SCRIPT_URL + '?action=manual_campaign_list')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!data || data.status !== 'ok') {
+        hint.textContent = '❌ 取得失敗: ' + (data && data.message || '');
+        return;
+      }
+      campaignCache = data.campaigns || [];
+      if (!campaignCache.length) {
+        sel.innerHTML = '<option value="">— មិនមាន（無し）—</option>';
+        hint.textContent = '⚠️ 有効なキャンペーンがありません（マスターを確認）';
+        return;
+      }
+      sel.innerHTML = '<option value="">— ជ្រើសរើស / 選択 —</option>';
+      campaignCache.forEach(function(c){
+        var opt = document.createElement('option');
+        opt.value = c.campaignId;
+        opt.textContent = c.nameKm + '（' + c.nameJp + '）$' + c.priceUsd;
+        sel.appendChild(opt);
+      });
+      hint.textContent = '✨ ' + campaignCache.length + ' 件のキャンペーンが選択可能';
+    })
+    .catch(function(err){ hint.textContent = '❌ 通信エラー: ' + err.message; });
+}
+
+// 出張/店舗切替に応じて日時/場所フィールドを表示・非表示
+document.addEventListener('change', function(ev){
+  if (ev.target && ev.target.name === 'campaignServiceType') {
+    var dlv = document.getElementById('campaignDeliveryFields');
+    if (dlv) dlv.style.display = (ev.target.value === '出張') ? 'block' : 'none';
+  }
+});
+
+function submitManualCampaign() {
+  var campaignId = (document.getElementById('campaignSelect') || {}).value;
+  if (!campaignId) { showToast('キャンペーンを選択してください'); return; }
+  var serviceType = (document.querySelector('input[name="campaignServiceType"]:checked') || {}).value || '店舗';
+  var name = (document.getElementById('campaignName').value || '').trim();
+  if (!name) { showToast('顧客名を入力してください'); return; }
+
+  var body = {
+    action: 'manual_campaign_create',
+    campaignId: campaignId,
+    serviceType: serviceType,
+    name: name,
+    chatId: (document.getElementById('campaignChatId').value || '').trim(),
+    vehicleType: document.getElementById('campaignVehicleType').value || '',
+    staff: (document.getElementById('campaignStaff').value || '').trim()
+  };
+
+  if (serviceType === '出張') {
+    var date = document.getElementById('campaignDate').value;
+    var startTime = document.getElementById('campaignStartTime').value;
+    var location = (document.getElementById('campaignLocation').value || '').trim();
+    if (!date || !startTime || !location) {
+      showToast('出張は日付・時刻・場所が必須');
+      return;
+    }
+    body.date = date;
+    body.startTime = startTime;
+    body.duration = Number(document.getElementById('campaignDuration').value || 60);
+    body.location = location;
+  }
+
+  var btn = document.getElementById('campaignSubmitBtn');
+  if (btn) btn.disabled = true;
+  showToast('⏳ 送信中...');
+
+  fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(body)
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.status === 'ok') {
+        showToast('✅ 作成: ' + res.bookingId + ' / $' + res.priceUsd);
+        // 入力をリセット
+        ['campaignName','campaignChatId','campaignDate','campaignStartTime','campaignDuration','campaignLocation','campaignStaff']
+          .forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+        var vt = document.getElementById('campaignVehicleType'); if (vt) vt.value = '';
+        // ダッシュボードへ
+        currentStep = 0;
+        renderStep();
+        loadDashboardBookings();
+      } else {
+        showToast('❌ ' + (res.message || 'エラー'));
+      }
+    })
+    .catch(function(err){ showToast('❌ 通信エラー: ' + err.message); })
+    .finally(function(){ if (btn) btn.disabled = false; });
+}
+
+// 清算ボタン（ダッシュボードカードから呼ばれる）
+function settleCampaignBooking(bookingId, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (!confirm('この特価予約を「清算済み」にしますか？\n' + bookingId)) return;
+  fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'manual_campaign_settle', bookingId: bookingId })
+  })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.status === 'ok') {
+        showToast(res.alreadySettled ? 'ℹ️ 既に清算済み' : '✅ 清算済み');
+        loadDashboardBookings();
+      } else {
+        showToast('❌ ' + (res.message || 'エラー'));
+      }
+    })
+    .catch(function(err){ showToast('❌ 通信エラー: ' + err.message); });
 }
 
 // 一覧に戻る

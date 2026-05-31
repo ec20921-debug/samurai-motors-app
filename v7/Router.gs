@@ -16,6 +16,7 @@
  *     - booking_init                : 予約画面初期データ（顧客情報+プラン+出張料）
  *     - booking_slots               : 指定日・プラン・車種の空き枠
  *     - booking_today               : 本日＋明日の予約一覧（業務ミニアプリ用）
+ *     - manual_campaign_list        : 有効＆期間内の手動特価キャンペーン一覧
  *   POST:
  *     - booking_register_customer   : 新規顧客登録
  *     - booking_create              : 予約確定
@@ -24,6 +25,8 @@
  *     - job                         : 最終データ送信（写真付き）
  *     - chat_history                : 顧客チャット履歴取得
  *     - chat_send                   : ミニアプリからメッセージ送信
+ *     - manual_campaign_create      : 手動特価予約の作成（店舗/出張）
+ *     - manual_campaign_settle      : 手動特価予約の清算（決済状態→清算済み）
  */
 
 /**
@@ -50,6 +53,11 @@ function doGet(e) {
       // ── Phase 4: 業務ミニアプリ ──
       case 'booking_today':
         result = apiBookingToday();
+        break;
+
+      // ── 手動特価キャンペーン（CampaignBooking.gs） ──
+      case 'manual_campaign_list':
+        result = manualCampaignList();
         break;
 
       default:
@@ -105,6 +113,15 @@ function doPost(e) {
 
       case 'chat_send':
         result = apiChatSend(body);
+        break;
+
+      // ── 手動特価キャンペーン（CampaignBooking.gs） ──
+      case 'manual_campaign_create':
+        result = createManualBooking(body);
+        break;
+
+      case 'manual_campaign_settle':
+        result = settleManualBooking(body.bookingId || '');
         break;
 
       default:

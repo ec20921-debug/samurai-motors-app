@@ -67,6 +67,15 @@ function sendPaymentQR_locked_(bookingId) {
     return { ok: false, reason: 'ALREADY_SENT' };
   }
 
+  // 手動特価キャンペーンの予約は自動 QR を通さない（手動 QR オペ）
+  // 引き継ぎ書 §3「自動QRに通さない」原則を守る防衛ガード。
+  // 判定関数は CampaignBooking.gs にあり、未デプロイ時はガードなしで通常動作。
+  if (typeof isManualCampaignBooking === 'function' &&
+      isManualCampaignBooking(bkRow.data['キャンペーン名'])) {
+    Logger.log('⏭️ sendPaymentQR: 手動特価キャンペーンのためスキップ bookingId=' + bookingId);
+    return { ok: false, reason: 'MANUAL_CAMPAIGN' };
+  }
+
   var customerChatId = String(bkRow.data['チャットID'] || '');
   if (!customerChatId) {
     Logger.log('⚠️ sendPaymentQR: チャットID無し bookingId=' + bookingId);
