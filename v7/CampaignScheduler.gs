@@ -78,6 +78,80 @@ function setupCampaignSchedule() {
 }
 
 /**
+ * 【診断】配信予約が動く状態か確認する（GASエディタで実行 → ログを見る）
+ *   - processCampaignSchedule トリガーが存在するか
+ *   - 今この瞬間、各予約行が「送る/送らない」どちらに判定されるか＋理由
+ * テストが空振りする前の事前確認用。送信は行わない（read-only）。
+ */
+function diagnoseCampaignSchedule() {
+  Logger.log('━━━━━━━━━━ 配信予約 診断 ━━━━━━━━━━');
+
+  // ① トリガー存在チェック
+  const triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'processCampaignSchedule';
+  });
+  if (triggers.length === 0) {
+    Logger.log('❌ トリガー未登録: processCampaignSchedule が存在しません');
+    Logger.log('   → setupCampaignSchedule を実行してください（これが昨日送られなかった原因の可能性大）');
+  } else {
+    Logger.log('✅ トリガー登録あり: processCampaignSchedule × ' + triggers.length + '（15分間隔のはず）');
+  }
+
+  // ② 今この瞬間の判定シミュレーション
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CAMPAIGN_SCHEDULE_SHEET);
+  if (!sh) { Logger.log('❌ 「' + CAMPAIGN_SCHEDULE_SHEET + '」シートなし'); return; }
+  const lastRow = sh.getLastRow();
+  if (lastRow < 3) { Logger.log('ℹ️ 予約行なし'); return; }
+
+  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+  const now = new Date();
+  const nowMin = Number(Utilities.formatDate(now, tz, 'H')) * 60 + Number(Utilities.formatDate(now, tz, 'm'));
+  const todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const todayWeekday = SCHED_WEEKDAYS[Number(Utilities.formatDate(now, tz, 'u')) % 7];
+  Logger.log('🕐 現在: ' + Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm') + '（' + todayWeekday + '曜, ' + nowMin + '分）窓=' + SCHED_WINDOW_MIN + '分');
+
+  const data = sh.getRange(3, 1, lastRow - 2, SCHED_COL.NOTE).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const r = i + 3;
+    const id = String(row[SCHED_COL.ID - 1] || '(ID空)');
+    const enabled = (row[SCHED_COL.ENABLED - 1] === true || String(row[SCHED_COL.ENABLED - 1]).toUpperCase() === 'TRUE');
+    const type = String(row[SCHED_COL.TYPE - 1] || '').trim();
+    const timeStr = normalizeTime_(row[SCHED_COL.TIME - 1], tz);
+    const dateStr = normalizeDate_(row[SCHED_COL.DATE - 1], tz);
+    const wd = String(row[SCHED_COL.WEEKDAY - 1] || '').trim();
+    const status = String(row[SCHED_COL.STATUS - 1] || '').trim();
+    const lastSent = row[SCHED_COL.LAST_SENT - 1];
+    const lastSentDay = lastSent ? Utilities.formatDate(new Date(lastSent), tz, 'yyyy-MM-dd') : '';
+
+    // 空行スキップ
+    if (!type && !timeStr && !row[SCHED_COL.TEXT_KM - 1]) continue;
+
+    let verdict = '';
+    if (!enabled) verdict = '⏸ 送らない（有効=OFF）';
+    else if (!timeStr) verdict = '⚠️ 送らない（時刻が空/不正: "' + row[SCHED_COL.TIME - 1] + '"）';
+    else {
+      const schedMin = Number(timeStr.split(':')[0]) * 60 + Number(timeStr.split(':')[1]);
+      const inWindow = (nowMin >= schedMin && nowMin < schedMin + SCHED_WINDOW_MIN);
+      if (lastSentDay === todayStr) verdict = '✅ 本日送信済み（' + lastSentDay + '）';
+      else if (type === '単発') {
+        if (dateStr !== todayStr) verdict = '⏭ 送らない（単発の日付 ' + dateStr + ' ≠ 今日 ' + todayStr + '）';
+        else if (status === '送信済') verdict = '⏭ 送らない（状態=送信済）';
+        else if (!inWindow) verdict = '⏳ まだ（時刻 ' + timeStr + ' の窓[' + schedMin + '〜' + (schedMin + SCHED_WINDOW_MIN) + '分]外。今 ' + nowMin + '分）';
+        else verdict = '🚀 今この瞬間なら送る対象！';
+      } else if (type === '毎週') {
+        if (wd !== todayWeekday) verdict = '⏭ 送らない（曜日 ' + wd + ' ≠ 今日 ' + todayWeekday + '）';
+        else if (!inWindow) verdict = '⏳ まだ（時刻窓外）';
+        else verdict = '🚀 今この瞬間なら送る対象！';
+      } else verdict = '⚠️ 送らない（種別が空/不正: "' + type + '"）';
+    }
+    Logger.log('行' + r + ' [' + id + '] ' + type + ' ' + (type === '毎週' ? wd + '曜' : dateStr) + ' ' + timeStr + ' → ' + verdict);
+  }
+  Logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━');
+}
+
+/**
  * 「キャンペーン配信予約」シートを用意（冪等・ヘッダーとドロップダウン整備）
  */
 function ensureCampaignScheduleSheet_() {
