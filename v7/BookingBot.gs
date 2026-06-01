@@ -75,6 +75,11 @@ function dispatchBookingMessage(msg) {
 function handleCustomerMessage(msg) {
   const text = (msg.text || '').trim();
 
+  // ── リピーター対策: メッセージのたびに「Booking」ボタンを自己修復 ──
+  // /start を打たない既存客でも、何かの拍子にボタンが消えたら次の発言で復活する。
+  // 毎回 API を叩くと無駄なので、24h に1回だけ設定する（CacheService でガード）。
+  maybeRefreshBookingMenuButton_(msg.chat.id);
+
   // /start コマンド → 挨拶のみ返す（転送しない）
   if (text === '/start') {
     sendWelcomeMessage(msg);
@@ -168,6 +173,12 @@ function sendWelcomeMessage(msg) {
   const name = from.first_name || '';
   const cfg = getConfig();
 
+  // ── ⓪ 最初に「Booking」メニューボタンを確実にセット(最優先) ──
+  // チラシ送信などの重い処理より前に置くことで、ボタンだけは即座に現れる。
+  // 全ユーザー共通デフォルト(setupBookingBotMenuButton)が基本だが、
+  // /start を打った人にはその場で個別にも明示設定して取りこぼしを無くす。
+  ensureBookingMenuButton_(msg.chat.id);
+
   // ── ① まずブランドチラシを送信(視覚で世界観を伝える) ──
   // 2026-05-30: 新メニュー版チラシ(SAMURAI CAR CARE / GLASS + WASH)へ差し替え。
   // ソース = GitHub Pages ホストの flyer-2026-05.jpg(リポジトリ管理)。
@@ -229,21 +240,7 @@ function sendWelcomeMessage(msg) {
     '🗓 Or use /book to start\n' +
     '📸 Or send a photo of your car for questions';
 
-  // ── メニューボタンをこの顧客向けに明示設定（booking mini-app 直起動） ──
-  // デフォルトでも setupBookingBotMenuButton() で全ユーザーに設定されるが、
-  // /start を打つ新規顧客にはその場で再設定して即ボタンが現れるようにする。
-  try {
-    const url = getBookingMiniAppUrl();
-    if (url) {
-      setChatMenuButton(BOT_TYPE.BOOKING, {
-        type: 'web_app',
-        text: '🚗 Booking',
-        web_app: { url: url }
-      }, msg.chat.id);
-    }
-  } catch (e) {
-    Logger.log('⚠️ setChatMenuButton for user error: ' + e);
-  }
+  // メニューボタンは冒頭の ensureBookingMenuButton_ で設定済み（取りこぼし防止）
 
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id, text);
 
@@ -252,6 +249,49 @@ function sendWelcomeMessage(msg) {
     'ℹ️ /start 受信: ' + buildDisplayName(extractCustomerFromMessage(msg)) +
     ' (chat_id=' + msg.chat.id + ')'
   );
+}
+
+/**
+ * この顧客の「Booking」メニューボタン(左下)を確実に設定する。
+ * /start 受信時に最優先で呼び、チラシ等の重い処理より前にボタンを出す。
+ * 失敗しても welcome 本体は続行する（ボタンはデフォルト設定で出る想定）。
+ *
+ * @param {string|number} chatId
+ */
+function ensureBookingMenuButton_(chatId) {
+  try {
+    const url = getBookingMiniAppUrl();
+    if (!url) {
+      Logger.log('⚠️ ensureBookingMenuButton_: BOOKING_MINIAPP_URL 未設定');
+      return;
+    }
+    setChatMenuButton(BOT_TYPE.BOOKING, {
+      type: 'web_app',
+      text: '🚗 Booking',
+      web_app: { url: url }
+    }, chatId);
+  } catch (e) {
+    Logger.log('⚠️ ensureBookingMenuButton_ error: ' + e);
+  }
+}
+
+/**
+ * 24h に1回だけ、この顧客の Booking メニューボタンを再設定する（自己修復）。
+ * 既存客がメッセージを送るたびに呼ばれるが、CacheService で頻度を絞り
+ * Telegram API の無駄打ちを防ぐ。設定済みフラグが生きていればスキップ。
+ *
+ * @param {string|number} chatId
+ */
+function maybeRefreshBookingMenuButton_(chatId) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const key = 'menubtn_' + chatId;
+    if (cache.get(key)) return;           // 24h 以内に設定済み → スキップ
+    ensureBookingMenuButton_(chatId);
+    cache.put(key, '1', 21600);           // 6h（Cache上限）。失効後また設定し直す
+  } catch (e) {
+    Logger.log('⚠️ maybeRefreshBookingMenuButton_ error: ' + e);
+  }
 }
 
 /**

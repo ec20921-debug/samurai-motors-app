@@ -349,8 +349,17 @@ function readCampaignDraft_() {
  * 2026-05-30: 顧客の「言語」列での絞り込みは廃止。送る相手は常に
  * 「配信対象=☑ の全員」。何語で送るかは下書きの「言語」設定(B4)で決まり、
  * 全員に同じ内容（クメール語＋英語 など）が届く。
+ *
+ * 2026-06-01: スケジュール配信用に excludeRegisteredOnDate を追加。
+ * 「登録直後にキャンペーンが飛ぶ」バグ対策。スケジュール配信は当日登録の
+ * 新規客を除外する（翌日からは通常どおり全員に届く）。手動一斉送信では
+ * 引数なし＝従来どおり全員（意図的に送る操作なので除外しない）。
+ *
+ * @param {Object} [opts]
+ * @param {string} [opts.excludeRegisteredOnDate] - 'yyyy-MM-dd'。この日に登録した顧客を除外。
  */
-function buildRecipientList_() {
+function buildRecipientList_(opts) {
+  opts = opts || {};
   const sheet = getSheet(SHEET_NAMES.CUSTOMERS);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -359,9 +368,11 @@ function buildRecipientList_() {
   const idCol     = headers['顧客ID'];
   const chatCol   = headers['チャットID'];
   const nameCol   = headers['氏名'];
-  const targetCol = headers['配信対象'];   // 無い場合もある（後方互換）
+  const targetCol = headers['配信対象'];     // 無い場合もある（後方互換）
+  const regCol    = headers['登録日時'];     // 当日登録除外の判定に使う
   if (!chatCol) throw new Error('「顧客」シートに「チャットID」列が見つかりません');
 
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   const list = [];
   data.forEach(function(row, idx) {
@@ -372,6 +383,20 @@ function buildRecipientList_() {
     if (targetCol) {
       const t = row[targetCol - 1];
       if (t === false || String(t).toUpperCase() === 'FALSE') return;
+    }
+
+    // スケジュール配信のみ: 当日登録の新規客を除外（即時配信バグ対策）
+    if (opts.excludeRegisteredOnDate && regCol) {
+      const regVal = row[regCol - 1];
+      if (regVal) {
+        let regDay = '';
+        try {
+          regDay = (Object.prototype.toString.call(regVal) === '[object Date]')
+            ? Utilities.formatDate(regVal, tz, 'yyyy-MM-dd')
+            : String(regVal).substring(0, 10).replace(/\//g, '-');
+        } catch (e) { regDay = ''; }
+        if (regDay === opts.excludeRegisteredOnDate) return; // 当日登録 → スキップ
+      }
     }
 
     list.push({

@@ -258,7 +258,9 @@ function apiBookingRegisterCustomer(body) {
     '言語':         'クメール語',
     'トピックID':   '',
     '登録日時':     new Date(),
-    '最終連絡日時': new Date()
+    '最終連絡日時': new Date(),
+    '配信対象':     true   // 新規は配信対象ON（翌日以降のキャンペーンに自動で入る）。
+                          // ただし「当日登録」はスケジュール配信から除外され即時配信は飛ばない。
   });
 
   return {

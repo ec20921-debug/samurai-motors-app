@@ -80,7 +80,8 @@ function getOrCreateTopic(customer) {
         '言語': 'クメール語',
         'トピックID': threadId,
         '登録日時': new Date(),
-        '最終連絡日時': new Date()
+        '最終連絡日時': new Date(),
+        '配信対象': true   // 新規は配信対象ON。ただし当日登録はスケジュール配信から除外（即時配信防止）
       });
     }
 
