@@ -139,6 +139,30 @@ function apiBookingToday() {
 }
 
 /**
+ * 作業記録（JOBS）シートに「料金(USD)」列を冪等に確保する。
+ * 2026-06-01: 手動登録フローで $5/無料/通常の料金を記録するため。
+ * 列が無ければ末尾に追加（既存なら何もしない）。
+ */
+function ensureJobsAmountColumn_() {
+  try {
+    var sheet = getSheet(SHEET_NAMES.JOBS);
+    var headers = getHeaderMap(SHEET_NAMES.JOBS);
+    if (!headers['料金(USD)']) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue('料金(USD)');
+    }
+  } catch (e) {
+    Logger.log('⚠️ ensureJobsAmountColumn_ 失敗（記録は継続）: ' + e);
+  }
+}
+
+/**
+ * 料金が「記録すべき値」か（空文字/undefined/null 以外。0=無料も記録対象）
+ */
+function hasAmountValue_(v) {
+  return v !== '' && v !== undefined && v !== null;
+}
+
+/**
  * 開始時刻 + 所要時間 → 終了時刻 'HH:mm'
  */
 function calcEndTime(startHHmm, durationMin) {
@@ -175,6 +199,7 @@ function apiJobStart(body) {
     }
 
     // ── 2. 作業記録シートに行追加 ──
+    ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
     var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
     appendRow(SHEET_NAMES.JOBS, {
       'ジョブID':       jobId,
@@ -187,7 +212,8 @@ function apiJobStart(body) {
       'Before写真URL':  photoResult.urls.join('\n'),
       'After写真URL':   '',
       '車種':           (body.carModel || '') + (body.plate ? ' / ' + body.plate : ''),
-      '施工時間':       ''
+      '施工時間':       '',
+      '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
     });
 
     // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
@@ -244,6 +270,7 @@ function apiJobStart(body) {
         '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
         '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
         '✨ Plan ' + (body.plan || '-') + ' (' + (body.vehicleType || '-') + ')\n' +
+        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
         '📷 Before ' + photoResult.urls.length + '枚';
 
@@ -360,6 +387,7 @@ function apiJobEnd(body) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
+        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
 
@@ -445,6 +473,7 @@ function apiJobFinal(body) {
       updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, updates);
     } else {
       // job_start が届かなかったケース
+      ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
       var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
       appendRow(SHEET_NAMES.JOBS, {
         'ジョブID':       jobId,
@@ -455,7 +484,8 @@ function apiJobFinal(body) {
         '開始時刻':       body.startTime ? new Date(body.startTime) : '',
         '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
         'Before写真URL':  beforeUrls.join('\n'),
-        'After写真URL':   afterUrls.join('\n')
+        'After写真URL':   afterUrls.join('\n'),
+        '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
       });
     }
 
