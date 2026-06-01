@@ -85,6 +85,13 @@ function apiBookingToday() {
         var cr = findCustomerRow(chatId);
         if (cr) customerName = cr.data['氏名'] || cr.data['ユーザー名'] || '';
       }
+      // 2026-06-01: 特価予約は chatId 無しで CUSTOMERS から引けない。
+      //   createManualBooking が 管理者メモ に「客名:○○｜...」で残しているので復元する。
+      if (!customerName) {
+        var memoForName = String(row[(headers['管理者メモ'] || 1) - 1] || '');
+        var nameMatch = memoForName.match(/客名:([^｜]+)/);
+        if (nameMatch) customerName = nameMatch[1].trim();
+      }
 
       // 2026-05-31: 手動特価予約の清算ボタン表示判定用に決済状態/キャンペーン名を含める
       var campaignName = String(row[(headers['キャンペーン名'] || 1) - 1] || '');

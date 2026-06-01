@@ -1765,16 +1765,26 @@ function openThread(b) {
   (b.status !== '作業完了' ?
     '<button class="thread-start-job-btn" onclick="startJobFromThread()">🚗 ចាប់ផ្តើមការងារ<br><span style="font-size:11px;opacity:0.75;font-weight:600;letter-spacing:0.3px">START JOB / ジョブ開始</span></button>' : '');
 
-  // チャット履歴を読み込み
-  loadChatHistory(b.chatId);
-
-  // 10秒ごとに自動更新
-  if (chatRefreshTimer) clearInterval(chatRefreshTimer);
-  chatRefreshTimer = setInterval(function() {
-    if (currentStep === 'thread' && currentThreadBooking) {
-      loadChatHistory(currentThreadBooking.chatId, true);
-    }
-  }, 10000);
+  // チャットUI: 顧客チャットIDがある時だけ表示（特価予約など chatId 無しは非表示）
+  var chatArea = document.getElementById('chatArea');
+  var chatInputRow = document.querySelector('#stepThread .chat-input-row');
+  if (b.chatId) {
+    if (chatArea) chatArea.style.display = '';
+    if (chatInputRow) chatInputRow.style.display = '';
+    loadChatHistory(b.chatId);
+    // 10秒ごとに自動更新
+    if (chatRefreshTimer) clearInterval(chatRefreshTimer);
+    chatRefreshTimer = setInterval(function() {
+      if (currentStep === 'thread' && currentThreadBooking && currentThreadBooking.chatId) {
+        loadChatHistory(currentThreadBooking.chatId, true);
+      }
+    }, 10000);
+  } else {
+    // チャットID無し（特価予約等）→ チャット欄を隠す
+    if (chatArea) { chatArea.style.display = 'none'; chatArea.innerHTML = ''; }
+    if (chatInputRow) chatInputRow.style.display = 'none';
+    if (chatRefreshTimer) { clearInterval(chatRefreshTimer); chatRefreshTimer = null; }
+  }
 }
 
 function loadChatHistory(chatId, silent) {
@@ -1858,7 +1868,14 @@ function startJobFromThread() {
   }
   selectBooking(b);
   cameFromThread = true;
-  currentStep = 1;
+  // 特価予約は顧客情報・場所・日時が既知（または不要）なので、
+  // 顧客登録(Step1)・スケジュール(Step2)を飛ばして Before 写真(Step3) へ直行。
+  // 店舗特価で「来店 → すぐ作業開始 → 写真」のUXに最適化。
+  if (b.manualCampaign) {
+    currentStep = 3;
+  } else {
+    currentStep = 1;
+  }
   renderStep();
   saveSession();
 }

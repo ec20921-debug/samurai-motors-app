@@ -283,7 +283,9 @@ function createManualBooking(params) {
       'QR送信日時':     '',
       '催促回数':       0,
       '最終催促日時':   '',
-      '管理者メモ':     '手動特価（' + (camp.nameJp || camp.campaignId) + '）' +
+      // 客名: を先頭に入れる（特価予約は chatId 無しで CUSTOMERS から名前を引けないため、
+      //        apiBookingToday がここから顧客名を復元してダッシュボードに表示する）
+      '管理者メモ':     '客名:' + name + '｜手動特価（' + (camp.nameJp || camp.campaignId) + '）' +
                        (params.staff ? ' by ' + params.staff : ''),
       '割引前金額(USD)': camp.priceUsd,  // 固定額のため割引前=特価
       '割引額(USD)':    0,
