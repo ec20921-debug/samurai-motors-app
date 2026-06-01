@@ -564,11 +564,15 @@ body {
     <div id="dashboardBody">
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
     </div>
+    <!-- 🎫 特価予約ボタンは一旦非表示（2026-06-01 運用方針: 手動登録に一本化）。
+         CampaignBooking.gs・特価キャンペーンシート・Router アクション・stepCampaign 画面・
+         JS関数は温存しているので、将来このボタンを戻すだけで復活できる。
     <button class="dash-manual-btn" onclick="startCampaignFlow()"
             style="background:linear-gradient(135deg,#8b0000 0%,#c9a84c 100%); border-color:#c9a84c; margin-bottom:10px;">
       <span style="font-size:22px;">🎫</span>
       <span>ការកក់ពិសេស（特価予約）</span>
     </button>
+    -->
     <button class="dash-manual-btn" onclick="startManualEntry()">
       <span style="font-size:22px;">✍️</span>
       <span>បញ្ចូលដោយដៃ（手動で新規登録）</span>
@@ -793,6 +797,14 @@ body {
         </div>
       </div>
       <p class="hint" style="margin-top:6px;">💰 + $2 ថ្លៃធ្វើដំណើរ（＋$2 出張費別途）｜🎌 GRAND OPENING -30% 適用中</p>
+    </div>
+    <div class="section">
+      <div class="section-title">💵 តម្លៃ（料金）</div>
+      <div class="field">
+        <label>តម្លៃទទួល (USD) <span class="jp">（受取料金・特価/無料は自由入力、無料なら 0）</span></label>
+        <input type="number" id="amount" placeholder="ឧ. 5（無料なら 0）" min="0" step="0.5" inputmode="decimal">
+        <p class="hint">🎫 $5キャンペーン → 5 ／ 🎁 無料サービス → 0 ／ 通常価格 → 金額を入力</p>
+      </div>
     </div>
     <div class="section">
       <div class="section-title">📝 កំណត់សម្គាល់（備考）</div>
@@ -1274,6 +1286,7 @@ function startWork() {
     plan: planEl ? planEl.value : '',
     glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
+    amount: (function(){ var a = document.getElementById('amount'); return (a && a.value !== '') ? Number(a.value) : ''; })(),
     startTime: timestamps.start.toISOString(),
     beforePhotos: photos.before.filter(function(p){return p !== null;}),
     bookingId: selectedBookingId || ''
@@ -1326,6 +1339,7 @@ function endWork() {
     plan: planEl ? planEl.value : '',
     glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
+    amount: (function(){ var a = document.getElementById('amount'); return (a && a.value !== '') ? Number(a.value) : ''; })(),
     endTime: timestamps.end.toISOString(),
     duration: Math.round((timestamps.end - timestamps.start) / 60000),
     afterPhotos: photos.after.filter(function(p){return p !== null;}),
@@ -1447,6 +1461,7 @@ function submitAll() {
     plan: planEl ? planEl.value : '',
     glassOption: (function(){ var g = document.querySelector('input[name="glassOption"]:checked'); return g ? g.value : ''; })(),
     vehicleType: vehicleEl ? vehicleEl.value : '',
+    amount: (function(){ var a = document.getElementById('amount'); return (a && a.value !== '') ? Number(a.value) : ''; })(),
     mapUrl: document.getElementById('mapUrl').value,
     notes: document.getElementById('notes').value,
     scheduled: timestamps.scheduled || '',
