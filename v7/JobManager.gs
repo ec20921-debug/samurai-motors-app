@@ -86,6 +86,16 @@ function apiBookingToday() {
         if (cr) customerName = cr.data['氏名'] || cr.data['ユーザー名'] || '';
       }
 
+      // 2026-05-31: 手動特価予約の清算ボタン表示判定用に決済状態/キャンペーン名を含める
+      var campaignName = String(row[(headers['キャンペーン名'] || 1) - 1] || '');
+      var paymentStatus = String(row[(headers['決済状態'] || 1) - 1] || '');
+      var manualCampaign = false;
+      if (campaignName && typeof isManualCampaignBooking === 'function') {
+        try {
+          manualCampaign = isManualCampaignBooking(campaignName);
+        } catch (e) { /* キャッシュ取得失敗時は false で安全側 */ }
+      }
+
       bookings.push({
         bookingId: String(row[(headers['予約ID'] || 1) - 1] || ''),
         date: dateStr,
@@ -101,7 +111,11 @@ function apiBookingToday() {
         carModel: String(row[(headers['車種名'] || 1) - 1] || ''),
         plate: '',
         // 2026-05-20: 現場スタッフが店舗/出張を判別できるよう追加
-        serviceType: String(row[(headers['サービスタイプ'] || 1) - 1] || '出張')
+        serviceType: String(row[(headers['サービスタイプ'] || 1) - 1] || '出張'),
+        // 2026-05-31: 手動特価予約のため
+        paymentStatus: paymentStatus,
+        campaignName: campaignName,
+        manualCampaign: manualCampaign
       });
     }
 
