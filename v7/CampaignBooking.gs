@@ -205,11 +205,15 @@ function createManualBooking(params) {
     var progressStatus, paymentStatus;
 
     if (serviceType === '店舗') {
-      progressStatus = '作業完了';
-      paymentStatus  = '清算済み';
+      // 2026-06-01: 店舗も出張と同じ作業フロー（Before/After写真→3方向配信）に乗せる。
+      // そのため「作業完了/清算済み」ではなく「予約確定/未清算」で作る。
+      // → ダッシュボードに作業前で出る → 作業開始/終了で写真記録 → 💵清算で清算済み。
+      // 店舗はカレンダー登録は不要（当日その場対応）。予約日時は「今」。
+      progressStatus = '予約確定';
+      paymentStatus  = '未清算';
       dateStr  = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
       startTime = Utilities.formatDate(now, tz, 'HH:mm');
-      duration = 0;
+      duration = Number(params.duration) > 0 ? Number(params.duration) : 60;
     } else {
       progressStatus = '予約確定';
       paymentStatus  = '未清算';
@@ -275,11 +279,13 @@ function createManualBooking(params) {
       '決済状態':       paymentStatus,
       '請求額(USD)':    camp.priceUsd,
       'スクショURL':    '',
-      '入金確認日時':   (serviceType === '店舗') ? new Date() : '',
+      '入金確認日時':   '',   // 作成時は未清算（店舗/出張とも作業後に💵清算で記録）
       'QR送信日時':     '',
       '催促回数':       0,
       '最終催促日時':   '',
-      '管理者メモ':     '手動特価（' + (camp.nameJp || camp.campaignId) + '）' +
+      // 客名: を先頭に入れる（特価予約は chatId 無しで CUSTOMERS から名前を引けないため、
+      //        apiBookingToday がここから顧客名を復元してダッシュボードに表示する）
+      '管理者メモ':     '客名:' + name + '｜手動特価（' + (camp.nameJp || camp.campaignId) + '）' +
                        (params.staff ? ' by ' + params.staff : ''),
       '割引前金額(USD)': camp.priceUsd,  // 固定額のため割引前=特価
       '割引額(USD)':    0,
@@ -304,7 +310,8 @@ function createManualBooking(params) {
         '👤 ' + name + (vehicleType ? ' / ' + vehicleType : '') + '\n' +
         ((serviceType === '出張')
           ? '📅 ' + dateStr + ' ' + startTime + '（' + duration + '分）\n📍 ' + location + '\n'
-          : '✅ その場完結・清算済み\n') +
+          : '🏪 来店・作業待ち（ミニアプリで作業開始してください）\n') +
+        '⏳ 未清算（作業後に💵清算）\n' +
         (params.staff ? '👷 ' + params.staff + '\n' : '');
       var adminOpts = threadId ? { message_thread_id: threadId } : {};
       sendMessage(BOT_TYPE.BOOKING, sysCfg.adminGroupId, adminText, adminOpts);
