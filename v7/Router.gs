@@ -55,6 +55,11 @@ function doGet(e) {
         result = apiBookingToday();
         break;
 
+      // ── 手動登録の顧客リンク用（通知先の顧客を選ばせる） ──
+      case 'customer_list':
+        result = apiCustomerList(e.parameter);
+        break;
+
       // ── 手動特価キャンペーン（CampaignBooking.gs） ──
       case 'manual_campaign_list':
         result = manualCampaignList();

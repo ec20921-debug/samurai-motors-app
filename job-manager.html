@@ -691,6 +691,22 @@ body {
       </div>
       <button type="button" class="bl-clear" onclick="clearBookingSelection()" title="解除">×</button>
     </div>
+    <!-- 手動登録の通知先顧客リンク（予約紐付け中は非表示） -->
+    <div id="customerLinkSection" class="section" style="display:none;">
+      <div id="customerLinked" class="booking-linked" style="display:none;">
+        <span class="bl-icon">🔔</span>
+        <div class="bl-info">
+          <strong id="clTitle">通知先の顧客</strong>
+          <span id="clDetail"></span>
+        </div>
+        <button type="button" class="bl-clear" onclick="clearCustomerSelection()" title="解除">×</button>
+      </div>
+      <button type="button" class="dash-manual-btn" onclick="openCustomerPicker()" style="margin-top:0;">
+        <span style="font-size:20px;">🔔</span>
+        <span>ភ្ជាប់អតិថិជន（通知先の顧客をリンク）</span>
+      </button>
+      <p class="hint" style="margin-top:6px;">📨 リンクするとお客さんにも作業開始・完了とBefore/After写真が届きます（任意）</p>
+    </div>
     <div class="section">
       <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客情報）</div>
       <div class="field">
@@ -922,6 +938,29 @@ body {
   </div>
 </div>
 
+<!-- 通知先の顧客ピッカー（手動登録用） -->
+<div class="bp-overlay" id="customerPicker">
+  <div class="bp-modal">
+    <div class="bp-header">
+      <h2>🔔 អតិថិជន（通知先の顧客を選択）</h2>
+      <button class="bp-close" onclick="closeCustomerPicker()">×</button>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);">
+      <input type="text" id="cpSearch" placeholder="🔍 ឈ្មោះ / ទូរស័ព្ទ / ID（名前・電話・ID で検索）"
+             oninput="filterCustomerList()"
+             style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;">
+    </div>
+    <div class="bp-body" id="cpBody">
+      <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
+    </div>
+    <div class="bp-footer" style="padding:12px 16px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeCustomerPicker()" style="width:100%;font-size:14px;">
+        ❌ បិទ（リンクせず閉じる）
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -944,6 +983,11 @@ var SESSION_KEY = 'samurai_active_job';
 // 予約連携: 紐付け中の予約ID（null = 通常モード）
 var selectedBookingId = null;
 var selectedBookingInfo = null;
+
+// 手動登録の通知先顧客リンク（予約なしでも顧客に通知を届けるため）
+var selectedCustomerChatId = null;
+var selectedCustomerInfo = null;
+var customerListCache = [];  // 顧客ピッカーで読み込んだ一覧（クライアント側検索用）
 
 // ===== セッション保存・復元 =====
 // 画面を閉じてもデータが残るようにlocalStorageに保存
@@ -981,6 +1025,11 @@ function saveSession() {
       booking: {
         id: selectedBookingId,
         info: selectedBookingInfo
+      },
+      // 通知先の顧客リンク情報
+      customer: {
+        chatId: selectedCustomerChatId,
+        info: selectedCustomerInfo
       },
       savedAt: new Date().toISOString()
     };
@@ -1048,6 +1097,13 @@ function restoreSession() {
       selectedBookingId = state.booking.id;
       selectedBookingInfo = state.booking.info || null;
       renderBookingLink();
+    }
+
+    // 通知先の顧客リンク復元
+    if (state.customer && state.customer.chatId) {
+      selectedCustomerChatId = state.customer.chatId;
+      selectedCustomerInfo = state.customer.info || null;
+      renderCustomerLink();
     }
 
     // ステップ復元（Step 0はダッシュボードなので1以上のみ復元）
@@ -1164,6 +1220,12 @@ function renderStep() {
   }
   document.getElementById('progressBar').innerHTML = dots;
   document.getElementById('stepLabel').innerHTML = '<strong>'+currentStep+'/'+totalSteps+'</strong> '+stepNames[currentStep];
+
+  // Step 1 では通知先顧客リンク欄の表示/状態を更新
+  if (currentStep === 1) {
+    updateCustomerLinkVisibility();
+    renderCustomerLink();
+  }
 
   // Action buttons
   renderButtons();
@@ -1289,7 +1351,8 @@ function startWork() {
     amount: (function(){ var a = document.getElementById('amount'); return (a && a.value !== '') ? Number(a.value) : ''; })(),
     startTime: timestamps.start.toISOString(),
     beforePhotos: photos.before.filter(function(p){return p !== null;}),
-    bookingId: selectedBookingId || ''
+    bookingId: selectedBookingId || '',
+    customerChatId: selectedCustomerChatId || ''
   };
   if (APPS_SCRIPT_URL) {
     fetch(APPS_SCRIPT_URL, {
@@ -1343,7 +1406,8 @@ function endWork() {
     endTime: timestamps.end.toISOString(),
     duration: Math.round((timestamps.end - timestamps.start) / 60000),
     afterPhotos: photos.after.filter(function(p){return p !== null;}),
-    bookingId: selectedBookingId || ''
+    bookingId: selectedBookingId || '',
+    customerChatId: selectedCustomerChatId || ''
   };
   if (APPS_SCRIPT_URL) {
     fetch(APPS_SCRIPT_URL, {
@@ -1470,7 +1534,8 @@ function submitAll() {
     duration: duration,
     beforePhotos: photos.before.filter(function(p){return p !== null;}),
     afterPhotos: photos.after.filter(function(p){return p !== null;}),
-    bookingId: selectedBookingId || ''
+    bookingId: selectedBookingId || '',
+    customerChatId: selectedCustomerChatId || ''
   };
 
   if (APPS_SCRIPT_URL) {
@@ -1949,6 +2014,7 @@ function sendChatMessage() {
 // 手動入力ボタン
 function startManualEntry() {
   clearBookingSelection();
+  clearCustomerSelection();
   cameFromThread = false;
   currentStep = 1;
   renderStep();
@@ -2254,6 +2320,12 @@ function selectBooking(b) {
   selectedBookingId = b.bookingId;
   selectedBookingInfo = b;
 
+  // 予約を紐付けたら手動の顧客リンクは不要（予約から chatId が引ける）
+  selectedCustomerChatId = null;
+  selectedCustomerInfo = null;
+  renderCustomerLink();
+  updateCustomerLinkVisibility();
+
   // フォームに自動入力
   if (b.customerName) document.getElementById('name').value = b.customerName;
 
@@ -2350,6 +2422,133 @@ function clearBookingSelection() {
   selectedBookingId = null;
   selectedBookingInfo = null;
   renderBookingLink();
+  updateCustomerLinkVisibility();
+  saveSession();
+}
+
+// ===== 通知先の顧客リンク（手動登録用） =====
+
+// 予約紐付け中は顧客リンク不要（予約から chatId が引ける）→ セクションを隠す
+function updateCustomerLinkVisibility() {
+  var sec = document.getElementById('customerLinkSection');
+  if (!sec) return;
+  sec.style.display = selectedBookingId ? 'none' : 'block';
+}
+
+function openCustomerPicker() {
+  document.getElementById('customerPicker').classList.add('show');
+  var search = document.getElementById('cpSearch');
+  if (search) search.value = '';
+  loadCustomerList();
+}
+
+function closeCustomerPicker() {
+  document.getElementById('customerPicker').classList.remove('show');
+}
+
+function loadCustomerList() {
+  var body = document.getElementById('cpBody');
+  body.innerHTML = '<div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>';
+
+  if (!APPS_SCRIPT_URL) {
+    body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>APPS_SCRIPT_URL が未設定です</div>';
+    return;
+  }
+
+  fetch(APPS_SCRIPT_URL + '?action=customer_list')
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      if (!data || data.status !== 'ok') {
+        body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>取得に失敗しました</div>';
+        return;
+      }
+      customerListCache = data.customers || [];
+      renderCustomerList(customerListCache);
+    })
+    .catch(function(err){
+      body.innerHTML = '<div class="bp-empty"><div class="be-icon">⚠️</div>通信エラー: ' + err.message + '</div>';
+    });
+}
+
+// 検索ボックス入力でクライアント側フィルタ（追加の通信なし）
+function filterCustomerList() {
+  var q = (document.getElementById('cpSearch').value || '').toLowerCase().trim();
+  if (!q) { renderCustomerList(customerListCache); return; }
+  var filtered = customerListCache.filter(function(c){
+    var hay = ((c.name || '') + ' ' + (c.username || '') + ' ' + (c.phone || '') + ' ' + (c.chatId || '')).toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+  renderCustomerList(filtered);
+}
+
+function renderCustomerList(customers) {
+  var body = document.getElementById('cpBody');
+  if (!customers.length) {
+    body.innerHTML = '<div class="bp-empty"><div class="be-icon">📭</div>មិនមានអតិថិជន（該当する顧客がいません）</div>';
+    return;
+  }
+
+  var html = '';
+  customers.forEach(function(c){
+    var linkedCls = (selectedCustomerChatId && selectedCustomerChatId === c.chatId) ? ' linked' : '';
+    var display = c.name || c.username || ('ID: ' + c.chatId);
+    html += '<div class="bp-card' + linkedCls + '" data-chatid="' + c.chatId + '">' +
+      '<div style="display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:15px;font-weight:700">👤 ' + display + '</div>' +
+        (c.phone ? '<div style="font-size:13px;color:var(--text-dim)">📞 ' + c.phone + '</div>' : '') +
+        '<div style="font-size:12px;color:var(--text-dim)">🆔 ' + c.chatId +
+          (c.lastContact ? ' ・ 🕐 ' + c.lastContact : '') + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  body.innerHTML = html;
+
+  var cards = body.querySelectorAll('.bp-card');
+  for (var i = 0; i < cards.length; i++) {
+    (function(idx){
+      cards[idx].addEventListener('click', function(){
+        var id = cards[idx].getAttribute('data-chatid');
+        var found = customers.find(function(c){ return c.chatId === id; });
+        if (found) selectCustomer(found);
+      });
+    })(i);
+  }
+}
+
+function selectCustomer(c) {
+  selectedCustomerChatId = c.chatId;
+  selectedCustomerInfo = c;
+
+  // 顧客名・電話が空欄なら補完（手入力済みなら上書きしない）
+  var nameEl = document.getElementById('name');
+  if (nameEl && !nameEl.value.trim()) nameEl.value = c.name || c.username || '';
+  var phoneEl = document.getElementById('phone');
+  if (phoneEl && !phoneEl.value.trim() && c.phone) phoneEl.value = c.phone;
+
+  renderCustomerLink();
+  saveSession();
+  closeCustomerPicker();
+  showToast('🔔 通知先を紐付けました: ' + (c.name || c.username || c.chatId));
+}
+
+function renderCustomerLink() {
+  var linked = document.getElementById('customerLinked');
+  if (!linked) return;
+  if (!selectedCustomerChatId) {
+    linked.style.display = 'none';
+    return;
+  }
+  linked.style.display = 'flex';
+  var info = selectedCustomerInfo || {};
+  document.getElementById('clTitle').textContent = info.name || info.username || ('ID: ' + selectedCustomerChatId);
+  document.getElementById('clDetail').textContent =
+    (info.phone ? '📞 ' + info.phone + ' ・ ' : '') + '🆔 ' + selectedCustomerChatId;
+}
+
+function clearCustomerSelection() {
+  selectedCustomerChatId = null;
+  selectedCustomerInfo = null;
+  renderCustomerLink();
   saveSession();
 }
 

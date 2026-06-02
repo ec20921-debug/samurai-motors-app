@@ -139,6 +139,57 @@ function apiBookingToday() {
 }
 
 /**
+ * 顧客一覧を返す（手動登録フローで「通知先の顧客」を選ばせるため）。
+ * 予約に紐付かない手動登録でも、ここで選んだ顧客の チャットID を job_start /
+ * job_end に渡すことで顧客へ通知が届くようにする。
+ *
+ * 「最終連絡日時」の新しい順に最大 200 件返す（負荷・ペイロード抑制）。
+ * 検索はクライアント側で行う前提なので、ここでは絞り込みしない。
+ */
+function apiCustomerList(params) {
+  try {
+    var sheet = getSheet(SHEET_NAMES.CUSTOMERS);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { status: 'ok', customers: [] };
+
+    var headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+    var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    var tz = getSpreadsheet().getSpreadsheetTimeZone();
+
+    var customers = [];
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var chatId = String(row[(headers['チャットID'] || 1) - 1] || '').trim();
+      if (!chatId) continue;  // チャットID 無し（特価予約等）は通知できないので除外
+
+      var lastRaw = row[(headers['最終連絡日時'] || 1) - 1];
+      var lastContact = (lastRaw instanceof Date)
+        ? Utilities.formatDate(lastRaw, tz, 'yyyy-MM-dd HH:mm')
+        : String(lastRaw || '');
+
+      customers.push({
+        chatId:      chatId,
+        name:        String(row[(headers['氏名'] || 1) - 1] || ''),
+        username:    String(row[(headers['ユーザー名'] || 1) - 1] || ''),
+        phone:       String(row[(headers['電話番号'] || 1) - 1] || ''),
+        lastContact: lastContact
+      });
+    }
+
+    // 最終連絡日時の新しい順（空は後ろ）
+    customers.sort(function(a, b) {
+      return (b.lastContact || '').localeCompare(a.lastContact || '');
+    });
+    if (customers.length > 200) customers = customers.slice(0, 200);
+
+    return { status: 'ok', customers: customers };
+  } catch (err) {
+    Logger.log('❌ apiCustomerList error: ' + err);
+    return { status: 'error', message: String(err) };
+  }
+}
+
+/**
  * 作業記録（JOBS）シートに「料金(USD)」列を冪等に確保する。
  * 2026-06-01: 手動登録フローで $5/無料/通常の料金を記録するため。
  * 列が無ければ末尾に追加（既存なら何もしない）。
@@ -238,6 +289,15 @@ function apiJobStart(body) {
         if (custRow && custRow.data['トピックID']) {
           threadId = custRow.data['トピックID'];
         }
+      }
+    }
+
+    // 予約に紐付かない手動登録で、フロントが通知先の顧客を指定した場合はそれを使う
+    if (!customerChatId && body.customerChatId) {
+      customerChatId = String(body.customerChatId);
+      var mCustRow = findCustomerRow(customerChatId);
+      if (mCustRow && mCustRow.data['トピックID']) {
+        threadId = mCustRow.data['トピックID'];
       }
     }
 
@@ -357,6 +417,15 @@ function apiJobEnd(body) {
         if (custRow && custRow.data['トピックID']) {
           threadId = custRow.data['トピックID'];
         }
+      }
+    }
+
+    // 予約に紐付かない手動登録で、フロントが通知先の顧客を指定した場合はそれを使う
+    if (!customerChatId && body.customerChatId) {
+      customerChatId = String(body.customerChatId);
+      var mCustRowEnd = findCustomerRow(customerChatId);
+      if (mCustRowEnd && mCustRowEnd.data['トピックID']) {
+        threadId = mCustRowEnd.data['トピックID'];
       }
     }
 
