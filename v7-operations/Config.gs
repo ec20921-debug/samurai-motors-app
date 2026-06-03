@@ -62,6 +62,8 @@ const SHEET_NAMES = {
   TASK_INPUT:        '新規タスク入力',
   DAILY_REPORTS:     '日報',
   EXPENSES:          '経費',
+  EXPENSE_MASTER:    '経費マスター',     // 全経費の集約 SoT（ダッシュボード参照元）
+  ROUTINE_EXPENSES:  'ルーティン経費',   // 月次定期経費の定義表
   PARTNERS:          'パートナー',
   REFERRAL_HISTORY:  '紹介履歴',
   WATER_REPELLENT:   '撥水モニター',
