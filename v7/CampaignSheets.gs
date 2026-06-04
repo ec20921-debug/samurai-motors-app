@@ -455,21 +455,32 @@ function ensureCustomerBroadcastColumns_() {
   const lastRow = sheet.getLastRow();
   let headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
 
-  // 配信対象
+  // 配信対象（列が無ければ作成）
   if (!headers['配信対象']) {
     const col = sheet.getLastColumn() + 1;
     sheet.getRange(1, col).setValue('配信対象')
       .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
     sheet.setColumnWidth(col, 80);
-    if (lastRow >= 2) {
-      const rng = sheet.getRange(2, col, lastRow - 1, 1);
-      rng.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
-      const vals = [];
-      for (let i = 0; i < lastRow - 1; i++) vals.push([true]); // 既存顧客はデフォルト送る
-      rng.setValues(vals);
-    }
     Logger.log('  ➕ 顧客シートに「配信対象」列を追加');
     headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+  }
+
+  // 配信対象列の「全データ行」にチェックボックス書式を再適用（冪等）。
+  // 後から appendRow で増えた行（値だけで書式なし=TRUE文字表示）を
+  // 正しいチェックボックスに揃える。空欄は ☑(true) で初期化。
+  const targetCol = headers['配信対象'];
+  if (targetCol && lastRow >= 2) {
+    const rng = sheet.getRange(2, targetCol, lastRow - 1, 1);
+    rng.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+    // 空欄セルだけ true で埋める（既存の TRUE/FALSE は尊重）
+    const cur = rng.getValues();
+    let filled = 0;
+    for (let i = 0; i < cur.length; i++) {
+      const v = cur[i][0];
+      if (v === '' || v === null) { cur[i][0] = true; filled++; }
+    }
+    if (filled > 0) rng.setValues(cur);
+    Logger.log('  ☑ 配信対象列にチェックボックス書式を再適用（空欄 ' + filled + ' 件を ☑ で初期化）');
   }
 
   // 最終配信日時
@@ -479,5 +490,25 @@ function ensureCustomerBroadcastColumns_() {
       .setFontWeight('bold').setBackground('#1a1a1a').setFontColor('#ffffff');
     sheet.setColumnWidth(col, 160);
     Logger.log('  ➕ 顧客シートに「最終配信日時」列を追加');
+  }
+}
+
+/**
+ * 指定行の「配信対象」セルにチェックボックス書式を付ける（新規登録時に呼ぶ）。
+ * appendRow は値のみで書式を付けないため、登録経路から個別に適用して
+ * 「TRUE 文字」表示を防ぐ。失敗しても登録自体は止めない。
+ *
+ * @param {number} rowIndex - 1-based の対象行
+ */
+function applyBroadcastCheckboxToRow_(rowIndex) {
+  try {
+    const sheet = getSheet(SHEET_NAMES.CUSTOMERS);
+    const headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+    const col = headers['配信対象'];
+    if (!col || !rowIndex || rowIndex < 2) return;
+    sheet.getRange(rowIndex, col)
+      .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  } catch (e) {
+    Logger.log('⚠️ applyBroadcastCheckboxToRow_ error: ' + e);
   }
 }

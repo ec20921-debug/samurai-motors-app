@@ -83,6 +83,10 @@ function getOrCreateTopic(customer) {
         '最終連絡日時': new Date(),
         '配信対象': true   // 新規は配信対象ON。ただし当日登録はスケジュール配信から除外（即時配信防止）
       });
+      // 追加した行の配信対象セルをチェックボックス化（TRUE 文字表示を防ぐ）
+      if (typeof applyBroadcastCheckboxToRow_ === 'function') {
+        applyBroadcastCheckboxToRow_(getSheet(SHEET_NAMES.CUSTOMERS).getLastRow());
+      }
     }
 
     return { threadId: threadId, isNew: true };
