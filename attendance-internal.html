@@ -246,27 +246,45 @@ updateClock();
 // ═══════════════════════════════════════════
 //  GPS 取得
 // ═══════════════════════════════════════════
+function getPosition_(opts) {
+  return new Promise(function(resolve, reject) {
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+  });
+}
+
+// Promise を返す。失敗しても resolve(null)（打刻は GPS なしでも可）
 function acquireGps() {
   var box = document.getElementById('gpsBox');
   if (!navigator.geolocation) {
     box.className = 'gps-box err';
     box.textContent = '📡 GPS 非対応端末 / ឧបករណ៍មិនគាំទ្រ';
     currentGps = null;
-    return;
+    return Promise.resolve(null);
   }
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    currentGps = {
-      lat: Number(pos.coords.latitude.toFixed(6)),
-      lng: Number(pos.coords.longitude.toFixed(6)),
-      accuracy: Math.round(pos.coords.accuracy || 0)
-    };
-    box.className = 'gps-box ok';
-    box.textContent = '📡 GPS OK 精度 ' + currentGps.accuracy + 'm';
-  }, function(err) {
-    currentGps = null;
-    box.className = 'gps-box warn';
-    box.textContent = '📡 GPS 取得不可（打刻は可能）/ មិនអាចស្វែងរកទីតាំង';
-  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  box.className = 'gps-box';
+  box.textContent = '📡 GPS 取得中… / កំពុងស្វែងរកទីតាំង';
+  // 高精度（衛星）→ 失敗時は低精度（基地局/WiFi）にフォールバック。
+  // 朝のコールドスタート・屋内対策で timeout 延長＋直近キャッシュを許可。
+  return getPosition_({ enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 })
+    .catch(function() {
+      return getPosition_({ enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 });
+    })
+    .then(function(pos) {
+      currentGps = {
+        lat: Number(pos.coords.latitude.toFixed(6)),
+        lng: Number(pos.coords.longitude.toFixed(6)),
+        accuracy: Math.round(pos.coords.accuracy || 0)
+      };
+      box.className = 'gps-box ok';
+      box.textContent = '📡 GPS OK 精度 ' + currentGps.accuracy + 'm';
+      return currentGps;
+    })
+    .catch(function() {
+      currentGps = null;
+      box.className = 'gps-box warn';
+      box.textContent = '📡 GPS 取得不可（打刻は可能）/ មិនអាចស្វែងរកទីតាំង';
+      return null;
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -330,16 +348,22 @@ function doPunch(type) {
   var btnOut = document.getElementById('btnOut');
   btnIn.disabled = true; btnOut.disabled = true;
 
-  var payload = {
-    action: type === 'in' ? 'punch_in' : 'punch_out',
-    chatId: currentChatId,
-    gps: currentGps
-  };
+  // GPS が未取得（朝のコールドスタートでタイムアウトした等）なら、
+  // 打刻直前にもう一度だけ取りに行って待つ。失敗しても GPS なしで打刻続行。
+  var ready = currentGps ? Promise.resolve(currentGps) : acquireGps();
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
+  ready.then(function() {
+    var payload = {
+      action: type === 'in' ? 'punch_in' : 'punch_out',
+      chatId: currentChatId,
+      gps: currentGps
+    };
+
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
