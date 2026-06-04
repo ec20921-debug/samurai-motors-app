@@ -225,20 +225,21 @@ function buildBkKpiCards_(sh, row) {
     ', 予約!L:L, "<>キャンセル"),0)';
   const countFormula = '=IFERROR(COUNTIFS(予約!H:H, ">="&' + pStart + ', 予約!H:H, "<="&' + pEnd +
     ', 予約!L:L, "<>キャンセル"),0)';
-  const avgFormula   = '=IFERROR(IF(' + countFormula.substring(1) + '=0,0,' +
-    salesFormula.substring(1) + '/' + countFormula.substring(1) + '),0)';
-  const uniqCustomers = '=IFERROR(SUMPRODUCT((予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd +
-    ')*(予約!L2:L10000<>"キャンセル")*(予約!B2:B10000<>"")/COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,">="&' + pStart +
-    ',予約!H2:H10000,"<="&' + pEnd + ',予約!L2:L10000,"<>キャンセル")),0)';
+  // 期間内・キャンセル除外・顧客ID有り の行マスク と 同一顧客の期間内予約数
+  const mask = '((予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd +
+    ')*(予約!L2:L10000<>"キャンセル")*(予約!B2:B10000<>""))';
+  const custCnt = 'COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,">="&' + pStart +
+    ',予約!H2:H10000,"<="&' + pEnd + ',予約!L2:L10000,"<>キャンセル")';
+  // 客数 = 期間内ユニーク顧客ID数。各行を 1/件数 で重み付け（空行・非該当行は分母に +1 して 0/1=0 とし、
+  //        旧式の 0÷0=エラー→IFERROR で 0 に落ちる不具合を回避）
+  const uniqCustomers = '=IFERROR(SUMPRODUCT(' + mask + '/((' + custCnt + ')+(' + mask + '=0))),0)';
+  // 客単価 = 売上 ÷ 客数（1顧客あたり。同一客の複数予約をまとめる。1予約あたりではない）
+  const avgFormula   = '=IFERROR(' + salesFormula.substring(1) + '/' + uniqCustomers.substring(1) + ',0)';
   const cancelRate = '=IFERROR(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
     ',予約!L:L,"キャンセル")/COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + '),0)';
-  // リピート率: 期間内で 2回以上予約した顧客の割合（ユニーク顧客のうち）
-  const repeatRate = '=IFERROR(' +
-    'SUMPRODUCT((COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,">="&' + pStart + ',予約!H2:H10000,"<="&' + pEnd +
-       ',予約!L2:L10000,"<>キャンセル")>1)*(予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd +
-       ')*(予約!L2:L10000<>"キャンセル")/COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,">="&' + pStart +
-       ',予約!H2:H10000,"<="&' + pEnd + ',予約!L2:L10000,"<>キャンセル"))' +
-    '/' + uniqCustomers.substring(1) + ',0)';
+  // リピート率 = 期間内に2回以上予約した顧客 ÷ 客数（客数と同じ重み付け方式で 0÷0 を回避）
+  const repeatRate = '=IFERROR(SUMPRODUCT(((' + custCnt + ')>1)*' + mask +
+    '/((' + custCnt + ')+(' + mask + '=0)))/' + uniqCustomers.substring(1) + ',0)';
 
   const cards = [
     { label: '💴 期間売上', formula: salesFormula, fmt: '"$"#,##0', color: BK_COLOR.gold },
