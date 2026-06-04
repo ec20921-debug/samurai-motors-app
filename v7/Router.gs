@@ -262,6 +262,10 @@ function apiBookingRegisterCustomer(body) {
     '配信対象':     true   // 新規は配信対象ON（翌日以降のキャンペーンに自動で入る）。
                           // ただし「当日登録」はスケジュール配信から除外され即時配信は飛ばない。
   });
+  // 追加した行の配信対象セルをチェックボックス化（TRUE 文字表示を防ぐ）
+  if (typeof applyBroadcastCheckboxToRow_ === 'function') {
+    applyBroadcastCheckboxToRow_(getSheet(SHEET_NAMES.CUSTOMERS).getLastRow());
+  }
 
   return {
     status: 'ok',
