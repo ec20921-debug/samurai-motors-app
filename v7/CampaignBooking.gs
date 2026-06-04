@@ -264,7 +264,7 @@ function createManualBooking(params) {
       '車種名':         '',
       'プラン':         '',
       'オプション':     '',
-      '予約日':         dateStr,
+      '予約日':         ymdToSheetDate_(dateStr),  // 文字列でなく日付値で記録（ダッシュボード $0 集計バグ対策）
       '予約時刻':       startTime,
       '所要時間(分)':   duration,
       '料金(USD)':      camp.priceUsd,

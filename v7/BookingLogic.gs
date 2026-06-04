@@ -18,6 +18,24 @@
 
 // ====== 定数 ======
 const BOOKING_TZ = 'Asia/Phnom_Penh';
+
+/**
+ * "yyyy-MM-dd" 文字列を、スプレッドシートTZの 0:00 を表す Date に変換する。
+ * 予約日(H列)を「文字列」でなく「日付値」で記録するための窓口。
+ * （文字列のままだとダッシュボードの日付フィルタ SUMIFS(...予約!H:H,">="&日付...) が
+ *   一切ヒットせず、売上が $0 集計になる不具合の対策。）
+ * パース失敗時は元の文字列を返し、予約処理自体は止めない（安全側フォールバック）。
+ */
+function ymdToSheetDate_(ymd) {
+  try {
+    if (!ymd || typeof ymd !== 'string') return ymd;
+    const tz = getSpreadsheet().getSpreadsheetTimeZone() || BOOKING_TZ;
+    return Utilities.parseDate(ymd.trim(), tz, 'yyyy-MM-dd');
+  } catch (e) {
+    Logger.log('⚠️ ymdToSheetDate_ パース失敗、文字列のまま記録: ' + ymd + ' / ' + e);
+    return ymd;
+  }
+}
 const SLOT_STEP_MIN = 30;   // 空き枠チェックの刻み幅（分）
 
 // ミニアプリ(英語表示)用のプラン説明
@@ -695,7 +713,7 @@ function createBooking(params) {
       '車種名':         '',
       'プラン':         plan ? plan.planFull : '',
       'オプション':     glassOpt ? glassOpt.code : '',
-      '予約日':         params.date,
+      '予約日':         ymdToSheetDate_(params.date),  // 文字列でなく日付値で記録（ダッシュボード $0 集計バグ対策）
       '予約時刻':       params.startTime,
       '所要時間(分)':   duration,
       '料金(USD)':      amount,                                    // 割引後の最終請求額

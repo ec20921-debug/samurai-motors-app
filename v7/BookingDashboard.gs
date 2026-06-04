@@ -215,8 +215,8 @@ function buildBkKpiCards_(sh, row) {
   const endR   = row + 4 + 1; // dummy
   // 期間セレクタは row-3, row-2 に入ってる
   // 実際の期間開始/終了セルは：行番号を変数化する
-  const pStart = 'D' + (row - 1);
-  const pEnd   = 'E' + (row - 1);
+  const pStart = 'D' + (row - 2);   // 期間開始セル = D5（banner3行 + selector で開始/終了は row-2 = 5行目）
+  const pEnd   = 'E' + (row - 2);   // 期間終了セル = E5
 
   // プラン別ステータスフィルタ: 「キャンセル」除外
   // 売上は「料金(USD)」列K、日付は「予約日」列H
@@ -329,8 +329,8 @@ function buildBkPieCharts_(sh, row, ss) {
   row += 2;
 
   const cache = ss.getSheetByName(BK_CACHE_SHEET);
-  const pStart = "'" + BK_DASH_SHEET + "'!D7"; // 期間セレクタの row+1=7
-  const pEnd   = "'" + BK_DASH_SHEET + "'!E7";
+  const pStart = "'" + BK_DASH_SHEET + "'!D5"; // 期間開始/終了セル = D5/E5
+  const pEnd   = "'" + BK_DASH_SHEET + "'!E5";
 
   // --- プラン別売上（D1:E6） ---
   cache.getRange('D1:E1').setValues([['プラン', '売上']]);
@@ -467,8 +467,8 @@ function buildBkRankings_(sh, row, ss) {
   drawBkSectionHeader_(sh, row, '🏆 プラン別ランキング（期間内）');
   row += 2;
 
-  const pStart = 'D' + 7;
-  const pEnd   = 'E' + 7;
+  const pStart = 'D' + 5;
+  const pEnd   = 'E' + 5;
 
   sh.getRange(row, 2, 1, 4).setValues([['プラン', '件数', '売上', '構成比']])
     .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold).setFontWeight('bold')
@@ -563,8 +563,8 @@ function buildBkMenuV2Analytics_(sh, row, ss) {
   drawBkSectionHeader_(sh, row, '📊 Menu v2 分析（キャンペーン / GLASS / ファネル）');
   row += 2;
 
-  const pStart = "'" + BK_DASH_SHEET + "'!D7";
-  const pEnd   = "'" + BK_DASH_SHEET + "'!E7";
+  const pStart = "'" + BK_DASH_SHEET + "'!D5";
+  const pEnd   = "'" + BK_DASH_SHEET + "'!E5";
   const headerStyle = { bg: BK_COLOR.bgSub, fg: BK_COLOR.gold };
 
   // ── 🎌 キャンペーン (B-C) ──
@@ -622,8 +622,8 @@ function buildBkAlerts_(sh, row) {
   drawBkSectionHeader_(sh, row, '🚨 経営アラート');
   row += 2;
 
-  const pStart = 'D7';
-  const pEnd   = 'E7';
+  const pStart = 'D5';
+  const pEnd   = 'E5';
 
   const alerts = [
     {
@@ -693,4 +693,42 @@ function ensureBkCacheSheet_(ss) {
 // =====================================================
 function debugBookingDashboardPreview() {
   ensureBookingDashboard();
+}
+
+// =====================================================
+//  予約日(H列) 文字列→日付 一括変換 ＋ ダッシュボード再生成
+//  文字列日付だとダッシュボードの日付フィルタが効かず売上が $0 になる不具合の是正。
+//  ※ 何度実行しても安全（すでに日付値の行はスキップ）
+// =====================================================
+function fixBookingDatesAndRebuild() {
+  const ss = getSpreadsheet();
+  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+  const sh = ss.getSheetByName(SHEET_NAMES.BOOKINGS); // '予約'
+  let converted = 0;
+
+  if (sh && sh.getLastRow() >= 2) {
+    const n = sh.getLastRow() - 1;
+    const rng = sh.getRange(2, 8, n, 1); // H列 = 予約日（8列目）
+    const vals = rng.getValues();
+    let changed = false;
+    for (let i = 0; i < vals.length; i++) {
+      const v = vals[i][0];
+      // "yyyy-MM-dd" 形式の文字列だけを日付化（既に Date のものは触らない）
+      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+        vals[i][0] = Utilities.parseDate(v.trim(), tz, 'yyyy-MM-dd');
+        converted++;
+        changed = true;
+      }
+    }
+    if (changed) {
+      rng.setNumberFormat('yyyy-MM-dd'); // 表示を日付に
+      rng.setValues(vals);
+    }
+  }
+
+  Logger.log('🔧 予約日 文字列→日付 変換: ' + converted + '件');
+  ensureBookingDashboard(); // 修正後のセル参照(D5/E5)でダッシュボードを再構築
+  const msg = '予約日を ' + converted + ' 件 日付化 → 経営ダッシュボード再生成 完了';
+  Logger.log('✅ ' + msg);
+  return msg;
 }
