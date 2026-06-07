@@ -129,6 +129,14 @@ function countBy_(rows, col, value) {
  * v7 予約シートから当日分（PP日付）の行だけ返す
  */
 function readV7BookingsForDate_(v7SsId, todayStr) {
+  return readV7BookingsInRange_(v7SsId, todayStr, todayStr);
+}
+
+/**
+ * v7 予約シートから指定日付範囲（fromStr〜toStr, 両端含む, yyyy-MM-dd）の行を返す。
+ * 単日読み取り（readV7BookingsForDate_）と週次サマリの両方から使う共通関数。
+ */
+function readV7BookingsInRange_(v7SsId, fromStr, toStr) {
   const ss = SpreadsheetApp.openById(v7SsId);
   const sheet = ss.getSheetByName('予約');
   if (!sheet) throw new Error('v7「予約」シート未発見');
@@ -154,8 +162,34 @@ function readV7BookingsForDate_(v7SsId, todayStr) {
       const ds = (d instanceof Date)
         ? Utilities.formatDate(d, ssTz, 'yyyy-MM-dd')
         : String(d).trim().substring(0, 10);
-      return ds === todayStr;
+      return ds >= fromStr && ds <= toStr;
     });
+}
+
+/**
+ * v7 予約行の配列から、経営ダッシュボード相当の週次KPIを計算する。
+ * 売上 / 予約件数 / 客数(ユニーク顧客) / 客単価(売上÷客数)。
+ * キャンセルは売上・件数から除外（ダッシュボードと同じ扱い）。
+ *
+ * @param {Array<Object>} rows - readV7BookingsInRange_ の結果
+ * @return {{sales:number, count:number, customers:number, avg:number}}
+ */
+function computeV7WeeklyKpi_(rows) {
+  let sales = 0;
+  let count = 0;
+  const custSet = {};
+  rows.forEach(function(r) {
+    const prog = String(r['進行状態'] || '');
+    if (prog === 'cancelled') return;          // キャンセル除外
+    const amt = Number(r['料金(USD)']) || 0;
+    sales += amt;
+    count += 1;
+    const cid = String(r['顧客ID'] || r['チャットID'] || '').trim();
+    if (cid) custSet[cid] = true;
+  });
+  const customers = Object.keys(custSet).length;
+  const avg = customers > 0 ? sales / customers : 0;
+  return { sales: sales, count: count, customers: customers, avg: avg };
 }
 
 // ============================================================

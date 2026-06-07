@@ -336,10 +336,41 @@ function saveReceiptPhoto_(base64, mime, name, expenseId) {
 }
 
 /**
- * 毎週金曜 JST 18:00 に直近7日間の経費サマリを管理グループへ送信
+ * 週次レビューの先頭に出す「経営KPI」ブロックを組み立てる。
+ * v7 予約シート（V7_SPREADSHEET_ID）を期間集計し、経営ダッシュボード相当の
+ * 売上 / 予約件数 / 客数 / 客単価 を返す。タスクは含めない。
+ * 取得できない場合は空文字（KPIブロックを出さない）。
  *
- * - 期間: 実行日を含む直近7日間（取引日ベース）
- * - 集計: 件数 / 通貨別合計 / カテゴリ別 / 担当者別 / 未精算の立替リスト
+ * @param {Object} cfg getConfig() の結果
+ * @param {string} fromStr 'yyyy-MM-dd'
+ * @param {string} toStr 'yyyy-MM-dd'
+ * @return {string} HTML（複数行）または ''
+ */
+function buildWeeklyKpiBlock_(cfg, fromStr, toStr) {
+  if (!cfg.v7SpreadsheetId) return ''; // 未設定ならKPIスキップ（経費だけ送る）
+  let rows;
+  try {
+    rows = readV7BookingsInRange_(cfg.v7SpreadsheetId, fromStr, toStr);
+  } catch (err) {
+    Logger.log('⚠️ 週次KPI: v7予約シート読取失敗: ' + err);
+    return '📈 <b>経営KPI</b>\n　（売上データ読取失敗）';
+  }
+  const k = computeV7WeeklyKpi_(rows);
+  return [
+    '📈 <b>経営KPI（今週）</b>',
+    '　💴 売上: <b>$' + k.sales.toFixed(2) + '</b>',
+    '　🧾 予約件数: <b>' + k.count + '件</b>',
+    '　👥 客数: <b>' + k.customers + '名</b>',
+    '　💰 客単価: <b>$' + k.avg.toFixed(1) + '</b>'
+  ].join('\n');
+}
+
+/**
+ * 毎週金曜 JST 18:00 に直近7日間の週次レビューを管理グループへ送信
+ *
+ * - 期間: 実行日を含む直近7日間
+ * - 内容: 経営KPI（売上/予約件数/客数/客単価）＋ 経費サマリ（件数/通貨別/カテゴリ別/担当者別/未精算）
+ * - タスクは含めない（Daisuke 指示 2026-06-07）
  * - 通知先: ADMIN_EXPENSE_THREAD_ID（未設定なら ADMIN_DAILY_REPORT_THREAD_ID）
  *
  * hourlyTaskScheduler から呼ばれる。手動実行は debugSendWeeklyExpenseSummary を使用。
@@ -364,15 +395,19 @@ function sendWeeklyExpenseSummary() {
     return txDate && txDate >= fromStr && txDate <= toStr;
   });
 
+  // 経営KPI（売上/予約件数/客数/客単価）を v7 予約シートから集計（先頭に表示）
+  const kpiBlock = buildWeeklyKpiBlock_(cfg, fromStr, toStr);
+
   // 期間内の経費がゼロでもサマリは送る（運用状況の把握のため）
   if (recent.length === 0) {
     sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId,
-      '📊 <b>週次経費サマリ</b>\n' +
+      '📊 <b>週次レビュー</b>\n' +
       '━━━━━━━━━━━━━━━━━━\n' +
       '🗓 対象期間: ' + fromStr + ' 〜 ' + toStr + '\n' +
-      'ℹ️ 期間内の経費登録はありません。',
-      { parse_mode: 'HTML', message_thread_id: Number(thread) });
-    Logger.log('📤 週次経費サマリ送信（0件）');
+      (kpiBlock ? '\n' + kpiBlock + '\n' : '') +
+      '\n💸 <b>経費</b>\n　ℹ️ 期間内の経費登録はありません。',
+      { parse_mode: 'HTML', message_thread_id: Number(thread), disable_web_page_preview: true });
+    Logger.log('📤 週次レビュー送信（経費0件）');
     return;
   }
 
@@ -415,13 +450,21 @@ function sendWeeklyExpenseSummary() {
   };
 
   const lines = [
-    '📊 <b>週次経費サマリ</b>',
+    '📊 <b>週次レビュー</b>',
     '━━━━━━━━━━━━━━━━━━',
-    '🗓 対象期間: ' + fromStr + ' 〜 ' + toStr,
-    '📌 件数: <b>' + recent.length + '件</b>',
-    '',
-    '💵 <b>合計（通貨別）</b>'
+    '🗓 対象期間: ' + fromStr + ' 〜 ' + toStr
   ];
+  // 先頭に経営KPI（売上等）
+  if (kpiBlock) {
+    lines.push('');
+    lines.push(kpiBlock);
+  }
+  // 経費セクション
+  lines.push('');
+  lines.push('💸 <b>経費</b>');
+  lines.push('📌 件数: <b>' + recent.length + '件</b>');
+  lines.push('');
+  lines.push('💵 <b>合計（通貨別）</b>');
   Object.keys(byCurrency).forEach(function(cur) {
     lines.push('　' + cur + ': <b>' + byCurrency[cur].toLocaleString('en-US') + '</b>');
   });
