@@ -503,11 +503,8 @@ function testSendScheduledRow() {
       ? (draft.textKm || draft.textEn)
       : [draft.textKm, draft.textEn].filter(function(s){return s;}).join('\n\n━━━━━━━━━━\n\n');
 
-  let res, cache = { id: '' };
-  if (draft.videoUrl)      res = sendCampaignVideo_(chatId, draft.videoUrl, text, cache);
-  else if (draft.imageUrl) res = sendCampaignPhoto_(chatId, draft.imageUrl, text);
-  else                     res = sendCampaignText_(chatId, text);
-  if (draft.voiceUrl) { try { sendVoiceFromUrl(BOT_TYPE.BOOKING, chatId, draft.voiceUrl, {}); } catch (e) {} }
+  const cache = { id: '' };
+  const res = deliverCampaign_(chatId, draft, text, cache);  // 画像アルバム＋本文別テキスト（共通）
 
   const cls = classifyTgResult_(res);
   ui.alert(cls.ok ? '🧪 テスト送信 完了' : '❌ テスト送信 失敗',

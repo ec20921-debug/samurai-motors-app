@@ -32,16 +32,18 @@ const CAMPAIGN_AUDIENCE_OPTIONS = [CAMPAIGN_LANG_BOTH, CAMPAIGN_LANG_KM_ONLY, CA
 
 // === 下書きシートのセル位置（レイアウト変更時はここを直す） ===
 const CAMPAIGN_CELL = {
-  AUDIENCE:  'B4',
-  NOTE_JP:   'B5',  // 内容(日本語) — 振り返り用の端的なメモ
-  TEXT_KM:   'B6',
-  TEXT_EN:   'B7',
-  IMAGE_URL: 'B8',
-  VOICE_URL: 'B9',
-  VIDEO_URL: 'B10',
-  RESULT_AT:    'B14',
-  RESULT_STATS: 'B15',
-  RESULT_ID:    'B16'
+  AUDIENCE:    'B4',
+  NOTE_JP:     'B5',  // 内容(日本語) — 振り返り用の端的なメモ
+  TEXT_KM:     'B6',
+  TEXT_EN:     'B7',
+  IMAGE_URL:   'B8',   // 画像1
+  IMAGE_URL_2: 'B9',   // 画像2（2026-06-01 追加）
+  IMAGE_URL_3: 'B10',  // 画像3（2026-06-01 追加）
+  VOICE_URL:   'B11',  // 旧B9
+  VIDEO_URL:   'B12',  // 旧B10
+  RESULT_AT:    'B16',  // 旧B14
+  RESULT_STATS: 'B17',  // 旧B15
+  RESULT_ID:    'B18'   // 旧B16
 };
 
 // =====================================================
@@ -97,14 +99,14 @@ function setupCampaignDriveFolder_() {
     props.setProperty('DRIVE_FOLDER_CAMPAIGN', folder.getId());
   }
 
-  // 下書きシート 11行目（注釈の上の空き行）に素材フォルダ案内を記載
+  // 下書きシート 13行目（素材フォルダ案内）。2026-06-01 画像3行化で 11→13 へ移動。
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CAMPAIGN_DRAFT_SHEET);
   if (sh) {
-    sh.getRange('A11').setValue('📁 素材フォルダ')
+    sh.getRange('A13').setValue('📁 素材フォルダ')
       .setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
-    sh.getRange('B11').setValue(folder.getUrl()).setFontSize(10).setWrap(true);
-    sh.getRange('C11').setValue('← ここに画像/ボイス/動画を入れて、各ファイルのリンクを上の欄(B8/B9/B10)に貼る')
+    sh.getRange('B13').setValue(folder.getUrl()).setFontSize(10).setWrap(true);
+    sh.getRange('C13').setValue('← ここに画像/ボイス/動画を入れて、各ファイルのリンクを上の欄(画像はB8/B9/B10、ボイスB11、動画B12)に貼る')
       .setFontColor('#888').setFontSize(9).setFontStyle('italic');
   }
   Logger.log('  📁 素材フォルダ: ' + folder.getUrl());
@@ -254,41 +256,55 @@ function ensureCampaignDraftSheet_() {
   ).setWrap(true).setVerticalAlignment('top').setFontSize(11);
   sh.setRowHeight(7, 150);
 
-  // 画像 Drive リンク（任意）
-  sh.getRange('A8').setValue('画像 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  // 画像1 Drive リンク（任意）
+  sh.getRange('A8').setValue('画像1 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
   sh.getRange('B8').setValue('').setWrap(true).setFontSize(10);
-  sh.getRange('C8').setValue('← チラシ等。空なら画像なし。本文がキャプションになる')
+  sh.getRange('C8').setValue('← チラシ等。空なら画像なし。画像は最大3枚アルバム送信／本文は別メッセージ(4096字)')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+
+  // 画像2 Drive リンク（任意）
+  sh.getRange('A9').setValue('画像2 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  sh.getRange('B9').setValue('').setWrap(true).setFontSize(10);
+  sh.getRange('C9').setValue('← 2枚目（任意）')
+    .setFontColor('#888').setFontSize(9).setFontStyle('italic');
+
+  // 画像3 Drive リンク（任意）
+  sh.getRange('A10').setValue('画像3 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  sh.getRange('B10').setValue('').setWrap(true).setFontSize(10);
+  sh.getRange('C10').setValue('← 3枚目（任意）')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
   // ボイス Drive リンク（任意）
-  sh.getRange('A9').setValue('ボイス Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
-  sh.getRange('B9').setValue('').setWrap(true).setFontSize(10);
-  sh.getRange('C9').setValue('← クメール語ボイス。OGG推奨（MP3/M4Aも自動対応）')
+  sh.getRange('A11').setValue('ボイス Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  sh.getRange('B11').setValue('').setWrap(true).setFontSize(10);
+  sh.getRange('C11').setValue('← クメール語ボイス。OGG推奨（MP3/M4Aも自動対応）')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
   // 動画 Drive リンク（任意）
-  sh.getRange('A10').setValue('動画 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
-  sh.getRange('B10').setValue('').setWrap(true).setFontSize(10);
-  sh.getRange('C10').setValue('← before/after等。必ず50MB以内に圧縮。動画がある時は画像より優先')
+  sh.getRange('A12').setValue('動画 Driveリンク（任意）').setFontWeight('bold').setBackground('#e8f0e0').setVerticalAlignment('top');
+  sh.getRange('B12').setValue('').setWrap(true).setFontSize(10);
+  sh.getRange('C12').setValue('← before/after等。必ず50MB以内に圧縮。動画がある時は画像より優先')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic');
 
+  // 素材フォルダ案内は setupCampaignDriveFolder_ が A13/B13/C13 に記載
+
   // 注釈
-  sh.getRange('A12:B12').merge()
+  sh.getRange('A14:B14').merge()
     .setValue('💡 B4の「言語」設定で全員に同じ内容を送ります（推奨=クメール語＋英語を1通に）。' +
               '「顧客」シートの「配信対象」=☑ の人だけに届きます。')
     .setFontColor('#888').setFontSize(9).setFontStyle('italic')
     .setHorizontalAlignment('center');
-  sh.setRowHeight(12, 30);
+  sh.setRowHeight(14, 30);
 
   // 最終結果
-  sh.getRange('A13:B13').merge()
+  sh.getRange('A15:B15').merge()
     .setValue('━━━ 最終配信結果（自動更新） ━━━')
     .setBackground('#1a1a1a').setFontColor('#c9a84c')
     .setFontWeight('bold').setHorizontalAlignment('center');
-  sh.getRange('A14').setValue('送信日時');
-  sh.getRange('A15').setValue('成功 / 失敗 / ブロック');
-  sh.getRange('A16').setValue('キャンペーンID');
-  ['A14', 'A15', 'A16'].forEach(function(a) {
+  sh.getRange('A16').setValue('送信日時');
+  sh.getRange('A17').setValue('成功 / 失敗 / ブロック');
+  sh.getRange('A18').setValue('キャンペーンID');
+  ['A16', 'A17', 'A18'].forEach(function(a) {
     sh.getRange(a).setFontWeight('bold').setBackground('#f8f4e8');
   });
 

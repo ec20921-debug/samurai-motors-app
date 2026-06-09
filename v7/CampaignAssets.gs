@@ -137,7 +137,8 @@ function applyAssetDropdowns_() {
     .requireValueInRange(namesRange, true)
     .setAllowInvalid(true)   // ファイル名 or 生リンク どちらも許可
     .build();
-  ['B8', 'B9', 'B10'].forEach(function(a) {
+  // B8/B9/B10=画像1/2/3、B11=ボイス、B12=動画（2026-06-01 画像3行化）
+  ['B8', 'B9', 'B10', 'B11', 'B12'].forEach(function(a) {
     draft.getRange(a).setDataValidation(rule);
   });
 }

@@ -286,18 +286,15 @@ function testSendCampaign() {
   if (!chatId) { ui.alert('⚠️ チャットIDが空です'); return; }
   props.setProperty('CAMPAIGN_TEST_CHAT_ID', chatId);
 
-  const text = draft.textKm || draft.textEn; // クメール語優先（多数派の見え方）
+  // 本番と同じ言語結合（クメール＋英語を1通に）で「見え方」を確認
+  const text = (draft.audience === CAMPAIGN_LANG_EN_ONLY)
+    ? (draft.textEn || draft.textKm)
+    : (draft.audience === CAMPAIGN_LANG_KM_ONLY)
+      ? (draft.textKm || draft.textEn)
+      : [draft.textKm, draft.textEn].filter(function(s){return s;}).join('\n\n━━━━━━━━━━\n\n');
   const cache = { id: '' };
-  let res;
-  if (draft.videoUrl)      res = sendCampaignVideo_(chatId, draft.videoUrl, text, cache);
-  else if (draft.imageUrl) res = sendCampaignPhoto_(chatId, draft.imageUrl, text);
-  else                     res = sendCampaignText_(chatId, text);
-
-  let voiceNote = '';
-  if (draft.voiceUrl) {
-    const vr = sendVoiceFromUrl(BOT_TYPE.BOOKING, chatId, draft.voiceUrl, {});
-    voiceNote = '\nボイス: ' + (vr && vr.ok ? '✅ 送信' : '❌ 失敗');
-  }
+  const res = deliverCampaign_(chatId, draft, text, cache);
+  const voiceNote = draft.voiceUrl ? '\nボイス: 送信を試行（Telegram確認）' : '';
 
   const cls = classifyTgResult_(res);
   if (cls.ok) {
@@ -334,7 +331,12 @@ function readCampaignDraft_() {
     noteJp:   String(sh.getRange(CAMPAIGN_CELL.NOTE_JP).getValue() || '').trim(),
     textKm:   String(sh.getRange(CAMPAIGN_CELL.TEXT_KM).getValue() || '').trim(),
     textEn:   String(sh.getRange(CAMPAIGN_CELL.TEXT_EN).getValue() || '').trim(),
-    imageUrl: resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),
+    imageUrl: resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),  // 後方互換(1枚目)
+    imageUrls: [
+      resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL).getValue()),
+      resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL_2).getValue()),
+      resolve(sh.getRange(CAMPAIGN_CELL.IMAGE_URL_3).getValue())
+    ].filter(function(u){ return u; }),
     voiceUrl: resolve(sh.getRange(CAMPAIGN_CELL.VOICE_URL).getValue()),
     videoUrl: resolve(sh.getRange(CAMPAIGN_CELL.VIDEO_URL).getValue())
   };
@@ -483,22 +485,10 @@ function executeBroadcast_(draft, recipients) {
       continue;
     }
 
-    // メイン送信の優先順位: 動画 > 画像 > テキスト（本文=キャプション）
-    let mainRes;
-    if (draft.videoUrl) {
-      mainRes = sendCampaignVideo_(r.chatId, draft.videoUrl, text, videoCache);
-    } else if (draft.imageUrl) {
-      mainRes = sendCampaignPhoto_(r.chatId, draft.imageUrl, text);
-    } else {
-      mainRes = sendCampaignText_(r.chatId, text);
-    }
+    // 2026-06-01 新方式: 画像(最大3枚)アルバム＋動画は best-effort で先に送り、
+    // 本文は別テキスト(最大4096字)で送る（写真キャプション1024字制限を回避）。ボイスも送る。
+    const mainRes = deliverCampaign_(r.chatId, draft, text, videoCache);
     const cls = classifyTgResult_(mainRes);
-
-    // ボイスは best-effort（メイン結果は変えない）
-    if (draft.voiceUrl && (cls.ok || !cls.blocked)) {
-      try { sendVoiceFromUrl(BOT_TYPE.BOOKING, r.chatId, draft.voiceUrl, {}); }
-      catch (e) { Logger.log('⚠️ voice 送信失敗 chatId=' + r.chatId + ': ' + e); }
-    }
 
     if (cls.ok) {
       success += 1;
@@ -541,6 +531,87 @@ function executeBroadcast_(draft, recipients) {
   appendCampaignLedger_(draft, result, langLabel);
 
   return result;
+}
+
+/**
+ * 1人に下書き内容を配信する（共通）。2026-06-01 新方式:
+ *   - 画像(1〜3枚)はアルバムで、動画は単体で「キャプション無し」で先に送る（best-effort）
+ *   - 本文は別の sendMessage で送る（最大4096字＝写真キャプション1024字の約4倍）
+ *   - ボイスも best-effort
+ * 本文があるときは本文テキストがメイン（成否判定）。本文が空なら画像/動画がメイン。
+ * → 画像3枚＋長文を両立し、画像送信が失敗しても本文は届く。
+ *
+ * @param {string} chatId
+ * @param {Object} draft  {textKm,textEn,imageUrl,imageUrls,voiceUrl,videoUrl}
+ * @param {string} text   送る本文（言語結合済み）
+ * @param {Object} [cache] 動画 file_id 再利用キャッシュ {id:''}
+ * @return {Object} メイン送信の Telegram 結果（classifyTgResult_ 用）
+ */
+function deliverCampaign_(chatId, draft, text, cache) {
+  cache = cache || { id: '' };
+  var images = (draft.imageUrls && draft.imageUrls.length)
+    ? draft.imageUrls
+    : (draft.imageUrl ? [draft.imageUrl] : []);
+  var mainRes;
+
+  if (text) {
+    // 本文あり → ビジュアルは best-effort で先に、本文は別テキスト（メイン）
+    if (draft.videoUrl) {
+      try { sendCampaignVideo_(chatId, draft.videoUrl, '', cache); }
+      catch (e) { Logger.log('⚠️ video best-effort 失敗 chatId=' + chatId + ': ' + e); }
+    } else if (images.length) {
+      try { sendCampaignPhotos_(chatId, images, ''); }
+      catch (e) { Logger.log('⚠️ photos best-effort 失敗 chatId=' + chatId + ': ' + e); }
+    }
+    mainRes = sendCampaignText_(chatId, text);
+  } else {
+    // 本文なし → ビジュアルをメインに
+    if (draft.videoUrl)      mainRes = sendCampaignVideo_(chatId, draft.videoUrl, '', cache);
+    else if (images.length)  mainRes = sendCampaignPhotos_(chatId, images, '');
+    else                     mainRes = { ok: false, description: '本文・添付なし' };
+  }
+
+  // ボイス（best-effort、メイン結果に影響しない）
+  if (draft.voiceUrl) {
+    try { sendVoiceFromUrl(BOT_TYPE.BOOKING, chatId, draft.voiceUrl, {}); }
+    catch (e) { Logger.log('⚠️ voice best-effort 失敗 chatId=' + chatId + ': ' + e); }
+  }
+  return mainRes;
+}
+
+/**
+ * 複数画像をアルバム送信する（キャプション任意）。1枚なら写真1枚。
+ * 各 Drive リンク/URL を Blob 化し、JobManager の sendPhotoAlbum を流用
+ * （1枚=sendPhoto / 2枚以上=sendMediaGroup、失敗時1枚ずつフォールバック）。
+ */
+function sendCampaignPhotos_(chatId, imageUrls, caption) {
+  var blobs = [];
+  for (var i = 0; i < imageUrls.length && i < 10; i++) {  // Telegramアルバム上限10
+    var b = campaignUrlToBlob_(imageUrls[i]);
+    if (b) blobs.push(b);
+  }
+  if (blobs.length === 0) return { ok: false, description: '画像取得失敗（リンク/共有設定を確認）' };
+  return sendPhotoAlbum(BOT_TYPE.BOOKING, chatId, blobs, caption || '', {});
+}
+
+/**
+ * 画像 URL（Drive リンク or 外部URL）を Blob に変換する。失敗時 null。
+ */
+function campaignUrlToBlob_(url) {
+  var u = String(url || '').trim();
+  if (!u) return null;
+  try {
+    var m = u.match(/[?&]id=([a-zA-Z0-9_-]+)|\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) {
+      return DriveApp.getFileById(m[1] || m[2]).getBlob();
+    }
+    var resp = UrlFetchApp.fetch(u, { muteHttpExceptions: true });
+    if (resp.getResponseCode() === 200) return resp.getBlob();
+    Logger.log('⚠️ campaignUrlToBlob_ HTTP ' + resp.getResponseCode() + ': ' + u);
+  } catch (e) {
+    Logger.log('⚠️ campaignUrlToBlob_ 失敗: ' + e);
+  }
+  return null;
 }
 
 /**
