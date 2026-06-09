@@ -584,14 +584,93 @@ function deliverCampaign_(chatId, draft, text, cache) {
  * 各 Drive リンク/URL を Blob 化し、JobManager の sendPhotoAlbum を流用
  * （1枚=sendPhoto / 2枚以上=sendMediaGroup、失敗時1枚ずつフォールバック）。
  */
-function sendCampaignPhotos_(chatId, imageUrls, caption) {
-  var blobs = [];
-  for (var i = 0; i < imageUrls.length && i < 10; i++) {  // Telegramアルバム上限10
-    var b = campaignUrlToBlob_(imageUrls[i]);
-    if (b) blobs.push(b);
+function sendCampaignPhotos_(chatId, imageUrls, caption, cache) {
+  cache = cache || {};
+  // 2回目以降: アップロード済みの file_id で送る（再アップロードなし＝高速、6分制限対策）
+  if (cache.ids && cache.ids.length) {
+    return sendPhotosByFileIds_(chatId, cache.ids, caption);
   }
-  if (blobs.length === 0) return { ok: false, description: '画像取得失敗（リンク/共有設定を確認）' };
-  return sendPhotoAlbum(BOT_TYPE.BOOKING, chatId, blobs, caption || '', {});
+  // blob は一度だけ Drive から取得してキャッシュ（初回がブロック相手でも再取得しない）
+  if (!cache.blobs) {
+    var blobs = [];
+    for (var i = 0; i < imageUrls.length && i < 10; i++) {  // Telegramアルバム上限10
+      var b = campaignUrlToBlob_(imageUrls[i]);
+      if (b) blobs.push(b);
+    }
+    cache.blobs = blobs;
+  }
+  if (!cache.blobs.length) return { ok: false, description: '画像取得失敗（リンク/共有設定を確認）' };
+  // 初回（file_id 未確保）: アップロード。成功したら file_id を確保し以降は再利用。
+  var res = uploadPhotosAlbum_(chatId, cache.blobs, caption);
+  var ids = extractPhotoFileIds_(res);
+  if (ids.length) cache.ids = ids;
+  return res;
+}
+
+/**
+ * Blob 配列をアップロードして送る（1枚=sendPhoto / 複数=sendMediaGroup）。
+ * Telegram のレスポンス（file_id を含む）を返す。
+ */
+function uploadPhotosAlbum_(chatId, blobs, caption) {
+  var token = getBotToken(BOT_TYPE.BOOKING);
+  if (blobs.length === 1) {
+    var p1 = { chat_id: String(chatId), photo: blobs[0] };
+    if (caption) p1.caption = caption;
+    return tgFetch_(token, 'sendPhoto', p1);
+  }
+  var payload = { chat_id: String(chatId) };
+  var media = [];
+  for (var i = 0; i < blobs.length; i++) {
+    var item = { type: 'photo', media: 'attach://p' + i };
+    if (i === 0 && caption) item.caption = caption;
+    media.push(item);
+    payload['p' + i] = blobs[i];
+  }
+  payload.media = JSON.stringify(media);
+  return tgFetch_(token, 'sendMediaGroup', payload);
+}
+
+/**
+ * file_id 配列で送る（アップロード不要・高速）。1枚=sendPhoto / 複数=sendMediaGroup。
+ */
+function sendPhotosByFileIds_(chatId, fileIds, caption) {
+  if (fileIds.length === 1) {
+    var p = { chat_id: String(chatId), photo: fileIds[0] };
+    if (caption) p.caption = caption;
+    return callTelegramApi(BOT_TYPE.BOOKING, 'sendPhoto', p);
+  }
+  var media = [];
+  for (var i = 0; i < fileIds.length; i++) {
+    var item = { type: 'photo', media: fileIds[i] };
+    if (i === 0 && caption) item.caption = caption;
+    media.push(item);
+  }
+  return callTelegramApi(BOT_TYPE.BOOKING, 'sendMediaGroup',
+    { chat_id: String(chatId), media: JSON.stringify(media) });
+}
+
+/**
+ * sendMediaGroup / sendPhoto のレスポンスから各写真の最大解像度 file_id を取り出す。
+ */
+function extractPhotoFileIds_(res) {
+  var ids = [];
+  if (!res || !res.ok || !res.result) return ids;
+  var arr = (res.result instanceof Array) ? res.result : [res.result];
+  for (var i = 0; i < arr.length; i++) {
+    var ph = arr[i] && arr[i].photo;
+    if (ph && ph.length) ids.push(ph[ph.length - 1].file_id);  // 最大解像度
+  }
+  return ids;
+}
+
+/**
+ * Blob 添付つき multipart で Telegram API を呼ぶ。レスポンス JSON を返す。
+ */
+function tgFetch_(token, method, payload) {
+  var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/' + method,
+    { method: 'post', payload: payload, muteHttpExceptions: true });
+  try { return JSON.parse(res.getContentText()); }
+  catch (e) { return { ok: false, description: 'parse error: ' + res.getContentText() }; }
 }
 
 /**
