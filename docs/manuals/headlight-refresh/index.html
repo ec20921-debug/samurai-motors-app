@@ -215,12 +215,21 @@ body{padding-top:36px}
 @page{size:A4;margin:0}
 @media print{
   body{background:#fff;padding-top:0}
+  /* 表紙: flex はChromiumの印刷断片化バグで余分なページを生むため block に切替 */
+  .cover{display:block}
+  .cover-logo{display:block;text-align:center;padding:18mm 0 4mm}
+  .cover-logo img{display:inline-block}
+  .cover-mid{display:block;text-align:center;padding:0 16mm}
+  .cover-rule{margin:7mm auto 6mm}
+  .cover-tag{margin-top:8mm}
+  .cover-foot{position:absolute;bottom:0;left:0;right:0}
   .helper{display:none}
-  .sheet{margin:0;box-shadow:none;page-break-after:always}
+  /* 高さを固定クランプして1シート=1ページを保証（数mmの計算差で分割されるのを防ぐ） */
+  .sheet{margin:0;box-shadow:none;page-break-after:always;height:294mm;min-height:auto;overflow:hidden}
   .sheet:last-child{page-break-after:auto}
   .lv,.method,.recipe,.ba,.ph,.rulebar,.coat .c,.step{break-inside:avoid}
 }
-@media (max-width:760px){
+@media screen and (max-width:760px){
   .sheet{width:auto;margin:8px;min-height:auto}
   .sheet-body{padding:14px}
   .band{padding:10px 14px}
