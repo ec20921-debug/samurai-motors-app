@@ -55,6 +55,13 @@
       "runtimeArgs": ["server.js"],
       "port": 3000,
       "urlPath": "/admin-console.html"
+    },
+    {
+      "name": "headlight-manual",
+      "runtimeExecutable": "C:\\Users\\drymp\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "8770", "--directory", "docs/manuals/headlight-refresh"],
+      "port": 8770,
+      "urlPath": "/SAMURAI_Headlight_Manual.html"
     }
   ]
 }

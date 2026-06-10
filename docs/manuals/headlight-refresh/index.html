@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAMURAI MOTORS — ការស្ដារភ្លើងមុខ (ヘッドライト・リフレッシュ 作業マニュアル)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SAMURAI MOTORS — Headlight Refresh 作業マニュアル
+   現場スタッフ用 : クメール語メイン + 日本語(括弧)
+   ============================================================ */
+:root{
+  --ink:#15181d;
+  --ink2:#3c4250;
+  --red:#b03028;          /* 注意・before */
+  --green:#1e7a46;        /* OK・after */
+  --gold:#b8924f;         /* ブランド金 */
+  --amber:#c87f2f;
+  --bg:#ffffff;
+  --card:#f6f5f2;
+  --line:#dcdad4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;
+  background:#d9d7d2;color:var(--ink);line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+}
+.km{font-family:'Noto Sans Khmer',sans-serif;line-height:1.9}
+.jp{font-family:'Noto Sans JP',sans-serif;color:#79808d;font-size:.78em;letter-spacing:.02em}
+.en{font-family:'Jost',sans-serif}
+
+/* ---------- page ---------- */
+.sheet{
+  width:210mm;min-height:296mm;margin:14px auto;background:var(--bg);
+  box-shadow:0 10px 30px -16px rgba(0,0,0,.5);
+  padding:0 0 14mm;position:relative;overflow:hidden;
+}
+.sheet-body{padding:7mm 14mm 0}
+.pageno{position:absolute;bottom:6mm;right:14mm;font-family:'Jost',sans-serif;font-size:11px;color:#9aa0a8;letter-spacing:.18em}
+.brandfoot{position:absolute;bottom:6mm;left:14mm;font-family:'Jost',sans-serif;font-size:10px;color:#b9bec5;letter-spacing:.22em;text-transform:uppercase}
+
+/* ---------- header band (inner pages) ---------- */
+.band{
+  background:#000;color:#fff;display:flex;align-items:center;gap:14px;
+  padding:9px 14mm;border-bottom:3px solid var(--gold);
+}
+.band img{height:44px;width:auto;display:block}
+.band .t{flex:1}
+.band .t .km{font-size:17px;font-weight:700;color:#fff;line-height:1.5}
+.band .t .jp{color:#9aa3b2;font-size:11px}
+.band .no{
+  font-family:'Jost',sans-serif;font-size:30px;font-weight:600;color:var(--gold);
+  border-left:1px solid #2a2e36;padding-left:14px;line-height:1;
+}
+
+/* ---------- cover ---------- */
+.cover{background:#000;color:#fff;display:flex;flex-direction:column}
+.cover-logo{width:100%;display:flex;justify-content:center;padding:26mm 0 6mm}
+.cover-logo img{width:118mm;max-width:80%;height:auto}
+.cover-mid{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 16mm}
+.cover-rule{width:64px;height:2px;background:var(--gold);margin:10mm 0 8mm}
+.cover-title-km{font-size:36px;font-weight:800;line-height:1.55;color:#fff}
+.cover-title-jp{font-family:'Noto Sans JP',sans-serif;font-size:15px;color:#aeb6c2;margin-top:6px;letter-spacing:.14em}
+.cover-tag{
+  margin-top:12mm;display:inline-block;background:var(--gold);color:#15181d;
+  font-weight:700;font-size:16px;padding:8px 26px;border-radius:40px;
+}
+.cover-tag .jp{color:#4a3c22;font-size:.75em}
+.cover-foot{display:flex;justify-content:space-between;padding:0 14mm 10mm;
+  font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;
+  color:#7c8492;text-transform:uppercase}
+
+/* ---------- typography ---------- */
+h2.sec{font-size:21px;font-weight:800;line-height:1.55;margin-bottom:1px}
+h2.sec .jp{font-size:12.5px;font-weight:500;display:block;margin-top:1px}
+.lead-km{font-size:15.5px;color:var(--ink2)}
+.secline{height:3px;background:linear-gradient(90deg,var(--gold) 0 56px,var(--line) 56px 100%);margin:8px 0 12px}
+
+/* ---------- big rule banner ---------- */
+.rulebar{
+  background:linear-gradient(135deg,#b03028,#8e231d);color:#fff;border-radius:10px;
+  padding:12px 16px;display:flex;gap:14px;align-items:center;margin:10px 0;
+}
+.rulebar .mark{font-size:34px;line-height:1;flex:none}
+.rulebar .km{font-size:16.5px;font-weight:700;color:#fff;line-height:1.65}
+.rulebar .jp{color:#f3c9c4;font-size:11.5px;display:block;margin-top:2px}
+
+/* ---------- degradation flow ---------- */
+.flow3{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:stretch;margin:9px 0 2px}
+.flow3 .fc{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:9px 11px;text-align:center}
+.flow3 .fc .big{font-size:26px;line-height:1.2}
+.flow3 .fc .km{font-size:14.5px;font-weight:700;margin-top:5px}
+.flow3 .fc .jp{display:block;margin-top:2px}
+.flow3 .ar{display:flex;align-items:center;font-size:22px;color:var(--gold);font-weight:700}
+
+/* ---------- level cards (diagnosis) ---------- */
+.lv{display:grid;grid-template-columns:56mm 1fr;gap:0;border:2px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:9px;background:#fff}
+.lv .pic{position:relative;aspect-ratio:1/0.70;overflow:hidden}
+.lv .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.lv .pic .tag{position:absolute;top:8px;left:8px;color:#fff;font-weight:700;font-size:12.5px;
+  padding:3px 12px;border-radius:20px}
+.lv .info{padding:9px 15px;display:flex;flex-direction:column;justify-content:center}
+.lv .name{font-size:18px;font-weight:800;display:flex;align-items:center;gap:9px}
+.lv .name .jp{font-size:12px;font-weight:500}
+.lv .sym{font-size:14px;color:var(--ink2);margin-top:3px}
+.lv .sym .jp{display:block}
+.lv .go{margin-top:6px;background:#0d0f13;color:#fff;border-radius:8px;padding:7px 13px;
+  font-size:14.5px;font-weight:700;display:inline-block;width:fit-content}
+.lv .go .jp{color:#b8c0cd;font-weight:400}
+.lv .go b{color:var(--gold)}
+.lv1 .tag{background:#d2a017}.lv2 .tag{background:#c87f2f}.lv3 .tag{background:#b03028}
+.lv1{border-color:#e7cf8e}.lv2{border-color:#e3c19a}.lv3{border-color:#dcaaa5}
+
+/* ---------- method card ---------- */
+.method{border:2px solid var(--line);border-radius:14px;margin-bottom:11px;overflow:hidden;background:#fff}
+.method-head{display:flex;align-items:center;gap:13px;background:var(--card);padding:9px 15px;border-bottom:2px solid var(--line)}
+.method-head .num{
+  flex:none;width:46px;height:46px;border-radius:50%;background:#0d0f13;color:var(--gold);
+  display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;font-family:'Jost',sans-serif}
+.method-head .km{font-size:18.5px;font-weight:800;line-height:1.55}
+.method-head .jp{display:block;font-size:12px}
+.method-body{padding:10px 15px 12px}
+.method .does{font-size:14.5px;color:var(--ink2)}
+.method .does .jp{display:block;margin-top:2px}
+.chiprow{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);
+  border-radius:30px;padding:4px 13px;font-size:13px;font-weight:600}
+.chip .ic{color:var(--gold);font-weight:700}
+.chip .jp{font-weight:400}
+.steps{margin-top:9px;display:grid;gap:5px}
+.step{display:flex;gap:10px;align-items:flex-start;background:var(--card);border-radius:9px;padding:4px 12px}
+.step .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--gold);color:#fff;font-weight:700;
+  display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:3px;font-family:'Jost',sans-serif}
+.step .km{font-size:14.5px;font-weight:600}
+.step .jp{display:block;font-weight:400}
+.warn{display:flex;gap:10px;background:#fbeeec;border:1.5px solid #e3b6b0;border-radius:9px;padding:7px 13px;margin-top:8px}
+.warn .ic{color:var(--red);font-size:19px;font-weight:700;flex:none}
+.warn .km{font-size:13.5px;font-weight:600;color:#7c2620}
+.warn .jp{display:block;font-weight:400;color:#b08a86}
+.okline{display:flex;gap:10px;background:#ecf6ef;border:1.5px solid #b9dcc5;border-radius:9px;padding:7px 13px;margin-top:8px}
+.okline .ic{color:var(--green);font-size:18px;font-weight:700;flex:none}
+.okline .km{font-size:13.5px;font-weight:600;color:#175e36}
+.okline .jp{display:block;font-weight:400;color:#76a288}
+
+/* ---------- coating options ---------- */
+.coat{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:2px}
+.coat .c{border:2px solid var(--line);border-radius:12px;padding:11px 15px;background:#fff;position:relative}
+.coat .c.main{border-color:var(--gold);background:#fdfaf3}
+.coat .c .star{position:absolute;top:-13px;left:14px;background:var(--gold);color:#fff;font-weight:700;
+  font-size:12px;padding:2px 13px;border-radius:20px}
+.coat .c .km{font-size:16px;font-weight:800}
+.coat .c .jp{display:block;font-size:11.5px}
+.coat .c .d{font-size:13.5px;color:var(--ink2);margin-top:6px}
+.coat .ng{grid-column:1/-1;border:2px dashed #c9cdd3;border-radius:12px;padding:9px 15px;background:#f3f4f5;color:#6d747e;display:flex;gap:12px;align-items:center}
+.coat .ng .x{font-size:24px;color:#aab0b8;font-weight:700}
+.coat .ng .km{font-size:14.5px;font-weight:700;color:#555c66}
+.coat .ng .jp{display:block;font-weight:400}
+
+/* ---------- recipe summary ---------- */
+.recipe{border:2px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:9px}
+.recipe .head{padding:7px 15px;color:#fff;display:flex;align-items:center;gap:12px}
+.recipe.r1 .head{background:#d2a017}.recipe.r2 .head{background:#c87f2f}.recipe.r3 .head{background:#b03028}
+.recipe .head .km{font-size:16.5px;font-weight:800;color:#fff}
+.recipe .head .jp{color:rgba(255,255,255,.85);font-size:11px;display:block}
+.recipe .body{display:flex;align-items:center;gap:10px;padding:10px 15px;background:#fff;flex-wrap:wrap}
+.rstep{background:var(--card);border:1.5px solid var(--line);border-radius:9px;padding:6px 13px;text-align:center}
+.rstep .b{font-size:15.5px;font-weight:800}
+.rstep .jp{display:block;font-size:10.5px}
+.rarrow{font-size:20px;color:var(--gold);font-weight:700}
+.rstep.fin{background:#0d0f13;border-color:#0d0f13;color:#fff}
+.rstep.fin .b{color:var(--gold)}
+.rstep.fin .jp{color:#b8c0cd}
+
+/* ---------- photo gallery ---------- */
+.pair-title{display:flex;align-items:center;gap:10px;margin:0 0 7px}
+.pair-title .lvtag{color:#fff;font-weight:700;font-size:12.5px;padding:3px 13px;border-radius:20px;flex:none}
+.pair-title .km{font-size:15.5px;font-weight:700}
+.pair-title .jp{font-size:11px}
+.t-light{background:#d2a017}.t-med{background:#c87f2f}.t-sev{background:#b03028}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:11px}
+.ph{border:2px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.ph .im{aspect-ratio:88/100;overflow:hidden}
+.ph.land .im{aspect-ratio:4/3}
+.ph .im img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .cap{display:flex;align-items:center;justify-content:center;gap:8px;padding:5px 6px;font-weight:800;font-size:14.5px}
+.ph .cap .jp{font-weight:500}
+.ph.before .cap{background:#fbeeec;color:var(--red)}
+.ph.after .cap{background:#ecf6ef;color:var(--green)}
+.ph .cap .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.ph.before .cap .dot{background:var(--red)}
+.ph.after .cap .dot{background:var(--green)}
+.single{display:grid;grid-template-columns:1fr;gap:10px;margin:0 auto 11px;max-width:88%}
+.note-soft{background:var(--card);border:1.5px solid var(--line);border-radius:9px;padding:10px 14px;font-size:13px;color:var(--ink2)}
+.note-soft .jp{display:block}
+
+/* ---------- closing ---------- */
+.closing{display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:5mm}
+.closing .logo-chip{background:#000;border-radius:16px;padding:12px 26px;display:flex;justify-content:center}
+.closing .logo-chip img{width:60mm;height:auto}
+.closing .msg{font-size:16px;font-weight:700;margin-top:14px}
+.closing .msg .jp{display:block;font-weight:400;margin-top:3px}
+
+/* ---------- helper / print ---------- */
+.helper{position:fixed;top:0;left:0;right:0;z-index:60;background:#0d0f13;color:#cfd4dd;
+  font-family:'Jost',sans-serif;font-size:11.5px;letter-spacing:.06em;
+  padding:7px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--gold)}
+.helper b{color:var(--gold)}
+.helper button{font-family:'Jost',sans-serif;background:var(--gold);color:#15181d;border:0;
+  padding:6px 16px;border-radius:30px;font-size:11px;letter-spacing:.1em;cursor:pointer;font-weight:600}
+body{padding-top:36px}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff;padding-top:0}
+  .helper{display:none}
+  .sheet{margin:0;box-shadow:none;page-break-after:always}
+  .sheet:last-child{page-break-after:auto}
+  .lv,.method,.recipe,.ba,.ph,.rulebar,.coat .c,.step{break-inside:avoid}
+}
+@media (max-width:760px){
+  .sheet{width:auto;margin:8px;min-height:auto}
+  .sheet-body{padding:14px}
+  .band{padding:10px 14px}
+  .lv{grid-template-columns:1fr}
+  .lv .pic{aspect-ratio:4/3}
+  .coat{grid-template-columns:1fr}
+  .cover-title-km{font-size:27px}
+  .flow3{grid-template-columns:1fr;gap:6px}
+  .flow3 .ar{justify-content:center;transform:rotate(90deg)}
+  body{padding-top:44px}
+}
+</style>
+</head>
+<body>
+
+<div class="helper">
+  <span><b>SAMURAI MOTORS</b>&nbsp; ការស្ដារភ្លើងមុខ — សៀវភៅបុគ្គលិក</span>
+  <button onclick="window.print()">បោះពុម្ព / 印刷 (PDF)</button>
+</div>
+
+<!-- =================== P1 COVER =================== -->
+<section class="sheet cover">
+  <div class="cover-logo"><img src="./assets/logo_full.jpg" alt="SAMURAI MOTORS"></div>
+  <div class="cover-mid">
+    <div class="cover-rule"></div>
+    <h1 class="cover-title-km">ការសម្អាត និងស្ដារ<br>ភ្លើងមុខឡានឱ្យភ្លឺថ្មី</h1>
+    <div class="cover-title-jp">ヘッドライト・リフレッシュ 作業マニュアル</div>
+    <div class="cover-tag km">សម្រាប់បុគ្គលិកធ្វើការ &nbsp;<span class="jp">（現場スタッフ用）</span></div>
+  </div>
+  <div class="cover-foot en">
+    <span>Samurai Motors · Phnom Penh</span>
+    <span>Headlight Refresh · v2.0 · 2026.06</span>
+  </div>
+</section>
+
+<!-- =================== P2 BASICS + RULE =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">ហេតុអ្វីភ្លើងមុខឡើងលឿង?</div><div class="jp">なぜヘッドライトは黄ばむのか</div></div>
+    <div class="no">1</div>
+  </div>
+  <div class="sheet-body">
+
+    <p class="lead-km km">ភ្លើងមុខឡានធ្វើពី<b>ប្លាស្ទិច</b> ហើយខាងលើមាន<b>ស្រទាប់ថ្នាំថ្លា (Clear)</b> ការពារ។
+    ពន្លឺថ្ងៃ (UV) ធ្វើឱ្យស្រទាប់នេះខូចបន្តិចម្ដងៗ។</p>
+    <p class="jp" style="margin-top:6px">ヘッドライトはプラスチック製で、表面のクリア（塗膜）が紫外線で劣化していきます。</p>
+
+    <div class="flow3">
+      <div class="fc"><div class="big">☀️</div><div class="km">ត្រូវពន្លឺថ្ងៃ (UV) យូរ</div><span class="jp">紫外線を浴び続ける</span></div>
+      <div class="ar">→</div>
+      <div class="fc"><div class="big">🟡</div><div class="km">ឡើងពណ៌លឿង + ស្រអាប់</div><span class="jp">黄ばみ・くすみ</span></div>
+      <div class="ar">→</div>
+      <div class="fc"><div class="big">💥</div><div class="km">Clear របក + ស្នាមប្រេះ</div><span class="jp">クリア剥がれ・ひび割れ</span></div>
+    </div>
+    <p class="km" style="font-size:13.5px;color:var(--ink2);margin-top:6px">បើទុកចោលយូរ ⇒ ការខូចកាន់តែធ្ងន់ ⇒ ការងារកាន់តែពិបាក។ ដូច្នេះត្រូវធ្វើតាមកម្រិតឱ្យត្រូវ។
+    <span class="jp">放置すると劣化が進み、作業も大変になります。状態に合った方法で施工します。</span></p>
+
+    <div class="rulebar">
+      <div class="mark">⚠️</div>
+      <div>
+        <div class="km">ច្បាប់សំខាន់បំផុត ៖ ធ្វើរួចហើយ <u>ត្រូវតែស្រោប COATING ជានិច្ច!</u><br>
+        បើមិនស្រោបទេ ពណ៌លឿងនឹងត្រឡប់មកវិញក្នុង <b>១–២ ខែ</b>។</div>
+        <span class="jp">最重要ルール：下地施工のあとは必ずコーティング。しないと1〜2ヶ月で黄ばみが再発します。</span>
+      </div>
+    </div>
+
+    <h2 class="sec km" style="margin-top:16px">មើលភ្លើងមុខ ⇒ ជ្រើសរើសកម្រិត<span class="jp">ヘッドライトを見て、レベルを選ぶ</span></h2>
+    <div class="secline"></div>
+
+    <div class="lv lv1">
+      <div class="pic"><img src="./assets/light_white_before.jpg" alt=""><span class="tag">កម្រិត ១</span></div>
+      <div class="info">
+        <div class="name km">ស្រាល <span class="jp">（軽度）</span></div>
+        <div class="sym km">លឿងបន្តិច ស្រអាប់បន្តិច<span class="jp">うっすら黄ばみ・くすみ</span></div>
+        <div class="go km">ប្រើវិធី <b>①</b> ឬ <b>②</b> <span class="jp">→ 方法①か②</span></div>
+      </div>
+    </div>
+
+    <div class="lv lv2">
+      <div class="pic"><img src="./assets/severe_before.jpg" alt=""><span class="tag">កម្រិត ២</span></div>
+      <div class="info">
+        <div class="name km">មធ្យម <span class="jp">（中度）</span></div>
+        <div class="sym km">លឿងច្បាស់ ស្រអាប់ខ្លាំង មើលមិនសូវថ្លា<span class="jp">黄ばみがはっきり・強いくすみ</span></div>
+        <div class="go km">ប្រើវិធី <b>① + ②</b> ឬ <b>② + ③</b> <span class="jp">→ ①+② か ②+③</span></div>
+      </div>
+    </div>
+
+    <div class="lv lv3">
+      <div class="pic"><img src="./assets/clearpeel.jpg" alt=""><span class="tag">កម្រិត ៣</span></div>
+      <div class="info">
+        <div class="name km">ធ្ងន់ធ្ងរ <span class="jp">（重度）</span></div>
+        <div class="sym km">ស្រទាប់ Clear របក (មើលឃើញស្បែករបក) ឬមានស្នាមប្រេះ<span class="jp">クリア剥がれ・ひび割れがある</span></div>
+        <div class="go km">ប្រើវិធី <b>③</b> <span class="jp">→ 方法③（ペーパー研磨）</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">1</div>
+</section>
+
+<!-- =================== P3 METHOD 1 + 2 =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">វិធីធ្វើ ① និង ②</div><div class="jp">下地施工の方法 ①クリーナー ②コンパウンド</div></div>
+    <div class="no">2</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="method">
+      <div class="method-head">
+        <div class="num">①</div>
+        <div><div class="km">ជូតដោយទឹកថ្នាំសម្អាតភ្លើងមុខ</div><span class="jp">ヘッドライト専用クリーナーによる施工</span></div>
+      </div>
+      <div class="method-body">
+        <p class="does km">ទឹកថ្នាំនេះ<b>រំលាយភាពកខ្វក់</b>នៅលើផ្ទៃ ហើយជូតចេញ ⇒ ពណ៌លឿង និងស្រអាប់ថយ។
+          <span class="jp">表面の汚れを溶かしながら除去（黄ばみ・くすみの除去）。</span></p>
+        <div class="chiprow">
+          <span class="chip km"><span class="ic">⏱</span> ប្រហែល 20 នាទី (ឆ្វេង+ស្ដាំ) <span class="jp">（左右 約20分）</span></span>
+          <span class="chip km"><span class="ic">🧴</span> ទឹកថ្នាំ 300ml <span class="jp">（専用クリーナー）</span></span>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="n">1</div><div class="km">លាងភ្លើងមុខឱ្យស្អាត រួចជូតឱ្យស្ងួត<span class="jp">ライトを洗い、乾かす</span></div></div>
+          <div class="step"><div class="n">2</div><div class="km">បិទស្កុតការពារ ជុំវិញភ្លើងមុខ (កុំឱ្យប៉ះថ្នាំឡាន)<span class="jp">周囲をマスキング（ボディ保護）</span></div></div>
+          <div class="step"><div class="n">3</div><div class="km">ដាក់ទឹកថ្នាំលើក្រណាត់ ជូតឱ្យស្មើគ្នាគ្រប់កន្លែង<span class="jp">クロスに付けてムラなく拭く</span></div></div>
+          <div class="step"><div class="n">4</div><div class="km">ជូតសម្អាតម្ដងទៀត ពិនិត្យមើលថាថ្លាស្មើគ្នា<span class="jp">仕上げ拭きをして、ムラがないか確認</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="method">
+      <div class="method-head">
+        <div class="num">②</div>
+        <div><div class="km">ខាត់ដោយថ្នាំខាត់ Compound</div><span class="jp">コンパウンドによる施工</span></div>
+      </div>
+      <div class="method-body">
+        <p class="does km">ខាត់ដើម្បីលុប<b>ពណ៌លឿង + ស្រអាប់</b> ហើយធ្វើឱ្យកន្លែង Clear របកតិចៗ <b>មើលមិនសូវឃើញ</b>។
+          <span class="jp">磨きで黄ばみ・くすみを除去。小さなクリア剥がれを目立たなくする。</span></p>
+        <div class="chiprow">
+          <span class="chip km"><span class="ic">⏱</span> 20–30 នាទី (ឆ្វេង+ស្ដាំ) <span class="jp">（左右 20〜30分）</span></span>
+          <span class="chip km"><span class="ic">🫙</span> ប្រើ Compound ដែលហាងយើងមានស្រាប់ <span class="jp">（既存のコンパウンド）</span></span>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="n">1</div><div class="km">លាងស្អាត + បិទស្កុតការពារ ដូចវិធី ①<span class="jp">洗浄・マスキングは①と同じ</span></div></div>
+          <div class="step"><div class="n">2</div><div class="km">ដាក់ Compound បន្តិច រួចខាត់ឱ្យស្មើ (ដៃ ឬម៉ាស៊ីនខាត់)<span class="jp">コンパウンドで均一に磨く（手 or ポリッシャー）</span></div></div>
+          <div class="step"><div class="n">3</div><div class="km">ជូតសំអាតថ្នាំចេញ ពិនិត្យពន្លឺថ្លា<span class="jp">拭き取り、透明感を確認</span></div></div>
+        </div>
+        <div class="okline"><div class="ic">✔</div><div class="km">អាចធ្វើ ① រួចបន្ត ② ក៏បាន តាមស្ថានភាព។<span class="jp">状態に応じて①→②と重ねてもOK。</span></div></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">2</div>
+</section>
+
+<!-- =================== P4 METHOD 3 =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">វិធីធ្វើ ③ — ខាត់ក្រដាសខ្សាច់ទឹក</div><div class="jp">下地施工③ 耐水ペーパー研磨（重度用）</div></div>
+    <div class="no">3</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="method" style="border-color:#dcaaa5">
+      <div class="method-head">
+        <div class="num">③</div>
+        <div><div class="km">ខាត់ដោយក្រដាសខ្សាច់ទឹក (320 → 3000)</div><span class="jp">耐水ペーパーによる研磨施工</span></div>
+      </div>
+      <div class="method-body">
+        <p class="does km">សម្រាប់ <b>Clear របក / លឿងខ្លាំង / ស្នាមប្រេះ</b>។ ខាត់យកស្រទាប់ Clear ចាស់ចេញទាំងអស់ ⇒ ភ្លើងមុខថ្លាឡើងវិញ ស្នាមប្រេះថយ។
+          <span class="jp">クリア剥がれ・強い黄ばみ・ひび割れ向け。古いクリアを除去してリフレッシュ、ひび割れも低減。</span></p>
+        <div class="chiprow">
+          <span class="chip km"><span class="ic">⏱</span> 40–120 នាទី តាមស្ថានភាព <span class="jp">（左右 40〜120分）</span></span>
+          <span class="chip km"><span class="ic">📄</span> ក្រដាសខ្សាច់ #320 → #3000 <span class="jp">（耐水ペーパー セット）</span></span>
+          <span class="chip km"><span class="ic">💧</span> ប្រើទឹកជានិច្ច <span class="jp">（必ず水研ぎ）</span></span>
+        </div>
+        <div class="steps">
+          <div class="step"><div class="n">1</div><div class="km">លាងស្អាត + បិទស្កុតការពារឱ្យជិតល្អ (សំខាន់ណាស់!)<span class="jp">洗浄＋しっかりマスキング（超重要）</span></div></div>
+          <div class="step"><div class="n">2</div><div class="km">ចាប់ផ្ដើមពីលេខគ្រើម (#320) ខាត់ជាមួយទឹក ឱ្យស្មើគ្រប់ផ្ទៃ<span class="jp">粗い番手（#320）から水を付けて均一に研磨</span></div></div>
+          <div class="step"><div class="n">3</div><div class="km">ប្ដូរទៅលេខល្អិតបន្តិចម្ដងៗ ⇒ រហូតដល់ #3000 (គ្រើម → ល្អិត)<span class="jp">番手を少しずつ細かく → #3000 まで（粗→細）</span></div></div>
+          <div class="step"><div class="n">4</div><div class="km">លាងទឹក ជូតស្ងួត រួចសម្អាតម្ដងទៀតឱ្យស្អាត<span class="jp">水で流して乾拭き、その後きれいに清掃</span></div></div>
+          <div class="step"><div class="n">5</div><div class="km">បើចង់ថ្លាខ្លាំង ⇒ ខាត់ Compound (វិធី ②) បន្ថែម<span class="jp">より透明にしたい場合は②コンパウンドで仕上げ磨き</span></div></div>
+        </div>
+        <div class="warn"><div class="ic">⚠</div><div class="km">វិធីនេះយកស្រទាប់ Clear ចាស់ចេញ <u>ទាំងអស់</u> ⇒ បើមិនស្រោប Coating ភ្លាម ភ្លើងមុខនឹងខូចលឿនជាងមុន!
+          <span class="jp">古いクリアを全て除去するため、コーティングをしないと前より早く劣化します。施工後は必ずコーティング！</span></div></div>
+        <div class="warn"><div class="ic">⚠</div><div class="km">ពេលខាត់ កុំឱ្យក្រដាសខ្សាច់ប៉ះថ្នាំឡាន — ខាត់តែលើភ្លើងមុខប៉ុណ្ណោះ។
+          <span class="jp">ペーパーがボディ塗装に当たらないよう注意。磨くのはライト面のみ。</span></div></div>
+      </div>
+    </div>
+
+    <div class="note-soft km">⏱ ពេលវេលាអាស្រ័យលើកម្រិត Clear របក ៖ របកខ្លាំង ⇒ យូរជាង / របកតិច ⇒ លឿនជាង។
+      <span class="jp">施工時間はクリア剥がれの度合いで変わります（重度ほど長い）。</span></div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">3</div>
+</section>
+
+<!-- =================== P5 COATING =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">ជំហានបញ្ចប់ — ស្រោប COATING</div><div class="jp">仕上げ処理（コーティング）— 再発防止</div></div>
+    <div class="no">4</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="rulebar">
+      <div class="mark">🛡️</div>
+      <div>
+        <div class="km">ជំហាននេះ<u>សំខាន់បំផុត</u>! ធ្វើ ①/②/③ រួចហើយ ត្រូវស្រោប Coating ភ្លាម។<br>
+        បើអត់ ⇒ ១–២ ខែក្រោយ លឿងវិញ ⇒ ភ្ញៀវមិនសប្បាយចិត្ត។</div>
+        <span class="jp">仕上げ処理が最重要ポイント。下地施工後そのままだと1〜2ヶ月で黄ばみ再発 → クレームの元。</span>
+      </div>
+    </div>
+
+    <div class="coat">
+      <div class="c main">
+        <span class="star km">ប្រើជាគោល（基本）</span>
+        <div class="km">① Glass Coating សម្រាប់ភ្លើងមុខ</div>
+        <span class="jp">ヘッドライト用ガラスコーティング</span>
+        <div class="d km">ការពារបាន <b>១–២ ឆ្នាំ</b>។ លាបស្ដើងៗ ឱ្យស្មើ កុំឱ្យមានស្នាមហូរ។
+          <span class="jp">効果1〜2年。薄く均一に塗布、液ダレ注意。</span></div>
+      </div>
+      <div class="c">
+        <div class="km">② Coating ធម្មតា (របស់តួឡាន)</div>
+        <span class="jp">簡易コーティング（ボディー用）</span>
+        <div class="d km">ការពារ <b>១–៣ ខែ</b>។ ប្រើជាសេវាបន្ថែមរហ័ស។
+          <span class="jp">効果1〜3ヶ月。サービス施工として使用。</span></div>
+      </div>
+      <div class="ng">
+        <div class="x">✖</div>
+        <div><div class="km">លាបថ្នាំ Clear (Urethane) — ហាងយើង<b>មិនធ្វើទេ</b>
+          <span class="jp">クリア塗装（ウレタン・耐久2〜3年以上）は、現状の環境では施工不可。</span></div></div>
+      </div>
+    </div>
+
+    <h2 class="sec km" style="margin-top:18px">សង្ខេប ៖ ធ្វើតាមលំដាប់នេះ<span class="jp">まとめ：この組み合わせで施工する</span></h2>
+    <div class="secline"></div>
+
+    <div class="recipe r1">
+      <div class="head"><div class="km">លឿងស្រាល – មធ្យម <span class="jp">軽度・中度の黄ばみ</span></div></div>
+      <div class="body">
+        <div class="rstep"><div class="b km">វិធី ① ឬ ②</div><span class="jp">下地①/②を使い分け</span></div>
+        <div class="rarrow">→</div>
+        <div class="rstep fin"><div class="b km">ស្រោប Coating ①</div><span class="jp">仕上げ①ガラスコート</span></div>
+      </div>
+    </div>
+
+    <div class="recipe r2">
+      <div class="head"><div class="km">លឿងធ្ងន់ <span class="jp">重度の黄ばみ</span></div></div>
+      <div class="body">
+        <div class="rstep"><div class="b km">វិធី ②</div><span class="jp">下地②</span></div>
+        <div class="rarrow">＋</div>
+        <div class="rstep"><div class="b km">វិធី ③</div><span class="jp">下地③</span></div>
+        <div class="rarrow">→</div>
+        <div class="rstep fin"><div class="b km">ស្រោប Coating ①</div><span class="jp">仕上げ①ガラスコート</span></div>
+      </div>
+    </div>
+
+    <div class="recipe r3">
+      <div class="head"><div class="km">Clear របក / ស្នាមប្រេះ <span class="jp">クリア剥がれ等</span></div></div>
+      <div class="body">
+        <div class="rstep"><div class="b km">វិធី ③</div><span class="jp">下地③ペーパー研磨</span></div>
+        <div class="rarrow">→</div>
+        <div class="rstep fin"><div class="b km">ស្រោប Coating ①</div><span class="jp">仕上げ①ガラスコート</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">4</div>
+</section>
+
+<!-- =================== P6 GALLERY LIGHT =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">រូបភាពយោង ១ — កម្រិតស្រាល</div><div class="jp">施工参考写真：軽度（コンパウンド施工）</div></div>
+    <div class="no">5</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="pair-title"><span class="lvtag t-light km">កម្រិត ១ ស្រាល</span><span class="km">ឡានពណ៌ស — ខាត់ Compound</span><span class="jp">（軽度／施工後はコンパウンド）</span></div>
+    <div class="ba">
+      <div class="ph before"><div class="im"><img src="./assets/light_white_before.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after"><div class="im"><img src="./assets/light_white_after.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+
+    <div class="pair-title"><span class="lvtag t-light km">កម្រិត ១ ស្រាល</span><span class="km">ឡានពណ៌ខ្មៅ — ខាត់ Compound</span><span class="jp">（軽度／施工後はコンパウンド）</span></div>
+    <div class="ba">
+      <div class="ph before"><div class="im"><img src="./assets/light_black_before.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after"><div class="im"><img src="./assets/light_black_after.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">5</div>
+</section>
+
+<!-- =================== P7 GALLERY MEDIUM (1+2) =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">រូបភាពយោង ២ — កម្រិតមធ្យម</div><div class="jp">施工参考写真：中度（下地①と②）</div></div>
+    <div class="no">6</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="pair-title"><span class="lvtag t-med km">កម្រិត ២ មធ្យម</span><span class="km">ធ្វើដោយវិធី ① + ②</span><span class="jp">（クリーナー＋コンパウンド）</span></div>
+    <div class="ba">
+      <div class="ph before"><div class="im"><img src="./assets/med1_a.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after"><div class="im"><img src="./assets/med1_b.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+    <div class="ba">
+      <div class="ph before"><div class="im"><img src="./assets/med1_c.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after"><div class="im"><img src="./assets/med1_d.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">6</div>
+</section>
+
+<!-- =================== P8 GALLERY MEDIUM(2+3) + SEVERE =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">រូបភាពយោង ៣ — មធ្យម និងធ្ងន់ធ្ងរ</div><div class="jp">施工参考写真：中度（下地②と③）・重度</div></div>
+    <div class="no">7</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="pair-title"><span class="lvtag t-med km">កម្រិត ២ មធ្យម</span><span class="km">ធ្វើដោយវិធី ② + ③</span><span class="jp">（コンパウンド＋ペーパー研磨）</span></div>
+    <div class="ba">
+      <div class="ph before land"><div class="im"><img src="./assets/med2_before.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after land"><div class="im"><img src="./assets/med2_after.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+
+    <div class="pair-title" style="margin-top:6px"><span class="lvtag t-sev km">កម្រិត ៣ ធ្ងន់ធ្ងរ</span><span class="km">ធ្វើដោយវិធី ③ + ស្រោប Coating</span><span class="jp">（下地③＋コーティング仕上げ）</span></div>
+    <div class="ba">
+      <div class="ph before"><div class="im"><img src="./assets/severe_before.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>មុនធ្វើ <span class="jp">施工前</span></div></div>
+      <div class="ph after"><div class="im"><img src="./assets/severe_after.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>ក្រោយធ្វើ <span class="jp">施工後</span></div></div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">7</div>
+</section>
+
+<!-- =================== P9 CLEAR PEEL + CLOSING =================== -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="">
+    <div class="t"><div class="km">របៀបសម្គាល់ "Clear របក"</div><div class="jp">クリア剥がれの見分け方（参考画像）</div></div>
+    <div class="no">8</div>
+  </div>
+  <div class="sheet-body">
+
+    <div class="single">
+      <div class="ph before land"><div class="im"><img src="./assets/clearpeel.jpg" alt=""></div>
+        <div class="cap km"><span class="dot"></span>កន្លែងក្នុងបន្ទាត់ក្រហម = Clear កំពុងរបក <span class="jp">赤線の内側＝クリア剥がれ</span></div></div>
+    </div>
+    <div class="note-soft km">បើឃើញបែបនេះ ⇒ វិធី ① / ② ជួយមិនបានទេ ⇒ ត្រូវប្រើ<b>វិធី ③ (ខាត់ក្រដាសខ្សាច់)</b> ហើយស្រោប Coating។
+      <span class="jp">この状態はクリーナーやコンパウンドでは直りません。③ペーパー研磨＋コーティングで対応します。</span></div>
+
+    <div class="closing">
+      <div class="logo-chip"><img src="./assets/logo_full.jpg" alt="SAMURAI MOTORS"></div>
+      <div class="msg km">ធ្វើការដោយយកចិត្តទុកដាក់ គុណភាពជប៉ុន ស្នាដៃរបស់យើង។
+        <span class="jp">一台一台、ていねいに。日本品質はわたしたちの手から。</span></div>
+    </div>
+
+  </div>
+  <div class="brandfoot">SAMURAI MOTORS</div>
+  <div class="pageno">8</div>
+</section>
+
+</body>
+</html>
