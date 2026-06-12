@@ -97,6 +97,7 @@ body {
 .icon-task       { background: linear-gradient(135deg, #E65100, #F57C00); }
 .icon-report     { background: linear-gradient(135deg, #6A1B9A, #8E24AA); }
 .icon-expense    { background: linear-gradient(135deg, #2E7D32, #43A047); }
+.icon-execdash   { background: linear-gradient(135deg, #8a7535, #c9a84c); }
 
 .section-label {
   font-size:11px; font-weight:600; color:var(--text-dim);
@@ -162,6 +163,19 @@ body {
     <span class="menu-arrow">›</span>
   </a>
 
+  <!-- 管理者(admin)のみ whoami 後に表示 -->
+  <div id="adminSection" style="display:none">
+    <div class="section-label">👑 管理者メニュー</div>
+    <a class="menu-item" id="menuExecDash">
+      <div class="menu-icon icon-execdash">📊</div>
+      <div class="menu-info">
+        <div class="menu-title">経営コックピット</div>
+        <div class="menu-desc">売上・経費・予約状況・粗利をひと目で確認</div>
+      </div>
+      <span class="menu-arrow">›</span>
+    </a>
+  </div>
+
 </div>
 
 <script>
@@ -213,6 +227,7 @@ var reportHref = buildUrl('report-internal.html');
 document.getElementById('menuReport').href = reportHref;
 var expenseHref = buildUrl('expense-internal.html');
 document.getElementById('menuExpense').href = expenseHref;
+document.getElementById('menuExecDash').href = buildUrl('exec-dashboard.html');
 // デバッグ: タップ前にリンク先 URL を確認できるよう表示
 console.log('📍 attendance URL:', attendanceHref);
 console.log('📍 task URL:', taskHref);
@@ -246,6 +261,10 @@ console.log('📍 expense URL:', expenseHref);
       }
       if (d.ok && d.staff) {
         line.innerHTML = '👤 <strong>' + escapeHtml(d.staff.nameJp) + '</strong> (' + escapeHtml(d.staff.nameEn) + ')';
+        // 管理者のみ経営コックピットを表示（サーバ側でも admin 限定で二重防御）
+        if (d.staff.role === 'admin') {
+          document.getElementById('adminSection').style.display = 'block';
+        }
       } else if (d.ok) {
         line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
       } else {

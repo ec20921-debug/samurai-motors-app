@@ -257,6 +257,14 @@ function doPost(e) {
         return jsonOut({ ok: true, referralId: id });
       }
 
+      // ── 経営コックピット（exec-dashboard.html） ──
+      case 'exec_dashboard': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        // 認可（admin ロール限定）は getExecDashboard 内で実施
+        return jsonOut(getExecDashboard(chatId, String(body.ym || '')));
+      }
+
       // ── 撥水モニター施策 ──
       case 'water_repellent_lookup': {
         // モニターIDで参照（管理画面・スタッフ確認用）
