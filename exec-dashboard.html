@@ -178,6 +178,20 @@ body {
 .exp-cat  { color:var(--text-dim); font-size:10px; }
 .exp-amt  { font-weight:600; }
 
+/* ロン君 前払い・残額 */
+.ron-hero { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+.ron-hero .label { font-size:10.5px; color:var(--text-dim); }
+.ron-hero .val { font-size:28px; font-weight:700; color:var(--gold); line-height:1.2; margin-top:2px; }
+.ron-hero .val.low { color:var(--red); }
+.ron-hero .th { font-size:10px; color:var(--text-dim); text-align:right; line-height:1.6; }
+.ron-hero .th.warn { color:var(--red); font-weight:600; }
+.ron-bd { width:100%; border-collapse:collapse; font-size:12px; margin-top:11px; }
+.ron-bd td { padding:3px 0; color:var(--text-dim); }
+.ron-bd td:last-child { text-align:right; color:var(--text); font-feature-settings:"tnum"; }
+.ron-bd tr.tot td { border-top:1px solid #3b2f1b; padding-top:7px; font-weight:700; }
+.ron-bd tr.tot td:last-child { color:var(--gold); font-size:14px; }
+.ron-bd tr.tot.low td:last-child { color:var(--red); }
+
 /* 未回収 */
 .unpaid-row { display:flex; align-items:center; gap:8px; padding:9px 13px; border-bottom:1px solid var(--border); font-size:12px; }
 .unpaid-row:last-child { border-bottom:none; }
@@ -355,6 +369,14 @@ body {
     </div>
     <div style="height:8px"></div>
     <div class="list-card" id="expRecent"></div>
+  </div>
+
+  <!-- ロン君 前払い・残額 -->
+  <div class="section" id="ronSection" style="display:none">
+    <div class="section-title">💵 ロン君 前払い・残額<small>全期間累計</small></div>
+    <div class="chart-card" id="ronCard"></div>
+    <div style="height:8px"></div>
+    <div class="list-card" id="ronTransfers" style="display:none"></div>
   </div>
 
   <!-- 月次推移 -->
@@ -628,6 +650,7 @@ function renderAll(d) {
   renderBookings(d);
   renderSalesCharts(d);
   renderExpenses(d);
+  renderRon(d);
   renderPL(d);
   renderUnpaid(d);
 
@@ -851,6 +874,53 @@ function renderPL(d) {
   }).join('');
 }
 
+function renderRon(d) {
+  var r = d.ronPrepaid;
+  var sec = $('ronSection'), card = $('ronCard'), list = $('ronTransfers');
+  if (!r) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+
+  if (!r.available) {
+    card.innerHTML = '<div class="empty">' + esc(r.note || 'データなし') + '</div>';
+    list.style.display = 'none';
+    return;
+  }
+
+  var hasTh = (r.alertThresholdUsd !== null && r.alertThresholdUsd !== undefined);
+  var low = hasTh && r.balanceUsd < r.alertThresholdUsd;
+  var thHtml = hasTh
+    ? '<div class="th' + (low ? ' warn' : '') + '">' +
+        (low ? '⚠️ 閾値 ' + fmtUsd(r.alertThresholdUsd) + ' を<br>下回っています'
+             : '閾値 ' + fmtUsd(r.alertThresholdUsd) + ' ✓') + '</div>'
+    : '';
+
+  card.innerHTML =
+    '<div class="ron-hero">' +
+      '<div><div class="label">ロン君の手元残額（前払い分）</div>' +
+      '<div class="val' + (low ? ' low' : '') + '">' + fmtUsd(r.balanceUsd) + '</div></div>' +
+      thHtml +
+    '</div>' +
+    '<table class="ron-bd">' +
+      '<tr><td>前払い送金合計（' + r.transferCount + '回）</td><td>+ ' + fmtUsd(r.totalTransfersUsd) + '</td></tr>' +
+      '<tr><td>ロン君負担の経費合計</td><td>− ' + fmtUsd(r.ronExpensesAllTimeUsd) + '</td></tr>' +
+      '<tr class="tot' + (low ? ' low' : '') + '"><td>残額</td><td>' + fmtUsd(r.balanceUsd) + '</td></tr>' +
+    '</table>';
+
+  // 直近の送金履歴
+  if (r.recentTransfers && r.recentTransfers.length > 0) {
+    list.style.display = 'block';
+    list.innerHTML = '<div class="date-head">直近の送金（最新' + r.recentTransfers.length + '件）</div>' +
+      r.recentTransfers.map(function(t) {
+        return '<div class="exp-row">' +
+          '<span class="exp-date">' + esc((t.date || '').substring(5).replace('-', '/')) + '</span>' +
+          '<span class="exp-desc">' + esc(t.note || 'ABA送金') + '</span>' +
+          '<span class="exp-amt" style="color:var(--green)">+ ' + fmtUsd(t.amountUsd) + '</span></div>';
+      }).join('');
+  } else {
+    list.style.display = 'none';
+  }
+}
+
 function renderUnpaid(d) {
   var u = d.unpaid;
   var sec = $('unpaidSection'), list = $('unpaidList');
@@ -1049,6 +1119,21 @@ function mockData(ymOpt) {
         var exp = [52000, 47000, 58000, 49000, 61400, 48200][i];
         return { ym: m, jpy: Math.round(rev - exp) };
       })
+    },
+    ronPrepaid: {
+      available: true,
+      note: '残額 = 前払い送金合計（USD） − ロン君負担の経費合計（USD換算・全期間）',
+      totalTransfersUsd: 500,
+      ronExpensesAllTimeUsd: 414,
+      balanceUsd: 86,
+      alertThresholdUsd: 50,
+      transferCount: 4,
+      recentTransfers: [
+        { date: shiftYm(ym, 0) + '-02', amountUsd: 200, note: 'ABA送金（6月分）' },
+        { date: shiftYm(ym, -1) + '-15', amountUsd: 100, note: '追加送金' },
+        { date: shiftYm(ym, -1) + '-01', amountUsd: 100, note: 'ABA送金（5月分）' },
+        { date: shiftYm(ym, -2) + '-03', amountUsd: 100, note: 'ABA送金（4月分）' }
+      ]
     }
   };
 }

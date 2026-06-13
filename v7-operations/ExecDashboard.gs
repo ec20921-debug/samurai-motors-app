@@ -65,6 +65,9 @@ function getExecDashboard(chatId, ymOpt, shareKey) {
   // ── 粗利（売上USD×レート − 経費JPY） ──
   const profit = buildProfitSection_(sales, expenses, fx);
 
+  // ── ロン君 前払い・残額（全期間・ym非依存） ──
+  const ronPrepaid = buildRonPrepaidSection_(expenses.ronAllTimeJpy || 0, fx);
+
   const result = {
     ok: true,
     asOf: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm'),
@@ -75,7 +78,8 @@ function getExecDashboard(chatId, ymOpt, shareKey) {
     unpaid: unpaid,
     bookingsNow: bookingsNow,
     expenses: expenses,
-    profit: profit
+    profit: profit,
+    ronPrepaid: ronPrepaid
   };
 
   try { cache.put(cacheKey, JSON.stringify(result), EXEC_DASH_CACHE_TTL_); }
@@ -362,7 +366,7 @@ function buildExpensesSection_(ym, fx) {
   const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
   const sh = ss.getSheetByName('経費マスター');
   const empty = { month: { jpy: 0, usd: 0 }, prevMonth: { jpy: 0 }, byCategory: [],
-                  byPayer: [], monthly: [], recent: [], available: false };
+                  byPayer: [], monthly: [], recent: [], available: false, ronAllTimeJpy: 0 };
   if (!sh) return empty;
 
   const lastRow = sh.getLastRow();
@@ -390,7 +394,7 @@ function buildExpensesSection_(ym, fx) {
   }
   const prevYm = shiftYm_(ym, -1);
 
-  let monthJpy = 0, prevJpy = 0;
+  let monthJpy = 0, prevJpy = 0, ronAllJpy = 0;
   const catMap = {}, payerMap = {};
   const monthRows = [];
 
@@ -403,6 +407,9 @@ function buildExpensesSection_(ym, fx) {
     const jpy = Number(row[10]) || 0;               // K: JPY換算
     if (!jpy) return;
 
+    const payer = String(row[5] || '会社').trim();  // F: 負担先
+    if (payer === 'ロン君') ronAllJpy += jpy;        // 全期間累計（前払い残額の計算用）
+
     if (mIdx.hasOwnProperty(m)) monthly[mIdx[m]].jpy += jpy;
     if (m === prevYm) prevJpy += jpy;
     if (m !== ym) return;
@@ -410,7 +417,6 @@ function buildExpensesSection_(ym, fx) {
     monthJpy += jpy;
     const cat = String(row[1] || 'その他').trim();  // B: カテゴリ
     catMap[cat] = (catMap[cat] || 0) + jpy;
-    const payer = String(row[5] || '会社').trim();  // F: 負担先
     payerMap[payer] = (payerMap[payer] || 0) + jpy;
     monthRows.push({
       date: dStr,
@@ -435,7 +441,107 @@ function buildExpensesSection_(ym, fx) {
     byPayer: toSorted(payerMap),
     monthly: monthly,
     recent: monthRows.slice(0, 8),
-    available: true
+    available: true,
+    ronAllTimeJpy: Math.round(ronAllJpy)
+  };
+}
+
+// ============================================================
+//  ロン君 前払い・残額（前払い管理シート / 全期間）
+// ============================================================
+
+/**
+ * 「前払い管理」シート（飯泉→ロン君 ABA送金履歴）を読み、残額を計算する。
+ *   残額 = 前払い送金合計（USD） − ロン君負担経費の全期間合計（USD換算）
+ * 列構造はヘッダー名から自動検出（日付/送金日・金額・通貨・メモ）。
+ * exec_chat（封印中のAIチャット）とも共用する共通実装。
+ *
+ * @param {number} ronAllTimeJpy 経費マスター由来のロン君負担経費合計（JPY）
+ * @param {{usdJpy:number, khrJpy:number}} fx 為替レート
+ */
+function buildRonPrepaidSection_(ronAllTimeJpy, fx) {
+  const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
+  const sh = ss.getSheetByName('前払い管理');
+  if (!sh || sh.getLastRow() < 2) {
+    return { available: false, note: '「前払い管理」シートが見つかりません' };
+  }
+  const ronJpy = Number(ronAllTimeJpy) || 0;
+  if (ronJpy > 0 && !(fx.usdJpy > 0)) {
+    return { available: false, note: '為替レート（設定!B4）未設定のため残額を計算できません' };
+  }
+  const tz = ss.getSpreadsheetTimeZone() || OPS_TZ;
+
+  const DATE_RE = /日付|日時|送金日|入金日|年月日|date/i;
+  const AMT_RE  = /金額|amount|USD|\$/i;
+
+  // ヘッダー行・列の自動検出（先頭6行）
+  const lastCol = Math.min(sh.getLastColumn(), 12);
+  const scan = sh.getRange(1, 1, Math.min(6, sh.getLastRow()), lastCol).getValues();
+  let headerRow = -1, dateCol = -1, amtCol = -1, curCol = -1, noteCol = -1;
+  for (let i = 0; i < scan.length && headerRow < 0; i++) {
+    const cells = scan[i].map(function(c) { return String(c); });
+    const looksHeader = cells.some(function(c) { return DATE_RE.test(c) || AMT_RE.test(c); });
+    if (!looksHeader) continue;
+    headerRow = i + 1;
+    cells.forEach(function(s, k) { if (dateCol < 0 && DATE_RE.test(s)) dateCol = k; });
+    cells.forEach(function(s, k) {
+      if (k === dateCol) return;
+      if (amtCol  < 0 && AMT_RE.test(s)) amtCol = k;
+      if (curCol  < 0 && /通貨|currency/i.test(s)) curCol = k;
+      if (noteCol < 0 && /メモ|備考|内容|note|摘要/i.test(s)) noteCol = k;
+    });
+  }
+  if (headerRow < 0 || amtCol < 0 || sh.getLastRow() <= headerRow) {
+    return { available: false, note: '「前払い管理」シートの列構造を認識できませんでした' };
+  }
+
+  // 送金履歴の集計（既定通貨は USD = ABA送金。通貨列があれば換算）
+  const vals = sh.getRange(headerRow + 1, 1, sh.getLastRow() - headerRow, lastCol).getValues();
+  let totalUsd = 0;
+  const transfers = [];
+  vals.forEach(function(row) {
+    const amt = Number(row[amtCol]) || 0;
+    if (!amt) return;
+    let amtUsd = amt;
+    const cur = curCol >= 0 ? String(row[curCol] || 'USD').toUpperCase() : 'USD';
+    if (cur === 'KHR' && fx.khrJpy > 0 && fx.usdJpy > 0) amtUsd = amt * fx.khrJpy / fx.usdJpy;
+    if (cur === 'JPY' && fx.usdJpy > 0) amtUsd = amt / fx.usdJpy;
+    totalUsd += amtUsd;
+    transfers.push({
+      date: dateCol >= 0 ? normDateStr_(row[dateCol], tz) : '',
+      amountUsd: round2_(amtUsd),
+      note: noteCol >= 0 ? String(row[noteCol] || '').substring(0, 60) : ''
+    });
+  });
+  transfers.sort(function(a, b) { return a.date < b.date ? 1 : -1; });
+
+  const ronUsd = fx.usdJpy > 0 ? ronJpy / fx.usdJpy : 0;
+  const balanceUsd = round2_(totalUsd - ronUsd);
+
+  // 設定シートの残金アラート閾値（任意・A列ラベルから検索）
+  let alertThreshold = null;
+  try {
+    const setSh = ss.getSheetByName('設定');
+    if (setSh && setSh.getLastRow() > 0) {
+      const rows = setSh.getRange(1, 1, Math.min(setSh.getLastRow(), 30), 2).getValues();
+      for (let i = 0; i < rows.length; i++) {
+        if (/残金|残額|アラート|閾値/.test(String(rows[i][0]))) {
+          const v = Number(rows[i][1]);
+          if (v) { alertThreshold = v; break; }
+        }
+      }
+    }
+  } catch (e) { /* 閾値は任意項目 */ }
+
+  return {
+    available: true,
+    note: '残額 = 前払い送金合計（USD） − ロン君負担の経費合計（USD換算・全期間）',
+    totalTransfersUsd: round2_(totalUsd),
+    ronExpensesAllTimeUsd: round2_(ronUsd),
+    balanceUsd: balanceUsd,
+    alertThresholdUsd: alertThreshold,
+    transferCount: transfers.length,
+    recentTransfers: transfers.slice(0, 5)
   };
 }
 
