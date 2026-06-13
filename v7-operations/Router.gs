@@ -265,6 +265,13 @@ function doPost(e) {
         return jsonOut(getExecDashboard(chatId, String(body.ym || '')));
       }
 
+      case 'exec_chat': {
+        // 経営AIチャット（売上・経費・残金・予約への自然文Q&A、admin限定）
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(handleExecChat(chatId, String(body.question || ''), body.history));
+      }
+
       // ── 撥水モニター施策 ──
       case 'water_repellent_lookup': {
         // モニターIDで参照（管理画面・スタッフ確認用）

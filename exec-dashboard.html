@@ -184,6 +184,72 @@ body {
 .unpaid-row .hrs { font-size:10px; color:var(--text-dim); }
 .unpaid-row .hrs.late { color:var(--red); font-weight:600; }
 
+/* ===== AIチャット ===== */
+#chatFab {
+  position:fixed; right:16px; bottom:calc(env(safe-area-inset-bottom) + 16px);
+  width:54px; height:54px; border-radius:50%; border:none; cursor:pointer;
+  background:linear-gradient(135deg,var(--gold),#9c7e1f); color:#14100a;
+  font-size:24px; box-shadow:0 6px 20px rgba(201,168,76,.35); z-index:40;
+  display:none; align-items:center; justify-content:center;
+}
+#chatFab:active { transform:scale(.94); }
+#chatOverlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.65); backdrop-filter:blur(3px);
+  z-index:50; display:none;
+}
+#chatOverlay.open { display:block; }
+.chat-box {
+  position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:480px; height:88dvh;
+  background:#141210; border:1px solid var(--border); border-bottom:none;
+  border-radius:18px 18px 0 0; display:flex; flex-direction:column;
+  animation:slideup .25s ease-out;
+}
+@keyframes slideup { from { transform:translate(-50%,40px); opacity:0; } }
+.chat-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:13px 16px; border-bottom:1px solid var(--border); flex:none;
+}
+.chat-head .t { font-size:14px; font-weight:700; }
+.chat-head .t small { display:block; font-size:9.5px; color:var(--text-dim); font-weight:400; margin-top:2px; }
+.chat-head button {
+  background:var(--card); border:1px solid var(--border); color:var(--text-dim);
+  width:30px; height:30px; border-radius:9px; font-size:14px; cursor:pointer;
+}
+#chatMsgs { flex:1; overflow-y:auto; padding:14px; }
+.cm { margin-bottom:10px; display:flex; }
+.cm .b {
+  max-width:86%; padding:9px 12px; border-radius:13px;
+  font-size:13px; line-height:1.75; white-space:pre-wrap; word-break:break-word;
+}
+.cm-user { justify-content:flex-end; }
+.cm-user .b { background:linear-gradient(135deg,#8a7535,var(--gold)); color:#14100a; border-bottom-right-radius:4px; font-weight:600; }
+.cm-ai .b { background:var(--card); border:1px solid var(--border); border-bottom-left-radius:4px; }
+.cm-ai .b.err { border-color:#5a2b2b; background:#231414; color:#e8b9b9; font-size:12px; }
+.typing { display:inline-flex; gap:4px; padding:4px 2px; }
+.typing i { width:6px; height:6px; border-radius:50%; background:var(--gold); animation:tp 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+@keyframes tp { 0%,60%,100% { opacity:.25; } 30% { opacity:1; } }
+.chat-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 14px 8px; flex:none; }
+.chat-chips button {
+  background:var(--card); border:1px solid #3b2f1b; color:var(--gold);
+  border-radius:20px; padding:6px 12px; font-size:11px; cursor:pointer; font-family:inherit;
+}
+.chat-inrow {
+  display:flex; gap:8px; padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
+  border-top:1px solid var(--border); flex:none; background:#100e0c;
+}
+#chatInput {
+  flex:1; background:var(--card); border:1px solid var(--border); border-radius:12px;
+  color:var(--text); font-size:13px; padding:11px 13px; font-family:inherit; outline:none;
+}
+#chatInput:focus { border-color:#3b2f1b; }
+#chatSend {
+  width:46px; border:none; border-radius:12px; cursor:pointer; font-size:17px;
+  background:linear-gradient(135deg,var(--gold),#9c7e1f); color:#14100a;
+}
+#chatSend:disabled { opacity:.4; }
+
 /* ===== ローディング・エラー ===== */
 #loading { text-align:center; padding:50px 0; color:var(--text-dim); font-size:13px; }
 .spinner {
@@ -286,6 +352,30 @@ body {
   </div>
 
   <div class="footnote" id="footNote"></div>
+</div>
+
+<!-- AIチャット -->
+<button id="chatFab" onclick="openChat()">💬</button>
+<div id="chatOverlay">
+  <div class="chat-box">
+    <div class="chat-head">
+      <div class="t">💬 経営AIに質問<small>売上・経費・残金・予約データを根拠に回答します</small></div>
+      <button onclick="closeChat()">✕</button>
+    </div>
+    <div id="chatMsgs"></div>
+    <div class="chat-chips" id="chatChips">
+      <button onclick="askChat('今週のロン君の残金はいくら？')">💵 ロン君の残金は？</button>
+      <button onclick="askChat('売上上位の顧客を教えて')">👑 売上上位の顧客は？</button>
+      <button onclick="askChat('今週の経費はいくら？内訳も')">🧾 今週の経費は？</button>
+      <button onclick="askChat('未回収の状況を教えて')">⚠️ 未回収の状況は？</button>
+      <button onclick="askChat('今後の予約状況を教えて')">📅 今後の予約は？</button>
+    </div>
+    <div class="chat-inrow">
+      <input id="chatInput" type="text" maxlength="500" placeholder="例：先月と今月の売上を比べて"
+             autocomplete="off">
+      <button id="chatSend" onclick="sendChat()">➤</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -420,6 +510,7 @@ function onData(d) {
   state.curYm = d.curYm;
   $('loading').style.display = 'none';
   $('content').style.display = 'block';
+  $('chatFab').style.display = 'flex';   // admin確認済みデータが来たらチャット開放
   $('asofLine').innerHTML = '最終更新 ' + esc(d.asOf) +
     '（2分キャッシュ）<button onclick="load(state.ym)">↻ 更新</button>';
   renderAll(d);
@@ -693,6 +784,99 @@ $('prevM').addEventListener('click', function() { load(shiftYm(state.ym, -1)); }
 $('nextM').addEventListener('click', function() {
   if (state.ym < state.curYm) load(shiftYm(state.ym, 1));
 });
+
+// ============================================================
+//  AIチャット（action: exec_chat / admin限定）
+// ============================================================
+var chatHistory = [];   // {role, content} の配列（直近8件まで保持して送信）
+var chatBusy = false;
+
+function openChat() {
+  $('chatOverlay').classList.add('open');
+  setTimeout(function() { $('chatInput').focus(); }, 250);
+}
+function closeChat() { $('chatOverlay').classList.remove('open'); }
+
+function addChatMsg(text, who, isErr) {
+  var d = document.createElement('div');
+  d.className = 'cm cm-' + who;
+  d.innerHTML = '<div class="b' + (isErr ? ' err' : '') + '">' + esc(text) + '</div>';
+  $('chatMsgs').appendChild(d);
+  $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
+  return d;
+}
+function addTyping() {
+  var d = document.createElement('div');
+  d.className = 'cm cm-ai';
+  d.innerHTML = '<div class="b"><span class="typing"><i></i><i></i><i></i></span></div>';
+  $('chatMsgs').appendChild(d);
+  $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
+  return d;
+}
+
+function sendChat() { askChat($('chatInput').value); }
+
+function askChat(q) {
+  q = String(q || '').trim();
+  if (!q || chatBusy) return;
+  $('chatInput').value = '';
+  $('chatChips').style.display = 'none';
+  addChatMsg(q, 'user');
+  chatBusy = true;
+  $('chatSend').disabled = true;
+  var typing = addTyping();
+
+  var done = function(answer, isErr) {
+    typing.remove();
+    addChatMsg(answer, 'ai', isErr);
+    if (!isErr) {
+      // 正常応答のみ履歴に積む（フォローアップ質問用）
+      chatHistory.push({ role: 'user', content: q });
+      chatHistory.push({ role: 'assistant', content: answer });
+      if (chatHistory.length > 8) chatHistory = chatHistory.slice(-8);
+    }
+    chatBusy = false;
+    $('chatSend').disabled = false;
+  };
+
+  if (MOCK) { setTimeout(function() { done(mockChatAnswer(q), false); }, 900); return; }
+
+  // 履歴は今回の質問を含めない形で送る（サーバ側で質問を末尾に追加）
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'exec_chat', chatId: currentChatId, question: q, history: chatHistory })
+  })
+    .then(function(r) { return r.text(); })
+    .then(function(txt) {
+      var d;
+      try { d = JSON.parse(txt); }
+      catch (e) { done('⚠️ 非JSON応答: ' + txt.substring(0, 150), true); return; }
+      if (d.ok) { done(d.answer, false); return; }
+      if (d.error === 'NO_API_KEY') {
+        done('🔧 セットアップが必要です。\nGASエディタ → プロジェクトの設定 → スクリプトプロパティに ANTHROPIC_API_KEY を追加してください。', true);
+      } else if (d.error === 'FORBIDDEN') {
+        done('🔒 管理者権限がありません。', true);
+      } else {
+        done('⚠️ エラー: ' + (d.error || '不明'), true);
+      }
+    })
+    .catch(function(err) { done('⚠️ 通信エラー: ' + err.message, true); });
+}
+
+$('chatInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(); }
+});
+
+/** モックチャット応答（?mock=1 / UI確認用） */
+function mockChatAnswer(q) {
+  if (/残金|ロン/.test(q)) return '💵 ロン君の残金は 約 $86 です。\n・前払い送金合計: $500（直近 6/02 に $200）\n・ロン君負担の経費合計: $414\n・今週のロン君の支出: ¥2,770（≈ $18）\n※ 残金 = 前払い送金合計 − ロン君負担経費（USD換算）';
+  if (/上位|顧客|トップ/.test(q)) return '👑 売上上位の顧客（全期間累計）\n・Sokha 様 — $148（5回・最終 6/13）\n・Kimheng 様 — $111（3回・最終 6/10）\n・Vibol 様 — $74（4回・最終 6/13）\n上位3名で売上全体の約54%を占めています。';
+  if (/経費/.test(q)) return '🧾 今週（6/9〜6/15）の経費は ¥10,530（≈ $69）です。\n・車両・洗車: ¥5,970\n・広告・販促: ¥4,560\n最大の支出は Facebook広告 ¥4,560（6/11・会社負担）です。';
+  if (/未回収/.test(q)) return '⚠️ 未回収は 2件・合計 $54 です。\n・BK-0038 $37 — QR送信から3日経過・催促2回 → 要フォロー\n・BK-0041 $17 — QR未送信\nBK-0038 は48時間を大きく超えています。直接連絡をおすすめします。';
+  if (/予約/.test(q)) return '📅 今後14日以内の予約は 3件です。\n・6/14（日）10:00 Dara 様 / Ford Ranger / $47\n・6/16（火）09:30 Sreyna 様 / Honda CR-V / $17\n・6/16（火）14:00 Kimheng 様 / Lexus LX / $37';
+  return '（モック応答）本番ではこの質問に実データで回答します。\n質問: ' + q;
+}
 
 // ============================================================
 //  モックデータ（?mock=1 / UI確認・スタイル調整用）
