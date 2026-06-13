@@ -259,10 +259,18 @@ function doPost(e) {
 
       // ── 経営コックピット（exec-dashboard.html） ──
       case 'exec_dashboard': {
+        // 認可は admin chatId または共有キー（getExecDashboard 内で判定）
+        const chatId = String(body.chatId || '');
+        const shareKey = String(body.shareKey || '');
+        if (!chatId && !shareKey) return jsonOut({ ok: false, error: 'MISSING_AUTH' });
+        return jsonOut(getExecDashboard(chatId, String(body.ym || ''), shareKey));
+      }
+
+      case 'exec_share_url': {
+        // 共有閲覧キーの発行・取得（admin限定）
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        // 認可（admin ロール限定）は getExecDashboard 内で実施
-        return jsonOut(getExecDashboard(chatId, String(body.ym || '')));
+        return jsonOut(getExecShareKey(chatId));
       }
 
       case 'exec_chat': {

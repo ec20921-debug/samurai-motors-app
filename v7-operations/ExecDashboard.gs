@@ -22,15 +22,15 @@ const EXEC_TREND_MONTHS_   = 6;     // 月次トレンドの本数
 
 /**
  * メインエントリ（Router.gs から呼ばれる）
- * @param {string} chatId 呼び出し元 Telegram chatId
- * @param {string} ymOpt  集計対象月 'yyyy-MM'（省略時は当月）
+ * @param {string} chatId   呼び出し元 Telegram chatId（admin 用）
+ * @param {string} ymOpt    集計対象月 'yyyy-MM'（省略時は当月）
+ * @param {string} shareKey 共有閲覧キー（?key= 付きURL用、chatId が無い場合の代替認可）
  * @return {Object} ダッシュボード JSON（ok:false 時は error）
  */
-function getExecDashboard(chatId, ymOpt) {
-  // ── 認可: admin ロールのみ ──
-  const staff = findStaffByChatId(String(chatId || ''));
-  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
-  if (staff.role !== 'admin') return { ok: false, error: 'FORBIDDEN' };
+function getExecDashboard(chatId, ymOpt, shareKey) {
+  // ── 認可: admin ロール、または共有キー一致（閲覧専用URL） ──
+  const access = checkExecAccess_(chatId, shareKey);
+  if (!access.ok) return access;
 
   const tz = OPS_TZ;
   const now = new Date();
@@ -463,6 +463,51 @@ function buildProfitSection_(sales, expenses, fx) {
   });
 
   return { month: month, monthly: monthly };
+}
+
+// ============================================================
+//  認可・共有URL
+// ============================================================
+
+/**
+ * 経営コックピットへのアクセス権チェック。
+ * 優先: chatId（スタッフマスター admin）→ shareKey（EXEC_DASH_SHARE_KEY と完全一致）。
+ */
+function checkExecAccess_(chatId, shareKey) {
+  const cid = String(chatId || '').trim();
+  if (cid) {
+    const staff = findStaffByChatId(cid);
+    if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+    if (staff.role !== 'admin') return { ok: false, error: 'FORBIDDEN' };
+    return { ok: true, mode: 'admin' };
+  }
+  const key = String(shareKey || '').trim();
+  if (key) {
+    const stored = PropertiesService.getScriptProperties().getProperty('EXEC_DASH_SHARE_KEY');
+    if (stored && key === stored) return { ok: true, mode: 'share' };
+    return { ok: false, error: 'INVALID_SHARE_KEY' };
+  }
+  return { ok: false, error: 'MISSING_AUTH' };
+}
+
+/**
+ * 共有閲覧キーを発行（既存があれば同じものを返す）。admin のみ実行可。
+ * 無効化（=配布済みURLを全て失効）するには Script Properties から
+ * EXEC_DASH_SHARE_KEY を削除する。再度ボタンを押せば新キーが発行される。
+ */
+function getExecShareKey(chatId) {
+  const staff = findStaffByChatId(String(chatId || ''));
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+  if (staff.role !== 'admin') return { ok: false, error: 'FORBIDDEN' };
+
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('EXEC_DASH_SHARE_KEY');
+  if (!key) {
+    // 40文字のランダムキー（UUID×2 から生成）
+    key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '').substring(0, 40);
+    props.setProperty('EXEC_DASH_SHARE_KEY', key);
+  }
+  return { ok: true, key: key };
 }
 
 // ============================================================
