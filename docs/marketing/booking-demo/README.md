@@ -5,12 +5,19 @@
 
 ## 構成（5 画面）
 1. WASH / 車種選択（キャンペーン割引表示）
+   - **SAMURAI WASH / SAMURAI GLASS の選択をフォーカス**してゆっくり停留し、
+     GLASS を `FRONT 3 WINDOWS → ALL WINDOWS` に切り替える操作も実演
 2. 日付・時間スロット選択
 3. 場所（出張ピン留め）
 4. 内容確認（料金内訳）
 5. 予約完了（Reserved + What Happens Next）
 
+各画面下部には実アプリ相当の **固定 CTA バー**（Next / Confirm / Close）を描画。
+
 言語ルール準拠：顧客向けのため **英語メイン＋クメール語** のみ（日本語は出さない）。
+
+## Facebook 投稿キャプション
+`facebook-caption.md` にクメール語＋英語のキャプション（フル版／ショート版）を用意。
 
 ## 再生成方法
 ヘッドレス Chrome（Playwright）で `booking.html` を実レンダリングし、

@@ -69,6 +69,8 @@ with sync_playwright() as p:
     pg.add_init_script(INIT_SCRIPT)
     pg.goto(HTML, wait_until="domcontentloaded")
     pg.wait_for_timeout(800)  # let loadInit + splash run
+    # 固定 CTA バーはスクショから除外（GIF 側で各画面用のバーを描画する）
+    pg.add_style_tag(content="#actionArea{display:none !important;}")
 
     # hide the action button bar for cleaner content shots? keep it - it's part of UI
     # STEP 1 - plan
@@ -80,6 +82,35 @@ with sync_playwright() as p:
     }""")
     pg.wait_for_timeout(400)
     shot(pg, "01_plan")
+
+    # export section Y positions (CSS px, document coords) for focused panning
+    import json as _json
+    pos = pg.evaluate("""() => {
+        function yOf(pred){
+          const els=[...document.querySelectorAll('#view-plan .section-title')];
+          const el=els.find(pred);
+          if(!el) return null;
+          const r=el.getBoundingClientRect();
+          return r.top + window.scrollY;
+        }
+        return {
+          size_y:  yOf(e=>/Vehicle Size/i.test(e.textContent)),
+          wash_y:  yOf(e=>/SAMURAI WASH/i.test(e.textContent)),
+          glass_y: yOf(e=>/SAMURAI GLASS/i.test(e.textContent)),
+          doc_h:   document.querySelector('.container').scrollHeight
+        };
+    }""")
+    with open("/tmp/shots/plan_pos.json","w") as f:
+        _json.dump(pos, f)
+    print("  plan_pos:", pos)
+
+    # variant: GLASS ALL selected (to demo the toggle on the same screen)
+    pg.evaluate("""() => { selectGlassOption('GLASS_ALL'); }""")
+    pg.wait_for_timeout(300)
+    shot(pg, "01b_plan_glassall")
+    # restore GLASS_3 for downstream summary
+    pg.evaluate("""() => { selectGlassOption('GLASS_3'); }""")
+    pg.wait_for_timeout(150)
 
     # STEP 2 - date & time (pick first non-Sunday upcoming date)
     pg.evaluate("""() => { showView('view-datetime'); }""")
