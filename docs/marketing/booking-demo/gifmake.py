@@ -278,67 +278,168 @@ def compose(shot, scroll, idx):
 def draw_actionbar_local(screen_img, idx):
     draw_actionbar(screen_img, 0, 0, idx)
 
+# ───────── タップ演出 ─────────
+import json as _json
+POS = _json.load(open(f"{SHOTS}/positions.json"))
+FACTOR = SCREEN_W / 390.0
+
+def css_to_canvas(cx_css, cy_css, scroll):
+    sx = SCREEN_X + cx_css * FACTOR
+    sy = APP_Y + (cy_css * FACTOR - scroll)
+    return sx, sy
+
+def cta_center():
+    return (SCREEN_X + SCREEN_W/2, SCREEN_Y + SCREEN_H - BAR_H + 8 + 19)
+
+def draw_tap(frame_rgb, cx, cy, t):
+    """指タップ表現：押下ドット＋広がるリング。t=0..1"""
+    layer = Image.new("RGBA", frame_rgb.size, (0,0,0,0))
+    d = ImageDraw.Draw(layer)
+    # 広がるリング（ゴールド + 白）
+    r  = 11 + 26*t;  a  = int(205*(1-t))
+    d.ellipse([cx-r,cy-r,cx+r,cy+r], outline=(227,200,120,a), width=3)
+    r2 = 11 + 34*min(1,t*1.25); a2 = int(120*(1-t))
+    d.ellipse([cx-r2,cy-r2,cx+r2,cy+r2], outline=(255,255,255,a2), width=2)
+    # 指の接地ドット（押し込みで少し縮む）
+    press = 1 - 0.28*math.sin(min(1,t)*math.pi)
+    dot = 15*press
+    d.ellipse([cx-dot,cy-dot,cx+dot,cy+dot], fill=(255,255,255,150))
+    dd = dot*0.55
+    d.ellipse([cx-dd,cy-dd,cx+dd,cy+dd], fill=(227,200,120,225))
+    return Image.alpha_composite(frame_rgb.convert("RGBA"), layer).convert("RGB")
+
+def tap_seq(before, after, cx, cy, n=9, switch=0.45):
+    seq=[]
+    for i in range(n):
+        t=i/(n-1)
+        base = before if t<switch else after
+        seq.append(draw_tap(base, cx, cy, t))
+    return seq
+
+def scroll_seq(shot, idx, a, b, n):
+    out=[]
+    for f in range(n):
+        t = ease(f/(n-1)) if n>1 else 1
+        out.append(compose(shot, a+(b-a)*t, idx))
+    return out
+
 FPS = 14
 frames = []
 
-GLASS_ALL_SHOT = load_shot("01b_plan_glassall")
+# 全ステート読み込み
+S = {k: load_shot(k) for k in
+     ["p0_none","p1_size","p2_wash","p3_g3","p4_gall",
+      "d0_nodate","d1_date","d2_slot","l0_nopin","l1_pin",
+      "c0_confirm","s0_success"]}
 
-prev_last = None
-for idx,(name,en,km) in enumerate(SCREENS):
-    shot = load_shot(name)
-    maxscroll = max(0, shot.height - (APP_H - BAR_H))
+def mscroll(shot):
+    return max(0, shot.height - (APP_H - BAR_H))
 
-    rendered = []
-    if idx == 0:
-        # ── Step 1: しっかり見せる — WASH & GLASS の選択をフォーカス + GLASS 切替を実演 ──
-        # 1) 上部(タイトル/キャンペーン/車種)を見せる
-        for _ in range(10):
-            rendered.append(compose(shot, 0, idx))
-        # 2) WASH + GLASS セクションが画面に収まる位置までゆっくりスクロール
-        sf = 24
-        for f in range(sf):
-            t = ease(f/(sf-1))
-            rendered.append(compose(shot, t*maxscroll, idx))
-        # 3) SAMURAI WASH / GLASS_3 選択状態をしっかり停留
-        f_g3  = compose(shot, maxscroll, idx)
-        for _ in range(16):
-            rendered.append(f_g3)
-        # 4) GLASS を ALL WINDOWS に切替（実演）
-        f_gall = compose(GLASS_ALL_SHOT, maxscroll, idx)
-        TT = 7
-        for k in range(1,TT+1):
-            rendered.append(Image.blend(f_g3, f_gall, k/(TT+1)))
-        for _ in range(16):           # ALL WINDOWS 選択状態を停留
-            rendered.append(f_gall)
-        # 5) 元の GLASS_3 へ戻す（confirm 画面と内容を一致させる）
-        for k in range(1,TT+1):
-            rendered.append(Image.blend(f_gall, f_g3, k/(TT+1)))
-        for _ in range(6):
-            rendered.append(f_g3)
-    else:
-        scroll_frames = 10 + int(min(maxscroll, 1400)/1400 * 26)
-        hold_top = 7
-        hold_bot = 9 if maxscroll>0 else 16
-        seq = []
-        for _ in range(hold_top): seq.append(0)
-        for f in range(scroll_frames):
-            t = ease(f/(scroll_frames-1)) if scroll_frames>1 else 1
-            seq.append(t*maxscroll)
-        for _ in range(hold_bot): seq.append(maxscroll)
-        rendered = [compose(shot, s, idx) for s in seq]
+CAP = [None]*5  # caption index per built scene handled inline via compose idx
 
-    # transition crossfade from prev_last to rendered[0]
+scenes = []  # list of frame-lists, one per screen
+
+# ═══════ STEP 1: PLAN（タップで選択） ═══════
+idx=0
+foc = mscroll(S["p4_gall"])
+seq=[]
+seq += [compose(S["p0_none"],0,idx)]*7                      # 上部: タイトル/30%OFF/車種
+# 車種タップ
+cx,cy = css_to_canvas(POS["plan"]["size"]["x"], POS["plan"]["size"]["y"], 0)
+seq += tap_seq(compose(S["p0_none"],0,idx), compose(S["p1_size"],0,idx), cx,cy)
+seq += [compose(S["p1_size"],0,idx)]*3
+# WASH/GLASS セクションへスクロール
+seq += scroll_seq(S["p1_size"], idx, 0, foc, 16)
+seq += [compose(S["p1_size"],foc,idx)]*3
+# WASH タップ
+cx,cy = css_to_canvas(POS["plan"]["wash"]["x"], POS["plan"]["wash"]["y"], foc)
+seq += tap_seq(compose(S["p1_size"],foc,idx), compose(S["p2_wash"],foc,idx), cx,cy)
+seq += [compose(S["p2_wash"],foc,idx)]*3
+# GLASS All Windows タップ（プレミアム選択肢を提示）
+cx,cy = css_to_canvas(POS["plan"]["glassall"]["x"], POS["plan"]["glassall"]["y"], foc)
+seq += tap_seq(compose(S["p2_wash"],foc,idx), compose(S["p4_gall"],foc,idx), cx,cy)
+seq += [compose(S["p4_gall"],foc,idx)]*7
+# GLASS Front 3 タップ（最終選択、confirm と一致）
+cx,cy = css_to_canvas(POS["plan"]["glass3"]["x"], POS["plan"]["glass3"]["y"], foc)
+seq += tap_seq(compose(S["p4_gall"],foc,idx), compose(S["p3_g3"],foc,idx), cx,cy)
+seq += [compose(S["p3_g3"],foc,idx)]*5
+# Next CTA タップ
+cx,cy = cta_center()
+seq += tap_seq(compose(S["p3_g3"],foc,idx), compose(S["p3_g3"],foc,idx), cx,cy, n=7)
+scenes.append(seq)
+
+# ═══════ STEP 2: DATETIME ═══════
+idx=1
+seq=[]
+seq += [compose(S["d0_nodate"],0,idx)]*7
+# 日付タップ → スロット出現
+cx,cy = css_to_canvas(POS["datetime"]["date"]["x"], POS["datetime"]["date"]["y"], 0)
+seq += tap_seq(compose(S["d0_nodate"],0,idx), compose(S["d1_date"],0,idx), cx,cy)
+seq += [compose(S["d1_date"],0,idx)]*3
+# スロットが見える位置へスクロール
+slot_scaled = POS["datetime"]["slot"]["y"]*FACTOR
+sc = max(0, min(mscroll(S["d1_date"]), slot_scaled - 210))
+seq += scroll_seq(S["d1_date"], idx, 0, sc, 12)
+seq += [compose(S["d1_date"],sc,idx)]*3
+# 時間スロットタップ
+cx,cy = css_to_canvas(POS["datetime"]["slot"]["x"], POS["datetime"]["slot"]["y"], sc)
+seq += tap_seq(compose(S["d1_date"],sc,idx), compose(S["d2_slot"],sc,idx), cx,cy)
+seq += [compose(S["d2_slot"],sc,idx)]*5
+cx,cy = cta_center()
+seq += tap_seq(compose(S["d2_slot"],sc,idx), compose(S["d2_slot"],sc,idx), cx,cy, n=7)
+scenes.append(seq)
+
+# ═══════ STEP 3: LOCATION ═══════
+idx=2
+seq=[]
+mp = POS["location"]["map"]
+pin_css_x = mp["x"]
+pin_css_y = mp["y"] - 0.08*mp["h"]      # ピンは地図の上から42%
+pin_scaled_y = pin_css_y*FACTOR
+sc = max(0, min(mscroll(S["l1_pin"]), pin_scaled_y - 230))
+seq += [compose(S["l0_nopin"],0,idx)]*4
+seq += scroll_seq(S["l0_nopin"], idx, 0, sc, 9)
+seq += [compose(S["l0_nopin"],sc,idx)]*4
+# 地図タップ → ピン出現
+cx,cy = css_to_canvas(pin_css_x, pin_css_y, sc)
+seq += tap_seq(compose(S["l0_nopin"],sc,idx), compose(S["l1_pin"],sc,idx), cx,cy)
+seq += [compose(S["l1_pin"],sc,idx)]*7
+cx,cy = cta_center()
+seq += tap_seq(compose(S["l1_pin"],sc,idx), compose(S["l1_pin"],sc,idx), cx,cy, n=7)
+scenes.append(seq)
+
+# ═══════ STEP 4: CONFIRM ═══════
+idx=3
+seq=[]
+mc = mscroll(S["c0_confirm"])
+seq += [compose(S["c0_confirm"],0,idx)]*6
+seq += scroll_seq(S["c0_confirm"], idx, 0, mc, 16)
+seq += [compose(S["c0_confirm"],mc,idx)]*5
+cx,cy = cta_center()
+seq += tap_seq(compose(S["c0_confirm"],mc,idx), compose(S["c0_confirm"],mc,idx), cx,cy, n=9)
+scenes.append(seq)
+
+# ═══════ STEP 5: SUCCESS ═══════
+idx=4
+seq=[]
+ms = mscroll(S["s0_success"])
+seq += [compose(S["s0_success"],0,idx)]*8
+seq += scroll_seq(S["s0_success"], idx, 0, ms, 18)
+seq += [compose(S["s0_success"],ms,idx)]*12
+scenes.append(seq)
+
+# ───────── 連結（シーン間クロスフェード） ─────────
+prev_last=None
+for seq in scenes:
     if prev_last is not None:
-        TN = 6
+        TN=6
         for k in range(1,TN+1):
-            a = k/(TN+1)
-            frames.append(Image.blend(prev_last, rendered[0], a))
-    frames.extend(rendered)
-    prev_last = rendered[-1]
+            frames.append(Image.blend(prev_last, seq[0], k/(TN+1)))
+    frames.extend(seq)
+    prev_last = seq[-1]
 
 # write frames
 for i,fr in enumerate(frames):
     fr.save(f"{FR}/f_{i:04d}.png")
 print(f"frames: {len(frames)}  canvas: {CANVAS_W}x{CANVAS_H}  fps:{FPS}  dur~{len(frames)/FPS:.1f}s")
-with open("/tmp/anim_meta.txt","w") as f:
-    f.write(f"{FPS}\n{len(frames)}\n")
+

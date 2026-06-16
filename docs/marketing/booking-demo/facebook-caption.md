@@ -15,7 +15,7 @@ Samurai Motors នាំសេវាលាងឡានទៅដល់ផ្ទ�
 3️⃣ កំណត់ទីតាំងរបស់អ្នកនៅលើផែនទី
 4️⃣ បញ្ជាក់ — យើងនឹងទៅដល់អ្នក! 🏍️💨
 
-🎉 ការបើកដំណើរការ — បញ្ចុះតម្លៃ ២០%
+🎉 ការបើកដំណើរការ — បញ្ចុះតម្លៃ ៣០%
 📍 ភ្នំពេញ · យើងទៅដល់ផ្ទះ ឬការិយាល័យរបស់អ្នក
 💬 កក់ឥឡូវនេះតាម Telegram 👇
 
@@ -29,7 +29,7 @@ Samurai Motors brings the wash to you. Just 4 easy steps:
 3️⃣ Drop a pin at your location
 4️⃣ Confirm — we come to you! 🏍️💨
 
-🎉 GRAND OPENING — 20% OFF
+🎉 GRAND OPENING — 30% OFF
 📍 Phnom Penh · We come to your home or office
 💬 Book now on Telegram 👇
 
@@ -39,5 +39,5 @@ Samurai Motors brings the wash to you. Just 4 easy steps:
 
 ## ショート版（コメント欄・ストーリー用）
 
-🚗 កក់លាងឡានបែបជប៉ុន ងាយៗ ៤ ជំហាន ពីទូរស័ព្ទ! 🎉 បញ្ចុះតម្លៃ ២០% · ភ្នំពេញ · 💬 Telegram 👇
-🚗 Japanese car wash, booked in 4 taps! 🎉 20% OFF · Phnom Penh · Book on Telegram 👇
+🚗 កក់លាងឡានបែបជប៉ុន ងាយៗ ៤ ជំហាន ពីទូរស័ព្ទ! 🎉 បញ្ចុះតម្លៃ ៣០% · ភ្នំពេញ · 💬 Telegram 👇
+🚗 Japanese car wash, booked in 4 taps! 🎉 30% OFF · Phnom Penh · Book on Telegram 👇
