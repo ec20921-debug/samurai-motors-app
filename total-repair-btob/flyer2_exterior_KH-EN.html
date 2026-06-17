@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAMURAI MOTORS — Exterior Repair Flyer (ខាងក្រៅ · Wheel · Headlight)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Noto+Sans+Khmer:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SAMURAI MOTORS — Total Repair チラシ② 外装・ホイール・ライト
+   顧客（車の買い手）向け / クメール語メイン + 英語
+   A4 1ページ / 印刷・PDF化用
+   写真は <!-- PHOTO --> のスロットに <img> を差し替えて使う
+   ============================================================ */
+:root{
+  --ink:#15181d; --ink2:#3c4250; --red:#b03028; --green:#1e7a46;
+  --gold:#b8924f; --gold2:#d8b877; --bg:#ffffff; --card:#f6f5f2; --line:#dcdad4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased}
+.km{font-family:'Noto Sans Khmer',sans-serif}
+.en{font-family:'Jost',sans-serif}
+
+.sheet{width:210mm;min-height:296mm;margin:14px auto;background:var(--bg);box-shadow:0 10px 30px -16px rgba(0,0,0,.5);position:relative;overflow:hidden;display:flex;flex-direction:column}
+
+.wordmark{font-family:'Jost',sans-serif;font-weight:700;letter-spacing:.18em;line-height:1}
+.wordmark .s2{color:var(--gold)}
+
+.hero{background:#000;color:#fff;padding:13mm 14mm 11mm;position:relative;border-bottom:4px solid var(--gold)}
+.hero .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9mm}
+.hero .top .wordmark{font-size:18px}
+.hero .top .badge{font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.28em;color:var(--gold2);text-transform:uppercase;border:1px solid #3a3f48;padding:4px 12px;border-radius:30px}
+.hero .eyebrow{font-family:'Jost',sans-serif;letter-spacing:.3em;font-size:12px;color:var(--gold2);text-transform:uppercase;margin-bottom:7px}
+.hero h1{font-size:40px;font-weight:800;line-height:1.45;color:#fff}
+.hero h1 .accent{color:var(--gold)}
+.hero .sub{font-size:16px;color:#c4cad3;margin-top:8px;line-height:1.7}
+.hero .sub .en{font-size:14px;color:#9aa3b2;display:block;margin-top:3px}
+.hero .concept{margin-top:9mm;display:inline-flex;align-items:center;gap:11px;background:var(--gold);color:#15181d;font-weight:700;font-size:15.5px;padding:9px 22px;border-radius:40px}
+.hero .concept .en{font-size:12.5px;font-weight:600;color:#4a3c22}
+
+.body{padding:8mm 14mm 0;flex:1}
+.sectitle{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.sectitle .km{font-size:20px;font-weight:800}
+.sectitle .en{font-size:12.5px;color:var(--gold);letter-spacing:.06em}
+.sectitle::after{content:"";flex:1;height:2px;background:linear-gradient(90deg,var(--gold) 0 40px,var(--line) 40px 100%)}
+
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:12px}
+.bacard{border:2px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}
+.bacard .pics{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--line)}
+.ph{aspect-ratio:4/3;background:linear-gradient(135deg,#eceae5,#dcd9d2);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .cam{font-size:26px;opacity:.35}
+.ph .tag{position:absolute;top:7px;left:7px;color:#fff;font-weight:700;font-size:11.5px;padding:2px 11px;border-radius:18px}
+.ph .tag.b{background:var(--red)} .ph .tag.a{background:var(--green)}
+.ph .hint{font-size:10px;color:#8a8d86;margin-top:3px;letter-spacing:.02em}
+.bacard .cap{padding:8px 13px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.bacard .cap .pr{font-family:'Jost',sans-serif;color:var(--gold);font-weight:700}
+
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+.mi{display:flex;gap:12px;align-items:center;border:1.5px solid var(--line);border-radius:12px;padding:9px 13px;background:#fff}
+.mi .ic{flex:none;width:44px;height:44px;border-radius:11px;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:24px}
+.mi .tx{flex:1;min-width:0}
+.mi .tx .nm{font-size:15px;font-weight:700;line-height:1.4}
+.mi .tx .en{font-size:11.5px;color:#7a808a;display:block}
+.mi .tx .ds{font-size:11.5px;color:var(--ink2);margin-top:1px}
+.mi .pr{font-family:'Jost',sans-serif;font-weight:700;font-size:17px;color:var(--ink);white-space:nowrap;text-align:right}
+.mi .pr small{display:block;font-size:9.5px;color:#9aa0a8;font-family:'Noto Sans Khmer',sans-serif;font-weight:400}
+
+.trust{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:11px}
+.tb{background:#0d0f13;color:#fff;border-radius:12px;padding:10px 12px;text-align:center}
+.tb .ic{font-size:22px;color:var(--gold2)}
+.tb .t{font-size:13.5px;font-weight:700;margin-top:3px}
+.tb .e{font-size:10.5px;color:#9aa3b2;font-family:'Jost',sans-serif;letter-spacing:.04em}
+
+.cta{background:linear-gradient(135deg,#1b130a,#2a1f12);color:#fff;padding:11mm 14mm;display:flex;gap:18px;align-items:center;border-top:4px solid var(--gold)}
+.cta .qr{flex:none;width:30mm;height:30mm;background:#fff;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9aa0a8;text-align:center;font-size:10px;line-height:1.4}
+.cta .qr img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.cta .qr .grid{font-size:30px;color:#15181d}
+.cta .txt{flex:1}
+.cta .txt .big{font-size:21px;font-weight:800;line-height:1.45}
+.cta .txt .big .accent{color:var(--gold2)}
+.cta .txt .small{font-size:13px;color:#cdb98c;margin-top:4px}
+.cta .txt .small .en{color:#9c8e76;font-size:11.5px}
+.dealer{margin-top:9px;display:inline-flex;gap:9px;align-items:center;background:rgba(255,255,255,.08);border:1px dashed #6b5a3a;border-radius:9px;padding:6px 13px;font-size:12px}
+.dealer b{color:var(--gold2);font-family:'Jost',sans-serif;letter-spacing:.04em}
+
+.footline{background:#000;color:#7c8492;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;text-align:center;padding:6px 0}
+.footline .km{font-family:'Noto Sans Khmer',sans-serif;color:#b8924f;letter-spacing:0;text-transform:none;font-size:12px}
+
+.helper{position:fixed;top:0;left:0;right:0;z-index:50;background:#0d0f13;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:7px 16px;font-size:12px}
+.helper button{background:var(--gold);color:#15181d;border:none;padding:6px 18px;border-radius:30px;font-size:12px;font-weight:700;cursor:pointer}
+body{padding-top:38px}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff;padding-top:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .helper{display:none}
+  .sheet{margin:0;box-shadow:none;height:297mm;min-height:auto;overflow:hidden}
+  .mi,.bacard,.tb{break-inside:avoid}
+}
+@media screen and (max-width:760px){
+  .sheet{width:auto;margin:8px;min-height:auto}
+  .hero{padding:18px}
+  .hero h1{font-size:28px}
+  .body{padding:16px}
+  .ba,.menu,.trust{grid-template-columns:1fr}
+  .cta{flex-direction:column;text-align:center;padding:18px}
+}
+</style>
+</head>
+<body>
+
+<div class="helper">
+  <span><b>SAMURAI MOTORS</b> — Exterior Repair Flyer (ខាងក្រៅ · Wheel · Headlight / 外装)</span>
+  <button onclick="window.print()">បោះពុម្ព / 印刷 (PDF)</button>
+</div>
+
+<div class="sheet">
+
+  <!-- ===== HERO ===== -->
+  <div class="hero">
+    <div class="top">
+      <span class="wordmark">SAMURAI <span class="s2">MOTORS</span></span>
+      <span class="badge">Japan Quality · Phnom Penh</span>
+    </div>
+    <div class="eyebrow">Exterior · Wheel · Headlight</div>
+    <h1>ឡានរបស់អ្នក<br><span class="accent">ភ្លឺថ្លាដូចថ្មី</span></h1>
+    <div class="sub">រ៉ាងឆ្កូត? ភ្លើងមុខឡើងលឿង? ស្នាមឆ្កូតលើតួ? យើងស្ដារឱ្យដូចថ្មី។
+      <span class="en">Curbed wheels? Yellow headlights? Body scratches? We restore them.</span></div>
+    <div class="concept">🔧 ជួសជុល មិនមែនប្តូរ <span class="en">REPAIR, NOT REPLACE</span></div>
+  </div>
+
+  <!-- ===== BODY ===== -->
+  <div class="body">
+
+    <!-- Before / After -->
+    <div class="sectitle"><span class="km">មុន &amp; ក្រោយ</span><span class="en">Before &amp; After</span></div>
+    <div class="ba">
+      <div class="bacard">
+        <div class="pics">
+          <!-- PHOTO: wheel before — replace with <img src="wheel-before.jpg"> -->
+          <div class="ph"><span class="tag b">មុន · BEFORE</span><span class="cam">📷</span><span class="hint">ដាក់រូបនៅទីនេះ</span></div>
+          <!-- PHOTO: wheel after -->
+          <div class="ph"><span class="tag a">ក្រោយ · AFTER</span><span class="cam">📷</span><span class="hint">add photo here</span></div>
+        </div>
+        <div class="cap"><span>រ៉ាង (Wheel) ឆ្កូត · Curb</span><span class="pr">$35+</span></div>
+      </div>
+      <div class="bacard">
+        <div class="pics">
+          <div class="ph"><span class="tag b">មុន · BEFORE</span><span class="cam">📷</span><span class="hint">ដាក់រូបនៅទីនេះ</span></div>
+          <div class="ph"><span class="tag a">ក្រោយ · AFTER</span><span class="cam">📷</span><span class="hint">add photo here</span></div>
+        </div>
+        <div class="cap"><span>Headlight ឡើងលឿង · Yellow</span><span class="pr">$35+</span></div>
+      </div>
+    </div>
+
+    <!-- Menu -->
+    <div class="sectitle"><span class="km">សេវាកម្ម &amp; តម្លៃ</span><span class="en">Services &amp; Price</span></div>
+    <div class="menu">
+      <div class="mi"><div class="ic">⭕</div><div class="tx"><div class="nm">ស្ដាររ៉ាង (Wheel) ១ <span class="en">Wheel (1)</span></div><div class="ds">ស្នាមឆ្កូត · ប៉ះ · ប្តូរពណ៌</div></div><div class="pr">$35<small>ចាប់ពី</small></div></div>
+      <div class="mi"><div class="ic">🛞</div><div class="tx"><div class="nm">រ៉ាង ៤ កង់ <span class="en">Wheel set (4)</span></div><div class="ds">ស្ដារទាំង៤ · កញ្ចប់</div></div><div class="pr">$119<small>ចាប់ពី</small></div></div>
+      <div class="mi"><div class="ic">💡</div><div class="tx"><div class="nm">ស្ដារ Headlight <span class="en">Headlight pair</span></div><div class="ds">លុបពណ៌លឿង + Coating</div></div><div class="pr">$35<small>ចាប់ពី</small></div></div>
+      <div class="mi"><div class="ic">🚗</div><div class="tx"><div class="nm">ស្នាមឆ្កូតលើតួ <span class="en">Body scratch</span></div><div class="ds">១ផ្ទាំង · ស្នាមឆ្កូត · ថ្មប៉ះ</div></div><div class="pr">$49<small>ចាប់ពី</small></div></div>
+      <div class="mi"><div class="ic">🛡️</div><div class="tx"><div class="nm">ជួសជុល Bumper <span class="en">Bumper scuff</span></div><div class="ds">ឆ្កូត · បាក់តិច · របក</div></div><div class="pr">$59<small>ចាប់ពី</small></div></div>
+      <div class="mi"><div class="ic">🪟</div><div class="tx"><div class="nm">កញ្ចក់មុខ ថ្មប៉ះ <span class="en">Windshield chip</span></div><div class="ds">ស្នាមថ្មប៉ះតូច</div></div><div class="pr">$29<small>ចាប់ពី</small></div></div>
+    </div>
+    <div class="menu" style="grid-template-columns:1fr;margin-top:-3px">
+      <div class="mi"><div class="ic">✨</div><div class="tx"><div class="nm">Coating ការពារពណ៌តួ <span class="en">Body / glass coating</span></div><div class="ds">បន្ថែមភាពភ្លឺ · ការពារទឹក · ការពារពណ៌</div></div><div class="pr">$89<small>ចាប់ពី</small></div></div>
+    </div>
+
+    <!-- Trust -->
+    <div class="trust">
+      <div class="tb"><div class="ic">🇯🇵</div><div class="t">គុណភាពជប៉ុន</div><div class="e">Japan Quality</div></div>
+      <div class="tb"><div class="ic">🛡️</div><div class="t">មានការធានា</div><div class="e">Warranty</div></div>
+      <div class="tb"><div class="ic">🚐</div><div class="t">សេវាដល់ទីកន្លែង</div><div class="e">We come to you</div></div>
+    </div>
+  </div>
+
+  <!-- ===== CTA ===== -->
+  <div class="cta">
+    <div class="qr">
+      <!-- PHOTO: QR — replace with <img src="qr.png"> linking to booking + dealer code -->
+      <span class="grid">▦</span>
+      <span>ស្កេនដើម្បីកក់<br>Scan to book</span>
+    </div>
+    <div class="txt">
+      <div class="big">កក់តាមរយៈ<span class="accent">បុគ្គលិកលក់ឡាន</span></div>
+      <div class="small">សាកសួរបុគ្គលិក ឬស្កេន QR · ផ្ញើរូបដើម្បីស្នើសុំតម្លៃ
+        <span class="en">Ask the staff or scan the QR · Send a photo for a free quote</span></div>
+      <div class="dealer">🏷️ តំណាងចែកចាយ / Dealer: ____________ &nbsp;·&nbsp; Code: <b>SM-D____</b></div>
+    </div>
+  </div>
+
+  <div class="footline">Samurai Motors · Phnom Penh &nbsp;·&nbsp; <span class="km">ឡានភ្លឺថ្លា ដូចថ្មី ❤︎ គុណភាពជប៉ុន</span></div>
+
+</div>
+
+</body>
+</html>
