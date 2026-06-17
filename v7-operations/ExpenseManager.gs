@@ -258,6 +258,26 @@ function submitExpense(chatId, payload) {
     reimburseDue: reimburseDue
   }, chatId);
 
+  // 経費統合スプレッドシートへも同期（失敗しても経費登録自体は止めない）
+  try {
+    if (typeof appendToIntegrationSheet_ === 'function') {
+      appendToIntegrationSheet_({
+        '経費ID':     expenseId,
+        '取引日':     txDate,
+        '品目・摘要': desc,
+        '金額':       amount,
+        '通貨':       currency,
+        '勘定科目':   category,
+        '登録者':     staff.nameJp,
+        '立替区分':   paymentType,
+        '精算先':     reimburseTo,
+        'メモ':       memo
+      });
+    }
+  } catch (err) {
+    Logger.log('⚠️ 経費統合シート同期失敗(無視可): ' + err);
+  }
+
   return {
     ok: true,
     expenseId: expenseId,

@@ -23,9 +23,10 @@ const CONFIG_KEYS = {
   ADMIN_PARTNER_THREAD_ID:     'ADMIN_PARTNER_THREAD_ID',       // パートナートピック（紹介・承認）
 
   // Google Workspace
-  OPERATIONS_SPREADSHEET_ID: 'OPERATIONS_SPREADSHEET_ID',
-  V7_SPREADSHEET_ID:         'V7_SPREADSHEET_ID',                // 顧客系スプレッドシート（日報で売上参照）
-  RECEIPT_FOLDER_ID:         'RECEIPT_FOLDER_ID',                // レシート保存先 Drive フォルダ（任意、未設定なら自動作成）
+  OPERATIONS_SPREADSHEET_ID:  'OPERATIONS_SPREADSHEET_ID',
+  V7_SPREADSHEET_ID:          'V7_SPREADSHEET_ID',                // 顧客系スプレッドシート（日報で売上参照）
+  RECEIPT_FOLDER_ID:          'RECEIPT_FOLDER_ID',                // レシート保存先 Drive フォルダ（任意、未設定なら自動作成）
+  INTEGRATION_SPREADSHEET_ID: 'INTEGRATION_SPREADSHEET_ID',       // 経費統合スプレッドシート（任意、未設定なら同期スキップ）
 
   // ミニアプリ
   INTERNAL_MINIAPP_URL:      'INTERNAL_MINIAPP_URL',  // home-internal.html の公開URL
@@ -115,6 +116,7 @@ function getConfig() {
     operationsSpreadsheetId:  all[CONFIG_KEYS.OPERATIONS_SPREADSHEET_ID],
     v7SpreadsheetId:          all[CONFIG_KEYS.V7_SPREADSHEET_ID] || '',
     receiptFolderId:          all[CONFIG_KEYS.RECEIPT_FOLDER_ID] || '',
+    integrationSpreadsheetId: all[CONFIG_KEYS.INTEGRATION_SPREADSHEET_ID] || '',
     internalMiniappUrl:       all[CONFIG_KEYS.INTERNAL_MINIAPP_URL] || '',
     partnerWelcomeKitUrl:     all[CONFIG_KEYS.PARTNER_WELCOME_KIT_URL] || '',
     partnerTrialVoucherPrefix: all[CONFIG_KEYS.PARTNER_TRIAL_VOUCHER_PREFIX] || 'SMTRY',
