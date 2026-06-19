@@ -704,34 +704,23 @@ body {
     </div>
     <div class="section">
       <div class="section-title">📍 ទីតាំង（場所）</div>
+      <!-- 2026-06-07 簡素化: GPS現在地ボタンを主役に。建物名select等は
+           非表示で残す（JS参照を壊さないため）。入力負荷を最小化。 -->
       <div class="field">
-        <label>ឈ្មោះអគារ <span class="jp">（建物名）</span><span class="req">*</span></label>
-        <select id="building">
-          <option value="" disabled selected>ជ្រើសរើសអគារ（建物を選択）</option>
-          <option value="Time Square 3 (TS3)">Time Square 3 (TS3)</option>
-          <option value="Diamond Island">Diamond Island</option>
-          <option value="ICON">ICON</option>
-          <option value="Bolero">Bolero</option>
-          <option value="De Castle Royal">De Castle Royal</option>
-          <option value="other">ផ្សេងទៀត（その他）</option>
-        </select>
-      </div>
-      <div class="field" id="buildingOtherField" style="display:none;">
-        <label>ឈ្មោះអគារផ្សេង <span class="jp">（その他の建物名）</span></label>
-        <input type="text" id="buildingOther" placeholder="សូមបញ្ជាក់ឈ្មោះអគារ">
+        <button type="button" id="gpsBtn" style="width:100%;padding:16px;font-size:16px;font-weight:600;border:none;border-radius:12px;background:#c9302c;color:#fff;cursor:pointer;">
+          📍 យកទីតាំងបច្ចុប្បន្ន（現在地を取得）
+        </button>
+        <p class="hint" id="gpsHint" style="margin-top:8px;">👆 ចុចដើម្បីយកទីតាំង GPS（タップでGPS取得）</p>
       </div>
       <div class="field">
-        <label>លេខបន្ទប់ / ជាន់ <span class="jp">（部屋番号 / 階）</span></label>
+        <label>លេខបន្ទប់ / ជាន់ <span class="jp">（部屋番号 / 階・任意）</span></label>
         <input type="text" id="room" placeholder="ឧ. 12F - 1203">
       </div>
-      <div class="field">
-        <label>ទីតាំង Google Maps <span class="jp">（Google Maps 位置）</span></label>
-        <div class="gps-row">
-          <input type="text" id="mapUrl" placeholder="https://maps.google.com/...">
-          <button type="button" class="gps-btn" id="gpsBtn">📍</button>
-        </div>
-        <p class="hint">📍 ចុចប៊ូតុងដើម្បីយកទីតាំង（ボタンで現在地取得）</p>
-      </div>
+      <!-- 非表示（互換のため要素は残す） -->
+      <select id="building" style="display:none;"><option value="other" selected>other</option></select>
+      <input type="text" id="buildingOther" style="display:none;">
+      <div id="buildingOtherField" style="display:none;"></div>
+      <input type="text" id="mapUrl" style="display:none;">
     </div>
     <div class="section">
       <div class="section-title">🚗 ព័ត៌មានរថយន្ត（車両情報）</div>
@@ -1508,22 +1497,29 @@ function saveOffline(data) {
 function getGPS() {
   var btn = document.getElementById('gpsBtn');
   var mapInput = document.getElementById('mapUrl');
+  var hint = document.getElementById('gpsHint');
   if (!navigator.geolocation) { showToast('GPS មិនអាចប្រើបាន'); return; }
-  btn.textContent = '⏳';
+  var orig = btn.textContent;
+  btn.textContent = '⏳ កំពុងយក...（取得中）';
+  btn.disabled = true;
   try {
     navigator.geolocation.getCurrentPosition(
       function(pos) {
         mapInput.value = 'https://www.google.com/maps?q='+pos.coords.latitude+','+pos.coords.longitude;
-        btn.textContent = '✅';
-        setTimeout(function(){ btn.textContent = '📍'; }, 2000);
+        btn.textContent = '✅ ទីតាំងបានយក（取得済み）';
+        btn.style.background = '#2e7d32';
+        btn.disabled = false;
+        if (hint) hint.innerHTML = '✅ ' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5) + ' — <a href="'+mapInput.value+'" target="_blank" style="color:#4da3ff">地図で確認</a>';
       },
       function() {
-        btn.textContent = '📍';
+        btn.textContent = orig;
+        btn.disabled = false;
         showToast('ទីតាំងមិនបាន（位置情報を取得できません）');
+        if (hint) hint.textContent = '⚠️ 取得失敗。もう一度タップ / GPS許可を確認';
       },
-      { enableHighAccuracy:true, timeout:10000 }
+      { enableHighAccuracy:true, timeout:10000, maximumAge:30000 }
     );
-  } catch(e) { btn.textContent = '📍'; }
+  } catch(e) { btn.textContent = orig; btn.disabled = false; }
 }
 
 // ===== UTILS =====
