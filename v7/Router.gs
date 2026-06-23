@@ -124,6 +124,10 @@ function doPost(e) {
         result = settleManualBooking(body.bookingId || '');
         break;
 
+      case 'manual_campaign_sale':
+        result = recordCampaignSale(body);
+        break;
+
       default:
         result = { status: 'error', message: 'UNKNOWN_ACTION', action: action };
     }

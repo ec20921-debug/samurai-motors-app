@@ -564,15 +564,11 @@ body {
     <div id="dashboardBody">
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
     </div>
-    <!-- 🎫 特価予約ボタンは一旦非表示（2026-06-01 運用方針: 手動登録に一本化）。
-         CampaignBooking.gs・特価キャンペーンシート・Router アクション・stepCampaign 画面・
-         JS関数は温存しているので、将来このボタンを戻すだけで復活できる。
     <button class="dash-manual-btn" onclick="startCampaignFlow()"
-            style="background:linear-gradient(135deg,#8b0000 0%,#c9a84c 100%); border-color:#c9a84c; margin-bottom:10px;">
-      <span style="font-size:22px;">🎫</span>
-      <span>ការកក់ពិសេស（特価予約）</span>
+            style="background:linear-gradient(135deg,#1a6b3a 0%,#c9a84c 100%); border-color:#c9a84c; margin-bottom:10px;">
+      <span style="font-size:22px;">💰</span>
+      <span>កំណត់ត្រាការលក់（キャンペーン売上入力）</span>
     </button>
-    -->
     <button class="dash-manual-btn" onclick="startManualEntry()">
       <span style="font-size:22px;">✍️</span>
       <span>បញ្ចូលដោយដៃ（手動で新規登録）</span>
@@ -583,84 +579,39 @@ body {
   <div class="step" id="stepCampaign">
     <button class="back-to-list-btn" onclick="backToList()">‹ ត្រឡប់ទៅបញ្ជី（一覧に戻る）</button>
     <div class="section">
-      <div class="section-title">🎫 ការកក់ពិសេស（特価予約・テレグラム限定）</div>
-      <p class="hint" style="margin-bottom:12px;">📢 ការផ្តល់ពិសេសសម្រាប់អតិថិជន Telegram（テレグラム限定特価。公開価格には影響しません）</p>
+      <div class="section-title">💰 ការកក់ពិសេស（キャンペーン売上入力）</div>
+      <p class="hint" style="margin-bottom:12px;">📢 キャンペーンの入金を記録します（売上に計上されます）</p>
       <div class="field">
         <label>ការផ្តល់ពិសេស <span class="jp">（キャンペーン）</span><span class="req">*</span></label>
         <select id="campaignSelect"><option value="">— ⏳ —</option></select>
         <p class="hint" id="campaignHint">⏳ កំពុងផ្ទុក...（読み込み中...）</p>
       </div>
-    </div>
-
-    <!-- サービスタイプ（予約Bot booking.html と同じ表記） -->
-    <div class="section">
-      <div class="section-title">🚗 ប្រភេទសេវាកម្ម（サービスタイプ）</div>
-      <div class="vehicle-grid">
-        <div class="vehicle-option">
-          <input type="radio" name="campaignServiceType" id="cstStore" value="店舗" checked>
-          <label class="vehicle-card" for="cstStore">
-            <span class="vehicle-name-km">🏪 In-store / នៅហាង</span>
-            <span class="vehicle-name-jp">店舗（その場完結）</span>
-          </label>
-        </div>
-        <div class="vehicle-option">
-          <input type="radio" name="campaignServiceType" id="cstDelivery" value="出張">
-          <label class="vehicle-card" for="cstDelivery">
-            <span class="vehicle-name-km">🚗 Delivery / ដឹកជញ្ជូន</span>
-            <span class="vehicle-name-jp">出張（後日訪問）</span>
-          </label>
-        </div>
+      <div class="field">
+        <label>ទឹកប្រាក់ទទួល <span class="jp">（入金額 USD）</span><span class="req">*</span></label>
+        <select id="saleAmount">
+          <option value="" disabled selected>— ជ្រើសរើស / 選択 —</option>
+          <option value="5">$5</option>
+          <option value="10">$10</option>
+          <option value="15">$15</option>
+          <option value="20">$20</option>
+        </select>
       </div>
     </div>
 
-    <!-- 車種（予約Bot booking.html と同じ表記、固定価格なので分析用） -->
+    <!-- 顧客・車両 -->
     <div class="section">
-      <div class="section-title">🚙 ប្រភេទរថយន្ត（車種）</div>
-      <div class="vehicle-grid">
-        <div class="vehicle-option">
-          <input type="radio" name="campaignVehicleType" id="cvtSedan" value="セダン以下" checked>
-          <label class="vehicle-card" for="cvtSedan">
-            <span class="vehicle-name-km">🚙 Sedan & smaller</span>
-            <span class="vehicle-name-jp">セダン以下（小型）</span>
-          </label>
-        </div>
-        <div class="vehicle-option">
-          <input type="radio" name="campaignVehicleType" id="cvtSuv" value="SUV以上">
-          <label class="vehicle-card" for="cvtSuv">
-            <span class="vehicle-name-km">🚘 SUV & larger</span>
-            <span class="vehicle-name-jp">SUV以上（大型）</span>
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- 顧客名 -->
-    <div class="section">
-      <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客情報）</div>
+      <div class="section-title">👤 ព័ត៌មានអតិថិជន（顧客・車両）</div>
       <div class="field">
         <label>ឈ្មោះអតិថិជន <span class="jp">（顧客名）</span><span class="req">*</span></label>
         <input type="text" id="campaignName" placeholder="ឧ. Sok Chanthy">
       </div>
-    </div>
-
-    <!-- 出張のみ表示 -->
-    <div class="section" id="campaignDeliveryFields" style="display:none;">
-      <div class="section-title">📅 កាលវិភាគ（出張スケジュール）</div>
       <div class="field">
-        <label>ថ្ងៃកំណត់ <span class="jp">（予約日）</span><span class="req">*</span></label>
-        <input type="date" id="campaignDate">
+        <label>ប្រភេទរថយន្ត <span class="jp">（車種）</span></label>
+        <input type="text" id="saleCarModel" placeholder="ឧ. Toyota Camry">
       </div>
       <div class="field">
-        <label>ម៉ោងចាប់ផ្តើម <span class="jp">（開始時刻）</span><span class="req">*</span></label>
-        <input type="time" id="campaignStartTime">
-      </div>
-      <div class="field">
-        <label>រយៈពេល <span class="jp">（所要分・空欄なら60）</span></label>
-        <input type="number" id="campaignDuration" placeholder="60" min="15" step="15">
-      </div>
-      <div class="field">
-        <label>ទីតាំង <span class="jp">（場所 / Google Maps URL）</span><span class="req">*</span></label>
-        <input type="text" id="campaignLocation" placeholder="https://maps.google.com/... または住所">
+        <label>ស្លាកលេខ <span class="jp">（ナンバー）</span></label>
+        <input type="text" id="salePlate" placeholder="ឧ. 2A-1234">
       </div>
     </div>
   </div>
@@ -1171,7 +1122,7 @@ function renderButtons() {
     case 'campaign':
       area.innerHTML =
         '<button class="btn btn-secondary" onclick="backToList()">← ថយក្រោយ（戻る）</button>' +
-        '<button class="btn btn-primary" id="campaignSubmitBtn" onclick="submitManualCampaign()">✅ បង្កើត（特価予約を作成）</button>';
+        '<button class="btn btn-primary" id="campaignSubmitBtn" onclick="submitManualCampaign()">💰 រក្សាទុក（売上を記録）</button>';
       break;
     case 1:
       area.innerHTML = '<button class="btn btn-primary" onclick="goNext()">បន្ទាប់（次へ）→</button>';
@@ -1958,9 +1909,6 @@ function startCampaignFlow() {
   currentStep = 'campaign';
   renderStep();
   loadCampaignList();
-  // 出張フィールドの初期表示（店舗チェック済みなので非表示）
-  var dlv = document.getElementById('campaignDeliveryFields');
-  if (dlv) dlv.style.display = 'none';
 }
 
 function loadCampaignList() {
@@ -1991,7 +1939,7 @@ function loadCampaignList() {
       campaignCache.forEach(function(c){
         var opt = document.createElement('option');
         opt.value = c.campaignId;
-        opt.textContent = c.nameKm + '（' + c.nameJp + '）$' + c.priceUsd;
+        opt.textContent = c.nameKm + '（' + c.nameJp + '）';
         sel.appendChild(opt);
       });
       hint.textContent = '✨ ' + campaignCache.length + ' 件のキャンペーンが選択可能';
@@ -2010,36 +1958,23 @@ document.addEventListener('change', function(ev){
 function submitManualCampaign() {
   var campaignId = (document.getElementById('campaignSelect') || {}).value;
   if (!campaignId) { showToast('キャンペーンを選択してください'); return; }
-  var serviceType = (document.querySelector('input[name="campaignServiceType"]:checked') || {}).value || '店舗';
+  var amount = (document.getElementById('saleAmount') || {}).value;
+  if (!amount) { showToast('入金額を選択してください'); return; }
   var name = (document.getElementById('campaignName').value || '').trim();
   if (!name) { showToast('顧客名を入力してください'); return; }
-  var vehicleType = (document.querySelector('input[name="campaignVehicleType"]:checked') || {}).value || '';
 
   var body = {
-    action: 'manual_campaign_create',
+    action: 'manual_campaign_sale',
     campaignId: campaignId,
-    serviceType: serviceType,
+    amount: Number(amount),
     name: name,
-    vehicleType: vehicleType
+    carModel: (document.getElementById('saleCarModel').value || '').trim(),
+    plate: (document.getElementById('salePlate').value || '').trim()
   };
-
-  if (serviceType === '出張') {
-    var date = document.getElementById('campaignDate').value;
-    var startTime = document.getElementById('campaignStartTime').value;
-    var location = (document.getElementById('campaignLocation').value || '').trim();
-    if (!date || !startTime || !location) {
-      showToast('出張は日付・時刻・場所が必須');
-      return;
-    }
-    body.date = date;
-    body.startTime = startTime;
-    body.duration = Number(document.getElementById('campaignDuration').value || 60);
-    body.location = location;
-  }
 
   var btn = document.getElementById('campaignSubmitBtn');
   if (btn) btn.disabled = true;
-  showToast('⏳ 送信中...');
+  showToast('⏳ 記録中...');
 
   fetch(APPS_SCRIPT_URL, {
     method: 'POST',
@@ -2049,12 +1984,11 @@ function submitManualCampaign() {
     .then(function(r){ return r.json(); })
     .then(function(res){
       if (res.status === 'ok') {
-        showToast('✅ 作成: ' + res.bookingId + ' / $' + res.priceUsd);
+        showToast('✅ 売上記録: ' + res.bookingId + ' / $' + res.amount);
         // 入力をリセット
-        ['campaignName','campaignDate','campaignStartTime','campaignDuration','campaignLocation']
-          .forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
-        // 車種はセダン以下に戻す
-        var cvtSedan = document.getElementById('cvtSedan'); if (cvtSedan) cvtSedan.checked = true;
+        ['campaignName','saleCarModel','salePlate'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+        var amt = document.getElementById('saleAmount'); if (amt) amt.selectedIndex = 0;
+        var sel = document.getElementById('campaignSelect'); if (sel) sel.selectedIndex = 0;
         // ダッシュボードへ
         currentStep = 0;
         renderStep();

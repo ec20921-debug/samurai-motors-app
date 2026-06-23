@@ -32,6 +32,110 @@ var MANUAL_CAMPAIGN_NAMES_TTL = 60;
 // ====== API: manualCampaignList ======
 
 /**
+ * キャンペーンの売上を「予約」シートに1行記録する（売上計上用）。
+ * 2026-06-23: 経営ダッシュボードは 予約!料金(K) を 予約日(H, Date型)・進行状態(L)≠キャンセル
+ * で集計するため、完了・清算済みの1行を予約シートに作れば即売上に反映される。
+ * ※予約日は必ず Date 型で書く（文字列だと日付フィルタに乗らず売上$0になる既知の不具合）。
+ *
+ * @param {Object} params { campaignId, amount, name, carModel, plate }
+ * @return {Object}
+ */
+function recordCampaignSale(params) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(15 * 1000)) {
+    return { status: 'error', message: 'システム混雑中。もう一度お試しください。' };
+  }
+  try {
+    var campaignId = String(params.campaignId || '');
+    var amount = Number(params.amount);
+    var name = String(params.name || '').trim();
+    var carModel = String(params.carModel || '').trim();
+    var plate = String(params.plate || '').trim();
+
+    if (!campaignId) return { status: 'error', message: 'キャンペーンを選択してください' };
+    if (!(amount > 0)) return { status: 'error', message: '入金額を選択してください' };
+    if (!name) return { status: 'error', message: '顧客名を入力してください' };
+
+    // キャンペーン名（日本語）をマスターから解決
+    var campNameJp = campaignId;
+    var listRes = manualCampaignList();
+    if (listRes.status === 'ok') {
+      for (var i = 0; i < listRes.campaigns.length; i++) {
+        if (listRes.campaigns[i].campaignId === campaignId) {
+          campNameJp = listRes.campaigns[i].nameJp || campaignId;
+          break;
+        }
+      }
+    }
+
+    var ss = getSpreadsheet();
+    var tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+    var now = new Date();
+    // 予約日は Date 型で（文字列だと売上集計の日付フィルタに乗らない）
+    var todayDate = Utilities.parseDate(Utilities.formatDate(now, tz, 'yyyy-MM-dd'), tz, 'yyyy-MM-dd');
+    var startTime = Utilities.formatDate(now, tz, 'HH:mm');
+
+    var bookingId = generateDateSeqId('BK', SHEET_NAMES.BOOKINGS, '予約ID');
+
+    appendRow(SHEET_NAMES.BOOKINGS, {
+      '予約ID':         bookingId,
+      '顧客ID':         '',
+      'チャットID':     '',
+      '車種タイプ':     '',
+      '車種名':         carModel,
+      'プラン':         '',
+      'オプション':     '',
+      '予約日':         todayDate,            // Date型（売上計上に乗る）
+      '予約時刻':       startTime,
+      '所要時間(分)':   0,
+      '料金(USD)':      amount,
+      '進行状態':       '作業完了',
+      '緯度':           '',
+      '経度':           '',
+      '住所':           '',
+      '場所補足':       '',
+      'マップリンク':   '',
+      'カレンダーID':   '',
+      '予約登録日時':   now,
+      '決済状態':       '清算済み',
+      '請求額(USD)':    amount,
+      'スクショURL':    '',
+      '入金確認日時':   now,
+      'QR送信日時':     '',
+      '催促回数':       0,
+      '最終催促日時':   '',
+      '管理者メモ':     '客名:' + name + '｜キャンペーン売上' +
+                       (plate ? '｜No.' + plate : '') + (carModel ? '｜車:' + carModel : ''),
+      '割引前金額(USD)': amount,
+      '割引額(USD)':    0,
+      'キャンペーン名': campNameJp,
+      'サービスタイプ': '店舗'
+    });
+
+    // 管理者通知（best-effort）
+    try {
+      var cfg = getConfig();
+      var text = '💰 キャンペーン売上 記録\n' +
+        '━━━━━━━━━━━━━━━━━\n' +
+        '🆔 ' + bookingId + '\n' +
+        '🎟 ' + campNameJp + '\n' +
+        '💵 $' + amount + '（清算済み）\n' +
+        '👤 ' + name + (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '');
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, {});
+    } catch (e) {
+      Logger.log('⚠️ recordCampaignSale 通知失敗（記録は成功）: ' + e);
+    }
+
+    return { status: 'ok', bookingId: bookingId, amount: amount, campaignNameJp: campNameJp };
+  } catch (err) {
+    Logger.log('❌ recordCampaignSale error: ' + err + ' stack=' + (err.stack || ''));
+    return { status: 'error', message: 'システムエラー: ' + err.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
  * 有効＆期間内の手動特価キャンペーン一覧を返す
  * ミニアプリのドロップダウン用
  *
