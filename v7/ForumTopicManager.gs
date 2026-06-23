@@ -92,6 +92,11 @@ function getOrCreateTopic(customer) {
     return { threadId: threadId, isNew: true };
 
   } finally {
+    // 書き込みを確定してからロック解放する。
+    // flush しないと、並走する後発実行の再チェック(findCustomerRow)や
+    // generateDateSeqId から「直前に追加した行」が見えず、トピック・顧客行が
+    // 二重作成される（同じ顧客IDで2行できる）。
+    SpreadsheetApp.flush();
     lock.releaseLock();
   }
 }
