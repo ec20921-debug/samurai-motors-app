@@ -698,7 +698,9 @@ function campaignUrlToBlob_(url) {
  */
 function sendCampaignText_(chatId, text) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = sendMessage(BOT_TYPE.BOOKING, chatId, text, { disable_web_page_preview: true });
+    // 2026-06-23: リンクプレビューを有効化（YouTube等の動画リンクをサムネ付きで見せるため）。
+    // URLが無い本文では何も起きないので、リンク有り campaign のみ効果がある。
+    const res = sendMessage(BOT_TYPE.BOOKING, chatId, text, { disable_web_page_preview: false });
     const cls = classifyTgResult_(res);
     if (cls.ok) return res;
     if (cls.retryAfter > 0) { Utilities.sleep((cls.retryAfter + 1) * 1000); continue; }
