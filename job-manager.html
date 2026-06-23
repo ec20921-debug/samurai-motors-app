@@ -565,9 +565,9 @@ body {
       <div class="bp-loading">⏳ កំពុងផ្ទុក...（読み込み中...）</div>
     </div>
     <button class="dash-manual-btn" onclick="startCampaignFlow()"
-            style="background:linear-gradient(135deg,#1a6b3a 0%,#c9a84c 100%); border-color:#c9a84c; margin-bottom:10px;">
-      <span style="font-size:22px;">💰</span>
-      <span>កំណត់ត្រាការលក់（キャンペーン売上入力）</span>
+            style="background:#1a6b3a; border:2px solid #c9a84c; color:#fff; margin-bottom:10px;">
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#c9a84c;color:#1a6b3a;font-size:18px;">💰</span>
+      <span style="font-weight:500;">កំណត់ត្រាការលក់（キャンペーン売上入力）</span>
     </button>
     <button class="dash-manual-btn" onclick="startManualEntry()">
       <span style="font-size:22px;">✍️</span>
@@ -1939,7 +1939,7 @@ function loadCampaignList() {
       campaignCache.forEach(function(c){
         var opt = document.createElement('option');
         opt.value = c.campaignId;
-        opt.textContent = c.nameKm + '（' + c.nameJp + '）';
+        opt.textContent = (c.no ? c.no + ' ｜ ' : '') + c.nameKm + '（' + c.nameJp + '）';
         sel.appendChild(opt);
       });
       hint.textContent = '✨ ' + campaignCache.length + ' 件のキャンペーンが選択可能';

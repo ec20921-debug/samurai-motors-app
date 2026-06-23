@@ -175,6 +175,7 @@ function manualCampaignList() {
       if (endStr && todayStr > endStr) continue;
 
       list.push({
+        no:                String(headers['番号'] ? (row[headers['番号'] - 1] || '') : ''),
         campaignId:        String(row[(headers['キャンペーンID'] || 1) - 1] || ''),
         nameKm:            String(row[(headers['名前(クメール)'] || 1) - 1] || ''),
         nameJp:            String(row[(headers['名前(日本語)'] || 1) - 1] || ''),
