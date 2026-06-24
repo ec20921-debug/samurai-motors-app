@@ -465,58 +465,82 @@ function buildRonPrepaidSection_(ronAllTimeJpy, fx) {
   if (!sh || sh.getLastRow() < 2) {
     return { available: false, note: '「前払い管理」シートが見つかりません' };
   }
-  const ronJpy = Number(ronAllTimeJpy) || 0;
-  if (ronJpy > 0 && !(fx.usdJpy > 0)) {
-    return { available: false, note: '為替レート（設定!B4）未設定のため残額を計算できません' };
-  }
   const tz = ss.getSpreadsheetTimeZone() || OPS_TZ;
 
-  const DATE_RE = /日付|日時|送金日|入金日|年月日|date/i;
-  const AMT_RE  = /金額|amount|USD|\$/i;
+  // ── 残金は「前払い管理」シートの集計セル（残金=SoT）を直読みする ──
+  // シート側 D2(=SUMIFS 支払方法="立替") と、ExecDashboard 従来計算の「負担先=ロン君」集計は
+  // フィルタが異なり乖離する（例: バイク立替$2,200は負担先=飯泉で後者から漏れる）。
+  // よってシートの確定値（残金 F2 / 累計前払い B2 / 累計立替済み D2）を正とする。
+  let sheetBalanceUsd = null, sheetPrepaidUsd = null, sheetAdvancesUsd = null;
+  try {
+    const r2 = sh.getRange(2, 1, 1, 6).getValues()[0]; // A2:F2（ラベルA/C/E・値B/D/F）
+    for (let i = 0; i < r2.length - 1; i++) {
+      const label = String(r2[i] || '');
+      const val = Number(String(r2[i + 1]).replace(/[^0-9.\-]/g, ''));
+      if (isNaN(val)) continue;
+      if (/残金|残額/.test(label))                 sheetBalanceUsd  = val;
+      else if (/累計前払い|前払い合計/.test(label)) sheetPrepaidUsd  = val;
+      else if (/立替/.test(label))                 sheetAdvancesUsd = val;
+    }
+  } catch (e) { /* 読めなければ従来計算にフォールバック */ }
 
-  // ヘッダー行・列の自動検出（先頭6行）
+  const DATE_RE = /日付|日時|送金日|入金日|年月日|date/i;
+
+  // 送金履歴（recentTransfers 表示用）。ヘッダー行・列を自動検出。
   const lastCol = Math.min(sh.getLastColumn(), 12);
   const scan = sh.getRange(1, 1, Math.min(6, sh.getLastRow()), lastCol).getValues();
   let headerRow = -1, dateCol = -1, amtCol = -1, curCol = -1, noteCol = -1;
   for (let i = 0; i < scan.length && headerRow < 0; i++) {
     const cells = scan[i].map(function(c) { return String(c); });
-    const looksHeader = cells.some(function(c) { return DATE_RE.test(c) || AMT_RE.test(c); });
+    if (cells.some(function(c) { return /残金|累計前払い|累計立替/.test(c); })) continue; // 集計セル行は除外
+    const looksHeader = cells.some(function(c) { return DATE_RE.test(c) || /送金額|金額|amount/i.test(c); });
     if (!looksHeader) continue;
     headerRow = i + 1;
     cells.forEach(function(s, k) { if (dateCol < 0 && DATE_RE.test(s)) dateCol = k; });
     cells.forEach(function(s, k) {
       if (k === dateCol) return;
-      if (amtCol  < 0 && AMT_RE.test(s)) amtCol = k;
+      if (amtCol  < 0 && /送金額|金額|amount|USD/i.test(s)) amtCol = k;
       if (curCol  < 0 && /通貨|currency/i.test(s)) curCol = k;
       if (noteCol < 0 && /メモ|備考|内容|note|摘要/i.test(s)) noteCol = k;
     });
   }
-  if (headerRow < 0 || amtCol < 0 || sh.getLastRow() <= headerRow) {
-    return { available: false, note: '「前払い管理」シートの列構造を認識できませんでした' };
-  }
 
-  // 送金履歴の集計（既定通貨は USD = ABA送金。通貨列があれば換算）
-  const vals = sh.getRange(headerRow + 1, 1, sh.getLastRow() - headerRow, lastCol).getValues();
   let totalUsd = 0;
   const transfers = [];
-  vals.forEach(function(row) {
-    const amt = Number(row[amtCol]) || 0;
-    if (!amt) return;
-    let amtUsd = amt;
-    const cur = curCol >= 0 ? String(row[curCol] || 'USD').toUpperCase() : 'USD';
-    if (cur === 'KHR' && fx.khrJpy > 0 && fx.usdJpy > 0) amtUsd = amt * fx.khrJpy / fx.usdJpy;
-    if (cur === 'JPY' && fx.usdJpy > 0) amtUsd = amt / fx.usdJpy;
-    totalUsd += amtUsd;
-    transfers.push({
-      date: dateCol >= 0 ? normDateStr_(row[dateCol], tz) : '',
-      amountUsd: round2_(amtUsd),
-      note: noteCol >= 0 ? String(row[noteCol] || '').substring(0, 60) : ''
+  if (headerRow >= 0 && amtCol >= 0 && sh.getLastRow() > headerRow) {
+    const vals = sh.getRange(headerRow + 1, 1, sh.getLastRow() - headerRow, lastCol).getValues();
+    vals.forEach(function(row) {
+      const amt = Number(row[amtCol]) || 0;
+      if (!amt) return;
+      let amtUsd = amt;
+      const cur = curCol >= 0 ? String(row[curCol] || 'USD').toUpperCase() : 'USD';
+      if (cur === 'KHR' && fx.khrJpy > 0 && fx.usdJpy > 0) amtUsd = amt * fx.khrJpy / fx.usdJpy;
+      if (cur === 'JPY' && fx.usdJpy > 0) amtUsd = amt / fx.usdJpy;
+      totalUsd += amtUsd;
+      transfers.push({
+        date: dateCol >= 0 ? normDateStr_(row[dateCol], tz) : '',
+        amountUsd: round2_(amtUsd),
+        note: noteCol >= 0 ? String(row[noteCol] || '').substring(0, 60) : ''
+      });
     });
-  });
+  }
   transfers.sort(function(a, b) { return a.date < b.date ? 1 : -1; });
 
-  const ronUsd = fx.usdJpy > 0 ? ronJpy / fx.usdJpy : 0;
-  const balanceUsd = round2_(totalUsd - ronUsd);
+  // 残額: シートの残金セルを最優先。読めなければ従来計算にフォールバック。
+  let balanceUsd, prepaidUsd, advancesUsd, basis;
+  if (sheetBalanceUsd !== null) {
+    balanceUsd  = round2_(sheetBalanceUsd);
+    prepaidUsd  = sheetPrepaidUsd  !== null ? round2_(sheetPrepaidUsd)  : round2_(totalUsd);
+    advancesUsd = sheetAdvancesUsd !== null ? round2_(sheetAdvancesUsd)
+                : round2_((Number(ronAllTimeJpy) || 0) / (fx.usdJpy || 1));
+    basis = '残額 = 前払い管理シートの残金セル（F2・SoT）を直読み';
+  } else {
+    const ronUsd = fx.usdJpy > 0 ? (Number(ronAllTimeJpy) || 0) / fx.usdJpy : 0;
+    prepaidUsd  = round2_(totalUsd);
+    advancesUsd = round2_(ronUsd);
+    balanceUsd  = round2_(totalUsd - ronUsd);
+    basis = '残額 = 前払い送金合計 − ロン君負担経費（フォールバック計算）';
+  }
 
   // 設定シートの残金アラート閾値（任意・A列ラベルから検索）
   let alertThreshold = null;
@@ -535,9 +559,9 @@ function buildRonPrepaidSection_(ronAllTimeJpy, fx) {
 
   return {
     available: true,
-    note: '残額 = 前払い送金合計（USD） − ロン君負担の経費合計（USD換算・全期間）',
-    totalTransfersUsd: round2_(totalUsd),
-    ronExpensesAllTimeUsd: round2_(ronUsd),
+    note: basis,
+    totalTransfersUsd: prepaidUsd,
+    ronExpensesAllTimeUsd: advancesUsd,
     balanceUsd: balanceUsd,
     alertThresholdUsd: alertThreshold,
     transferCount: transfers.length,
