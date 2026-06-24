@@ -149,6 +149,33 @@ function submitExpense(chatId, payload) {
   if (EXPENSE_CURRENCIES_.indexOf(currency) < 0) return { ok: false, error: 'CURRENCY_INVALID' };
   if (isReimburse && !reimburseTo) return { ok: false, error: 'REIMBURSE_TO_REQUIRED' };
 
+  // ── 二重登録防止 ──
+  // ミニアプリの fetch は update_id を持たずキュー重複排除が効かないため、
+  // 同一 chatId・同一摘要・同一金額・同一通貨が直近 10 分以内に登録済みなら重複とみなす。
+  // ケース: ①送信ボタン2度押し ②レシート添付し忘れて再登録（後者はレシート付きを優先）。
+  const hasNewReceipt = !!(payload && payload.photoBase64);
+  try {
+    const dup = findRecentDuplicateExpense_(String(chatId), desc, amount, currency, 600);
+    if (dup) {
+      // 既存にレシートが無く、今回レシート付きで来た場合 → 既存行のレシートだけ更新し、新規行は作らない
+      if (hasNewReceipt && !dup.hasReceipt) {
+        try {
+          const saved = saveReceiptPhoto_(payload.photoBase64, payload.photoMime, payload.photoName, dup.expenseId);
+          const sheet2 = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId).getSheetByName(SHEET_NAMES.EXPENSES);
+          sheet2.getRange(dup.row, 11).setValue('=HYPERLINK("' + saved.url + '","レシート")'); // K列=レシート写真
+          Logger.log('🔁 重複検出: 既存 ' + dup.expenseId + ' にレシートを後付け（新規行は作らない）');
+        } catch (e2) {
+          Logger.log('⚠️ レシート後付け失敗: ' + e2);
+        }
+      } else {
+        Logger.log('⏭️ 二重登録を検出しスキップ: ' + dup.expenseId + ' (' + desc + ' ' + amount + currency + ')');
+      }
+      return { ok: true, expenseId: dup.expenseId, duplicate: true };
+    }
+  } catch (err) {
+    Logger.log('⚠️ 二重登録チェック失敗(続行): ' + err);
+  }
+
   const tz = staff.timezone || OPS_TZ;
   const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   const txDate = String((payload && payload.transactionDate) || todayStr).trim() || todayStr;
@@ -270,6 +297,67 @@ function submitExpense(chatId, payload) {
 }
 
 /**
+ * 直近 windowSec 秒以内に、同一 chatId・同一摘要・同一金額・同一通貨の
+ * 経費が既に登録されていれば、その行情報を返す（無ければ null）。
+ * ミニアプリの二重送信を弾くための冪等チェック。
+ *
+ * @param {string} chatId   登録者 Chat ID
+ * @param {string} desc     品目・摘要
+ * @param {number} amount   金額
+ * @param {string} currency 通貨
+ * @param {number} windowSec 判定する直近秒数（例 600）
+ * @return {Object|null} {expenseId, row, hasReceipt} or null
+ */
+function findRecentDuplicateExpense_(chatId, desc, amount, currency, windowSec) {
+  const sheet = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId)
+    .getSheetByName(SHEET_NAMES.EXPENSES);
+  if (!sheet) return null;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  // 末尾最大12行だけ確認（直近のみ対象。全件走査は不要）
+  const startRow = Math.max(2, lastRow - 11);
+  const numRows = lastRow - startRow + 1;
+  // A:経費ID, B:登録日時, D:品目・摘要, E:金額, F:通貨, J:登録者ChatID, K:レシート写真
+  const values = sheet.getRange(startRow, 1, numRows, 11).getValues();
+
+  const now = new Date().getTime();
+  const descNorm = String(desc).trim();
+  const amtNum = Number(amount);
+
+  for (let i = values.length - 1; i >= 0; i--) {
+    const r = values[i];
+    const rowExpenseId = r[0];
+    const rowRegistered = r[1];           // B: 登録日時（Date）
+    const rowDesc = String(r[3] || '').trim();  // D
+    const rowAmount = Number(r[4]);       // E
+    const rowCurrency = String(r[5] || '').trim().toUpperCase(); // F
+    const rowChatId = String(r[9] || '').trim(); // J
+    const rowReceipt = String(r[10] || '').trim(); // K
+
+    if (rowChatId !== String(chatId)) continue;
+    if (rowDesc !== descNorm) continue;
+    if (rowAmount !== amtNum) continue;
+    if (rowCurrency !== String(currency).trim().toUpperCase()) continue;
+
+    // 登録日時が windowSec 以内か
+    let regMs = null;
+    if (rowRegistered instanceof Date) {
+      regMs = rowRegistered.getTime();
+    } else if (rowRegistered) {
+      const parsed = new Date(rowRegistered);
+      if (!isNaN(parsed.getTime())) regMs = parsed.getTime();
+    }
+    if (regMs === null) continue;
+    if ((now - regMs) <= windowSec * 1000) {
+      return { expenseId: rowExpenseId, row: startRow + i, hasReceipt: !!rowReceipt };
+    }
+  }
+  return null;
+}
+
+/**
  * 現場スタッフ(role='field' = ロン等)が経費追加した時のみ管理グループに通知
  * 日本側(role='admin' = Daisuke / 飯泉)の追加は無音
  *
@@ -295,9 +383,9 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       ? expenseInfo.amount.toLocaleString()
       : String(expenseInfo.amount);
 
-    const reimburseLine = (expenseInfo.paymentType === '立替')
-      ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo) +
-        ' / 期限: ' + escapeHtml_(expenseInfo.reimburseDue)
+    // ロン君は前払いから使うため精算期限は表示しない（立替先のみ）
+    const reimburseLine = (expenseInfo.paymentType === '立替' && expenseInfo.reimburseTo)
+      ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo)
       : '';
 
     const text =
