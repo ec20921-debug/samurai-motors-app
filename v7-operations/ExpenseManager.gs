@@ -672,6 +672,12 @@ function debugSubmitTestExpense() {
 
 const EXPENSE_MASTER_SHEET_ = '経費マスター';
 
+// 立替経費を経費マスターに記録する際の支払方法ラベル。
+// ロン君の残金（前払い管理 D2 = SUMIFS 支払方法="立替"）には算入させず、
+// 残金は「前払い管理」シートの実残高カウントで管理する（物理アンカー方式）。
+// 顧客現金がpetty cashに混在し立替ログ≠実現金のため、立替を残金式に直結させない。
+const ADV_BALANCE_LABEL_ = '立替（残金別管理）';
+
 /**
  * 旧カテゴリ → v7 9カテゴリへの正規化
  * @param {string} catRaw 元のカテゴリ名（勘定科目）
@@ -734,11 +740,26 @@ function normalizeCategoryV7_(catRaw, itemName) {
  * @param {Object} p { expenseId, txDate, desc, amount, currency, vendor, category, memo, paymentType, reimburseTo, receiptUrl, staff }
  */
 function appendToExpenseMaster_(p) {
-  const ss = SpreadsheetApp.getActive();
+  // v7-ops はスタンドアロン(webhook)スクリプトのため SpreadsheetApp.getActive() は null。
+  // 必ず operationsSpreadsheetId を openById で開く（旧 getActive() 実装が転記取りこぼしの真因だった）。
+  const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
   const sheet = ss.getSheetByName(EXPENSE_MASTER_SHEET_);
   if (!sheet) {
     Logger.log('⚠️ 経費マスターシートなし、転記スキップ');
     return;
+  }
+
+  const lastRow = sheet.getLastRow();
+
+  // ── 冪等性: 同じ元ID(O列=15)が既にあれば二重転記しない ──
+  if (lastRow >= 4 && p.expenseId) {
+    const oidCol = sheet.getRange(4, 15, lastRow - 3, 1).getValues();
+    for (let i = 0; i < oidCol.length; i++) {
+      if (String(oidCol[i][0]).trim() === String(p.expenseId).trim()) {
+        Logger.log('⏭️ 経費マスター既に転記済み(スキップ): ' + p.expenseId);
+        return;
+      }
+    }
   }
 
   // 9カテゴリ正規化
@@ -752,27 +773,33 @@ function appendToExpenseMaster_(p) {
   // 入力者名（短縮形）
   const inputUser = (p.staff && p.staff.nameJp) || '不明';
 
-  // 負担先決定:
-  //   立替: 実際に立て替えた現場スタッフ（ロンなど）
-  //   会社直払い: '会社'
-  let payer = '会社';
+  // ── 支払方法ラベル & 負担先 ──
+  //   立替: ロン君の前払い(petty cash)からの支出。残金は「前払い管理」の実残高カウントで
+  //         管理するため、支払方法を ADV_BALANCE_LABEL_(立替（残金別管理）) とし、
+  //         残金式 D2(=SUMIFS G="立替") には算入させない（顧客現金混在で立替ログ≠実現金）。
+  //         負担先は現場スタッフ名（既存表記に合わせ「ロン」→「ロン君」）。
+  //   会社直払い: 会社が直接支払い（残金に無関係）。
+  let gLabel, payer;
   if (p.paymentType === '立替') {
-    // 現場スタッフ名を統一: 「ロン」→「ロン君」（経費マスターの既存表記に合わせる）
+    gLabel = ADV_BALANCE_LABEL_;
     payer = (inputUser === 'ロン') ? 'ロン君' : inputUser;
+  } else {
+    gLabel = '会社直払い';
+    payer = '会社';
   }
 
   // レシート (HYPERLINK 形式の式が来る場合もそのまま入れる)
   const receiptCell = p.receiptUrl ? ('=HYPERLINK("' + p.receiptUrl + '","レシート")') : '';
 
-  // 備考: メモ + 取引先 + 精算先（あれば）
+  // 備考: 立替注記 + 取引先 + メモ + 精算先（あれば）
   const noteParts = [];
+  if (p.paymentType === '立替') noteParts.push('Bot立替・残金は実残高管理(D2集計対象外)');
   if (p.vendor)       noteParts.push('取引先: ' + p.vendor);
   if (p.memo)         noteParts.push(p.memo);
   if (p.reimburseTo)  noteParts.push('精算先: ' + p.reimburseTo);
   const noteText = noteParts.join(' / ');
 
   // 末尾行に追記
-  const lastRow = sheet.getLastRow();
   const newRow = lastRow + 1;
   const rowIndex = newRow; // 1-based
 
@@ -800,7 +827,7 @@ function appendToExpenseMaster_(p) {
     p.amount,                              // D: 金額
     p.currency,                            // E: 通貨
     payer,                                 // F: 負担先
-    p.paymentType,                         // G: 支払方法
+    gLabel,                                // G: 支払方法（立替は残金別管理ラベル）
     receiptCell,                           // H: レシート
     noteText,                              // I: 備考
     inputUser,                             // J: 入力者
@@ -814,7 +841,14 @@ function appendToExpenseMaster_(p) {
   ]];
 
   sheet.getRange(newRow, 1, 1, 17).setValues(rowValues);
-  Logger.log('📋 経費マスター転記: row=' + newRow + ' id=' + p.expenseId + ' cat=' + cat9);
+
+  // 直前行から書式コピー（体裁統一）+ 行高
+  if (lastRow >= 4) {
+    sheet.getRange(lastRow, 1, 1, 17).copyTo(
+      sheet.getRange(newRow, 1, 1, 17), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    sheet.setRowHeight(newRow, 36);
+  }
+  Logger.log('📋 経費マスター転記: row=' + newRow + ' id=' + p.expenseId + ' cat=' + cat9 + ' G=' + gLabel);
 }
 
 function debugAppendToExpenseMaster() {
