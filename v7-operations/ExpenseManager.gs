@@ -698,35 +698,6 @@ function debugSubmitTestExpense() {
   Logger.log(JSON.stringify(r));
 }
 
-/**
- * デバッグ: 管理グループへ「サンプル経費通知」を送る（実際の経費は登録しない）。
- * 残金付き通知フォーマットの確認用。GASエディタで手動実行。
- */
-function debugSampleExpenseNotification() {
-  const cfg = getConfig();
-  if (!cfg.adminGroupId) { Logger.log('⚠️ ADMIN_GROUP_ID 未設定'); return; }
-  const threadId = cfg.adminExpenseThreadId ? Number(cfg.adminExpenseThreadId) : null;
-  const bal = getRonPrepaidBalance_();
-  const balanceLine = (bal !== null)
-    ? '\n💵 ロン君 残金: <b>$' + bal.toFixed(2) + '</b>' + (bal < 10 ? ' ⚠️ 低残高' : '')
-    : '\n💵 ロン君 残金: （取得不可）';
-  const text =
-    '🆕 <b>経費追加</b>(現場から) 〈サンプル〉\n' +
-    '👤 追加者: ロン\n' +
-    '📋 ID: SAMPLE-000\n' +
-    '💰 金額: 5.00 USD\n' +
-    '📝 内容: 【サンプル】会社のバイクにガスを入れました\n' +
-    '🏷️ 勘定: 車両・洗車\n' +
-    '💳 区分: 立替\n' +
-    '🤝 立替先: 飯泉' +
-    balanceLine +
-    '\n\n<i>※通知フォーマット確認用のサンプルです（実際の経費は登録していません）</i>';
-  const opts = { parse_mode: 'HTML' };
-  if (threadId) opts.message_thread_id = threadId;
-  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, opts);
-  Logger.log('📤 サンプル通知を管理グループへ送信（残金=' + bal + '）');
-}
-
 // ============================================================
 //  経費マスター 自動転記（Phase 2）
 //  Bot入力された経費を「経費マスター」シートにも書き込む
