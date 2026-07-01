@@ -388,6 +388,16 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo)
       : '';
 
+    // 立替は前払い(petty cash)から使う → 現在の残金を通知（ledger-driven：立替入力で残金が減る）
+    let balanceLine = '';
+    if (expenseInfo.paymentType === '立替') {
+      const bal = getRonPrepaidBalance_();
+      if (bal !== null) {
+        balanceLine = '\n💵 ロン君 残金: <b>$' + bal.toFixed(2) + '</b>'
+          + (bal < 10 ? ' ⚠️ 低残高' : '');
+      }
+    }
+
     const text =
       '🆕 <b>経費追加</b>(現場から)\n' +
       '👤 追加者: ' + escapeHtml_(creator.nameJp) + '\n' +
@@ -397,13 +407,39 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       (expenseInfo.vendor ? '\n🏪 取引先: ' + escapeHtml_(expenseInfo.vendor) : '') +
       (expenseInfo.category ? '\n🏷️ 勘定: ' + escapeHtml_(expenseInfo.category) : '') +
       '\n💳 区分: ' + escapeHtml_(expenseInfo.paymentType) +
-      reimburseLine;
+      reimburseLine +
+      balanceLine;
 
     const opts = { parse_mode: 'HTML' };
     if (threadId) opts.message_thread_id = threadId;
     sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, opts);
   } catch (err) {
     Logger.log('⚠️ notifyExpenseCreatedIfField_ 失敗(無視可): ' + err);
+  }
+}
+
+/**
+ * ロン君の現在残金（前払い管理シートの残金セル）を取得。取得不可なら null。
+ * 立替転記後に呼ぶ想定（ledger-driven：立替がD2に算入され残金が減る）。
+ */
+function getRonPrepaidBalance_() {
+  try {
+    SpreadsheetApp.flush(); // 直前の立替転記(K式)を確定させD2を再計算させる
+    const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
+    const sh = ss.getSheetByName('前払い管理');
+    if (!sh) return null;
+    // 2行目の「残金」ラベルの右セルを残金値とみなす（A2:F2 想定）
+    const r2 = sh.getRange(2, 1, 1, 6).getValues()[0];
+    for (let i = 0; i < r2.length - 1; i++) {
+      if (/残金|残額/.test(String(r2[i]))) {
+        const v = Number(String(r2[i + 1]).replace(/[^0-9.\-]/g, ''));
+        if (!isNaN(v)) return v;
+      }
+    }
+    return null;
+  } catch (e) {
+    Logger.log('⚠️ getRonPrepaidBalance_ 失敗(無視可): ' + e);
+    return null;
   }
 }
 
@@ -781,7 +817,7 @@ function appendToExpenseMaster_(p) {
   //   会社直払い: 会社が直接支払い（残金に無関係）。
   let gLabel, payer;
   if (p.paymentType === '立替') {
-    gLabel = ADV_BALANCE_LABEL_;
+    gLabel = '立替';  // ledger-driven: 残金式D2に算入→ロン君残金が自動減算される
     payer = (inputUser === 'ロン') ? 'ロン君' : inputUser;
   } else {
     gLabel = '会社直払い';
@@ -793,7 +829,7 @@ function appendToExpenseMaster_(p) {
 
   // 備考: 立替注記 + 取引先 + メモ + 精算先（あれば）
   const noteParts = [];
-  if (p.paymentType === '立替') noteParts.push('Bot立替・残金は実残高管理(D2集計対象外)');
+  if (p.paymentType === '立替') noteParts.push('Bot立替（ledger-driven・残金自動減算）');
   if (p.vendor)       noteParts.push('取引先: ' + p.vendor);
   if (p.memo)         noteParts.push(p.memo);
   if (p.reimburseTo)  noteParts.push('精算先: ' + p.reimburseTo);
