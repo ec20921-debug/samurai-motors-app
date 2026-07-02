@@ -6,3 +6,6 @@ node_modules/
 *.p12
 .DS_Store
 Thumbs.db
+
+# Claude Code ローカル設定（トークン・権限はローカル限定。2026-07-03 監査対応）
+.claude/settings.local.json
