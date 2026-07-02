@@ -29,3 +29,9 @@
 ## 担当エージェント
 - 日次記帳・残金突合: **加藤 (choba)**
 - 月次決算・P&L・$50超承認: **金子 (kaneko)**
+
+### SNS運用チーム（`.claude/agents/`、詳細は `docs/marketing/SNS_TEAM.md`）
+- SNS戦略・配信計画（リーダー）: **広瀬 (hirose)**
+- コピーライティング（クメール語＋英語）: **服部 (hattori)**
+- クリエイティブ（画像・動画、Canva/Higgsfield）: **北斎 (hokusai)**
+- 分析・KPIレポート: **石田 (ishida)**
