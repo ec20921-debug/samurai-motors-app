@@ -4,64 +4,97 @@
     {
       "name": "samurai-app",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000
     },
     {
       "name": "admin-task",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/task-manager.html"
     },
     {
       "name": "admin-expense",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/expense-entry.html"
     },
     {
       "name": "daily-report",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/daily-report.html"
     },
     {
       "name": "attendance",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/attendance.html"
     },
     {
       "name": "job-manager",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/job-manager.html"
     },
     {
       "name": "booking",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/booking.html"
     },
     {
       "name": "admin-console",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 3000,
       "urlPath": "/admin-console.html"
     },
     {
       "name": "headlight-manual",
       "runtimeExecutable": "C:\\Users\\drymp\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-      "runtimeArgs": ["-m", "http.server", "8770", "--directory", "docs/manuals/headlight-refresh"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8770",
+        "--directory",
+        "docs/manuals/headlight-refresh"
+      ],
       "port": 8770,
       "urlPath": "/SAMURAI_Headlight_Manual.html"
+    },
+    {
+      "name": "staff-campaign",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8090"
+      ],
+      "port": 8090,
+      "urlPath": "/staff-campaign-half-free.html"
     }
   ]
 }

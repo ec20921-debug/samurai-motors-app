@@ -606,6 +606,11 @@ body {
         <input type="text" id="campaignName" placeholder="ឧ. Sok Chanthy">
       </div>
       <div class="field">
+        <label>លេខទូរស័ព្ទ <span class="jp">（電話番号）</span></label>
+        <input type="tel" id="salePhone" placeholder="ឧ. 012 345 678">
+        <p class="hint">🔁 次回の来店判定・リマインドに使います</p>
+      </div>
+      <div class="field">
         <label>ប្រភេទរថយន្ត <span class="jp">（車種）</span></label>
         <input type="text" id="saleCarModel" placeholder="ឧ. Toyota Camry">
       </div>
@@ -1969,7 +1974,8 @@ function submitManualCampaign() {
     amount: Number(amount),
     name: name,
     carModel: (document.getElementById('saleCarModel').value || '').trim(),
-    plate: (document.getElementById('salePlate').value || '').trim()
+    plate: (document.getElementById('salePlate').value || '').trim(),
+    phone: (document.getElementById('salePhone').value || '').trim()
   };
 
   var btn = document.getElementById('campaignSubmitBtn');
@@ -1984,9 +1990,10 @@ function submitManualCampaign() {
     .then(function(r){ return r.json(); })
     .then(function(res){
       if (res.status === 'ok') {
-        showToast('✅ 売上記録: ' + res.bookingId + ' / $' + res.amount);
+        var rep = res.isReturning ? '（🔁リピーター: ' + (res.returningName || '') + '）' : '';
+        showToast('✅ 売上記録: ' + res.bookingId + ' / $' + res.amount + rep);
         // 入力をリセット
-        ['campaignName','saleCarModel','salePlate'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+        ['campaignName','salePhone','saleCarModel','salePlate'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
         var amt = document.getElementById('saleAmount'); if (amt) amt.selectedIndex = 0;
         var sel = document.getElementById('campaignSelect'); if (sel) sel.selectedIndex = 0;
         // ダッシュボードへ

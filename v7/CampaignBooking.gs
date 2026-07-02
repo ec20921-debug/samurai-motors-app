@@ -77,9 +77,46 @@ function recordCampaignSale(params) {
 
     var bookingId = generateDateSeqId('BK', SHEET_NAMES.BOOKINGS, '予約ID');
 
+    // 電話番号で顧客を照合（任意入力）。あれば顧客IDを紐付け＝リピーター、無ければ顧客台帳に新規作成。
+    var phone = String(params.phone || '').trim();
+    var normPhone = normalizePhone_(phone);
+    var customerId = '';
+    var isReturning = false;
+    var returningName = '';
+    if (normPhone) {
+      var existingCust = findCustomerByPhone_(normPhone);
+      if (existingCust && existingCust.customerId) {
+        customerId = existingCust.customerId;
+        isReturning = true;
+        returningName = existingCust.name || '';
+        try {
+          var cSheet = getSheet(SHEET_NAMES.CUSTOMERS);
+          var cHeaders = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+          if (cHeaders['最終連絡日時']) cSheet.getRange(existingCust.rowIndex, cHeaders['最終連絡日時']).setValue(now);
+        } catch (ePhone) { Logger.log('⚠️ 最終連絡日時 更新失敗: ' + ePhone); }
+      } else {
+        customerId = generateDateSeqId('CUST', SHEET_NAMES.CUSTOMERS, '顧客ID');
+        appendRow(SHEET_NAMES.CUSTOMERS, {
+          '顧客ID':       customerId,
+          'チャットID':   '',
+          'ユーザー名':   '',
+          '氏名':         name,
+          '電話番号':     phone,
+          '言語':         'クメール語',
+          'トピックID':   '',
+          '登録日時':     now,
+          '最終連絡日時': now,
+          '配信対象':     true
+        });
+        if (typeof applyBroadcastCheckboxToRow_ === 'function') {
+          try { applyBroadcastCheckboxToRow_(getSheet(SHEET_NAMES.CUSTOMERS).getLastRow()); } catch (eCb) {}
+        }
+      }
+    }
+
     appendRow(SHEET_NAMES.BOOKINGS, {
       '予約ID':         bookingId,
-      '顧客ID':         '',
+      '顧客ID':         customerId,
       'チャットID':     '',
       '車種タイプ':     '',
       '車種名':         carModel,
@@ -105,7 +142,8 @@ function recordCampaignSale(params) {
       '催促回数':       0,
       '最終催促日時':   '',
       '管理者メモ':     '客名:' + name + '｜キャンペーン売上' +
-                       (plate ? '｜No.' + plate : '') + (carModel ? '｜車:' + carModel : ''),
+                       (plate ? '｜No.' + plate : '') + (carModel ? '｜車:' + carModel : '') +
+                       (phone ? '｜☎' + phone : '') + (isReturning ? '｜🔁リピーター' : ''),
       '割引前金額(USD)': amount,
       '割引額(USD)':    0,
       'キャンペーン名': campNameJp,
@@ -120,19 +158,54 @@ function recordCampaignSale(params) {
         '🆔 ' + bookingId + '\n' +
         '🎟 ' + campNameJp + '\n' +
         '💵 $' + amount + '（清算済み）\n' +
-        '👤 ' + name + (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '');
+        '👤 ' + name + (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '') +
+        (isReturning ? '\n🔁 リピーター（' + returningName + '）' : (normPhone ? '\n🆕 新規を顧客台帳へ登録' : ''));
       sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, {});
     } catch (e) {
       Logger.log('⚠️ recordCampaignSale 通知失敗（記録は成功）: ' + e);
     }
 
-    return { status: 'ok', bookingId: bookingId, amount: amount, campaignNameJp: campNameJp };
+    return { status: 'ok', bookingId: bookingId, amount: amount, campaignNameJp: campNameJp,
+             customerId: customerId, isReturning: isReturning, returningName: returningName };
   } catch (err) {
     Logger.log('❌ recordCampaignSale error: ' + err + ' stack=' + (err.stack || ''));
     return { status: 'error', message: 'システムエラー: ' + err.message };
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * 電話番号を照合用に正規化（数字のみ、+855→0 に寄せる）
+ */
+function normalizePhone_(raw) {
+  var d = String(raw || '').replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.indexOf('855') === 0 && d.length >= 11) d = '0' + d.slice(3);
+  return d;
+}
+
+/**
+ * 顧客台帳を電話番号（正規化後）で検索。見つかれば {rowIndex, customerId, name}。
+ */
+function findCustomerByPhone_(normPhone) {
+  if (!normPhone) return null;
+  var sheet = getSheet(SHEET_NAMES.CUSTOMERS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  var headers = getHeaderMap(SHEET_NAMES.CUSTOMERS);
+  var phoneCol = headers['電話番号'];
+  var idCol = headers['顧客ID'];
+  var nameCol = headers['氏名'];
+  if (!phoneCol || !idCol) return null;
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var cell = normalizePhone_(data[i][phoneCol - 1]);
+    if (cell && cell === normPhone) {
+      return { rowIndex: i + 2, customerId: String(data[i][idCol - 1] || ''), name: String(data[i][nameCol - 1] || '') };
+    }
+  }
+  return null;
 }
 
 /**
