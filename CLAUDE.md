@@ -45,7 +45,7 @@
 | セットアップ系（本番外） | Setup / SetupProperties / GetGroupId / WebhookSetup | .claspignore で push 除外 |
 | ⚠️ 整理候補 | Setup_CampaignBooking / Setup_MenuV2 / Setup_MenuV3 / Migration_ServiceType | **claspignore 漏れで push 対象に残存**（docs/DEPLOY.md 参照） |
 
-- ミニアプリ: `booking.html` / `job-manager.html`（GitHub Pages ホスト）
+- ミニアプリ: `booking.html` / `job-manager.html` 等（開発は本リポジトリ、**配信は別リポジトリ `samurai-motors-miniapp` の GitHub Pages**。2026-07-03 分離。同期手順: docs/DEPLOY.md）
 
 ---
 

@@ -184,16 +184,18 @@ function sendWelcomeMessage(msg) {
   // ソース = GitHub Pages ホストの flyer-2026-05.jpg(リポジトリ管理)。
   //
   // 【差替手順】新しいチラシに変えるとき:
-  //   1. 新画像をリポジトリに「別名(バージョン入り)」で追加 例: flyer-2026-07.jpg
+  //   1. 新画像を本リポジトリと配信リポジトリ(samurai-motors-miniapp)の両方に
+  //      「別名(バージョン入り)」で追加 例: flyer-2026-07.jpg（同期手順: docs/DEPLOY.md）
   //   2. 下の FLYER_URL のファイル名を新しいものに更新
-  //   3. clasp push + git push
+  //   3. clasp push + git push（両リポジトリ）
   //   ※ ファイル名を変える理由: Telegram の URL キャッシュ回避(同名上書きだと
   //      旧画像がキャッシュ配信される恐れがあるため、毎回ファイル名を変える)
   //
   // フォールバックは Drive 版(GitHub Pages 障害時の保険)。
   // 2026-05-30: Drive 版も新チラシへ同期済(キャンペーン素材フォルダ内の
   //   SamuraiMoters_チラシ_2026-05.jpg を指す)。旧 ...pAHE は未使用(残置)。
-  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-app/flyer-2026-05.jpg';
+  // 2026-07-03: 配信元を samurai-motors-miniapp（配信専用 public リポジトリ）へ分離。
+  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-miniapp/flyer-2026-05.jpg';
   const FLYER_DRIVE_ID = '1ttiP6z9gUlxD-_0aPefChnUBOeYIf3MS';
   const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash';
   let flyerSent = false;

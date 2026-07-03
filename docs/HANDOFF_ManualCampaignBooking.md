@@ -90,8 +90,8 @@
 
 ### 📍 ミニアプリの事実
 - **`job-manager.html` はこのリポジトリ内にある**（2059行・単一ファイル）。
-  CLAUDE.md には「別リポジトリ」とあるが**実態と古い**。このリポで編集→**GitHub Pages**
-  （`https://ec20921-debug.github.io/samurai-motors-app/`）で配信される。
+  このリポで編集→配信専用リポジトリ `samurai-motors-miniapp` へコピー→**GitHub Pages**
+  （`https://ec20921-debug.github.io/samurai-motors-miniapp/`）で配信される（2026-07-03 分離。同期手順: docs/DEPLOY.md）。
 - 言語: `<html lang="km">`、**クメール語ファースト＋日本語サブ**。車種選択UI（セダン以下/SUV以上）など
   予約フォーム部品が既にあるので流用可。
 - API: `var APPS_SCRIPT_URL`（`job-manager.html:826`）に対し
