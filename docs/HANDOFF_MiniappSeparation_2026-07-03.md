@@ -1,5 +1,9 @@
 # HANDOFF — ミニアプリ配信リポジトリ分離（2026-07-03）
 
+> **📌 STATUS: 切替保留（2026-07-03 Daisuke 判断）**
+> 現状のまま（旧URL配信・本体 public）で全機能正常稼働中。急ぐ理由はなく、下記①〜⑥は Daisuke が実施したくなったタイミングでいつでも再開できる。
+> **保留中の絶対条件**: 本体 `samurai-motors-app` を private 化しない（7/3 障害の再発）／ `samurai-motors-miniapp` も消さない・private 化しない（チラシ FLYER_URL がここから配信中）。
+
 Daisuke の手動作業チェックリスト。**上から順に実施**。全部終わるまで本体リポジトリを private 化しないこと（途中で private 化すると旧URLが404になり再障害）。
 
 ## 済んでいること（Claude 実施済み）
