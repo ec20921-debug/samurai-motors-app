@@ -130,13 +130,13 @@ function migrateMenuV3_createUnifiedMenu() {
       'GLASS_3', MENU_KIND_GLASS,
       '3 Windows + Mirrors', 'កញ្ចក់ ៣ + កញ្ចក់ឆ្លុះ ២', '3面+ドアミラー',
       15, 20, 40, 60, true,
-      'Front 3 windows + both door mirrors: waterless wash + water-repellent coating'
+      'Front 3 windows + both door mirrors: Waterless wash + water-repellent coating'
     ]);
     rows.push([
       'GLASS_ALL', MENU_KIND_GLASS,
       'All Windows + Mirrors', 'កញ្ចក់ ទាំងអស់ + កញ្ចក់ឆ្លុះ ២', '全面+ドアミラー',
       30, 40, 70, 120, true,
-      'All windows + both door mirrors: waterless wash + water-repellent coating'
+      'All windows + both door mirrors: Waterless wash + water-repellent coating'
     ]);
   }
 

@@ -218,7 +218,7 @@ function rebuildOptionsSheetV2_() {
       30, 50,        // 所要時間
       '',            // v2.1: 必須プラン 空欄(GLASS 単独予約OK)
       true,          // 有効
-      'Front 3 windows + both door mirrors: waterless wash + water-repellent coating'
+      'Front 3 windows + both door mirrors: Waterless wash + water-repellent coating'
     ],
     [
       'GLASS_ALL',
@@ -229,7 +229,7 @@ function rebuildOptionsSheetV2_() {
       60, 100,       // 所要時間
       '',            // v2.1: 必須プラン 空欄(GLASS 単独予約OK)
       true,          // 有効
-      'All windows + both door mirrors: waterless wash + water-repellent coating'
+      'All windows + both door mirrors: Waterless wash + water-repellent coating'
     ]
   ];
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
