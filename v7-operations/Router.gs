@@ -233,6 +233,7 @@ function doPost(e) {
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
         return jsonOut(salesLogShopUpdate(chatId, shopId, {
           shopName:  String(body.shopName  || ''),
+          shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),
           status:    String(body.status    || ''),
@@ -246,6 +247,7 @@ function doPost(e) {
         return jsonOut(salesLogCreate(chatId, {
           shopId:    String(body.shopId    || ''),
           shopName:  String(body.shopName  || ''),
+          shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),
           reaction:  String(body.reaction  || ''),
@@ -264,6 +266,48 @@ function doPost(e) {
           phone:     String(body.phone     || ''),
           reaction:  String(body.reaction  || ''),
           memo:      String(body.memo      || '')
+        }));
+      }
+
+      // ── 車屋提携 コミッション台帳（Phase 4・saleslog-internal.html） ──
+      case 'commission_list': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(commissionList(chatId, shopId));
+      }
+
+      case 'commission_create': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(commissionCreate(chatId, {
+          shopId:      String(body.shopId      || ''),
+          serviceDate: String(body.serviceDate || ''),
+          serviceDesc: String(body.serviceDesc || ''),
+          revenue:     body.revenue,
+          rate:        body.rate,
+          direction:   String(body.direction   || ''),
+          payStatus:   String(body.payStatus   || ''),
+          payDate:     String(body.payDate     || ''),
+          payMethod:   String(body.payMethod   || ''),
+          memo:        String(body.memo        || '')
+        }));
+      }
+
+      case 'commission_update': {
+        const chatId = String(body.chatId || '');
+        const commissionId = String(body.commissionId || '');
+        if (!chatId || !commissionId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(commissionUpdate(chatId, commissionId, {
+          serviceDate: String(body.serviceDate || ''),
+          serviceDesc: String(body.serviceDesc || ''),
+          revenue:     body.revenue,
+          rate:        body.rate,
+          direction:   String(body.direction   || ''),
+          payStatus:   String(body.payStatus   || ''),
+          payDate:     String(body.payDate     || ''),
+          payMethod:   String(body.payMethod   || ''),
+          memo:        String(body.memo        || '')
         }));
       }
 

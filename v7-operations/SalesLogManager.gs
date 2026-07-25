@@ -34,17 +34,46 @@
 const SALESLOG_SHEET_NAME = '営業ログ';
 const SALESLOG_HEADERS = [
   'visit_id', '日時', '緯度', '経度', '緯度経度結合',
-  '店名', 'オーナー名', '電話', '反応', 'メモ', '最終更新日時', 'shop_id'
+  '店名', 'オーナー名', '電話', '反応', '反応内容', 'メモ', '最終更新日時', 'shop_id'
 ];
 
 const SALESLOG_SHOP_SHEET_NAME = '店マスター';
 const SALESLOG_SHOP_HEADERS = [
-  'shop_id', '店名', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話',
-  '最新反応', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
+  'shop_id', '店名', '業種', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話',
+  '最新反応', '最新反応内容', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
 ];
 
+// 車屋の業種（複数選択・カンマ区切りで保存。今後の提案先セグメントの基礎データ）
+// ※ 暫定セット（2026-07-25 Daisuke 指示）。ロン君ヒアリング後に見直す — 変更はこの1箇所
+const SALESLOG_SHOP_TYPES = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'その他'];
+
+/**
+ * 業種配列をカンマ区切り文字列に正規化。
+ * 定義外の値は**捨てずに保持**する（ラベルセット見直し後の旧データが、店情報の
+ * 保存操作で無警告消失するのを防ぐ。ラベル改名時はリネームマイグレーションで対応）
+ */
+function normalizeShopTypes_(types) {
+  if (!types || !types.length) return '';
+  const seen = {};
+  const out = [];
+  (Array.isArray(types) ? types : [types]).forEach(function(t) {
+    const v = String(t || '').trim();
+    if (!v || seen[v]) return;
+    seen[v] = true;
+    if (SALESLOG_SHOP_TYPES.indexOf(v) < 0) Logger.log('⚠️ 業種: 定義外の値を保持: ' + v);
+    out.push(v);
+  });
+  return out.join(', ');
+}
+
 const SALESLOG_REACTIONS = ['A', 'B', 'C', 'D'];
+// GSS を直接見る管理者向けの日本語ラベル（「A だけだと分からない」2026-07-25 Daisuke 指摘）
+const SALESLOG_REACTION_LABELS = { A: 'デモ決定', B: '興味あり', C: '保留', D: '断り' };
 const SALESLOG_SHOP_STATUSES = ['営業中', '提携済', '見送り'];
+
+function reactionLabel_(r) {
+  return SALESLOG_REACTION_LABELS[String(r || '').trim().toUpperCase()] || '';
+}
 
 // ====== 公開 API（Router からディスパッチ） ======
 
@@ -116,6 +145,7 @@ function salesLogCreate(chatId, p) {
     visitShopName = shopName;
     shopId = createShopRow_({
       '店名':       shopName,
+      '業種':       normalizeShopTypes_(p.shopTypes),
       '緯度':       gps ? gps.lat : '',
       '経度':       gps ? gps.lng : '',
       '緯度経度結合': gps ? (gps.lat + ',' + gps.lng) : '',
@@ -138,6 +168,7 @@ function salesLogCreate(chatId, p) {
     'オーナー名':    String(p.ownerName || '').trim(),
     '電話':         String(p.phone || '').trim(),
     '反応':         normalizeSalesLogReaction_(p.reaction),
+    '反応内容':     reactionLabel_(p.reaction),
     'メモ':         String(p.memo || ''),
     '最終更新日時':  nowStr,
     'shop_id':      shopId
@@ -160,6 +191,7 @@ function salesLogUpdate(chatId, visitId, p) {
 
   const updates = {
     '反応':        normalizeSalesLogReaction_(p.reaction),
+    '反応内容':    reactionLabel_(p.reaction),
     'メモ':        String(p.memo || ''),
     '最終更新日時': salesLogNow_()
   };
@@ -196,6 +228,7 @@ function salesLogShopUpdate(chatId, shopId, p) {
   const status = String(p.status || '').trim();
   const updates = {
     '店名':       shopName,
+    '業種':       normalizeShopTypes_(p.shopTypes),
     'オーナー名':  String(p.ownerName || '').trim(),
     '電話':       String(p.phone || '').trim(),
     'メモ':       String(p.memo || '')
@@ -215,12 +248,20 @@ function salesLogShopUpdate(chatId, shopId, p) {
  * （PartnerManager.gs の採番保護と同パターン）
  */
 function ensureSalesLogV2Migration_() {
-  // 通常パス（移行済み）はロックなしで即 return
+  // 通常パス（移行・ラベル補完とも不要）はロックなしで即 return
   const rows = readSheetObjects_(getSalesLogSheet_());
   const hasOrphan = rows.some(function(r) {
     return String(r.obj['visit_id'] || '') && !String(r.obj['shop_id'] || '');
   });
-  if (!hasOrphan) return;
+  const hasMissingLabel = rows.some(function(r) {
+    return String(r.obj['visit_id'] || '') && String(r.obj['反応'] || '') && !String(r.obj['反応内容'] || '');
+  });
+  const shopsMissingLabel = readSheetObjects_(getShopSheet_())
+    .filter(function(r) {
+      return String(r.obj['shop_id'] || '') && String(r.obj['最新反応'] || '') && !String(r.obj['最新反応内容'] || '');
+    })
+    .map(function(r) { return String(r.obj['shop_id']); });
+  if (!hasOrphan && !hasMissingLabel && !shopsMissingLabel.length) return;
 
   const lock = LockService.getScriptLock();
   try {
@@ -230,20 +271,27 @@ function ensureSalesLogV2Migration_() {
     return;
   }
   try {
-    runSalesLogV2Migration_();
+    runSalesLogV2Migration_(shopsMissingLabel);
   } finally {
     lock.releaseLock();
   }
 }
 
-function runSalesLogV2Migration_() {
+function runSalesLogV2Migration_(extraShopIdsToRefresh) {
   // ロック取得後に再読（先行実行が移行済みなら orphan は消えている）
   const visitSheet = getSalesLogSheet_();
   const rows = readSheetObjects_(visitSheet);
   const orphans = rows.filter(function(r) {
     return String(r.obj['visit_id'] || '') && !String(r.obj['shop_id'] || '');
   });
-  if (orphans.length === 0) return;
+
+  // 反応内容ラベルの後追い補完（列一括書き込み）
+  backfillReactionLabels_(visitSheet, rows);
+
+  if (orphans.length === 0) {
+    refreshShopAggregatesBulk_(extraShopIdsToRefresh || []);
+    return;
+  }
 
   const shopSheet = getShopSheet_();
   const shopsByName = {};
@@ -303,8 +351,30 @@ function runSalesLogV2Migration_() {
     visitSheet.getRange(2, shopIdCol, numRows, 1).setValues(colVals);
   }
 
-  refreshShopAggregatesBulk_(touchedShopIds);
+  refreshShopAggregatesBulk_(touchedShopIds.concat(extraShopIdsToRefresh || []));
   Logger.log('🔄 営業ログ v2 移行: ' + orphans.length + '訪問 → ' + touchedShopIds.length + '店');
+}
+
+/**
+ * 「反応」があるのに「反応内容」が空の行へラベルを一括補完
+ * （反応内容 列は 2026-07-25 Daisuke 指摘で後付けしたため、既存行の補完が必要）
+ */
+function backfillReactionLabels_(visitSheet, rows) {
+  const targets = rows.filter(function(r) {
+    return String(r.obj['visit_id'] || '') && String(r.obj['反応'] || '') && !String(r.obj['反応内容'] || '');
+  });
+  if (!targets.length) return;
+  const headers = getSheetHeaders_(visitSheet);
+  const labelCol = headers.indexOf('反応内容') + 1;
+  if (labelCol <= 0 || !rows.length) return;
+  const colVals = visitSheet.getRange(2, labelCol, rows.length, 1).getValues();
+  targets.forEach(function(r) {
+    if (r.row - 2 >= 0 && r.row - 2 < rows.length) {
+      colVals[r.row - 2][0] = reactionLabel_(r.obj['反応']);
+    }
+  });
+  visitSheet.getRange(2, labelCol, rows.length, 1).setValues(colVals);
+  Logger.log('🏷️ 反応内容ラベル補完: ' + targets.length + '行');
 }
 
 // ====== 店マスター 内部実装 ======
@@ -368,10 +438,11 @@ function computeShopAggregates_(visits) {
     if (visits[i].reaction) { lastReaction = visits[i].reaction; break; }
   }
   return {
-    '最新反応':   lastReaction,
-    '訪問回数':   visits.length,
-    '初回訪問日': visits.length ? String(visits[0].datetime).substring(0, 10) : '',
-    '最終訪問日': visits.length ? String(visits[visits.length - 1].datetime).substring(0, 10) : ''
+    '最新反応':     lastReaction,
+    '最新反応内容': reactionLabel_(lastReaction),
+    '訪問回数':     visits.length,
+    '初回訪問日':   visits.length ? String(visits[0].datetime).substring(0, 10) : '',
+    '最終訪問日':   visits.length ? String(visits[visits.length - 1].datetime).substring(0, 10) : ''
   };
 }
 
@@ -395,11 +466,12 @@ function getSalesLogSheet_() {
     sheet = createHeaderedSheet_(ss, SALESLOG_SHEET_NAME, SALESLOG_HEADERS);
     setColumnTextFormat_(sheet, SALESLOG_HEADERS, '電話');
   } else {
-    // v1（11列）からの列追加: shop_id が無ければ末尾に足す
+    // 旧版シートへの列追加（コードはヘッダー名参照なので挿入位置による破綻はない）
     const headers = getSheetHeaders_(sheet);
     if (headers.indexOf('shop_id') < 0) {
       sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
     }
+    ensureColumnAfter_(sheet, '反応', '反応内容');
   }
   return sheet;
 }
@@ -414,8 +486,43 @@ function getShopSheet_() {
     sheet = createHeaderedSheet_(ss, SALESLOG_SHOP_SHEET_NAME, SALESLOG_SHOP_HEADERS);
     setColumnTextFormat_(sheet, SALESLOG_SHOP_HEADERS, '電話');
     Logger.log('🆕 v7 Database に「' + SALESLOG_SHOP_SHEET_NAME + '」タブを新規作成');
+  } else {
+    ensureColumnAfter_(sheet, '最新反応', '最新反応内容');
+    ensureColumnAfter_(sheet, '店名', '業種');
   }
   return sheet;
+}
+
+/**
+ * 指定ヘッダー列の直後に新列を挿入（既にあれば何もしない）
+ * ※ GSS を直接見る管理者の可読性のため、末尾でなく関連列の隣に置く
+ * ※ 列挿入はスキーマ変更なので LockService で排他（2名同時アクセスの初回に
+ *   二重挿入されるレース対策・ダブルチェックロッキング）
+ */
+function ensureColumnAfter_(sheet, afterHeader, newHeader) {
+  if (getSheetHeaders_(sheet).indexOf(newHeader) >= 0) return; // 通常パスはロックなし
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20 * 1000);
+  } catch (e) {
+    Logger.log('⚠️ ensureColumnAfter_ lock取得失敗（先行実行が処理中の可能性）: ' + e);
+    return;
+  }
+  try {
+    // ロック内で再確認（先行実行が挿入済みなら何もしない）
+    const headers = getSheetHeaders_(sheet);
+    if (headers.indexOf(newHeader) >= 0) return;
+    const afterIdx = headers.indexOf(afterHeader);
+    if (afterIdx < 0) {
+      sheet.getRange(1, headers.length + 1).setValue(newHeader).setFontWeight('bold');
+      return;
+    }
+    sheet.insertColumnAfter(afterIdx + 1);
+    sheet.getRange(1, afterIdx + 2).setValue(newHeader).setFontWeight('bold');
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function createHeaderedSheet_(ss, name, headers) {
@@ -511,6 +618,9 @@ function shopRowToApi_(obj) {
   return {
     shopId:       String(obj['shop_id'] || ''),
     shopName:     String(obj['店名'] || ''),
+    shopTypes:    String(obj['業種'] || '').split(',')
+                    .map(function(s) { return s.trim(); })
+                    .filter(function(s) { return s; }),
     lat:          obj['緯度'] === '' || obj['緯度'] === null ? null : Number(obj['緯度']),
     lng:          obj['経度'] === '' || obj['経度'] === null ? null : Number(obj['経度']),
     ownerName:    String(obj['オーナー名'] || ''),
