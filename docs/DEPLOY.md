@@ -25,6 +25,20 @@ cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
 - `--force` は manifest 変更時のプロンプトをスキップする用。通常運用で常用してよい
 - コード変更後は必ず `git add` → `git commit` → `git push`（GitHub バックアップ）
 
+## ⚠️ Web アプリ（doGet/doPost）変更時の本番反映 — push だけでは反映されない
+
+- `clasp push` はスクリプト本体を更新するだけで、**公開 Web アプリ（/exec）は固定バージョンのまま動き続ける**
+- ミニアプリ API（Router の action 追加・変更等）を触ったら、**既存デプロイメントを新バージョンに更新**する（URL は変わらない）:
+
+```bash
+cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
+"C:/nodejs-global/clasp.cmd" deployments   # 本番 deploymentId を確認（@HEAD ではない方）
+"C:/nodejs-global/clasp.cmd" deploy --deploymentId <本番ID> --description "<変更内容>"
+```
+
+- 反映確認は匿名 curl で新 action を叩く（`UNKNOWN_ACTION` が返れば未反映）。curl は `-X POST` を付けない（GAS の 302 リダイレクトに POST が強制されて 411 になる）
+- 2026-07-25 の営業ログ追加で顕在化（push 後も旧 @18 が `UNKNOWN_ACTION` → `clasp deploy` で @19 更新して解消）。**フロント HTML だけの変更なら Pages 同期のみで足りる**
+
 ## .claspignore ポリシー
 
 - v7 の `Setup.gs` / `SetupProperties.gs` / `GetGroupId.gs` / `WebhookSetup.gs` は **`.claspignore` で除外**（リモート GAS に残さない。肥大化防止）
