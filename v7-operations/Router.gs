@@ -214,16 +214,37 @@ function doPost(e) {
       }
 
       // ── 車屋提携 営業ログミニアプリ（saleslog-internal.html） ──
-      case 'saleslog_list': {
+      case 'saleslog_shops': {
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(salesLogList(chatId));
+        return jsonOut(salesLogShops(chatId));
+      }
+
+      case 'saleslog_shop_detail': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(salesLogShopDetail(chatId, shopId));
+      }
+
+      case 'saleslog_shop_update': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(salesLogShopUpdate(chatId, shopId, {
+          shopName:  String(body.shopName  || ''),
+          ownerName: String(body.ownerName || ''),
+          phone:     String(body.phone     || ''),
+          status:    String(body.status    || ''),
+          memo:      String(body.memo      || '')
+        }));
       }
 
       case 'saleslog_create': {
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
         return jsonOut(salesLogCreate(chatId, {
+          shopId:    String(body.shopId    || ''),
           shopName:  String(body.shopName  || ''),
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),

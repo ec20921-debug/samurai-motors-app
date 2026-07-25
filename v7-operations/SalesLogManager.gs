@@ -1,22 +1,32 @@
 /**
- * SalesLogManager.gs — 車屋提携 営業ログ（B2B訪問記録・実験版）
+ * SalesLogManager.gs — 車屋提携 営業ログ v2（店マスター＋訪問履歴）
  *
  * 【責務】
- *   - 現場スタッフの車屋（中古車販売店・整備工場・修理工場）訪問記録を
- *     v7 Database（顧客系スプレッドシート）の「営業ログ」タブに記録
- *   - 一覧取得・後追い編集（帰所後にメモ・反応A-D・連絡先を追記する運用）
+ *   - 車屋（中古車販売店・整備工場・修理工場）の店マスターと訪問履歴を
+ *     v7 Database（顧客系スプレッドシート）の「店マスター」「営業ログ」タブで管理
+ *   - v1（1訪問=1行のフラットログ）からの自動移行（店名でグルーピング→shop_id 付与）
+ *   - ミニアプリ向け API: 店一覧（マップ用GPS付き）/ 店詳細（訪問タイムライン）/
+ *     訪問記録・追記 / 訪問編集 / 店情報編集
  *
- * 【設計方針（要件 v1 = B2B_SalesLog_MiniApp_Requirements_v1.md）】
- *   - 実験段階につき最小構成。通知・集計・複数ユーザー対応はしない
- *   - タブは V7_SPREADSHEET_ID 側（Looker Studio 等での将来利用を想定）。
- *     v7 GAS の関数は呼ばず openById で直接読み書き（分離原則は TaskManager と同様）
- *   - タブが無ければ自動作成（Setup 実行不要のゼロタッチ運用）
- *   - GPS はミニアプリ側で Telegram LocationManager API により取得（作成時のみ記録、編集で変更しない）
+ * 【設計方針（要件 v1 + v2 プラン 2026-07-25 Daisuke 裁可）】
+ *   - 実験段階につき最小構成。通知・集計画面・複数ユーザー対応はしない
+ *   - タブは V7_SPREADSHEET_ID 側。v7 GAS の関数は呼ばず openById で直接読み書き
+ *   - タブ・列は無ければ自動作成/自動追加（Setup 実行不要のゼロタッチ運用）
+ *   - 列参照はヘッダー名ベース（列順変更に追随。v1 の列位置固定を廃止）
+ *   - GPS はミニアプリ側で Telegram LocationManager API により取得
+ *   - 店の集計列（最新反応・訪問回数・初回/最終訪問日）は営業ログから導出した
+ *     非正規化キャッシュ（GSS を直接見る日本側管理者の可読性のため）。正は営業ログ
  *
- * 【シート列（営業ログ）】
- *   visit_id / 日時 / 緯度 / 経度 / 緯度経度結合("lat,lng") / 店名 / オーナー名 /
- *   電話 / 反応(A-D) / メモ / 最終更新日時
- *   ※ 緯度経度結合は将来の Looker Studio マップ用（今は列だけ用意）
+ * 【シート列】
+ *   営業ログ（1訪問=1行）:
+ *     visit_id / 日時 / 緯度 / 経度 / 緯度経度結合("lat,lng") / 店名 / オーナー名 /
+ *     電話 / 反応(A-D) / メモ / 最終更新日時 / shop_id
+ *   店マスター（1店=1行）:
+ *     shop_id / 店名 / 緯度 / 経度 / 緯度経度結合 / オーナー名 / 電話 / 最新反応 /
+ *     ステータス(営業中/提携済/見送り) / パートナーID / 訪問回数 / 初回訪問日 /
+ *     最終訪問日 / メモ
+ *   ※ 緯度経度結合は Looker Studio マップ用。パートナーID は Phase 4（キャッシュ
+ *     バック管理・パートナープログラム連携）用の予約列（今は空）
  */
 
 // ====== 定数 ======
@@ -24,161 +34,499 @@
 const SALESLOG_SHEET_NAME = '営業ログ';
 const SALESLOG_HEADERS = [
   'visit_id', '日時', '緯度', '経度', '緯度経度結合',
-  '店名', 'オーナー名', '電話', '反応', 'メモ', '最終更新日時'
+  '店名', 'オーナー名', '電話', '反応', 'メモ', '最終更新日時', 'shop_id'
 ];
+
+const SALESLOG_SHOP_SHEET_NAME = '店マスター';
+const SALESLOG_SHOP_HEADERS = [
+  'shop_id', '店名', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話',
+  '最新反応', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
+];
+
 const SALESLOG_REACTIONS = ['A', 'B', 'C', 'D'];
-const SALESLOG_LIST_LIMIT = 200;
+const SALESLOG_SHOP_STATUSES = ['営業中', '提携済', '見送り'];
 
 // ====== 公開 API（Router からディスパッチ） ======
 
 /**
- * 訪問記録の一覧取得（新しい順・最大 SALESLOG_LIST_LIMIT 件）
- * @param {string} chatId - Telegram chat_id
- * @return {Object} { ok, visits: [{ visitId, datetime, lat, lng, shopName, ownerName, phone, reaction, memo, updatedAt }] }
+ * 店一覧（マップ・一覧ビュー用）。v1 データの自動移行もここで実行
+ * @return {Object} { ok, shops: [{ shopId, shopName, lat, lng, ownerName, phone,
+ *                    lastReaction, status, partnerId, visitCount, firstVisit, lastVisit, memo }] }
  */
-function salesLogList(chatId) {
+function salesLogShops(chatId) {
   const staff = findStaffByChatId(chatId);
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
 
-  const sheet = getSalesLogSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { ok: true, visits: [] };
+  ensureSalesLogV2Migration_();
 
-  const startRow = Math.max(2, lastRow - SALESLOG_LIST_LIMIT + 1);
-  const values = sheet.getRange(startRow, 1, lastRow - startRow + 1, SALESLOG_HEADERS.length).getValues();
+  const shops = readSheetObjects_(getShopSheet_())
+    .map(function(r) { return shopRowToApi_(r.obj); })
+    .filter(function(s) { return s.shopId; });
 
-  const visits = values.map(function(row) {
-    return {
-      visitId:   String(row[0] || ''),
-      datetime:  formatSalesLogDateCell_(row[1]),
-      lat:       row[2] === '' ? null : Number(row[2]),
-      lng:       row[3] === '' ? null : Number(row[3]),
-      shopName:  String(row[5] || ''),
-      ownerName: String(row[6] || ''),
-      phone:     String(row[7] || ''),
-      reaction:  String(row[8] || ''),
-      memo:      String(row[9] || ''),
-      updatedAt: formatSalesLogDateCell_(row[10])
-    };
-  }).filter(function(v) { return v.visitId; });
+  // 最終訪問日の新しい順（空は最後）
+  shops.sort(function(a, b) {
+    return String(b.lastVisit || '').localeCompare(String(a.lastVisit || ''));
+  });
 
-  visits.reverse(); // 新しい順
-  return { ok: true, visits: visits };
+  return { ok: true, shops: shops };
 }
 
 /**
- * 新規訪問記録
- * @param {string} chatId
- * @param {Object} p - { shopName, ownerName, phone, reaction, memo, gps: { lat, lng } | null }
- * @return {Object} { ok, visitId }
+ * 店詳細（訪問タイムライン付き）
+ */
+function salesLogShopDetail(chatId, shopId) {
+  const staff = findStaffByChatId(chatId);
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+
+  const shopSheet = getShopSheet_();
+  const found = findSheetRow_(shopSheet, 'shop_id', shopId);
+  if (!found) return { ok: false, error: 'SHOP_NOT_FOUND' };
+
+  const visits = readSheetObjects_(getSalesLogSheet_())
+    .map(function(r) { return visitRowToApi_(r.obj); })
+    .filter(function(v) { return v.visitId && v.shopId === String(shopId); });
+  visits.sort(function(a, b) { return String(b.datetime).localeCompare(String(a.datetime)); });
+
+  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits };
+}
+
+/**
+ * 訪問記録（新規店 or 既存店への追記）
+ * @param {Object} p - { shopId?, shopName, ownerName, phone, reaction, memo, gps }
+ * @return {Object} { ok, visitId, shopId }
  */
 function salesLogCreate(chatId, p) {
   const staff = findStaffByChatId(chatId);
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
 
-  const shopName = String(p.shopName || '').trim();
-  if (!shopName) return { ok: false, error: 'MISSING_SHOP_NAME' };
-
   const gps = normalizeSalesLogGps_(p.gps);
-  const visitId = generateDateTimeId('SL');
-  const nowStr = Utilities.formatDate(new Date(), getSalesLogTz_(), 'yyyy-MM-dd HH:mm');
+  const nowStr = salesLogNow_();
+  let shopId = String(p.shopId || '').trim();
+  let visitShopName;
 
-  const sheet = getSalesLogSheet_();
-  sheet.appendRow([
-    visitId,
-    nowStr,
-    gps ? gps.lat : '',
-    gps ? gps.lng : '',
-    gps ? (gps.lat + ',' + gps.lng) : '',
-    shopName,
-    String(p.ownerName || '').trim(),
-    String(p.phone || '').trim(),
-    normalizeSalesLogReaction_(p.reaction),
-    String(p.memo || ''),
-    nowStr
-  ]);
+  if (shopId) {
+    // 既存店への訪問追記
+    const found = findSheetRow_(getShopSheet_(), 'shop_id', shopId);
+    if (!found) return { ok: false, error: 'SHOP_NOT_FOUND' };
+    visitShopName = String(found.obj['店名'] || '');
+  } else {
+    // 新規店＋初回訪問
+    const shopName = String(p.shopName || '').trim();
+    if (!shopName) return { ok: false, error: 'MISSING_SHOP_NAME' };
+    visitShopName = shopName;
+    shopId = createShopRow_({
+      '店名':       shopName,
+      '緯度':       gps ? gps.lat : '',
+      '経度':       gps ? gps.lng : '',
+      '緯度経度結合': gps ? (gps.lat + ',' + gps.lng) : '',
+      'オーナー名':  String(p.ownerName || '').trim(),
+      '電話':       String(p.phone || '').trim(),
+      'ステータス':  SALESLOG_SHOP_STATUSES[0],
+      'メモ':       ''
+    });
+  }
 
-  return { ok: true, visitId: visitId };
+  // 同一秒の同時投稿でも衝突しないよう UUID 断片を付与
+  const visitId = generateDateTimeId('SL') + '-' + Utilities.getUuid().slice(0, 8);
+  appendSheetRow_(getSalesLogSheet_(), {
+    'visit_id':     visitId,
+    '日時':         nowStr,
+    '緯度':         gps ? gps.lat : '',
+    '経度':         gps ? gps.lng : '',
+    '緯度経度結合':  gps ? (gps.lat + ',' + gps.lng) : '',
+    '店名':         visitShopName,
+    'オーナー名':    String(p.ownerName || '').trim(),
+    '電話':         String(p.phone || '').trim(),
+    '反応':         normalizeSalesLogReaction_(p.reaction),
+    'メモ':         String(p.memo || ''),
+    '最終更新日時':  nowStr,
+    'shop_id':      shopId
+  });
+
+  refreshShopAggregates_(shopId);
+  return { ok: true, visitId: visitId, shopId: shopId };
 }
 
 /**
- * 訪問記録の修正・追記（GPS・日時は変更しない）
- * @param {string} chatId
- * @param {string} visitId
- * @param {Object} p - { shopName, ownerName, phone, reaction, memo }
- * @return {Object} { ok }
+ * 訪問の修正・追記（反応・メモが主。GPS・日時は変更しない）
  */
 function salesLogUpdate(chatId, visitId, p) {
+  const staff = findStaffByChatId(chatId);
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+
+  const sheet = getSalesLogSheet_();
+  const found = findSheetRow_(sheet, 'visit_id', visitId);
+  if (!found) return { ok: false, error: 'VISIT_NOT_FOUND' };
+
+  const updates = {
+    '反応':        normalizeSalesLogReaction_(p.reaction),
+    'メモ':        String(p.memo || ''),
+    '最終更新日時': salesLogNow_()
+  };
+  // v1 互換: 店名/オーナー名/電話は「非空で送られた時のみ」上書き
+  // （クリアは店マスター編集 saleslog_shop_update 側で行う）
+  if (String(p.shopName || '').trim())  updates['店名']      = String(p.shopName).trim();
+  if (String(p.ownerName || '').trim()) updates['オーナー名'] = String(p.ownerName).trim();
+  if (String(p.phone || '').trim())     updates['電話']      = String(p.phone).trim();
+
+  updateSheetRow_(sheet, found.row, updates);
+
+  const shopId = String(found.obj['shop_id'] || '');
+  if (shopId) refreshShopAggregates_(shopId);
+
+  return { ok: true, visitId: String(visitId) };
+}
+
+/**
+ * 店情報の編集（店名・オーナー名・電話・ステータス・メモ）
+ */
+function salesLogShopUpdate(chatId, shopId, p) {
   const staff = findStaffByChatId(chatId);
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
 
   const shopName = String(p.shopName || '').trim();
   if (!shopName) return { ok: false, error: 'MISSING_SHOP_NAME' };
 
-  const sheet = getSalesLogSheet_();
-  const rowNum = findSalesLogRow_(sheet, visitId);
-  if (!rowNum) return { ok: false, error: 'VISIT_NOT_FOUND' };
+  const sheet = getShopSheet_();
+  const found = findSheetRow_(sheet, 'shop_id', shopId);
+  if (!found) return { ok: false, error: 'SHOP_NOT_FOUND' };
 
-  const nowStr = Utilities.formatDate(new Date(), getSalesLogTz_(), 'yyyy-MM-dd HH:mm');
+  // ※ 営業ログ側の「店名」列は訪問時点のスナップショットとして意図的に据え置く
+  //   （現在の正式店名は店マスターが正。過去の訪問記録は当時の呼び名のまま残す）
+  const status = String(p.status || '').trim();
+  const updates = {
+    '店名':       shopName,
+    'オーナー名':  String(p.ownerName || '').trim(),
+    '電話':       String(p.phone || '').trim(),
+    'メモ':       String(p.memo || '')
+  };
+  if (SALESLOG_SHOP_STATUSES.indexOf(status) >= 0) updates['ステータス'] = status;
 
-  // ⚠️ SALESLOG_HEADERS の列順に依存: F=店名(6) G=オーナー名(7) H=電話(8) I=反応(9) J=メモ(10) K=最終更新日時(11)
-  //    ヘッダー構成を変更する場合は必ずここも同時修正すること
-  sheet.getRange(rowNum, 6, 1, 6).setValues([[
-    shopName,
-    String(p.ownerName || '').trim(),
-    String(p.phone || '').trim(),
-    normalizeSalesLogReaction_(p.reaction),
-    String(p.memo || ''),
-    nowStr
-  ]]);
-
-  return { ok: true, visitId: visitId };
+  updateSheetRow_(sheet, found.row, updates);
+  return { ok: true, shopId: String(shopId) };
 }
 
-// ====== 内部実装 ======
+// ====== v1 → v2 自動移行 ======
 
 /**
- * 「営業ログ」タブを取得（無ければヘッダー付きで自動作成）
- * ★ v7 Database（顧客系）側のタブ。getSheet()（勤務用シート）は使わない
+ * shop_id 未付与の営業ログ行を店名でグルーピングし、店マスターを生成して backfill する。
+ * 冪等（orphan が無ければ何もしない）。salesLogShops（アプリ起動時に必ず呼ばれる）から実行。
+ * 2名同時アクセスの初回移行で店が二重生成されないよう LockService で保護
+ * （PartnerManager.gs の採番保護と同パターン）
  */
-function getSalesLogSheet_() {
+function ensureSalesLogV2Migration_() {
+  // 通常パス（移行済み）はロックなしで即 return
+  const rows = readSheetObjects_(getSalesLogSheet_());
+  const hasOrphan = rows.some(function(r) {
+    return String(r.obj['visit_id'] || '') && !String(r.obj['shop_id'] || '');
+  });
+  if (!hasOrphan) return;
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20 * 1000);
+  } catch (e) {
+    Logger.log('⚠️ 営業ログ移行 lock 取得失敗（先行実行が処理中の可能性）: ' + e);
+    return;
+  }
+  try {
+    runSalesLogV2Migration_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function runSalesLogV2Migration_() {
+  // ロック取得後に再読（先行実行が移行済みなら orphan は消えている）
+  const visitSheet = getSalesLogSheet_();
+  const rows = readSheetObjects_(visitSheet);
+  const orphans = rows.filter(function(r) {
+    return String(r.obj['visit_id'] || '') && !String(r.obj['shop_id'] || '');
+  });
+  if (orphans.length === 0) return;
+
+  const shopSheet = getShopSheet_();
+  const shopsByName = {};
+  readSheetObjects_(shopSheet).forEach(function(r) {
+    const name = String(r.obj['店名'] || '').trim();
+    if (name) shopsByName[name] = String(r.obj['shop_id'] || '');
+  });
+
+  // 店名でグルーピング
+  const groups = {};
+  orphans.forEach(function(r) {
+    const name = String(r.obj['店名'] || '').trim() || '(店名なし)';
+    if (!groups[name]) groups[name] = [];
+    groups[name].push(r);
+  });
+
+  const assignments = []; // { row, shopId }
+  const touchedShopIds = [];
+
+  Object.keys(groups).forEach(function(name) {
+    const group = groups[name];
+    let shopId = shopsByName[name];
+    if (!shopId) {
+      // グループ先頭の GPS / 最後の非空オーナー・電話で店を生成
+      let lat = '', lng = '', owner = '', phone = '';
+      group.forEach(function(r) {
+        if (lat === '' && r.obj['緯度'] !== '' && r.obj['緯度'] !== null) {
+          lat = r.obj['緯度']; lng = r.obj['経度'];
+        }
+        if (String(r.obj['オーナー名'] || '').trim()) owner = String(r.obj['オーナー名']).trim();
+        if (String(r.obj['電話'] || '').trim())      phone = String(r.obj['電話']).trim();
+      });
+      shopId = createShopRow_({
+        '店名': name,
+        '緯度': lat, '経度': lng,
+        '緯度経度結合': (lat !== '' && lng !== '') ? (lat + ',' + lng) : '',
+        'オーナー名': owner, '電話': phone,
+        'ステータス': SALESLOG_SHOP_STATUSES[0],
+        'メモ': ''
+      });
+      shopsByName[name] = shopId;
+    }
+    group.forEach(function(r) { assignments.push({ row: r.row, shopId: shopId }); });
+    touchedShopIds.push(shopId);
+  });
+
+  // shop_id backfill は列一括書き込み（1行ずつ setValue すると初回アクセスが
+  // タイムアウトしうるため。読んだ範囲と同一範囲に書き戻す）
+  const headers = getSheetHeaders_(visitSheet);
+  const shopIdCol = headers.indexOf('shop_id') + 1;
+  const numRows = rows.length;
+  if (numRows > 0) {
+    const colVals = visitSheet.getRange(2, shopIdCol, numRows, 1).getValues();
+    assignments.forEach(function(a) {
+      if (a.row - 2 >= 0 && a.row - 2 < numRows) colVals[a.row - 2][0] = a.shopId;
+    });
+    visitSheet.getRange(2, shopIdCol, numRows, 1).setValues(colVals);
+  }
+
+  refreshShopAggregatesBulk_(touchedShopIds);
+  Logger.log('🔄 営業ログ v2 移行: ' + orphans.length + '訪問 → ' + touchedShopIds.length + '店');
+}
+
+// ====== 店マスター 内部実装 ======
+
+/**
+ * 店行を作成して shop_id を返す
+ * 同時実行でも衝突しないよう UUID 断片を付与（実行内カウンタでは別インスタンスと衝突しうる）
+ */
+function createShopRow_(fields) {
+  const shopId = generateDateTimeId('SHOP') + '-' + Utilities.getUuid().slice(0, 8);
+  const dict = {};
+  Object.keys(fields).forEach(function(k) { dict[k] = fields[k]; });
+  dict['shop_id'] = shopId;
+  dict['最新反応'] = dict['最新反応'] || '';
+  dict['パートナーID'] = '';
+  dict['訪問回数'] = 0;
+  dict['初回訪問日'] = '';
+  dict['最終訪問日'] = '';
+  appendSheetRow_(getShopSheet_(), dict);
+  return shopId;
+}
+
+/**
+ * 店の集計列（最新反応・訪問回数・初回/最終訪問日）を営業ログから再計算
+ */
+function refreshShopAggregates_(shopId) {
+  refreshShopAggregatesBulk_([String(shopId)]);
+}
+
+/**
+ * 複数店の集計を一括再計算（シート読み取りは店・訪問それぞれ1回だけ。
+ * 移行時に店数ぶん全件読みを繰り返してタイムアウトするのを防ぐ）
+ */
+function refreshShopAggregatesBulk_(shopIds) {
+  if (!shopIds || !shopIds.length) return;
+  const shopSheet = getShopSheet_();
+  const rowByShopId = {};
+  readSheetObjects_(shopSheet).forEach(function(r) {
+    rowByShopId[String(r.obj['shop_id'])] = r.row;
+  });
+
+  const byShop = {};
+  readSheetObjects_(getSalesLogSheet_()).forEach(function(r) {
+    const v = visitRowToApi_(r.obj);
+    if (!v.visitId || !v.shopId) return;
+    if (!byShop[v.shopId]) byShop[v.shopId] = [];
+    byShop[v.shopId].push(v);
+  });
+
+  shopIds.forEach(function(id) {
+    const rowNum = rowByShopId[String(id)];
+    if (!rowNum) return;
+    updateSheetRow_(shopSheet, rowNum, computeShopAggregates_(byShop[String(id)] || []));
+  });
+}
+
+function computeShopAggregates_(visits) {
+  visits.sort(function(a, b) { return String(a.datetime).localeCompare(String(b.datetime)); });
+  let lastReaction = '';
+  for (let i = visits.length - 1; i >= 0; i--) {
+    if (visits[i].reaction) { lastReaction = visits[i].reaction; break; }
+  }
+  return {
+    '最新反応':   lastReaction,
+    '訪問回数':   visits.length,
+    '初回訪問日': visits.length ? String(visits[0].datetime).substring(0, 10) : '',
+    '最終訪問日': visits.length ? String(visits[visits.length - 1].datetime).substring(0, 10) : ''
+  };
+}
+
+// ====== シート取得（自動作成・列自動追加） ======
+
+function getSalesLogSs_() {
   const cfg = getConfig();
   if (!cfg.v7SpreadsheetId) {
-    throw new Error('❌ V7_SPREADSHEET_ID 未設定（営業ログは v7 Database 側のタブです）');
+    throw new Error('❌ V7_SPREADSHEET_ID 未設定（営業ログ/店マスターは v7 Database 側のタブです）');
   }
-  const ss = SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+  return SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+}
+
+/**
+ * 「営業ログ」タブ（無ければヘッダー付きで自動作成。v1 由来なら shop_id 列を自動追加）
+ */
+function getSalesLogSheet_() {
+  const ss = getSalesLogSs_();
   let sheet = ss.getSheetByName(SALESLOG_SHEET_NAME);
   if (!sheet) {
-    sheet = ss.insertSheet(SALESLOG_SHEET_NAME);
-    sheet.getRange(1, 1, 1, SALESLOG_HEADERS.length)
-      .setValues([SALESLOG_HEADERS])
-      .setFontWeight('bold');
-    sheet.setFrozenRows(1);
-    // 電話番号の先頭ゼロ保持（数値化防止）
-    // ※ この書式はタブ自動作成時のみ適用。タブを手動で先に作った場合は入らない（ゼロタッチ自動作成が前提）
-    sheet.getRange('H2:H').setNumberFormat('@');
-    Logger.log('🆕 v7 Database に「' + SALESLOG_SHEET_NAME + '」タブを新規作成');
+    sheet = createHeaderedSheet_(ss, SALESLOG_SHEET_NAME, SALESLOG_HEADERS);
+    setColumnTextFormat_(sheet, SALESLOG_HEADERS, '電話');
+  } else {
+    // v1（11列）からの列追加: shop_id が無ければ末尾に足す
+    const headers = getSheetHeaders_(sheet);
+    if (headers.indexOf('shop_id') < 0) {
+      sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
+    }
   }
   return sheet;
 }
 
 /**
- * visit_id で行番号を検索（見つからなければ null）
+ * 「店マスター」タブ（無ければヘッダー付きで自動作成）
  */
-function findSalesLogRow_(sheet, visitId) {
+function getShopSheet_() {
+  const ss = getSalesLogSs_();
+  let sheet = ss.getSheetByName(SALESLOG_SHOP_SHEET_NAME);
+  if (!sheet) {
+    sheet = createHeaderedSheet_(ss, SALESLOG_SHOP_SHEET_NAME, SALESLOG_SHOP_HEADERS);
+    setColumnTextFormat_(sheet, SALESLOG_SHOP_HEADERS, '電話');
+    Logger.log('🆕 v7 Database に「' + SALESLOG_SHOP_SHEET_NAME + '」タブを新規作成');
+  }
+  return sheet;
+}
+
+function createHeaderedSheet_(ss, name, headers) {
+  const sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+/**
+ * 指定ヘッダー列全体をテキスト書式に（電話番号の先頭ゼロ保持）
+ * ※ タブ自動作成時のみ適用。手動作成タブには入らない（ゼロタッチ自動作成が前提）
+ */
+function setColumnTextFormat_(sheet, headers, headerName) {
+  const idx = headers.indexOf(headerName);
+  if (idx < 0) return;
+  const colLetter = String.fromCharCode(65 + idx); // A=0（Z超えは本シートでは発生しない）
+  sheet.getRange(colLetter + '2:' + colLetter).setNumberFormat('@');
+}
+
+// ====== 汎用シートヘルパー（ヘッダー名ベース・v7 Database 用） ======
+
+function getSheetHeaders_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return [];
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+}
+
+/**
+ * 全データ行を { row, obj } の配列で返す
+ */
+function readSheetObjects_(sheet) {
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  const target = String(visitId);
-  for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === target) return i + 2;
+  if (lastRow < 2) return [];
+  const headers = getSheetHeaders_(sheet);
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  return values.map(function(row, i) {
+    const obj = {};
+    headers.forEach(function(h, j) { obj[h] = row[j]; });
+    return { row: i + 2, obj: obj };
+  });
+}
+
+function findSheetRow_(sheet, columnName, value) {
+  const rows = readSheetObjects_(sheet);
+  const target = String(value);
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i].obj[columnName]) === target) return rows[i];
   }
   return null;
 }
 
-/**
- * GPS 入力を正規化（不正値は null = GPS なし保存）
- */
+function appendSheetRow_(sheet, dict) {
+  const headers = getSheetHeaders_(sheet);
+  const row = headers.map(function(h) {
+    return dict.hasOwnProperty(h) ? dict[h] : '';
+  });
+  sheet.appendRow(row);
+  return sheet.getLastRow();
+}
+
+function updateSheetRow_(sheet, rowNumber, updates) {
+  const headers = getSheetHeaders_(sheet);
+  Object.keys(updates).forEach(function(col) {
+    const idx = headers.indexOf(col);
+    if (idx < 0) {
+      Logger.log('⚠️ updateSheetRow_: 列 ' + col + ' 未発見、スキップ');
+      return;
+    }
+    sheet.getRange(rowNumber, idx + 1).setValue(updates[col]);
+  });
+}
+
+// ====== 行→API オブジェクト変換 ======
+
+function visitRowToApi_(obj) {
+  return {
+    visitId:   String(obj['visit_id'] || ''),
+    shopId:    String(obj['shop_id'] || ''),
+    datetime:  formatSalesLogDateCell_(obj['日時']),
+    lat:       obj['緯度'] === '' || obj['緯度'] === null ? null : Number(obj['緯度']),
+    lng:       obj['経度'] === '' || obj['経度'] === null ? null : Number(obj['経度']),
+    shopName:  String(obj['店名'] || ''),
+    ownerName: String(obj['オーナー名'] || ''),
+    phone:     String(obj['電話'] || ''),
+    reaction:  String(obj['反応'] || ''),
+    memo:      String(obj['メモ'] || ''),
+    updatedAt: formatSalesLogDateCell_(obj['最終更新日時'])
+  };
+}
+
+function shopRowToApi_(obj) {
+  return {
+    shopId:       String(obj['shop_id'] || ''),
+    shopName:     String(obj['店名'] || ''),
+    lat:          obj['緯度'] === '' || obj['緯度'] === null ? null : Number(obj['緯度']),
+    lng:          obj['経度'] === '' || obj['経度'] === null ? null : Number(obj['経度']),
+    ownerName:    String(obj['オーナー名'] || ''),
+    phone:        String(obj['電話'] || ''),
+    lastReaction: String(obj['最新反応'] || ''),
+    status:       String(obj['ステータス'] || ''),
+    partnerId:    String(obj['パートナーID'] || ''),
+    visitCount:   Number(obj['訪問回数']) || 0,
+    firstVisit:   formatSalesLogDateCell_(obj['初回訪問日']).substring(0, 10),
+    lastVisit:    formatSalesLogDateCell_(obj['最終訪問日']).substring(0, 10),
+    memo:         String(obj['メモ'] || '')
+  };
+}
+
+// ====== 入力正規化・日時 ======
+
 function normalizeSalesLogGps_(gps) {
   if (!gps) return null;
   const lat = Number(gps.lat);
@@ -188,12 +536,13 @@ function normalizeSalesLogGps_(gps) {
   return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
 }
 
-/**
- * 反応を A/B/C/D に正規化（それ以外は空 = 未入力）
- */
 function normalizeSalesLogReaction_(reaction) {
   const r = String(reaction || '').trim().toUpperCase();
   return SALESLOG_REACTIONS.indexOf(r) >= 0 ? r : '';
+}
+
+function salesLogNow_() {
+  return Utilities.formatDate(new Date(), getSalesLogTz_(), 'yyyy-MM-dd HH:mm');
 }
 
 /**
@@ -226,8 +575,12 @@ function getSalesLogTz_() {
 
 // ====== デバッグ用 ======
 
+function debugSalesLogShops() {
+  const res = salesLogShops('7500384947'); // ロンの chatId
+  Logger.log(JSON.stringify(res, null, 2));
+}
+
 function debugSalesLogCreate() {
-  // ロンの chatId でテスト記録
   const res = salesLogCreate('7500384947', {
     shopName: 'テスト車屋',
     ownerName: 'テストオーナー',
@@ -236,10 +589,5 @@ function debugSalesLogCreate() {
     memo: 'debugSalesLogCreate からのテスト行',
     gps: { lat: 11.556374, lng: 104.928207 }
   });
-  Logger.log(JSON.stringify(res, null, 2));
-}
-
-function debugSalesLogList() {
-  const res = salesLogList('7500384947');
   Logger.log(JSON.stringify(res, null, 2));
 }
