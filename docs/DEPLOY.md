@@ -45,6 +45,7 @@ cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
 cd /c/Users/drymp/dev/samurai-motors-miniapp
 for f in booking.html job-manager.html home-internal.html attendance-internal.html \
          expense-internal.html report-internal.html task-internal.html index.html \
+         saleslog-internal.html \
          exec-dashboard.html staff-campaign-half-free.html flyer-2026-05.jpg \
          flyer.png flyer-3services-2026-06.html logo.png; do
   cp "/c/Users/drymp/dev/samurai-motors-app/$f" .

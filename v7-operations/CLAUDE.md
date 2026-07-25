@@ -20,7 +20,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 | 勤怠・日報・タスク | AttendanceManager / DailyReport / TaskManager |
 | 経費 | ExpenseManager / ExpenseSync / RoutineExpense |
 | 経営・レポート | Dashboard / ExecDashboard / ExecChat / ReportManager |
-| 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager |
+| 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager / SalesLogManager（車屋提携 営業ログ・書込先は v7 Database「営業ログ」タブ） |
 | セットアップ | Setup（本番ファイル扱い、push される） |
 
 - ミニアプリ: `home-internal.html` 系（勤務Bot からの入口）

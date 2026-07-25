@@ -213,6 +213,39 @@ function doPost(e) {
         }));
       }
 
+      // ── 車屋提携 営業ログミニアプリ（saleslog-internal.html） ──
+      case 'saleslog_list': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(salesLogList(chatId));
+      }
+
+      case 'saleslog_create': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(salesLogCreate(chatId, {
+          shopName:  String(body.shopName  || ''),
+          ownerName: String(body.ownerName || ''),
+          phone:     String(body.phone     || ''),
+          reaction:  String(body.reaction  || ''),
+          memo:      String(body.memo      || ''),
+          gps:       body.gps || null
+        }));
+      }
+
+      case 'saleslog_update': {
+        const chatId  = String(body.chatId  || '');
+        const visitId = String(body.visitId || '');
+        if (!chatId || !visitId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(salesLogUpdate(chatId, visitId, {
+          shopName:  String(body.shopName  || ''),
+          ownerName: String(body.ownerName || ''),
+          phone:     String(body.phone     || ''),
+          reaction:  String(body.reaction  || ''),
+          memo:      String(body.memo      || '')
+        }));
+      }
+
       // ── パートナープログラム ──
       case 'partner_lookup_by_code': {
         // 予約Bot / booking.html からコード検証のみに使う
