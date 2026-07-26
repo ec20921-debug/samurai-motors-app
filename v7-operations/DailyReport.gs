@@ -30,6 +30,7 @@ function sendDailyReport() {
   const ppToday  = Utilities.formatDate(new Date(), OPS_TZ,       'yyyy-MM-dd');
 
   const salesSection = buildSalesSection_(ppToday);
+  const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
   // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
   // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
   //   const taskSection = buildTaskSection_();
@@ -38,7 +39,8 @@ function sendDailyReport() {
   const text =
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
-    salesSection;
+    salesSection +
+    (salesLogSection ? '\n\n' + salesLogSection : '');
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
     parse_mode: 'HTML',
@@ -46,6 +48,79 @@ function sendDailyReport() {
     disable_web_page_preview: true
   });
   Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスクセクション停止中]');
+}
+
+// ============================================================
+//  車屋営業状況セクション（店マスター/営業ログ/コミッション台帳から集計）
+// ============================================================
+
+/**
+ * 日報に車屋提携の営業状況を1ブロック追加（2026-07-26 Daisuke 要望）
+ * データ未整備・読取失敗時は空文字を返して日報全体は止めない（グレースフル・デグラデーション）
+ * シートアクセスは SalesLogManager.gs / CommissionManager.gs の共通ヘルパーを使用
+ */
+function buildSalesLogSection_(ppToday) {
+  try {
+    const shops = readSheetObjects_(getShopSheet_())
+      .map(function(r) { return shopRowToApi_(r.obj); })
+      .filter(function(s) { return s.shopId; });
+    if (!shops.length) return ''; // 店ゼロの間はセクション自体を出さない
+
+    // 本日の訪問（営業ログの日時が今日の行）
+    const todaysVisits = readSheetObjects_(getSalesLogSheet_())
+      .map(function(r) { return visitRowToApi_(r.obj); })
+      .filter(function(v) { return v.visitId && String(v.datetime).substring(0, 10) === ppToday; });
+
+    // 店の内訳（ステータス・最新反応）
+    let partner = 0, active = 0, dropped = 0, totalVisits = 0;
+    const reactionCount = { A: 0, B: 0 };
+    shops.forEach(function(s) {
+      if (s.status === '提携済') partner++;
+      else if (s.status === '見送り') dropped++;
+      else active++;
+      totalVisits += s.visitCount;
+      if (reactionCount.hasOwnProperty(s.lastReaction)) reactionCount[s.lastReaction]++;
+    });
+
+    // コミッション未精算（全店合計。店集金=未収 / 当社集金=未払）
+    let unpaidFromShops = 0, unpaidToShops = 0;
+    try {
+      readSheetObjects_(getCommissionSheet_()).forEach(function(r) {
+        const c = commissionRowToApi_(r.obj);
+        if (!c.commissionId || c.payStatus !== '未払い') return;
+        if (c.collector === '当社') unpaidToShops += c.amount;
+        else unpaidFromShops += c.ourAmount;
+      });
+    } catch (e) {
+      Logger.log('⚠️ 日報: コミッション台帳読取失敗（金額行は省略）: ' + e);
+    }
+
+    const lines = ['🤝 <b>車屋営業状況</b>'];
+    if (todaysVisits.length) {
+      const names = todaysVisits.map(function(v) {
+        return escapeHtml_(v.shopName) + (v.reaction ? '(' + v.reaction + ')' : '');
+      }).join(' / ');
+      lines.push('　🚶 本日の訪問: ' + todaysVisits.length + '件 — ' + names);
+    } else {
+      lines.push('　🚶 本日の訪問: なし');
+    }
+    lines.push('　🏪 累計: ' + shops.length + '店（⭐提携 ' + partner + ' / 営業中 ' + active +
+               ' / 見送り ' + dropped + '）・訪問 ' + totalVisits + '回');
+    const hot = [];
+    if (reactionCount.A) hot.push('A(デモ決定) ' + reactionCount.A + '店');
+    if (reactionCount.B) hot.push('B(興味あり) ' + reactionCount.B + '店');
+    if (hot.length) lines.push('　🔥 有望: ' + hot.join(' / '));
+    if (unpaidFromShops > 0 || unpaidToShops > 0) {
+      const money = [];
+      if (unpaidFromShops > 0) money.push('未収 $' + unpaidFromShops.toFixed(2) + '（店から受取）');
+      if (unpaidToShops > 0)   money.push('未払 $' + unpaidToShops.toFixed(2) + '（店へ支払）');
+      lines.push('　💰 コミッション: ' + money.join(' / '));
+    }
+    return lines.join('\n');
+  } catch (err) {
+    Logger.log('⚠️ 日報: 車屋営業状況セクション生成失敗（スキップ）: ' + err);
+    return '';
+  }
 }
 
 // ============================================================
