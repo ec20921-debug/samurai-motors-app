@@ -9,7 +9,10 @@
  *   - タスク状況（完了/未完/期限超過）← v7-ops の「タスク」シート
  *
  * 【スケジュール】
- *   hourlyTaskScheduler() が jstHour === 20 で sendDailyReport() を呼ぶ。
+ *   JST 20:30 送信（2026-07-26 Daisuke 指示で 20時台→20:30 に変更）。
+ *   毎時トリガーでは分指定ができないため、1分トリガー（pollInternalBot）起点の
+ *   maybeSendDailyReport_() が 20:30-20:59 JST の窓で1日1回だけ発火する
+ *   （重複防止 = Script Properties の日付マーカー。時刻窓外は時刻判定のみで即 return）。
  *
  * 【グレースフル・デグラデーション】
  *   V7_SPREADSHEET_ID が未設定なら売上セクションをスキップしてタスクのみ送る。
@@ -18,6 +21,23 @@
 // ============================================================
 //  エントリポイント
 // ============================================================
+
+/**
+ * JST 20:30 の定時送信チェック（pollInternalBot から毎分呼ばれる）
+ * 窓: 20:30-20:59 JST（トリガー遅延の保険）。日付マーカーで1日1回を保証
+ */
+function maybeSendDailyReport_() {
+  const now = new Date();
+  const hm = Utilities.formatDate(now, 'Asia/Tokyo', 'HH:mm');
+  if (hm < '20:30' || hm > '20:59') return;
+
+  const props = PropertiesService.getScriptProperties();
+  const today = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
+  if (props.getProperty('daily_report_last_sent') === today) return;
+  props.setProperty('daily_report_last_sent', today); // 送信前にマーク（多重送信防止優先）
+
+  sendDailyReport();
+}
 
 function sendDailyReport() {
   const cfg = getConfig();

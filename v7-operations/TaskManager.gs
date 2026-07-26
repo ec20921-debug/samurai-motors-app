@@ -45,10 +45,8 @@ function hourlyTaskScheduler() {
     try { generateRecurringTasks(); } catch (e) { Logger.log('⚠️ genRec(JST): ' + e); }
     try { sendMorningTaskForAdmin(); } catch (e) { Logger.log('❌ sendAdmin: ' + e); }
   }
-  // 日報 (Phase 2e) JST 20:00
-  if (jstHour === 20) {
-    try { sendDailyReport(); } catch (e) { Logger.log('❌ sendDailyReport: ' + e); }
-  }
+  // 日報は 2026-07-26 から JST 20:30 送信に変更 — 1分トリガー起点の
+  // maybeSendDailyReport_()（DailyReport.gs）へ移管。ここでは呼ばない（二重送信防止）
   // 週次経費サマリ 金曜 JST 18:00
   if (jstHour === 18 && jstDay === '5') {
     try { sendWeeklyExpenseSummary(); } catch (e) { Logger.log('❌ weeklyExpense: ' + e); }
