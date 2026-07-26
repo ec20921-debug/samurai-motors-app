@@ -39,7 +39,7 @@ const SALESLOG_HEADERS = [
 
 const SALESLOG_SHOP_SHEET_NAME = '店マスター';
 const SALESLOG_SHOP_HEADERS = [
-  'shop_id', '店名', '業種', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話',
+  'shop_id', '店名', '業種', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話', 'Facebook',
   '最新反応', '最新反応内容', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
 ];
 
@@ -151,6 +151,7 @@ function salesLogCreate(chatId, p) {
       '緯度経度結合': gps ? (gps.lat + ',' + gps.lng) : '',
       'オーナー名':  String(p.ownerName || '').trim(),
       '電話':       String(p.phone || '').trim(),
+      'Facebook':   String(p.facebook || '').trim(),
       'ステータス':  SALESLOG_SHOP_STATUSES[0],
       'メモ':       ''
     });
@@ -231,6 +232,7 @@ function salesLogShopUpdate(chatId, shopId, p) {
     '業種':       normalizeShopTypes_(p.shopTypes),
     'オーナー名':  String(p.ownerName || '').trim(),
     '電話':       String(p.phone || '').trim(),
+    'Facebook':   String(p.facebook || '').trim(),
     'メモ':       String(p.memo || '')
   };
   if (SALESLOG_SHOP_STATUSES.indexOf(status) >= 0) updates['ステータス'] = status;
@@ -489,6 +491,7 @@ function getShopSheet_() {
   } else {
     ensureColumnAfter_(sheet, '最新反応', '最新反応内容');
     ensureColumnAfter_(sheet, '店名', '業種');
+    ensureColumnAfter_(sheet, '電話', 'Facebook');
   }
   return sheet;
 }
@@ -625,6 +628,7 @@ function shopRowToApi_(obj) {
     lng:          obj['経度'] === '' || obj['経度'] === null ? null : Number(obj['経度']),
     ownerName:    String(obj['オーナー名'] || ''),
     phone:        String(obj['電話'] || ''),
+    facebook:     String(obj['Facebook'] || ''),
     lastReaction: String(obj['最新反応'] || ''),
     status:       String(obj['ステータス'] || ''),
     partnerId:    String(obj['パートナーID'] || ''),

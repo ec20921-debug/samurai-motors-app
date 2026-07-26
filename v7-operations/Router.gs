@@ -236,6 +236,7 @@ function doPost(e) {
           shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),
+          facebook:  String(body.facebook  || ''),
           status:    String(body.status    || ''),
           memo:      String(body.memo      || '')
         }));
@@ -250,6 +251,7 @@ function doPost(e) {
           shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),
+          facebook:  String(body.facebook  || ''),
           reaction:  String(body.reaction  || ''),
           memo:      String(body.memo      || ''),
           gps:       body.gps || null
