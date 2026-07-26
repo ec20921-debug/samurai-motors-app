@@ -7,8 +7,8 @@
  *
  * 【設計方針（2026-07-25 Daisuke 意図共有 + 裁可）】
  *   - カンボジアの商習慣が未知のため「月締めバッチ」を前提にしない。
- *     案件単位の台帳が核。率・精算方向・支払状態を行単位で持ち、
- *     その場現金精算にも後日まとめ精算にもオーナー毎の条件差にも対応する
+ *     案件単位の台帳が核。率・集金者・支払状態を行単位で持ち、
+ *     その場精算にも後日まとめ精算にもオーナー毎の条件差にも対応する
  *   - コミッション基準は「売上の30%」（2026-07-22 B2B2C 裁可・行単位で変更可）
  *   - 置き場所は新規 GSS でなく勤務用スプレッドシート（経費・勤怠と同じ管理面）。
  *     店マスター（v7 Database 側）とは shop_id で橋渡し
@@ -18,8 +18,9 @@
  *
  * 【シート列（コミッション台帳）】
  *   commission_id / 記録日時 / shop_id / 店名 / 施工日 / 施工内容 / 売上(USD) /
- *   率(%) / コミッション額(USD) / 精算方向 / 支払ステータス / 支払日 / 支払方法 /
- *   記録者 / メモ
+ *   率(%) / コミッション額(USD・店の取り分) / 当社受取額(USD・売上−コミッション額) /
+ *   集金者(店/当社) / 支払ステータス / 支払日 / 支払方法 / 記録者 /
+ *   最終更新日時 / 更新者 / メモ
  */
 
 // ====== 定数 ======
@@ -27,7 +28,7 @@
 const COMMISSION_SHEET_NAME = 'コミッション台帳';
 const COMMISSION_HEADERS = [
   'commission_id', '記録日時', 'shop_id', '店名', '施工日', '施工内容',
-  '売上(USD)', '率(%)', 'コミッション額(USD)', '精算方向',
+  '売上(USD)', '率(%)', 'コミッション額(USD)', '当社受取額(USD)', '集金者',
   '支払ステータス', '支払日', '支払方法', '記録者', '最終更新日時', '更新者', 'メモ'
 ];
 
@@ -41,7 +42,10 @@ function commissionAmountCents_(revenueCents, rate) {
   return Math.round(revenueCents * rate / 100);
 }
 
-const COMMISSION_DIRECTIONS = ['当社→店', '店→当社'];
+// 集金者モデル（2026-07-26 Daisuke 裁可）: 「だれがお客から集金したか」の事実を記録し、
+// 精算は自動導出 — 店集金(基本・既定) → 店がうちに 70%(売上−コミッション額) を払う /
+// 当社集金 → うちが店に 30%(コミッション額) を渡す。売上は当社定価ベース（7/22 裁可）
+const COMMISSION_COLLECTORS = ['店', '当社'];
 const COMMISSION_PAY_STATUSES = ['未払い', '支払済み'];
 const COMMISSION_PAY_METHODS = ['現金', 'ABA', 'その他'];
 const COMMISSION_DEFAULT_RATE = 30; // 売上の30%（2026-07-22 裁可）
@@ -61,11 +65,12 @@ function commissionList(chatId, shopId) {
     .filter(function(c) { return c.commissionId && c.shopId === String(shopId); });
   entries.sort(function(a, b) { return String(b.serviceDate).localeCompare(String(a.serviceDate)); });
 
+  // 未払い残: 店集金 → 店がうちに払う分(当社受取額) / 当社集金 → うちが店に払う分(コミッション額)
   let unpaidToShop = 0, unpaidFromShop = 0;
   entries.forEach(function(c) {
     if (c.payStatus !== '未払い') return;
-    if (c.direction === '店→当社') unpaidFromShop += c.amount;
-    else unpaidToShop += c.amount;
+    if (c.collector === '当社') unpaidToShop += c.amount;
+    else unpaidFromShop += c.ourAmount;
   });
 
   return {
@@ -78,7 +83,7 @@ function commissionList(chatId, shopId) {
 
 /**
  * コミッション記帳（1施工=1行）
- * @param {Object} p - { shopId, serviceDate, serviceDesc, revenue, rate, direction,
+ * @param {Object} p - { shopId, serviceDate, serviceDesc, revenue, rate, collector,
  *                       payStatus, payDate, payMethod, memo }
  */
 function commissionCreate(chatId, p) {
@@ -103,7 +108,8 @@ function commissionCreate(chatId, p) {
     '売上(USD)':          norm.revenue,
     '率(%)':              norm.rate,
     'コミッション額(USD)': norm.amount,
-    '精算方向':           norm.direction,
+    '当社受取額(USD)':     norm.ourAmount,
+    '集金者':             norm.collector,
     '支払ステータス':      norm.payStatus,
     '支払日':             norm.payDate,
     '支払方法':           norm.payMethod,
@@ -139,7 +145,8 @@ function commissionUpdate(chatId, commissionId, p) {
     '売上(USD)':          norm.revenue,
     '率(%)':              norm.rate,
     'コミッション額(USD)': norm.amount,
-    '精算方向':           norm.direction,
+    '当社受取額(USD)':     norm.ourAmount,
+    '集金者':             norm.collector,
     '支払ステータス':      norm.payStatus,
     '支払日':             norm.payDate,
     '支払方法':           norm.payMethod,
@@ -154,7 +161,9 @@ function commissionUpdate(chatId, commissionId, p) {
 // ====== 内部実装 ======
 
 /**
- * 入力の検証・正規化。コミッション額 = 売上 × 率 / 100（セント丸め）
+ * 入力の検証・正規化。
+ * コミッション額(店の取り分) = 売上 × 率 / 100（セント整数演算）
+ * 当社受取額 = 売上 − コミッション額（店集金時に店がうちへ払う金額）
  */
 function normalizeCommissionInput_(p) {
   const revenue = Number(p.revenue);
@@ -163,8 +172,8 @@ function normalizeCommissionInput_(p) {
   let rate = Number(p.rate);
   if (!isFinite(rate) || rate < 0 || rate > 100) rate = COMMISSION_DEFAULT_RATE;
 
-  const direction = COMMISSION_DIRECTIONS.indexOf(String(p.direction || '').trim()) >= 0
-    ? String(p.direction).trim() : COMMISSION_DIRECTIONS[0];
+  const collector = COMMISSION_COLLECTORS.indexOf(String(p.collector || '').trim()) >= 0
+    ? String(p.collector).trim() : COMMISSION_COLLECTORS[0]; // 既定 = 店集金
   const payStatus = COMMISSION_PAY_STATUSES.indexOf(String(p.payStatus || '').trim()) >= 0
     ? String(p.payStatus).trim() : COMMISSION_PAY_STATUSES[0];
   const payMethod = COMMISSION_PAY_METHODS.indexOf(String(p.payMethod || '').trim()) >= 0
@@ -183,13 +192,15 @@ function normalizeCommissionInput_(p) {
   }
 
   const revenueCents = Math.round(revenue * 100);
+  const commissionCents = commissionAmountCents_(revenueCents, rate);
   return {
     serviceDate: serviceDate,
     serviceDesc: String(p.serviceDesc || '').trim(),
     revenue:     revenueCents / 100,
     rate:        rate,
-    amount:      commissionAmountCents_(revenueCents, rate) / 100,
-    direction:   direction,
+    amount:      commissionCents / 100,
+    ourAmount:   (revenueCents - commissionCents) / 100,
+    collector:   collector,
     payStatus:   payStatus,
     payDate:     payDate,
     payMethod:   payStatus === '支払済み' ? payMethod : ''
@@ -206,8 +217,54 @@ function getCommissionSheet_() {
   if (!sheet) {
     sheet = createHeaderedSheet_(ss, COMMISSION_SHEET_NAME, COMMISSION_HEADERS);
     Logger.log('🆕 勤務用スプレッドシートに「' + COMMISSION_SHEET_NAME + '」タブを新規作成');
+  } else {
+    ensureCommissionCollectorSchema_(sheet);
   }
   return sheet;
+}
+
+/**
+ * 旧「精算方向」スキーマ → 「集金者」モデルへの自動移行（冪等）
+ * ①ヘッダー改名 精算方向→集金者 ②既存値変換（当社→店 ⇒ 当社 / 店→当社 ⇒ 店）
+ * ③「当社受取額(USD)」列をコミッション額の隣に挿入 ④既存行の受取額を補完
+ */
+function ensureCommissionCollectorSchema_(sheet) {
+  let headers = getSheetHeaders_(sheet);
+  const dirIdx = headers.indexOf('精算方向');
+  if (dirIdx >= 0 && headers.indexOf('集金者') < 0) {
+    sheet.getRange(1, dirIdx + 1).setValue('集金者');
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const vals = sheet.getRange(2, dirIdx + 1, lastRow - 1, 1).getValues();
+      const conv = vals.map(function(r) {
+        const v = String(r[0] || '');
+        if (v === '当社→店') return ['当社']; // 旧: 当社が集金し店へ支払う
+        if (v === '店→当社') return ['店'];   // 旧: 店が集金し当社へ支払う
+        return [v];
+      });
+      sheet.getRange(2, dirIdx + 1, lastRow - 1, 1).setValues(conv);
+    }
+  }
+  ensureColumnAfter_(sheet, 'コミッション額(USD)', '当社受取額(USD)');
+
+  // 既存行の当社受取額を補完（売上 − コミッション額）
+  const rows = readSheetObjects_(sheet);
+  const targets = rows.filter(function(r) {
+    return String(r.obj['commission_id'] || '') &&
+           r.obj['売上(USD)'] !== '' && r.obj['当社受取額(USD)'] === '';
+  });
+  if (targets.length) {
+    headers = getSheetHeaders_(sheet);
+    const col = headers.indexOf('当社受取額(USD)') + 1;
+    const colVals = sheet.getRange(2, col, rows.length, 1).getValues();
+    targets.forEach(function(r) {
+      const cents = Math.round(Number(r.obj['売上(USD)']) * 100) -
+                    Math.round((Number(r.obj['コミッション額(USD)']) || 0) * 100);
+      if (r.row - 2 >= 0 && r.row - 2 < rows.length) colVals[r.row - 2][0] = cents / 100;
+    });
+    sheet.getRange(2, col, rows.length, 1).setValues(colVals);
+    Logger.log('🔄 コミッション台帳: 当社受取額を ' + targets.length + '行補完');
+  }
 }
 
 function commissionRowToApi_(obj) {
@@ -221,7 +278,8 @@ function commissionRowToApi_(obj) {
     revenue:      Number(obj['売上(USD)']) || 0,
     rate:         Number(obj['率(%)']) || 0,
     amount:       Number(obj['コミッション額(USD)']) || 0,
-    direction:    String(obj['精算方向'] || ''),
+    ourAmount:    Number(obj['当社受取額(USD)']) || 0,
+    collector:    String(obj['集金者'] || ''),
     payStatus:    String(obj['支払ステータス'] || ''),
     payDate:      formatSalesLogDateCell_(obj['支払日']).substring(0, 10),
     payMethod:    String(obj['支払方法'] || ''),
