@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "google-workspace": {
+      "command": "bash",
+      "args": ["scripts/google-workspace-mcp.sh"]
+    }
+  }
+}

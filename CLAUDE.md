@@ -105,12 +105,14 @@
 ## 📊 メインスプシ『📒Samurai Motors 経費・勤務関連』
 
 - ID: `1-5rMJW21t4PnpXnDAYdrNXzz672kL2cd4mOSti3Yfc0`（操作は ec20921@gmail.com、`user_google_email` に必ず指定）
+- 直接読み書きには google_workspace MCP が必要。**リモートセッション（Claude Code on the web）ではローカルMCP設定が引き継がれない**ため `.mcp.json` + 環境変数で起動する（手順: docs/MCP_SETUP.md）
 - 主要タブ: 経費（Bot入力先）/ 経費マスター（SoT・GAS自動転記）/ 前払い管理 / ルーティン経費 / 経費ダッシュボード / 設定
 - 担当エージェント: 日次記帳=**加藤 (choba)**、月次P&L・$50超承認=**金子 (kaneko)**
 
 ## 📎 関連ドキュメント
 
 - `docs/DEPLOY.md` — clasp デプロイ正式手順・戻し方・claspignore ポリシー
+- `docs/MCP_SETUP.md` — Claude Code からスプシを直接読み書きするための MCP 設定（リモート対応）
 - `docs/GAS_PATTERNS.md` — doPost/Properties/Cache のコード例・v6 教訓・自問ルール
 - `docs/SPEC_v7_CustomerSystem.md` — 完全仕様書 / `docs/SPEC_v7.5.md` 等 — 増分仕様
 - `docs/manual_admin_jp.md` / `docs/manual_staff_km.md` — 運用マニュアル
