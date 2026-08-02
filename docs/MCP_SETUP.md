@@ -49,18 +49,28 @@
 
 ### 2. ブラウザのあるマシンで1回だけ同意する
 
+まず GCP の認証情報画面でクライアントの **「JSON をダウンロード」** を押す。
+ID とシークレットを手で書き写す必要はない。
+
 ローカル（デスクトップ/CLI の Claude Code が動く環境）で、リポジトリのルートから：
 
 ```bash
-export GOOGLE_OAUTH_CLIENT_ID='<クライアントID>'
-export GOOGLE_OAUTH_CLIENT_SECRET='<シークレット>'
-
 python3 scripts/setup-google-mcp-token.py
 ```
 
-このスクリプトが同意URLの発行 → トークン待機 → base64 化までまとめて行い、
-Environment 設定に貼る内容をそのまま出力する。表示されたURLをブラウザで開き、
-`ec20921@gmail.com` で同意すれば完了。
+`~/Downloads` にある最新の `client_secret*.json` を自動で拾う。
+別の場所に置いた場合はパスを渡す：
+
+```bash
+python3 scripts/setup-google-mcp-token.py ~/場所/client_secret_xxx.json
+```
+
+このスクリプトが クライアント情報の読み込み → 同意URLの発行 → トークン待機 →
+base64 化までまとめて行い、Environment 設定に貼る4項目をそのまま出力する。
+表示されたURLをブラウザで開き、`ec20921@gmail.com` で同意すれば完了。
+
+環境変数 `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` が既に export
+されている場合はそちらが優先され、JSON は探しに行かない。
 
 トークンの実体はローカルの下記に保存される（リポジトリには書かれない）：
 

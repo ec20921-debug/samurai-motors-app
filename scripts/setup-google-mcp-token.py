@@ -122,13 +122,74 @@ def stop_server():
             _server_proc.kill()
 
 
+def find_client_secret_json():
+    """Locate the client secret JSON downloaded from the Cloud console.
+
+    Copying the id and secret by hand is the step people get wrong, so accept
+    the file the console hands out instead: an explicit path argument first,
+    then the newest client_secret*.json sitting in the usual download folders.
+    """
+    if len(sys.argv) > 1:
+        path = os.path.expanduser(sys.argv[1])
+        if not os.path.exists(path):
+            fail(f"指定されたファイルが見つかりません: {path}")
+        return path
+
+    candidates = []
+    for folder in ("~/Downloads", "~/ダウンロード", "."):
+        directory = os.path.expanduser(folder)
+        if not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            if name.startswith("client_secret") and name.endswith(".json"):
+                full = os.path.join(directory, name)
+                candidates.append((os.path.getmtime(full), full))
+    if not candidates:
+        return None
+    return max(candidates)[1]
+
+
+def load_client_credentials():
+    """Fill GOOGLE_OAUTH_CLIENT_ID/SECRET from the environment or a JSON file."""
+    if os.environ.get("GOOGLE_OAUTH_CLIENT_ID") and os.environ.get(
+        "GOOGLE_OAUTH_CLIENT_SECRET"
+    ):
+        return
+
+    path = find_client_secret_json()
+    if not path:
+        fail(
+            "クライアント情報が見つかりません。\n"
+            "  GCP の認証情報画面で「JSON をダウンロード」を押し、そのまま再実行してください。\n"
+            "  ダウンロード先が特殊な場合はファイルを指定:\n"
+            "      python3 scripts/setup-google-mcp-token.py ~/場所/client_secret_....json"
+        )
+
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"JSON を読めませんでした ({path}): {exc}")
+
+    section = data.get("installed") or data.get("web") or {}
+    client_id = section.get("client_id")
+    client_secret = section.get("client_secret")
+    if not client_id or not client_secret:
+        fail(
+            f"{path} に client_id / client_secret がありません。\n"
+            "  OAuth クライアント ID の JSON をダウンロードしたか確認してください。"
+        )
+
+    os.environ["GOOGLE_OAUTH_CLIENT_ID"] = client_id
+    os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = client_secret
+    print(f"[i] クライアント情報を読み込みました: {path}")
+
+
 def main():
     if not shutil.which("uvx"):
         fail("uvx が見つかりません。https://docs.astral.sh/uv/ から uv を入れてください。")
 
-    for var in ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"):
-        if not os.environ.get(var):
-            fail(f"{var} が未設定です。export してから再実行してください。")
+    load_client_credentials()
 
     email = os.environ.get("USER_GOOGLE_EMAIL") or DEFAULT_EMAIL
     os.environ["USER_GOOGLE_EMAIL"] = email
@@ -160,18 +221,22 @@ def main():
     with open(token_file, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
-    print("\n[OK] トークンを取得しました。\n")
-    print("Claude Code の Environment 設定に以下4つを登録してください:\n")
-    print(f"  USER_GOOGLE_EMAIL          = {email}")
-    print("  GOOGLE_OAUTH_CLIENT_ID     = (発行したクライアントID)")
-    print("  GOOGLE_OAUTH_CLIENT_SECRET = (発行したシークレット)")
-    print("  WORKSPACE_MCP_TOKEN_B64    = 下記の1行\n")
-    print("-" * 70)
-    print(encoded)
-    print("-" * 70)
-    print("\n※ この文字列はリフレッシュトークンそのものです。")
-    print("  リポジトリ・コミット・PR・チャットには貼らないでください。")
-    print("※ 登録後、新しいリモートセッションを開くと有効になります。")
+    print("\n[OK] 準備できました。\n")
+    print("=" * 70)
+    print("Claude Code の Environment 設定に、以下4つをそのまま登録してください")
+    print("（名前と値をひとつずつコピーして貼るだけです）")
+    print("=" * 70)
+    for name, value in (
+        ("USER_GOOGLE_EMAIL", email),
+        ("GOOGLE_OAUTH_CLIENT_ID", os.environ["GOOGLE_OAUTH_CLIENT_ID"]),
+        ("GOOGLE_OAUTH_CLIENT_SECRET", os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]),
+        ("WORKSPACE_MCP_TOKEN_B64", encoded),
+    ):
+        print(f"\n■ 名前: {name}\n  値:")
+        print(f"{value}")
+    print("\n" + "=" * 70)
+    print("※ 登録が終わったら、新しいセッションを開くと使えるようになります。")
+    print("※ 上の値は他人に見せないでください（チャットに貼るのも不要です）。")
 
 
 if __name__ == "__main__":
