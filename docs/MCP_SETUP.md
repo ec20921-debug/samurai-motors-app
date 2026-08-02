@@ -41,33 +41,52 @@
 3. 認証情報 → OAuth クライアント ID → 種別「**デスクトップアプリ**」で作成
 4. クライアント ID とシークレットを控える
 
+> **リダイレクトURI**: 認証は `http://localhost:8000/oauth2callback` に返ってくる。
+> 「デスクトップアプリ」種別ならループバックは自動的に許可されるので登録不要。
+> 誤って「ウェブアプリケーション」種別で作った場合は、このURLを承認済みリダイレクトURIに明示登録すること（しないと `redirect_uri_mismatch` になる）。
+
+要求されるスコープは `spreadsheets` / `drive` / `userinfo.email` / `userinfo.profile` / `openid` とその readonly 版。
+
 ### 2. ブラウザのあるマシンで1回だけ同意する
 
-ローカル（デスクトップ/CLI の Claude Code が動く環境）で実行：
+ローカル（デスクトップ/CLI の Claude Code が動く環境）で、リポジトリのルートから：
 
 ```bash
 export GOOGLE_OAUTH_CLIENT_ID='<クライアントID>'
 export GOOGLE_OAUTH_CLIENT_SECRET='<シークレット>'
-export USER_GOOGLE_EMAIL='ec20921@gmail.com'
 
-uvx workspace-mcp --single-user --tools sheets drive
+python3 scripts/setup-google-mcp-token.py
 ```
 
-ブラウザが開くので `ec20921@gmail.com` で同意する。完了するとトークンが保存される：
+このスクリプトが同意URLの発行 → トークン待機 → base64 化までまとめて行い、
+Environment 設定に貼る内容をそのまま出力する。表示されたURLをブラウザで開き、
+`ec20921@gmail.com` で同意すれば完了。
+
+トークンの実体はローカルの下記に保存される（リポジトリには書かれない）：
 
 ```
 ~/.google_workspace_mcp/credentials/ec20921@gmail.com.json
 ```
 
-### 3. トークンを base64 にする
+<details>
+<summary>スクリプトを使わず手作業でやる場合</summary>
 
 ```bash
+export USER_GOOGLE_EMAIL='ec20921@gmail.com'
+uvx workspace-mcp --single-user --tools sheets drive
+# 別ターミナルでツールを1回呼ぶと同意URLが出る。同意後:
 base64 -w0 ~/.google_workspace_mcp/credentials/ec20921@gmail.com.json
 ```
 
-macOS の場合は `-w0` の代わりに `base64 -i <ファイル>`。
+macOS の `base64` には `-w0` が無いので `base64 -i <ファイル>` を使う。
 
-出力文字列を `WORKSPACE_MCP_TOKEN_B64` として Environment 設定に登録する。
+</details>
+
+### 3. 出力された4つの環境変数を登録する
+
+スクリプトの出力どおり、`USER_GOOGLE_EMAIL` / `GOOGLE_OAUTH_CLIENT_ID` /
+`GOOGLE_OAUTH_CLIENT_SECRET` / `WORKSPACE_MCP_TOKEN_B64` を
+Claude Code の Environment 設定に登録する。
 
 ### 4. リモートセッションを開き直す
 

@@ -9,3 +9,7 @@ Thumbs.db
 
 # Claude Code ローカル設定（トークン・権限はローカル限定。2026-07-03 監査対応）
 .claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
