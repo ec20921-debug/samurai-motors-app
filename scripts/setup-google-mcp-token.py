@@ -149,6 +149,44 @@ def find_client_secret_json():
     return max(candidates)[1]
 
 
+# Places a previously working setup would have left the pair behind. The
+# console only ever shows a secret once, so a machine that already used this
+# client is the most likely place to still hold it.
+SAVED_CONFIG_CANDIDATES = (
+    "~/.claude.json",
+    "~/Library/Application Support/Claude/claude_desktop_config.json",
+    "~/.config/Claude/claude_desktop_config.json",
+    "~/.config/claude/claude_desktop_config.json",
+    "~/.zshrc",
+    "~/.zshenv",
+    "~/.bashrc",
+    "~/.bash_profile",
+    "~/.profile",
+    "~/.env",
+)
+
+CLIENT_ID_RE = re.compile(r"[0-9]{6,}-[a-z0-9]{10,}\.apps\.googleusercontent\.com")
+CLIENT_SECRET_RE = re.compile(r"GOCSPX-[A-Za-z0-9_\-]{10,}")
+
+
+def search_saved_credentials():
+    """Look for an id/secret pair left behind by an earlier working setup."""
+    for raw in SAVED_CONFIG_CANDIDATES:
+        path = os.path.expanduser(raw)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        secret = CLIENT_SECRET_RE.search(text)
+        client_id = CLIENT_ID_RE.search(text)
+        if secret and client_id:
+            return client_id.group(), secret.group(), path
+    return None
+
+
 def prompt_client_credentials():
     """Ask for the id and secret directly.
 
@@ -195,6 +233,14 @@ def load_client_credentials():
 
     path = find_client_secret_json()
     if not path:
+        found = search_saved_credentials()
+        if found:
+            client_id, client_secret, source = found
+            print(f"[i] 保存済みのクライアント情報を見つけました: {source}")
+            print("    （シークレットを作り直す必要はありません）")
+            os.environ["GOOGLE_OAUTH_CLIENT_ID"] = client_id
+            os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = client_secret
+            return
         prompt_client_credentials()
         return
 
