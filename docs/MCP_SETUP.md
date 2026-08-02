@@ -49,8 +49,12 @@
 
 ### 2. ブラウザのあるマシンで1回だけ同意する
 
-まず GCP の認証情報画面でクライアントの **「JSON をダウンロード」** を押す。
-ID とシークレットを手で書き写す必要はない。
+> ⚠️ **既存クライアントのシークレットは閲覧・ダウンロードできない。**
+> Google Auth Platform の仕様変更で、シークレットは作成時に1度表示されるだけになり、
+> 一覧では `****aF4A` のようにマスクされる。「JSON をダウンロード」ボタンも無い。
+> 控えが手元に無ければ、クライアント詳細画面の **「+ Add secret」で新しく発行**して、
+> 表示されたその場でコピーする（既存シークレットは後で無効化・削除すればよい）。
+> シークレットを追加しても、発行済みのリフレッシュトークンは無効にならない。
 
 ローカル（デスクトップ/CLI の Claude Code が動く環境）で、リポジトリのルートから：
 
@@ -58,19 +62,16 @@ ID とシークレットを手で書き写す必要はない。
 python3 scripts/setup-google-mcp-token.py
 ```
 
-`~/Downloads` にある最新の `client_secret*.json` を自動で拾う。
-別の場所に置いた場合はパスを渡す：
-
-```bash
-python3 scripts/setup-google-mcp-token.py ~/場所/client_secret_xxx.json
-```
-
-このスクリプトが クライアント情報の読み込み → 同意URLの発行 → トークン待機 →
-base64 化までまとめて行い、Environment 設定に貼る4項目をそのまま出力する。
+クライアント ID とシークレットの入力を対話で求められるので、コンソールからコピーして貼る。
+そのあと 同意URLの発行 → トークン待機 → base64 化まで自動で進み、
+Environment 設定に貼る4項目をそのまま出力する。
 表示されたURLをブラウザで開き、`ec20921@gmail.com` で同意すれば完了。
 
-環境変数 `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` が既に export
-されている場合はそちらが優先され、JSON は探しに行かない。
+入力を省きたい場合は、次のどちらかがあれば対話はスキップされる：
+
+- 環境変数 `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`（最優先）
+- 過去にダウンロードした `client_secret*.json`（`~/Downloads` から自動検出、
+  またはパスを引数で指定: `python3 scripts/setup-google-mcp-token.py ~/場所/client_secret_xxx.json`）
 
 トークンの実体はローカルの下記に保存される（リポジトリには書かれない）：
 

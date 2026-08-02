@@ -149,6 +149,43 @@ def find_client_secret_json():
     return max(candidates)[1]
 
 
+def prompt_client_credentials():
+    """Ask for the id and secret directly.
+
+    The Cloud console no longer shows or exports an existing client secret —
+    it can only be replaced — so there is often no JSON file to read and the
+    value has to come from whatever the console displayed once, at creation.
+    """
+    print("=" * 70)
+    print("クライアント情報を入力してください")
+    print("=" * 70)
+    print("Google Cloud の「クライアント」画面から、2つコピーして貼り付けます。")
+    print("（貼り付けたら Enter キーを押してください）\n")
+
+    print("① クライアント ID")
+    print("   画面右側「Additional information」の一番上にあります。")
+    print("   .apps.googleusercontent.com で終わる長い文字列です。")
+    client_id = input("   ここに貼り付け > ").strip()
+    if not client_id:
+        fail("クライアント ID が入力されませんでした。")
+    if not client_id.endswith(".apps.googleusercontent.com"):
+        print("   [!] 通常 .apps.googleusercontent.com で終わります。間違っていないか確認してください。")
+
+    print("\n② クライアント シークレット")
+    print("   画面右下「クライアント シークレット」の「+ Add secret」を押すと、")
+    print("   その場で1回だけ全体が表示されます。それをコピーしてください。")
+    print("   （既存の ****aF4A のようなマスク表示は、もう中身を見られません）")
+    client_secret = input("   ここに貼り付け > ").strip()
+    if not client_secret:
+        fail("クライアント シークレットが入力されませんでした。")
+    if not client_secret.startswith("GOCSPX-"):
+        print("   [!] 通常 GOCSPX- で始まります。間違っていないか確認してください。")
+
+    os.environ["GOOGLE_OAUTH_CLIENT_ID"] = client_id
+    os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = client_secret
+    print("\n[i] クライアント情報を受け取りました。\n")
+
+
 def load_client_credentials():
     """Fill GOOGLE_OAUTH_CLIENT_ID/SECRET from the environment or a JSON file."""
     if os.environ.get("GOOGLE_OAUTH_CLIENT_ID") and os.environ.get(
@@ -158,12 +195,8 @@ def load_client_credentials():
 
     path = find_client_secret_json()
     if not path:
-        fail(
-            "クライアント情報が見つかりません。\n"
-            "  GCP の認証情報画面で「JSON をダウンロード」を押し、そのまま再実行してください。\n"
-            "  ダウンロード先が特殊な場合はファイルを指定:\n"
-            "      python3 scripts/setup-google-mcp-token.py ~/場所/client_secret_....json"
-        )
+        prompt_client_credentials()
+        return
 
     try:
         with open(path, encoding="utf-8") as fh:
