@@ -9,16 +9,40 @@
  * 【設計方針】
  *   - getConfig().operationsSpreadsheetId で常に勤務専用シートを開く
  *   - 列ヘッダーは1行目を基準（v7 と同じ方式）
+ *   - スプレッドシート／シートは実行内キャッシュ（下記）
  */
+
+// ====== 実行内キャッシュ（2026-08-03 追加） ======
+//
+// 勤務用GSS は 30タブ・ダッシュボード数式ありで openById が重い。
+// 従来は getSheet() が呼ばれるたびに openById しており、さらに getHeaders() が
+// 内部で getSheet() を呼ぶため、退勤1回で 6回前後の開き直しが発生していた。
+// Google 側が混むと 30秒超となり、ミニアプリから打刻できない事象が出た（現場報告）。
+// GAS の実行は1リクエストで完結するため、実行内で使い回して安全に短縮する。
+// ※ ヘッダーは意図的にキャッシュしない（実行中に列が増える経路があるため）
+let _opsSsCache_ = null;
+let _opsSheetCache_ = {};
+
+function getOpsSs_(forceReload) {
+  if (!forceReload && _opsSsCache_) return _opsSsCache_;
+  const cfg = getConfig();
+  _opsSsCache_ = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  return _opsSsCache_;
+}
 
 /**
  * シートを取得（存在しなければ例外）
  */
 function getSheet(sheetName) {
-  const cfg = getConfig();
-  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
-  const sheet = ss.getSheetByName(sheetName);
+  if (_opsSheetCache_[sheetName]) return _opsSheetCache_[sheetName];
+
+  let sheet = getOpsSs_().getSheetByName(sheetName);
+  // 別経路（他モジュールの openById）で直前に作られたタブに追随するため、
+  // 見つからない時だけキャッシュを捨てて1度だけ開き直す
+  if (!sheet) sheet = getOpsSs_(true).getSheetByName(sheetName);
   if (!sheet) throw new Error('❌ シート未発見: ' + sheetName);
+
+  _opsSheetCache_[sheetName] = sheet;
   return sheet;
 }
 
