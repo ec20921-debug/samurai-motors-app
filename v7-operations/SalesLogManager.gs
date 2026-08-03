@@ -474,18 +474,25 @@ function computeShopAggregates_(visits) {
 
 // ====== シート取得（自動作成・列自動追加） ======
 
+let _salesLogSsCache_ = null;
 function getSalesLogSs_() {
+  if (_salesLogSsCache_) return _salesLogSsCache_;
   const cfg = getConfig();
   if (!cfg.v7SpreadsheetId) {
     throw new Error('❌ V7_SPREADSHEET_ID 未設定（営業ログ/店マスターは v7 Database 側のタブです）');
   }
-  return SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+  _salesLogSsCache_ = SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+  return _salesLogSsCache_;
 }
 
 /**
  * 「営業ログ」タブ（無ければヘッダー付きで自動作成。v1 由来なら shop_id 列を自動追加）
+ * ★ 実行内キャッシュ: スキーマ整備（列の自動追加）は1実行に1回で十分。
+ *   毎回やると1リクエストで十数回の往復になり体感数十秒まで悪化する（2026-08-03 実測）
  */
+let _salesLogSheetCache_ = null;
 function getSalesLogSheet_() {
+  if (_salesLogSheetCache_) return _salesLogSheetCache_;
   const ss = getSalesLogSs_();
   let sheet = ss.getSheetByName(SALESLOG_SHEET_NAME);
   if (!sheet) {
@@ -499,13 +506,17 @@ function getSalesLogSheet_() {
     }
     ensureColumnAfter_(sheet, '反応', '反応内容');
   }
+  _salesLogSheetCache_ = sheet;
   return sheet;
 }
 
 /**
  * 「店マスター」タブ（無ければヘッダー付きで自動作成）
+ * ★ 実行内キャッシュ: 理由は getSalesLogSheet_ と同じ
  */
+let _shopSheetCache_ = null;
 function getShopSheet_() {
+  if (_shopSheetCache_) return _shopSheetCache_;
   const ss = getSalesLogSs_();
   let sheet = ss.getSheetByName(SALESLOG_SHOP_SHEET_NAME);
   if (!sheet) {
@@ -520,6 +531,7 @@ function getShopSheet_() {
     ensureColumnAfter_(sheet, '最新反応内容', 'デモ予定日');
     ensureColumnAfter_(sheet, 'デモ予定日', 'デモ実施日');
   }
+  _shopSheetCache_ = sheet;
   return sheet;
 }
 
