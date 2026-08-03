@@ -51,6 +51,7 @@ function sendDailyReport() {
 
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
+  const voiceSection = buildVoiceSection_(ppToday);        // 現場の声（2026-08-03 Daisuke 裁可）
   // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
   // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
   //   const taskSection = buildTaskSection_();
@@ -60,7 +61,8 @@ function sendDailyReport() {
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection +
-    (salesLogSection ? '\n\n' + salesLogSection : '');
+    (salesLogSection ? '\n\n' + salesLogSection : '') +
+    (voiceSection ? '\n\n' + voiceSection : '');
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
     parse_mode: 'HTML',
@@ -91,8 +93,8 @@ function buildSalesLogSection_(ppToday) {
       .map(function(r) { return visitRowToApi_(r.obj); })
       .filter(function(v) { return v.visitId && String(v.datetime).substring(0, 10) === ppToday; });
 
-    // 店の内訳（ステータス・最新反応）
-    let partner = 0, active = 0, dropped = 0, totalVisits = 0;
+    // 店の内訳（ステータス・最新反応・デモ予定日の確定数）
+    let partner = 0, active = 0, dropped = 0, totalVisits = 0, demoFixed = 0;
     const reactionCount = { A: 0, B: 0 };
     shops.forEach(function(s) {
       if (s.status === '提携済') partner++;
@@ -100,6 +102,7 @@ function buildSalesLogSection_(ppToday) {
       else active++;
       totalVisits += s.visitCount;
       if (reactionCount.hasOwnProperty(s.lastReaction)) reactionCount[s.lastReaction]++;
+      if (s.demoPlanned) demoFixed++;
     });
 
     // コミッション未精算（全店合計。店集金=未収 / 当社集金=未払）
@@ -129,7 +132,11 @@ function buildSalesLogSection_(ppToday) {
     const hot = [];
     if (reactionCount.A) hot.push('A(デモ決定) ' + reactionCount.A + '店');
     if (reactionCount.B) hot.push('B(興味あり) ' + reactionCount.B + '店');
-    if (hot.length) lines.push('　🔥 有望: ' + hot.join(' / '));
+    if (hot.length) {
+      lines.push('　🔥 有望: ' + hot.join(' / ') + (demoFixed ? '（デモ日確定 ' + demoFixed + '件）' : ''));
+    } else if (demoFixed) {
+      lines.push('　🔥 有望: （デモ日確定 ' + demoFixed + '件）');
+    }
     if (unpaidFromShops > 0 || unpaidToShops > 0) {
       const money = [];
       if (unpaidFromShops > 0) money.push('未収 $' + unpaidFromShops.toFixed(2) + '（店から受取）');
@@ -139,6 +146,110 @@ function buildSalesLogSection_(ppToday) {
     return lines.join('\n');
   } catch (err) {
     Logger.log('⚠️ 日報: 車屋営業状況セクション生成失敗（スキップ）: ' + err);
+    return '';
+  }
+}
+
+// ============================================================
+//  現場の声セクション（B2B=営業ログのメモ / B2C=v7 チャット履歴）
+// ============================================================
+
+/**
+ * 日報に「現場の声」を1ブロック追加（2026-08-03 Daisuke 裁可）
+ * - B2B: 当日の営業ログでメモ非空の行（反応D はメモ空でも反応内容を声扱い）
+ * - B2C: v7「チャット履歴」の当日行で 方向=顧客→管理・種別=テキスト・5文字以上（⭐含む行を優先）
+ * - クメール文字を含み日本語を含まない本文のみ機械訳（参考）を添付
+ * - 各グループ上限5件・両方0件ならセクション非表示・失敗時は空文字（日報全体は止めない）
+ */
+function buildVoiceSection_(ppToday) {
+  try {
+    const MAX = 5, TRUNC = 80;
+
+    // 1行分の表示（本文80字切詰め＋必要ならクメール語→日本語の機械訳を併記）
+    function voiceLine(prefix, label, quote) {
+      const short = quote.length > TRUNC ? quote.substring(0, TRUNC) + '…' : quote;
+      let line = '　' + prefix + ' ' + escapeHtml_(label) + '『' + escapeHtml_(short) + '』';
+      const ja = translateKmToJa_(short);
+      if (ja) line += '\n　　↳ <i>(機械訳・参考) ' + escapeHtml_(ja.length > TRUNC ? ja.substring(0, TRUNC) + '…' : ja) + '</i>';
+      return line;
+    }
+
+    // ── B2B: 当日の営業ログ ──
+    let b2b = [];
+    try {
+      b2b = readSheetObjects_(getSalesLogSheet_())
+        .map(function(r) { return visitRowToApi_(r.obj); })
+        .filter(function(v) {
+          if (!v.visitId || String(v.datetime).substring(0, 10) !== ppToday) return false;
+          return !!(v.memo || (v.reaction === 'D')); // 反応D は「断り」も声として拾う
+        })
+        .map(function(v) {
+          const label = v.shopName + (v.reaction ? ' (' + v.reaction + (reactionLabel_(v.reaction) ? '・' + reactionLabel_(v.reaction) : '') + ')' : '');
+          return voiceLine('🏪', label, v.memo || reactionLabel_(v.reaction));
+        });
+    } catch (e) {
+      Logger.log('⚠️ 現場の声: B2B読取失敗（スキップ）: ' + e);
+    }
+
+    // ── B2C: v7「チャット履歴」の当日顧客メッセージ ──
+    let b2c = [];
+    try {
+      const cfg = getConfig();
+      if (cfg.v7SpreadsheetId) {
+        const sheet = SpreadsheetApp.openById(cfg.v7SpreadsheetId).getSheetByName('チャット履歴');
+        if (sheet) {
+          const rows = readSheetObjects_(sheet)
+            .map(function(r) { return r.obj; })
+            .filter(function(o) {
+              if (String(o['方向'] || '') !== '顧客→管理') return false;
+              if (String(o['メッセージ種別'] || '') !== 'テキスト') return false;
+              if (formatSalesLogDateCell_(o['日時']).substring(0, 10) !== ppToday) return false;
+              return String(o['内容'] || '').trim().length >= 5;
+            });
+          // ⭐を含む行を優先（同順位内は元の時系列を維持する安定ソート）
+          rows.forEach(function(o, i) { o._idx = i; });
+          rows.sort(function(a, b) {
+            const sa = String(a['内容']).indexOf('⭐') >= 0 ? 0 : 1;
+            const sb = String(b['内容']).indexOf('⭐') >= 0 ? 0 : 1;
+            return sa !== sb ? sa - sb : a._idx - b._idx;
+          });
+          b2c = rows.map(function(o) {
+            const cid = String(o['チャットID'] || '');
+            return voiceLine('👤', '顧客' + (cid ? '…' + cid.slice(-4) : ''), String(o['内容']).trim());
+          });
+        }
+      }
+    } catch (e) {
+      Logger.log('⚠️ 現場の声: B2C読取失敗（スキップ）: ' + e);
+    }
+
+    if (!b2b.length && !b2c.length) return '';
+
+    const lines = ['🗣 <b>現場の声</b>'];
+    lines.push.apply(lines, b2b.slice(0, MAX));
+    if (b2b.length > MAX) lines.push('　…他' + (b2b.length - MAX) + '件（詳細はGSS）');
+    lines.push.apply(lines, b2c.slice(0, MAX));
+    if (b2c.length > MAX) lines.push('　…他' + (b2c.length - MAX) + '件（詳細はGSS）');
+    return lines.join('\n');
+  } catch (err) {
+    Logger.log('⚠️ 日報: 現場の声セクション生成失敗（スキップ）: ' + err);
+    return '';
+  }
+}
+
+/**
+ * クメール文字(U+1780-17FF)を含み日本語文字を含まない本文のみ km→ja 機械訳。
+ * 対象外・翻訳失敗時は ''（原文のみ表示）
+ */
+function translateKmToJa_(text) {
+  try {
+    const s = String(text || '');
+    if (!/[ក-៿]/.test(s)) return '';                 // クメール文字なし → 対象外
+    if (/[぀-ヿ一-鿿]/.test(s)) return '';     // 日本語（かな・漢字）混在 → 対象外
+    const ja = LanguageApp.translate(s, 'km', 'ja');
+    return String(ja || '').trim();
+  } catch (e) {
+    Logger.log('⚠️ 現場の声: 機械訳失敗（原文のみ表示）: ' + e);
     return '';
   }
 }

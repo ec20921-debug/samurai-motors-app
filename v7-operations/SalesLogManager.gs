@@ -40,7 +40,7 @@ const SALESLOG_HEADERS = [
 const SALESLOG_SHOP_SHEET_NAME = '店マスター';
 const SALESLOG_SHOP_HEADERS = [
   'shop_id', '店名', '業種', '緯度', '経度', '緯度経度結合', 'オーナー名', '電話', 'Facebook',
-  '最新反応', '最新反応内容', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
+  '最新反応', '最新反応内容', 'デモ予定日', 'デモ実施日', 'ステータス', 'パートナーID', '訪問回数', '初回訪問日', '最終訪問日', 'メモ'
 ];
 
 // 車屋の業種（複数選択・カンマ区切りで保存。今後の提案先セグメントの基礎データ）
@@ -237,8 +237,32 @@ function salesLogShopUpdate(chatId, shopId, p) {
   };
   if (SALESLOG_SHOP_STATUSES.indexOf(status) >= 0) updates['ステータス'] = status;
 
+  // デモ予定日・実施日（YYYY-MM-DD のみ受付。'' は消去、undefined/不正値は変更しない）
+  const demoPlanned = normalizeSalesLogDateStr_(p.demoPlanned);
+  if (demoPlanned !== null) updates['デモ予定日'] = demoPlanned;
+  const demoDone = normalizeSalesLogDateStr_(p.demoDone);
+  if (demoDone !== null) updates['デモ実施日'] = demoDone;
+
+  // GPS（「今の場所をこの店の位置にする」ボタン用。gps が送られた時のみ上書き）
+  const gps = normalizeSalesLogGps_(p.gps);
+  if (gps) {
+    updates['緯度'] = gps.lat;
+    updates['経度'] = gps.lng;
+    updates['緯度経度結合'] = gps.lat + ',' + gps.lng;
+  }
+
   updateSheetRow_(sheet, found.row, updates);
   return { ok: true, shopId: String(shopId) };
+}
+
+/**
+ * 日付文字列の正規化: 'YYYY-MM-DD'→そのまま / ''→''（消去） / それ以外→null（変更しない）
+ */
+function normalizeSalesLogDateStr_(v) {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (s === '') return '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
 // ====== v1 → v2 自動移行 ======
@@ -492,6 +516,9 @@ function getShopSheet_() {
     ensureColumnAfter_(sheet, '最新反応', '最新反応内容');
     ensureColumnAfter_(sheet, '店名', '業種');
     ensureColumnAfter_(sheet, '電話', 'Facebook');
+    // デモ予定日・実施日（2026-08-03 追加。順に挿入して「最新反応内容」の直後に並べる）
+    ensureColumnAfter_(sheet, '最新反応内容', 'デモ予定日');
+    ensureColumnAfter_(sheet, 'デモ予定日', 'デモ実施日');
   }
   return sheet;
 }
@@ -630,6 +657,8 @@ function shopRowToApi_(obj) {
     phone:        String(obj['電話'] || ''),
     facebook:     String(obj['Facebook'] || ''),
     lastReaction: String(obj['最新反応'] || ''),
+    demoPlanned:  formatSalesLogDateCell_(obj['デモ予定日']).substring(0, 10),
+    demoDone:     formatSalesLogDateCell_(obj['デモ実施日']).substring(0, 10),
     status:       String(obj['ステータス'] || ''),
     partnerId:    String(obj['パートナーID'] || ''),
     visitCount:   Number(obj['訪問回数']) || 0,
