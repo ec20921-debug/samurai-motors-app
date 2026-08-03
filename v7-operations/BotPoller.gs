@@ -19,9 +19,6 @@ function pollInternalBot() {
   // 日報の 20:30 JST 定時送信チェック（1分トリガー起点・時刻窓外は即 return の軽量処理）
   try { maybeSendDailyReport_(); } catch (e) { Logger.log('❌ maybeSendDailyReport_: ' + e); }
 
-  // 見込みリスト日次同期の 21:00台 JST チェック（同型・失敗しても他処理は止めない）
-  try { maybeDailyProspectSync_(); } catch (e) { Logger.log('❌ maybeDailyProspectSync_: ' + e); }
-
   const props = PropertiesService.getScriptProperties();
   const offsetKey = STORAGE_KEYS.POLL_OFFSET_PREFIX + BOT_TYPE.INTERNAL;
   const offset = parseInt(props.getProperty(offsetKey) || '0', 10);

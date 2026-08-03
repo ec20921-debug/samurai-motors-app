@@ -238,19 +238,8 @@ function doPost(e) {
           phone:     String(body.phone     || ''),
           facebook:  String(body.facebook  || ''),
           status:    String(body.status    || ''),
-          memo:      String(body.memo      || ''),
-          // デモ日: 未送信(undefined)は「変更しない」を保持するため String() で潰さない
-          demoPlanned: body.demoPlanned === undefined ? undefined : String(body.demoPlanned || ''),
-          demoDone:    body.demoDone    === undefined ? undefined : String(body.demoDone    || ''),
-          gps:       body.gps || null
+          memo:      String(body.memo      || '')
         }));
-      }
-
-      case 'saleslog_prospects': {
-        // 見込みリスト（読取専用・地図の見込み店レイヤ用）
-        const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(listProspects(chatId));
       }
 
       case 'saleslog_create': {
