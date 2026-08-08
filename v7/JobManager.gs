@@ -228,27 +228,33 @@ function apiJobStart(body) {
       }
     }
 
-    // トピック ID を取得
+    // トピック ID / 顧客チャットID を取得
+    // 予約から取れない場合は body.chatId をフォールバックに採用（飛び込み等で予約が無い場合に対応）
     var threadId = null;
     var customerChatId = '';
     if (bkRow) {
       customerChatId = String(bkRow.data['チャットID'] || '');
-      if (customerChatId) {
-        var custRow = findCustomerRow(customerChatId);
-        if (custRow && custRow.data['トピックID']) {
-          threadId = custRow.data['トピックID'];
-        }
+    }
+    if (!customerChatId && body.chatId) {
+      customerChatId = String(body.chatId);
+    }
+    if (customerChatId) {
+      var custRow = findCustomerRow(customerChatId);
+      if (custRow && custRow.data['トピックID']) {
+        threadId = custRow.data['トピックID'];
       }
     }
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
+    var customerNotified = false;
     if (customerChatId) {
       try {
         var custText =
           '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
           'Your car wash has started!\n\n' +
           '📸 រូបថតមុនពេលលាង / Before photos ↓';
-        sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+        var sendRes = sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+        if (sendRes && sendRes.ok) customerNotified = true;
       } catch (e) {
         Logger.log('⚠️ 顧客メッセージ送信失敗: ' + e);
       }
@@ -259,6 +265,8 @@ function apiJobStart(body) {
           Logger.log('⚠️ 顧客写真送信失敗: ' + e);
         }
       }
+    } else {
+      Logger.log('⚠️ 顧客通知スキップ(job_start): bookingId=' + bookingId + ' name=' + (body.name || '-') + ' (チャットID未特定)');
     }
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
@@ -273,6 +281,10 @@ function apiJobStart(body) {
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
         '📷 Before ' + photoResult.urls.length + '枚';
+      if (!customerNotified) {
+        adminText += '\n━━━━━━━━━━━━━━━━━\n' +
+          '⚠️ 顧客への通知ができていません（チャットID未特定）';
+      }
 
       var adminOpts = {};
       if (threadId) adminOpts.message_thread_id = threadId;
@@ -352,15 +364,20 @@ function apiJobEnd(body) {
         Logger.log('⚠️ 予約ステータス更新失敗: ' + e);
       }
       customerChatId = String(bkRow.data['チャットID'] || '');
-      if (customerChatId) {
-        var custRow = findCustomerRow(customerChatId);
-        if (custRow && custRow.data['トピックID']) {
-          threadId = custRow.data['トピックID'];
-        }
+    }
+    // 予約から取れない場合は body.chatId をフォールバックに採用
+    if (!customerChatId && body.chatId) {
+      customerChatId = String(body.chatId);
+    }
+    if (customerChatId) {
+      var custRow = findCustomerRow(customerChatId);
+      if (custRow && custRow.data['トピックID']) {
+        threadId = custRow.data['トピックID'];
       }
     }
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
+    var customerNotified = false;
     if (customerChatId) {
       try {
         var custText =
@@ -368,7 +385,8 @@ function apiJobEnd(body) {
           'Your car wash is complete!\n\n' +
           '⏱ ' + duration + ' នាទី / minutes\n' +
           '📸 រូបថតក្រោយពេលលាង / After photos ↓';
-        sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+        var sendRes = sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
+        if (sendRes && sendRes.ok) customerNotified = true;
       } catch (e) {
         Logger.log('⚠️ 顧客メッセージ送信失敗: ' + e);
       }
@@ -379,6 +397,8 @@ function apiJobEnd(body) {
           Logger.log('⚠️ 顧客写真送信失敗: ' + e);
         }
       }
+    } else {
+      Logger.log('⚠️ 顧客通知スキップ(job_end): bookingId=' + bookingId + ' name=' + (body.name || '-') + ' (チャットID未特定)');
     }
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
@@ -390,6 +410,10 @@ function apiJobEnd(body) {
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
+      if (!customerNotified) {
+        adminText += '\n━━━━━━━━━━━━━━━━━\n' +
+          '⚠️ 顧客への通知ができていません（チャットID未特定）';
+      }
 
       var adminOpts = {};
       if (threadId) adminOpts.message_thread_id = threadId;
