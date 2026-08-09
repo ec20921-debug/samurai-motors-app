@@ -59,8 +59,11 @@ function dispatchBookingMessage(msg) {
     return;
   }
 
-  // ── 顧客DM以外は無視（他グループに誤って追加されても反応しない） ──
+  // ── 顧客DM以外: 店舗グループの /register だけ受け付け、他は従来どおり無視 ──
   if (msg.chat.type !== 'private') {
+    if (typeof handleShopGroupMessage_ === 'function' && handleShopGroupMessage_(msg)) {
+      return;
+    }
     Logger.log('ℹ️ 非対応チャット種別: type=' + msg.chat.type + ' id=' + chatId);
     return;
   }
@@ -79,6 +82,12 @@ function handleCustomerMessage(msg) {
   // /start を打たない既存客でも、何かの拍子にボタンが消えたら次の発言で復活する。
   // 毎回 API を叩くと無駄なので、24h に1回だけ設定する（CacheService でガード）。
   maybeRefreshBookingMenuButton_(msg.chat.id);
+
+  // /start shop_<shop_id> → 提携店QR経由の流入（歓迎＋店タグ＋店舗グループ通知）
+  if (text.indexOf('/start shop_') === 0 &&
+      typeof handleShopStart_ === 'function' && handleShopStart_(msg, text)) {
+    return;
+  }
 
   // /start コマンド → 挨拶のみ返す（転送しない）
   if (text === '/start') {
