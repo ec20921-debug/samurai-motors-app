@@ -168,8 +168,11 @@ function handleShopStart_(msg, text) {
   if (!m) return false;
   var shopId = m[1];
 
-  // 通常の歓迎フロー（既存 /start と同一体験にする）
-  sendWelcomeMessage(msg);
+  // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
+  // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩）
+  var linkForWelcome = findShopLinkByShopId_(shopId);
+  var welcomeShopName = linkForWelcome ? String(linkForWelcome.obj['店名'] || '') : '';
+  sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName });
   ensureCustomerTopic(msg);
 
   // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
@@ -223,6 +226,39 @@ function getShopRefForCustomer(chatId) {
   try {
     return PropertiesService.getScriptProperties().getProperty('shop_ref_' + String(chatId)) || '';
   } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * 紹介元の店舗グループへ作業通知＋写真アルバムを同報する（JobManager から呼ばれる）。
+ * 顧客が店QR経由でない・グループ未連携の場合は何もしない。
+ *
+ * @param {string} customerChatId - 顧客チャットID
+ * @param {string} text - 通知本文（店スタッフ向け・英語短文）
+ * @param {Array} blobs - 写真Blob配列（省略可）
+ * @return {string} 通知した shop_id（該当なしは ''）
+ */
+function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
+  try {
+    var shopId = getShopRefForCustomer(customerChatId);
+    if (!shopId) return '';
+    var link = findShopLinkByShopId_(shopId);
+    if (!link || String(link.obj['状態']) !== '連携済') return '';
+    var groupChatId = String(link.obj['グループchat_id'] || '');
+    if (!groupChatId) return '';
+
+    sendMessage(BOT_TYPE.BOOKING, groupChatId, text);
+    if (blobs && blobs.length > 0 && typeof sendPhotoAlbum === 'function') {
+      try {
+        sendPhotoAlbum(BOT_TYPE.BOOKING, groupChatId, blobs, '', {});
+      } catch (e) {
+        Logger.log('⚠️ 店舗グループ写真送信失敗: ' + e);
+      }
+    }
+    return shopId;
+  } catch (err) {
+    Logger.log('⚠️ notifyShopGroupJobPhotos エラー: ' + err);
     return '';
   }
 }

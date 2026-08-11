@@ -177,7 +177,11 @@ function getBookingMiniAppUrl() {
  * 顧客がDMで直接問い合わせするのではなく、
  * 左下のメニューボタンからミニアプリを開いて予約してもらうよう誘導する。
  */
-function sendWelcomeMessage(msg) {
+function sendWelcomeMessage(msg, opts) {
+  // opts（省略可・2026-08-10 提携店対応）:
+  //   skipCampaign: true = キャンペーンバナー非表示（提携店経由は定価・キャンペーン対象外 = Daisuke裁可⑩）
+  //   shopName: 紹介元の店名（表示すると「この店の客として扱われている」証明になる）
+  opts = opts || {};
   const from = msg.from || {};
   const name = from.first_name || '';
   const cfg = getConfig();
@@ -225,11 +229,13 @@ function sendWelcomeMessage(msg) {
   }
 
   // ── ② キャンペーンバナー(動的取得、チラシは evergreen)──
+  // 提携店QR経由(skipCampaign)は表示しない: キャンペーン30%オフ×店コミッション30%の
+  // 二重適用で当社手取りが定価の49%まで落ちるため（2026-08-10 Daisuke裁可）
   let campaignLine = '';
   try {
     const bcfg = getBookingConfig();
     const camp = bcfg && bcfg.campaign;
-    if (camp && camp.active && camp.percent > 0) {
+    if (!opts.skipCampaign && camp && camp.active && camp.percent > 0) {
       campaignLine =
         '━━━━━━━━━━━━━━━━\n' +
         '🎌 ' + (camp.nameEn || 'Special') + ' — ' + camp.percent + '% OFF\n' +
@@ -238,12 +244,18 @@ function sendWelcomeMessage(msg) {
     }
   } catch (e) { /* 失敗しても welcome は送る */ }
 
+  // 紹介元の店名行（提携店QR経由のみ。クメール語版は Panha 校閲後に追加予定）
+  const referralLine = opts.shopName
+    ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n\n'
+    : '';
+
   const text =
     'Hello' + (name ? ' ' + name : '') + '! 👋\n' +
     'Welcome to SAMURAI MOTORS.\n' +
     '\n' +
     'សួស្តី! សូមស្វាគមន៍\n' +
     '\n' +
+    referralLine +
     campaignLine +
     '👇 Tap the "Booking" button below to reserve your slot now\n' +
     '👇 ចុចប៊ូតុង "Booking" ខាងក្រោមឆ្វេងដើម្បីកក់\n' +

@@ -285,6 +285,20 @@ function apiJobStart(body) {
       Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
+    // ── 6. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
+    try {
+      if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
+        notifyShopGroupJobPhotos(customerChatId,
+          '▶️ Job started (customer from your QR)\n' +
+          '👤 ' + (body.name || '-') + '\n' +
+          '🚗 ' + (body.carModel || '-') + '\n' +
+          '📷 Before photos ↓',
+          photoResult.blobs);
+      }
+    } catch (e) {
+      Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
+    }
+
     return { status: 'ok', jobId: jobId };
   } catch (err) {
     Logger.log('❌ apiJobStart error: ' + err + ' stack=' + (err.stack || ''));
@@ -402,9 +416,28 @@ function apiJobEnd(body) {
       Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
+    // ── 5.5. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
+    var shopRef = '';
+    try {
+      if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
+        shopRef = notifyShopGroupJobPhotos(customerChatId,
+          '✅ Job finished (customer from your QR)\n' +
+          '👤 ' + (body.name || '-') + '\n' +
+          '⏱ ' + duration + ' min\n' +
+          '📷 After photos ↓',
+          photoResult.blobs);
+      }
+    } catch (e) {
+      Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
+    }
+
     // ── 6. 決済QRを連続送信（Phase 5） ──
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
-    if (bookingId && typeof sendPaymentQR === 'function') {
+    // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
+    // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
+    if (shopRef) {
+      Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
+    } else if (bookingId && typeof sendPaymentQR === 'function') {
       try {
         var qrRes = sendPaymentQR(bookingId);
         if (!qrRes || !qrRes.ok) {
