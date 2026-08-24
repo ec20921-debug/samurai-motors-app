@@ -57,6 +57,38 @@ function getPlanPricesSheet_() {
   return sheet;
 }
 
+/**
+ * 設定タブ「【設定】キャンペーン有効」の値セル(B列)を TRUE/FALSE の
+ * 二択プルダウンにする（冪等・onOpen から毎回呼んでも安全）
+ *
+ * 手入力ミス防止(2026-08-24 Daisuke 指示)。行位置は A列のラベルで探すため
+ * 行がずれても壊れない。既に入力規則が付いていれば何もしない。
+ */
+function ensureCampaignFlagDropdown_() {
+  try {
+    const sheet = getPlanPricesSheet_();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 1) return;
+    const names = sheet.getRange(1, 1, lastRow, 1).getValues();
+    for (var i = 0; i < names.length; i++) {
+      if (String(names[i][0]).trim() === '【設定】キャンペーン有効') {
+        const cell = sheet.getRange(i + 1, 2);
+        if (cell.getDataValidation()) return; // 既に規則あり → 何もしない
+        cell.setDataValidation(
+          SpreadsheetApp.newDataValidation()
+            .requireValueInList(['TRUE', 'FALSE'], true)
+            .setAllowInvalid(false)
+            .setHelpText('TRUE=キャンペーン適用 / FALSE=通常価格')
+            .build()
+        );
+        return;
+      }
+    }
+  } catch (e) {
+    Logger.log('⚠️ ensureCampaignFlagDropdown_: ' + e);
+  }
+}
+
 // ====== ヘッダー列マッピング ======
 
 /**

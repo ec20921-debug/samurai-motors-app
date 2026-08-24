@@ -194,6 +194,9 @@ function campaignOnOpen_() {
       .addItem('🗓 配信予約のセットアップ（初回/トリガー再登録）', 'setupCampaignSchedule')
       .addItem('🔧 シート再生成（壊した時の復旧）', 'setupCampaign'))
     .addToUi();
+
+  // 設定タブ「キャンペーン有効」を TRUE/FALSE プルダウン化（冪等・失敗してもメニューには影響しない）
+  ensureCampaignFlagDropdown_();
 }
 
 function ensureCampaignDraftSheet_() {
