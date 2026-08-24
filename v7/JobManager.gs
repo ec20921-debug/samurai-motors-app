@@ -431,6 +431,15 @@ function apiJobEnd(body) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
     }
 
+    // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
+    try {
+      if (typeof recordManualJobSaleIfNeeded_ === 'function') {
+        recordManualJobSaleIfNeeded_(body, 'job_end');
+      }
+    } catch (e) {
+      Logger.log('⚠️ 手動ジョブ売上 自動計上失敗(job_end): ' + e);
+    }
+
     // ── 6. 決済QRを連続送信（Phase 5） ──
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
@@ -534,6 +543,15 @@ function apiJobFinal(body) {
           Logger.log('⚠️ 予約ステータス更新失敗: ' + e);
         }
       }
+    }
+
+    // ── 手動ジョブ売上のバックアップ計上（job_end 不達時の保険・重複キーで冪等） ──
+    try {
+      if (typeof recordManualJobSaleIfNeeded_ === 'function') {
+        recordManualJobSaleIfNeeded_(body, 'job');
+      }
+    } catch (e) {
+      Logger.log('⚠️ 手動ジョブ売上 自動計上失敗(job): ' + e);
     }
 
     // ── QR送信は apiJobEnd で実施済み。apiJobFinal では二重送信防止のため呼ばない ──
