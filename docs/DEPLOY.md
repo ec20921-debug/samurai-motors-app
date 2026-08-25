@@ -28,7 +28,15 @@ cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
 ## ⚠️ Web アプリ（doGet/doPost）変更時の本番反映 — push だけでは反映されない
 
 - `clasp push` はスクリプト本体を更新するだけで、**公開 Web アプリ（/exec）は固定バージョンのまま動き続ける**
-- ミニアプリ API（Router の action 追加・変更等）を触ったら、**既存デプロイメントを新バージョンに更新**する（URL は変わらない）:
+- **v7 は `v7/deploy.cmd` を使う（2026-08-25〜・標準手順）**。push → 本番 deploy → ping 反映確認まで一発:
+
+```bash
+cmd //c "C:/Users/drymp/dev/samurai-motors-app/v7/deploy.cmd"
+```
+
+  - BuildVersion.gs を自動更新 → push → 本番 deploymentId へ deploy → `/exec?action=ping` の `build` が新版数を返すことを機械確認（一致しなければ exit 1）
+  - 「push だけして deploy を忘れる」事故（2026-07-25 / 2026-08-24 の再発原因）を物理的に防ぐ
+- v7-operations は従来通り手動で（Web アプリ action を触った時のみ deploy 必要。時間トリガー系は push だけで HEAD が走る）:
 
 ```bash
 cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
@@ -37,7 +45,7 @@ cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
 ```
 
 - 反映確認は匿名 curl で新 action を叩く（`UNKNOWN_ACTION` が返れば未反映）。curl は `-X POST` を付けない（GAS の 302 リダイレクトに POST が強制されて 411 になる）
-- 2026-07-25 の営業ログ追加で顕在化（push 後も旧 @18 が `UNKNOWN_ACTION` → `clasp deploy` で @19 更新して解消）。**フロント HTML だけの変更なら Pages 同期のみで足りる**
+- 2026-07-25 の営業ログ追加で顕在化（push 後も旧 @18 が `UNKNOWN_ACTION` → `clasp deploy` で @19 更新して解消）。2026-08-24 に v7 側でも再発（手動売上 $10 計上漏れ）→ deploy.cmd 化 + 毎時安全網 `syncMissingManualJobSales()`（v7/ManualSales.gs・send24HoursFeedback 相乗り）+ 日報未計上チェックの三段対策。**フロント HTML だけの変更なら Pages 同期のみで足りる**
 
 ## .claspignore ポリシー
 

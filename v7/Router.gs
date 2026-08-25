@@ -39,7 +39,13 @@ function doGet(e) {
 
     switch (action) {
       case 'ping':
-        result = { ok: true, message: 'v7 router alive', date: new Date().toISOString() };
+        // build: deploy.cmd が生成する BUILD_VERSION（本番反映の機械確認用）
+        result = {
+          ok: true,
+          message: 'v7 router alive',
+          build: (typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : 'dev'),
+          date: new Date().toISOString()
+        };
         break;
 
       case 'booking_init':

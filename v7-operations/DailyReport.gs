@@ -51,6 +51,7 @@ function sendDailyReport() {
 
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
+  const uncountedSection = buildManualJobUncountedSection_(ppToday); // 手動ジョブ未計上チェック（2026-08-25 Incident対策）
   // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
   // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
   //   const taskSection = buildTaskSection_();
@@ -60,6 +61,7 @@ function sendDailyReport() {
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection +
+    (uncountedSection ? '\n\n' + uncountedSection : '') +
     (salesLogSection ? '\n\n' + salesLogSection : '');
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
@@ -139,6 +141,82 @@ function buildSalesLogSection_(ppToday) {
     return lines.join('\n');
   } catch (err) {
     Logger.log('⚠️ 日報: 車屋営業状況セクション生成失敗（スキップ）: ' + err);
+    return '';
+  }
+}
+
+// ============================================================
+//  手動ジョブ未計上チェック（2026-08-25 Incident_2026-08-24 対策 B-3）
+// ============================================================
+
+/**
+ * v7 の作業記録シートから「当日完了・料金>0・予約ID空」の手動ジョブを拾い、
+ * 予約シートに計上行（管理者メモの重複キー MS:）が無いものを ⚠️ 表示する。
+ * ゼロ件なら空文字（セクション自体を出さない）。読取失敗も空文字で日報は止めない。
+ */
+function buildManualJobUncountedSection_(ppToday) {
+  try {
+    const cfg = getConfig();
+    if (!cfg.v7SpreadsheetId) return '';
+    const ss = SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+    const jobsSheet = ss.getSheetByName('作業記録');
+    const bkSheet = ss.getSheetByName('予約');
+    if (!jobsSheet || !bkSheet) return '';
+    const ssTz = ss.getSpreadsheetTimeZone() || OPS_TZ;
+
+    // 予約シートの管理者メモを全結合（重複キー存在チェック用）
+    let memoBlob = '';
+    const bkLast = bkSheet.getLastRow();
+    if (bkLast >= 2) {
+      const bkHdr = bkSheet.getRange(1, 1, 1, bkSheet.getLastColumn()).getValues()[0];
+      const memoCol = bkHdr.indexOf('管理者メモ') + 1;
+      if (memoCol > 0) {
+        memoBlob = bkSheet.getRange(2, memoCol, bkLast - 1, 1).getValues()
+          .map(function(r) { return String(r[0] || ''); }).join('\n');
+      }
+    }
+
+    const jLast = jobsSheet.getLastRow();
+    if (jLast < 2) return '';
+    const jHdr = jobsSheet.getRange(1, 1, 1, jobsSheet.getLastColumn()).getValues()[0];
+    const jIdx = {};
+    jHdr.forEach(function(h, i) { if (h) jIdx[String(h)] = i; });
+    if (jIdx['予約ID'] === undefined || jIdx['作業状態'] === undefined ||
+        jIdx['完了時刻'] === undefined || jIdx['料金(USD)'] === undefined) return '';
+
+    const rows = jobsSheet.getRange(2, 1, jLast - 1, jobsSheet.getLastColumn()).getValues();
+    const uncounted = [];
+    rows.forEach(function(r) {
+      if (String(r[jIdx['予約ID']] || '').trim()) return;
+      if (String(r[jIdx['作業状態']] || '') !== '完了') return;
+      const amount = Number(r[jIdx['料金(USD)']]);
+      if (!(amount > 0)) return;
+      let fin = r[jIdx['完了時刻']];
+      if (!(fin instanceof Date)) fin = fin ? new Date(fin) : null;
+      if (!fin || isNaN(fin.getTime())) return;
+      if (Utilities.formatDate(fin, ssTz, 'yyyy-MM-dd') !== ppToday) return;
+
+      // 重複キー再構成（v7/ManualSales.gs と同ロジック: MS:日付:車両:金額）
+      const carCell = jIdx['車種'] !== undefined ? String(r[jIdx['車種']] || '') : '';
+      const parts = carCell.split(' / ');
+      const carModel = (parts[0] || '').trim();
+      const plate = (parts.length > 1 ? parts[1] : '').trim();
+      const dayKey = Utilities.formatDate(fin, ssTz, 'yyyyMMdd');
+      const key = 'MS:' + dayKey + ':' + (plate || carModel || '-') + ':' + amount;
+
+      // 車両情報なしはキー照合できないため常に要確認扱い
+      if ((!plate && !carModel) || memoBlob.indexOf(key) === -1) {
+        uncounted.push(String(r[jIdx['ジョブID']] || '?') + ' $' + amount +
+                       (carModel ? ' ' + carModel : ''));
+      }
+    });
+
+    if (!uncounted.length) return '';
+    return '⚠️ <b>手動ジョブ未計上チェック</b>\n' +
+      '　未計上 ' + uncounted.length + '件: ' + uncounted.join(' / ') + '\n' +
+      '　（毎時の自動同期で回復予定。翌朝も残っていれば v7 デプロイ状態を確認）';
+  } catch (err) {
+    Logger.log('⚠️ 日報: 手動ジョブ未計上チェック生成失敗（スキップ）: ' + err);
     return '';
   }
 }

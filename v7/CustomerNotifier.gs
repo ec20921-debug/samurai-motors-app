@@ -158,6 +158,24 @@ function send1HourReminders() {
  *   - 完了から 7 日以内(古すぎるものは対象外、運用切り戻し時の暴走防止)
  */
 function send24HoursFeedback() {
+  // 本体（フィードバック送信）と相乗りの安全網シンクを分離し、
+  // どちらかが失敗・早期 return してももう一方が必ず走るようにする
+  try {
+    send24HoursFeedbackCore_();
+  } catch (e) {
+    Logger.log('❌ send24HoursFeedbackCore_ error: ' + e);
+  }
+  // ── 手動ジョブ売上の毎時安全網シンク（2026-08-25 Incident 対策・相乗り実行）──
+  // 登録済みの本トリガー（毎時）は常に最新 push コードで走るため、
+  // 新規トリガー登録なしで即日有効化できる。シンクは重複キーで冪等。
+  try {
+    if (typeof syncMissingManualJobSales === 'function') syncMissingManualJobSales();
+  } catch (e) {
+    Logger.log('⚠️ syncMissingManualJobSales (相乗り) 失敗: ' + e);
+  }
+}
+
+function send24HoursFeedbackCore_() {
   const sheet = getSheet(SHEET_NAMES.BOOKINGS);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
