@@ -10,7 +10,8 @@
  * 【通知方針】
  *   - 即時通知は廃止（ノイズ削減）
  *   - 立替精算完了時のみ TaskManager.settleExpenseByTask_ から通知
- *   - 週次サマリは sendWeeklyExpenseSummary（hourlyTaskScheduler が金曜18:00 JSTで発火）
+ *   - 週次サマリ sendWeeklyExpenseSummary は ⛔ 自動送信停止中（2026-08-25 Daisuke 指示）。
+ *     手動実行のみ（debugSendWeeklyExpenseSummary）。hourlyTaskScheduler 側の呼び出しはコメントアウト済
  *
  * 【OCR について】
  *   本実装では OCR はスキップ（写真は保存するのみ）。

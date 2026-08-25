@@ -11,7 +11,7 @@
  *   - Field (role=field):   現地 PP 08:00（ロン個人DMへ）
  *   - Admin (role=admin):   現地 JST 08:00（管理グループ・タスクトピックへ）
  *   - 日報:                  JST 20:00（別実装 Phase 2e）
- *   - 週次経費サマリ:       金曜 JST 18:00（ExpenseManager.sendWeeklyExpenseSummary）
+ *   - 週次経費サマリ:       ⛔ 停止中（2026-08-25 Daisuke 指示。手動は debugSendWeeklyExpenseSummary）
  *
  *   全て hourlyTaskScheduler()（1時間トリガー）から発火。
  *
@@ -47,10 +47,11 @@ function hourlyTaskScheduler() {
   }
   // 日報は 2026-07-26 から JST 20:30 送信に変更 — 1分トリガー起点の
   // maybeSendDailyReport_()（DailyReport.gs）へ移管。ここでは呼ばない（二重送信防止）
-  // 週次経費サマリ 金曜 JST 18:00
-  if (jstHour === 18 && jstDay === '5') {
-    try { sendWeeklyExpenseSummary(); } catch (e) { Logger.log('❌ weeklyExpense: ' + e); }
-  }
+  // 週次経費サマリ（週次レビュー）は 2026-08-25 Daisuke 指示により自動送信を停止。
+  // 関数本体は残してあるので、必要なときは debugSendWeeklyExpenseSummary() を手動実行する。
+  // if (jstHour === 18 && jstDay === '5') {
+  //   try { sendWeeklyExpenseSummary(); } catch (e) { Logger.log('❌ weeklyExpense: ' + e); }
+  // }
 }
 
 /**
