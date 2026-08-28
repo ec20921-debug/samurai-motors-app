@@ -56,6 +56,13 @@ function recordCampaignSale(params) {
     if (!(amount > 0)) return { status: 'error', message: '入金額を選択してください' };
     if (!name) return { status: 'error', message: '顧客名を入力してください' };
 
+    // ウォークインQR連携（ManualCustomerLink.gs・2026-08-28）:
+    // ダッシュボードQRを先にスキャンした顧客がいれば チャットID を紐付ける
+    var linkedChatId = '';
+    if (params.linkToken && typeof consumePendingLink_ === 'function') {
+      linkedChatId = consumePendingLink_(String(params.linkToken));
+    }
+
     // キャンペーン名（日本語）をマスターから解決
     var campNameJp = campaignId;
     var listRes = manualCampaignList();
@@ -114,10 +121,18 @@ function recordCampaignSale(params) {
       }
     }
 
+    // QRスキャン済み顧客（Bot登録済み）から顧客IDを補完（電話番号未入力/不一致の場合）
+    if (linkedChatId && !customerId) {
+      try {
+        var chatCust = findCustomerRow(linkedChatId);
+        if (chatCust && chatCust.data['顧客ID']) customerId = String(chatCust.data['顧客ID']);
+      } catch (eChat) { /* best-effort */ }
+    }
+
     appendRow(SHEET_NAMES.BOOKINGS, {
       '予約ID':         bookingId,
       '顧客ID':         customerId,
-      'チャットID':     '',
+      'チャットID':     linkedChatId,
       '車種タイプ':     '',
       '車種名':         carModel,
       'プラン':         '',
@@ -159,14 +174,16 @@ function recordCampaignSale(params) {
         '🎟 ' + campNameJp + '\n' +
         '💵 $' + amount + '（清算済み）\n' +
         '👤 ' + name + (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '') +
-        (isReturning ? '\n🔁 リピーター（' + returningName + '）' : (normPhone ? '\n🆕 新規を顧客台帳へ登録' : ''));
+        (isReturning ? '\n🔁 リピーター（' + returningName + '）' : (normPhone ? '\n🆕 新規を顧客台帳へ登録' : '')) +
+        (linkedChatId ? '\n🔗 Telegram連携済み（QRスキャン）' : '');
       sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, {});
     } catch (e) {
       Logger.log('⚠️ recordCampaignSale 通知失敗（記録は成功）: ' + e);
     }
 
     return { status: 'ok', bookingId: bookingId, amount: amount, campaignNameJp: campNameJp,
-             customerId: customerId, isReturning: isReturning, returningName: returningName };
+             customerId: customerId, isReturning: isReturning, returningName: returningName,
+             linked: !!linkedChatId };
   } catch (err) {
     Logger.log('❌ recordCampaignSale error: ' + err + ' stack=' + (err.stack || ''));
     return { status: 'error', message: 'システムエラー: ' + err.message };
