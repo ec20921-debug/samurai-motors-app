@@ -191,6 +191,8 @@ function apiJobStart(body) {
   try {
     var bookingId = body.bookingId || '';
     var cfg = getConfig();
+    // 手入力ジョブのQR連携コード（2026-08-28 ManualCustomerLink.gs）
+    var linkToken = String(body.linkToken || '');
 
     // ── 1. 写真を Drive に保存 & Blob 取得 ──
     var photoResult = { urls: [], blobs: [] };
@@ -200,8 +202,14 @@ function apiJobStart(body) {
 
     // ── 2. 作業記録シートに行追加 ──
     ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
+    // QR連携: 列確保＋スキャン先行分（pendlink）の解決
+    var linkedChatId = '';
+    if (linkToken && typeof ensureJobsLinkColumns_ === 'function') {
+      ensureJobsLinkColumns_();
+      linkedChatId = consumePendingLink_(linkToken);
+    }
     var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
-    appendRow(SHEET_NAMES.JOBS, {
+    var jobRowObj = {
       'ジョブID':       jobId,
       '予約ID':         bookingId,
       'スタッフID':     '',
@@ -214,7 +222,12 @@ function apiJobStart(body) {
       '車種':           (body.carModel || '') + (body.plate ? ' / ' + body.plate : ''),
       '施工時間':       '',
       '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
-    });
+    };
+    if (linkToken) {
+      jobRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
+      if (linkedChatId) jobRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
+    }
+    appendRow(SHEET_NAMES.JOBS, jobRowObj);
 
     // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
     var bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
@@ -238,6 +251,14 @@ function apiJobStart(body) {
         if (custRow && custRow.data['トピックID']) {
           threadId = custRow.data['トピックID'];
         }
+      }
+    }
+    // 手動ジョブ: QR連携済み顧客（スキャン先行分）がいれば送信先に採用（2026-08-28）
+    if (!customerChatId && linkedChatId) {
+      customerChatId = linkedChatId;
+      var linkedCust = findCustomerRow(customerChatId);
+      if (linkedCust && linkedCust.data['トピックID']) {
+        threadId = linkedCust.data['トピックID'];
       }
     }
 
@@ -324,6 +345,8 @@ function apiJobEnd(body) {
     var bookingId = body.bookingId || '';
     var cfg = getConfig();
     var duration = body.duration || 0;
+    // 手入力ジョブのQR連携コード（2026-08-28 ManualCustomerLink.gs）
+    var linkToken = String(body.linkToken || '');
 
     // ── 1. After写真を Drive 保存 & Blob 取得 ──
     var photoResult = { urls: [], blobs: [] };
@@ -371,6 +394,40 @@ function apiJobEnd(body) {
         if (custRow && custRow.data['トピックID']) {
           threadId = custRow.data['トピックID'];
         }
+      }
+    }
+
+    // ── 3.5. 手動ジョブ（予約なし）のQR連携解決＋作業記録更新（2026-08-28） ──
+    // 従来、予約IDが無い手動ジョブは作業記録が job_end で更新されず、
+    // 顧客チャットIDも無いため写真がお客さんに届かなかった。
+    // QRスキャン済みなら 作業記録「顧客チャットID」から送信先を復元する。
+    if (!bookingId && linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
+      try {
+        var linkRows = findJobsRowsByLinkToken_(linkToken);
+        if (linkRows.length > 0) {
+          var linkJobRow = linkRows[linkRows.length - 1];
+          try {
+            updateRow(SHEET_NAMES.JOBS, linkJobRow.rowIndex, {
+              '完了時刻':     body.endTime ? new Date(body.endTime) : new Date(),
+              'After写真URL': photoResult.urls.join('\n'),
+              '作業状態':     '完了',
+              '施工時間':     duration + '分'
+            });
+          } catch (eUpd) {
+            Logger.log('⚠️ 手動ジョブ作業記録更新失敗: ' + eUpd);
+          }
+          if (!customerChatId) {
+            customerChatId = String(linkJobRow.data['顧客チャットID'] || '');
+            if (customerChatId) {
+              var linkedCustEnd = findCustomerRow(customerChatId);
+              if (linkedCustEnd && linkedCustEnd.data['トピックID']) {
+                threadId = linkedCustEnd.data['トピックID'];
+              }
+            }
+          }
+        }
+      } catch (eLink) {
+        Logger.log('⚠️ QR連携解決失敗(end): ' + eLink);
       }
     }
 
@@ -473,15 +530,13 @@ function apiJobFinal(body) {
   try {
     var bookingId = body.bookingId || '';
     var duration = body.duration || 0;
+    // 手入力ジョブのQR連携コード（2026-08-28 ManualCustomerLink.gs）
+    var linkToken = String(body.linkToken || '');
 
     // 既に作業記録がある場合は何もしない（job_end で完結済み）
-    if (bookingId) {
-      var existing = body.jobId
-        ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
-        : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
-      if (existing && existing.data['作業状態'] === '完了') {
-        return { status: 'ok', message: 'already completed' };
-      }
+    var existing = findJobRowForFinal_(bookingId, body.jobId, linkToken);
+    if (existing && existing.data['作業状態'] === '完了') {
+      return { status: 'ok', message: 'already completed' };
     }
 
     // 写真保存（まだ保存されていない場合）
@@ -497,11 +552,9 @@ function apiJobFinal(body) {
     }
 
     // 作業記録（既存更新 or 新規作成）
-    var jobRow = bookingId
-      ? (body.jobId
-          ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
-          : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId))
-      : null;
+    // 2026-08-28: 手動ジョブ（予約ID無し）も 連携コード で既存行を見つけて更新する
+    // （従来は毎回新規行が増えていた）
+    var jobRow = findJobRowForFinal_(bookingId, body.jobId, linkToken);
 
     if (jobRow) {
       var updates = {
@@ -516,8 +569,13 @@ function apiJobFinal(body) {
     } else {
       // job_start が届かなかったケース
       ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
+      var linkedChatIdFinal = '';
+      if (linkToken && typeof ensureJobsLinkColumns_ === 'function') {
+        ensureJobsLinkColumns_();
+        linkedChatIdFinal = consumePendingLink_(linkToken);
+      }
       var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
-      appendRow(SHEET_NAMES.JOBS, {
+      var finalRowObj = {
         'ジョブID':       jobId,
         '予約ID':         bookingId,
         'スタッフID':     '',
@@ -528,7 +586,12 @@ function apiJobFinal(body) {
         'Before写真URL':  beforeUrls.join('\n'),
         'After写真URL':   afterUrls.join('\n'),
         '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
-      });
+      };
+      if (linkToken) {
+        finalRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
+        if (linkedChatIdFinal) finalRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatIdFinal;
+      }
+      appendRow(SHEET_NAMES.JOBS, finalRowObj);
     }
 
     // 予約ステータス（ドロップダウン値に合わせる）
@@ -575,6 +638,29 @@ function apiJobFinal(body) {
     Logger.log('❌ apiJobFinal error: ' + err + ' stack=' + (err.stack || ''));
     return { status: 'error', message: String(err) };
   }
+}
+
+/**
+ * apiJobFinal 用: 対象の作業記録行を探す
+ * 予約経由は 予約ID/ジョブID、手動ジョブは 連携コード（2026-08-28）で解決
+ *
+ * @return {{rowIndex: number, data: Object} | null}
+ */
+function findJobRowForFinal_(bookingId, jobId, linkToken) {
+  try {
+    if (bookingId) {
+      return jobId
+        ? findRow(SHEET_NAMES.JOBS, 'ジョブID', jobId)
+        : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
+    }
+    if (linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
+      var rows = findJobsRowsByLinkToken_(linkToken);
+      return rows.length > 0 ? rows[rows.length - 1] : null;
+    }
+  } catch (e) {
+    Logger.log('⚠️ findJobRowForFinal_: ' + e);
+  }
+  return null;
 }
 
 // ====== chat_history ======

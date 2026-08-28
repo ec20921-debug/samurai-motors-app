@@ -89,6 +89,13 @@ function handleCustomerMessage(msg) {
     return;
   }
 
+  // /start link_<連携コード> / bk_<予約ID> → 手入力ジョブのQR連携（2026-08-28）
+  // 写真3方向配信＋顧客台帳・管理トピックへの紐付け（ManualCustomerLink.gs）
+  if ((text.indexOf('/start link_') === 0 || text.indexOf('/start bk_') === 0) &&
+      typeof handleManualLinkStart_ === 'function' && handleManualLinkStart_(msg, text)) {
+    return;
+  }
+
   // /start コマンド → 挨拶のみ返す（転送しない）
   if (text === '/start') {
     sendWelcomeMessage(msg);

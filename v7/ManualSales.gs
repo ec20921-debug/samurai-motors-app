@@ -41,6 +41,30 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
     var plate = String(body.plate || '').trim();
     var duration = Number(body.duration || 0);
 
+    // QR連携済み（ManualCustomerLink.gs）なら チャットID/顧客ID を売上行へ引き継ぐ
+    // （2026-08-28 台帳一元化: リマインダー・フィードバック・リピート判定に乗る）
+    var linkedChatId = String(body.chatId || '');
+    if (!linkedChatId && body.linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
+      try {
+        var linkRows = findJobsRowsByLinkToken_(String(body.linkToken));
+        for (var li = linkRows.length - 1; li >= 0; li--) {
+          var lc = String(linkRows[li].data['顧客チャットID'] || '');
+          if (lc) { linkedChatId = lc; break; }
+        }
+      } catch (eLink) {
+        Logger.log('⚠️ linkToken 解決失敗(sale): ' + eLink);
+      }
+    }
+    var linkedCustomerId = '';
+    if (linkedChatId) {
+      try {
+        var linkedCust = findCustomerRow(linkedChatId);
+        if (linkedCust && linkedCust.data['顧客ID']) {
+          linkedCustomerId = String(linkedCust.data['顧客ID']);
+        }
+      } catch (eCust) { /* best-effort */ }
+    }
+
     // 重複キー: 同日・同車両（無ければ客名）・同額なら同一ジョブとみなす
     // （job_end と job の二重発火、完了ボタン連打の両方を吸収する）
     // 日付はジョブの完了/開始時刻基準（毎時安全網シンクが翌日以降に遡及計上しても
@@ -79,8 +103,8 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
 
       appendRow(SHEET_NAMES.BOOKINGS, {
         '予約ID':         newBookingId,
-        '顧客ID':         '',
-        'チャットID':     '',
+        '顧客ID':         linkedCustomerId,
+        'チャットID':     linkedChatId,
         '車種タイプ':     String(body.vehicleType || ''),
         '車種名':         carModel,
         'プラン':         String(body.plan || ''),
@@ -207,6 +231,10 @@ function syncMissingManualJobSales() {
       if (!(start instanceof Date) || isNaN(start.getTime())) start = null;
       var durMin = start ? Math.max(0, Math.round((fin.getTime() - start.getTime()) / 60000)) : 0;
 
+      // QR連携済みなら顧客チャットIDを引き継ぐ（列が無い環境では空のまま）
+      var linkedChat = idx['顧客チャットID'] !== undefined
+        ? String(r[idx['顧客チャットID']] || '').trim() : '';
+
       var created = recordManualJobSaleIfNeeded_({
         bookingId: '',
         amount: amount,
@@ -219,7 +247,8 @@ function syncMissingManualJobSales() {
         vehicleType: '',
         plan: '',
         glassOption: '',
-        building: ''
+        building: '',
+        chatId: linkedChat
       }, 'hourly_sync:' + jobId);
       if (created) count++;
     });
