@@ -263,11 +263,14 @@ function apiJobStart(body) {
     }
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
+    // 有償の手動ジョブ（予約なし・料金>0）のみ費用を表示（無償は金額を出さない・2026-08-28 A案）
+    var manualPaidStart = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
     if (customerChatId) {
       try {
         var custText =
           '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
-          'Your car wash has started!\n\n' +
+          'Your car wash has started!\n' +
+          (manualPaidStart > 0 ? '\n💵 តម្លៃ / Price: ' + manualPaidStart + '$\n' : '\n') +
           '📸 រូបថតមុនពេលលាង / Before photos ↓';
         sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
       } catch (e) {
@@ -432,12 +435,15 @@ function apiJobEnd(body) {
     }
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
+    // 有償の手動ジョブ（予約なし・料金>0）のみ合計表示＋支払いご案内（無償は送らない・2026-08-28 A案）
+    var manualPaidEnd = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
     if (customerChatId) {
       try {
         var custText =
           '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\n' +
           'Your car wash is complete!\n\n' +
           '⏱ ' + duration + ' នាទី / minutes\n' +
+          (manualPaidEnd > 0 ? '💵 សរុប / Total: ' + manualPaidEnd + '$\n' : '') +
           '📸 រូបថតក្រោយពេលលាង / After photos ↓';
         sendMessage(BOT_TYPE.BOOKING, customerChatId, custText);
       } catch (e) {
@@ -448,6 +454,14 @@ function apiJobEnd(body) {
           sendPhotoAlbum(BOT_TYPE.BOOKING, customerChatId, photoResult.blobs, '', {});
         } catch (e) {
           Logger.log('⚠️ 顧客写真送信失敗: ' + e);
+        }
+      }
+      // 支払いのご案内（ABA QR・案内型 = 台帳の決済状態は触らない）
+      if (manualPaidEnd > 0 && typeof sendManualPaymentInfo_ === 'function') {
+        try {
+          sendManualPaymentInfo_(customerChatId, manualPaidEnd);
+        } catch (ePay) {
+          Logger.log('⚠️ 支払いご案内送信失敗: ' + ePay);
         }
       }
     }

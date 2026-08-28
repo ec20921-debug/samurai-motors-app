@@ -155,7 +155,25 @@ function linkTokenScan_(token, chatId) {
   // 撮影済み写真のキャッチアップ送信（スキャンが作業後でも届く）
   var urls = collectJobPhotoUrls_(rows);
   var sent = sendCatchupPhotos_(chatId, urls.before, urls.after);
-  return { mode: 'job', bookingId: bookingId, before: sent.before, after: sent.after };
+
+  // 有償の手動ジョブが完了済みなら支払いのご案内も送る（無償はQRを送らない・2026-08-28 A案）
+  var paidAmount = 0;
+  for (var pi = rows.length - 1; pi >= 0; pi--) {
+    var pd = rows[pi].data;
+    if (String(pd['予約ID'] || '').trim()) continue;      // 予約経由は既存の決済フロー管轄
+    if (String(pd['作業状態'] || '') !== '完了') continue; // 作業中は料金未確定
+    var amt = Number(pd['料金(USD)']);
+    if (amt > 0) { paidAmount = amt; break; }
+  }
+  if (paidAmount > 0) {
+    try {
+      sendManualPaymentInfo_(chatId, paidAmount);
+    } catch (ePay) {
+      Logger.log('⚠️ 支払いご案内送信失敗(catch-up): ' + ePay);
+    }
+  }
+
+  return { mode: 'job', bookingId: bookingId, before: sent.before, after: sent.after, paid: paidAmount };
 }
 
 // ====== bk_<予約ID>（キャンペーン売上・手動特価予約） ======
@@ -427,6 +445,39 @@ function driveUrlsToBlobs_(urls) {
   return blobs;
 }
 
+// ====== 支払いのご案内（有償の手動ジョブのみ） ======
+
+/**
+ * 有償の手動ジョブ向けに ABA QR 画像＋合計金額の「支払いのご案内」を送る
+ *
+ * 【A案・ご案内型（2026-08-28 Daisuke 裁可）】
+ *   - 台帳の決済状態は一切触らない（手動売上は従来通り「清算済み」で自動計上、
+ *     受領確認は現場のロン君が行う）
+ *   - スクショ返送依頼はしない（sendPaymentQR の追跡フローとは別物）
+ *   - 無償ジョブ（amount<=0）には送らない（呼び出し側で分岐＋本関数でも防衛）
+ *
+ * @param {string} chatId
+ * @param {number} amount - USD
+ */
+function sendManualPaymentInfo_(chatId, amount) {
+  if (!(Number(amount) > 0)) return; // 防衛: 無償にはQRを送らない
+  var qr = (typeof getActiveQR === 'function') ? getActiveQR() : null;
+  var caption =
+    '💰 ការទូទាត់ប្រាក់ / Payment\n' +
+    '━━━━━━━━━━━━━━━━━\n' +
+    '💵 សរុប / Total: ' + Number(amount) + '$\n' +
+    (qr && qr.bank ? '🏦 ' + qr.bank + '\n' : '') +
+    '━━━━━━━━━━━━━━━━━\n' +
+    '📱 សូមស្កេន QR ដើម្បីបង់ប្រាក់ ឬ បង់ជាសាច់ប្រាក់ក៏បានដែរ\n' +
+    '📱 Scan QR to pay, or pay by cash — both OK';
+  if (qr && qr.imageUrl && typeof sendQRImage === 'function') {
+    sendQRImage(chatId, qr.imageUrl, caption);
+  } else {
+    // QR未設定でも金額のご案内だけは送る
+    sendMessage(BOT_TYPE.BOOKING, chatId, caption);
+  }
+}
+
 // ====== 管理グループ通知 ======
 
 /**
@@ -444,7 +495,8 @@ function notifyLinkResultToAdmin_(topic, customer, kind, key, result) {
       case 'job':
         body = '✅ 連携完了（作業記録）\n' +
                (result.bookingId ? '🆔 ' + result.bookingId + '\n' : '') +
-               '📸 顧客へ送信: Before ' + result.before + '枚 / After ' + result.after + '枚';
+               '📸 顧客へ送信: Before ' + result.before + '枚 / After ' + result.after + '枚' +
+               (result.paid > 0 ? '\n💵 支払いご案内送付: ' + result.paid + '$（案内型・台帳は現場清算のまま）' : '');
         break;
       case 'booking':
         body = '✅ 連携完了（予約 ' + result.bookingId + '）\n' +
