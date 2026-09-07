@@ -425,8 +425,8 @@ function pickCampaignText_(draft, recipient) {
   const en = draft.textEn || '';
   if (draft.audience === CAMPAIGN_LANG_KM_ONLY) return km || en;
   if (draft.audience === CAMPAIGN_LANG_EN_ONLY) return en || km;
-  // デフォルト = クメール語＋英語を1通にまとめる
-  if (km && en) return km + '\n\n━━━━━━━━━━\n\n' + en;
+  // デフォルト = クメール語＋英語をまとめる（長い場合は送信時に言語ごとへ自動分割）
+  if (km && en) return km + CAMPAIGN_LANG_SEPARATOR + en;
   return km || en;
 }
 
@@ -702,6 +702,55 @@ function campaignUrlToBlob_(url) {
  * テキスト1件送信（429リトライ込み）
  */
 function sendCampaignText_(chatId, text) {
+  // Telegram の sendMessage は 4096 字上限。超えると 400 が返り本文だけ届かない
+  // （写真は best-effort で先に送るため「画像だけ届いて説明が無い」最悪形になる）。
+  // クメール語＋英語の結合本文は容易に超えるので、言語の区切りで分けて順に送る。
+  const parts = splitCampaignText_(text);
+  let last = { ok: false, description: '本文が空' };
+  for (let i = 0; i < parts.length; i++) {
+    last = sendCampaignTextChunk_(chatId, parts[i]);
+    if (!classifyTgResult_(last).ok) return last;   // 途中で失敗したらその結果を返す
+    if (i < parts.length - 1) Utilities.sleep(300); // 連投の順序を安定させる
+  }
+  return last;
+}
+
+/**
+ * 本文を Telegram の 4096 字上限に収まる塊に分ける。
+ * まず言語結合の区切り（クメール語 / 英語）で割り、それでも長い塊は
+ * 段落 → 改行 の順に、できるだけ自然な位置で切る。
+ */
+function splitCampaignText_(text) {
+  const LIMIT = 4000;  // 4096 の安全マージン
+  const t = String(text || '');
+  if (!t) return [];
+  if (t.length <= LIMIT) return [t];  // 収まるなら従来どおり1通で送る（見え方を変えない）
+  const out = [];
+  const blocks = t.split(CAMPAIGN_LANG_SEPARATOR);
+  for (let i = 0; i < blocks.length; i++) {
+    let b = blocks[i];
+    while (b.length > LIMIT) {
+      const head = b.substring(0, LIMIT);
+      let cut = head.lastIndexOf('\n\n');
+      if (cut < LIMIT / 2) cut = head.lastIndexOf('\n');
+      if (cut < LIMIT / 2) cut = LIMIT;
+      out.push(trimEdges_(b.substring(0, cut)));
+      b = trimEdges_(b.substring(cut));
+    }
+    if (b) out.push(b);
+  }
+  return out.length ? out : [t];
+}
+
+/** 前後の空白・改行を落とす（GAS の String.trim で足りるが意図を明示） */
+function trimEdges_(s) {
+  return String(s == null ? '' : s).trim();
+}
+
+/**
+ * 本文1通ぶんを送る（429 リトライ込み）。分割送信の1チャンクに相当。
+ */
+function sendCampaignTextChunk_(chatId, text) {
   for (let attempt = 0; attempt < 2; attempt++) {
     // 2026-06-23: リンクプレビューを有効化（YouTube等の動画リンクをサムネ付きで見せるため）。
     // URLが無い本文では何も起きないので、リンク有り campaign のみ効果がある。

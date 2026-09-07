@@ -21,6 +21,8 @@ const CAMPAIGN_LEDGER_SHEET = 'キャンペーン台帳';     // 1配信=1行（
 // === 設定 ===
 const CAMPAIGN_SEND_INTERVAL_MS = 50;   // 送信間ウェイト（20msg/秒）
 const CAMPAIGN_MAX_RECIPIENTS   = 2000; // 1回の上限（6分制限の安全マージン）
+// クメール語と英語をまとめる時の区切り。送信時はここで分割して 4096 字上限を回避する
+const CAMPAIGN_LANG_SEPARATOR   = '\n\n━━━━━━━━━━\n\n';
 
 // === 「言語」セル（B4）の選択肢 ===
 // 2026-05-30 Daisuke 指示: クメール語＋英語を1通にまとめて全員に送るのがデフォルト。
