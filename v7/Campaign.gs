@@ -471,6 +471,9 @@ function executeBroadcast_(draft, recipients) {
   const sentRowIndexes = [];
   // 動画は初回アップロードで得た file_id を再利用（再アップロード回避→6分制限のタイムアウト防止）
   const videoCache = { id: '' };
+  // 写真も同じく、初回だけ Drive 取得＋アップロードし、以降は file_id を再利用する。
+  // （2026-09-07 修正: 以前はキャッシュを渡しておらず、宛先ごとに再アップロードしていた）
+  const photoCache = {};
 
   for (let i = 0; i < recipients.length; i++) {
     const r = recipients[i];
@@ -487,7 +490,7 @@ function executeBroadcast_(draft, recipients) {
 
     // 2026-06-01 新方式: 画像(最大3枚)アルバム＋動画は best-effort で先に送り、
     // 本文は別テキスト(最大4096字)で送る（写真キャプション1024字制限を回避）。ボイスも送る。
-    const mainRes = deliverCampaign_(r.chatId, draft, text, videoCache);
+    const mainRes = deliverCampaign_(r.chatId, draft, text, videoCache, photoCache);
     const cls = classifyTgResult_(mainRes);
 
     if (cls.ok) {
@@ -545,10 +548,12 @@ function executeBroadcast_(draft, recipients) {
  * @param {Object} draft  {textKm,textEn,imageUrl,imageUrls,voiceUrl,videoUrl}
  * @param {string} text   送る本文（言語結合済み）
  * @param {Object} [cache] 動画 file_id 再利用キャッシュ {id:''}
+ * @param {Object} [photoCache] 写真 file_id / Blob 再利用キャッシュ {ids:[],blobs:[]}
  * @return {Object} メイン送信の Telegram 結果（classifyTgResult_ 用）
  */
-function deliverCampaign_(chatId, draft, text, cache) {
+function deliverCampaign_(chatId, draft, text, cache, photoCache) {
   cache = cache || { id: '' };
+  photoCache = photoCache || {};
   var images = (draft.imageUrls && draft.imageUrls.length)
     ? draft.imageUrls
     : (draft.imageUrl ? [draft.imageUrl] : []);
@@ -560,14 +565,14 @@ function deliverCampaign_(chatId, draft, text, cache) {
       try { sendCampaignVideo_(chatId, draft.videoUrl, '', cache); }
       catch (e) { Logger.log('⚠️ video best-effort 失敗 chatId=' + chatId + ': ' + e); }
     } else if (images.length) {
-      try { sendCampaignPhotos_(chatId, images, ''); }
+      try { sendCampaignPhotos_(chatId, images, '', photoCache); }
       catch (e) { Logger.log('⚠️ photos best-effort 失敗 chatId=' + chatId + ': ' + e); }
     }
     mainRes = sendCampaignText_(chatId, text);
   } else {
     // 本文なし → ビジュアルをメインに
     if (draft.videoUrl)      mainRes = sendCampaignVideo_(chatId, draft.videoUrl, '', cache);
-    else if (images.length)  mainRes = sendCampaignPhotos_(chatId, images, '');
+    else if (images.length)  mainRes = sendCampaignPhotos_(chatId, images, '', photoCache);
     else                     mainRes = { ok: false, description: '本文・添付なし' };
   }
 
