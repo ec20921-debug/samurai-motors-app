@@ -242,7 +242,9 @@ function getActiveOptions() {
 }
 
 /**
- * 「メニュー」統合シートから GLASS 行を読む(種別=GLASS のみ抽出)
+ * 「メニュー」統合シートから WASH 以外の行を読む(種別=GLASS / HEADLIGHT / ...)
+ * Menu v4 (2026-09-22): HEADLIGHT 追加に伴い、GLASS 固定から「WASH 以外すべて」に拡張。
+ * 戻り値に kind(種別) を含め、ミニアプリ側でカテゴリ分けに使う。
  */
 function readGlassFromMenuSheet_() {
   const ss = getSpreadsheet();
@@ -258,14 +260,15 @@ function readGlassFromMenuSheet_() {
   data.forEach(function(row) {
     const code = String(row[0] || '').trim();
     if (!code) return;
-    const kind = String(row[1] || '').trim();
-    if (kind !== 'GLASS') return; // WASH は getActivePlans 側
+    const kind = String(row[1] || '').trim().toUpperCase();
+    if (!kind || kind === 'WASH') return; // WASH は getActivePlans 側
     const active = row[9];
     const isActive = (active === true || String(active).toUpperCase() === 'TRUE');
     if (!isActive) return;
 
     out.push({
       code:           code,
+      kind:           kind,                      // 'GLASS' / 'HEADLIGHT' など(カテゴリ)
       nameEn:         String(row[2] || ''),
       nameKm:         String(row[3] || ''),
       nameJp:         String(row[4] || ''),
@@ -307,6 +310,7 @@ function readGlassFromLegacyOptions_() {
 
     options.push({
       code:           code,
+      kind:           'GLASS',                   // 旧オプションシートは GLASS のみ
       nameEn:         String(row[1] || ''),
       nameKm:         String(row[2] || ''),
       nameJp:         String(row[3] || ''),
@@ -332,6 +336,52 @@ function findOptionByCode(code) {
     if (options[i].code === code) return options[i];
   }
   return null;
+}
+
+/**
+ * オプションコード群(配列 or カンマ区切り文字列)を解決して option オブジェクト配列にする
+ * Menu v4 (2026-09-22): GLASS + HEADLIGHT など複数同時選択に対応
+ *
+ * @param {Array<string>|string} codes - ['GLASS_3','HEADLIGHT'] または 'GLASS_3,HEADLIGHT'
+ * @return {{ok:boolean, options:Array<Object>, invalid?:string}}
+ */
+function resolveOptionCodes_(codes) {
+  let list = [];
+  if (Array.isArray(codes)) list = codes;
+  else if (typeof codes === 'string' && codes.trim() !== '') list = codes.split(',');
+
+  const seen = {};
+  const out = [];
+  for (let i = 0; i < list.length; i++) {
+    const code = String(list[i] || '').trim();
+    if (!code || seen[code]) continue;
+    seen[code] = true;
+    const opt = findOptionByCode(code);
+    if (!opt) return { ok: false, options: [], invalid: code };
+    out.push(opt);
+  }
+  return { ok: true, options: out };
+}
+
+/**
+ * 種別(kind)から通知・カレンダー用の表示ラベルを返す
+ */
+function optionKindLabel_(opt) {
+  const kind = String((opt && opt.kind) || 'GLASS').toUpperCase();
+  if (kind === 'HEADLIGHT') return 'HEADLIGHT';
+  if (kind === 'GLASS') return 'GLASS';
+  return kind;
+}
+
+/**
+ * 顧客向け表示名: 'SAMURAI GLASS (3 Windows + Mirrors)' / 'SAMURAI HEADLIGHT'
+ * 品目名がカテゴリ名と同じ(単品カテゴリ)なら括弧を付けない
+ */
+function optionDisplayName_(opt) {
+  const cat = 'SAMURAI ' + optionKindLabel_(opt);
+  const name = String((opt && opt.nameEn) || '').trim();
+  if (!name || name.toUpperCase() === cat) return cat;
+  return cat + ' (' + name + ')';
 }
 
 /**
@@ -445,11 +495,12 @@ const CAMBODIA_HOLIDAYS = [
   '2027-03-08'
 ];
 
-function findAvailableSlots(dateStr, planLetter, miniappVt, glassCode) {
+function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes) {
   // Menu v2.1 (2026-05-08): GLASS 単体予約に対応するため、plan/glass それぞれを optional 化
-  // plan または glass の少なくとも一方は必要、両方なし = エラー
+  // Menu v4 (2026-09-22): optionCodes は複数(カンマ区切り or 配列)。GLASS + HEADLIGHT 同時も可
+  // plan または option の少なくとも一方は必要、両方なし = エラー
   let baseDuration = 0;
-  let glassDuration = 0;
+  let optionDuration = 0;
 
   if (planLetter && String(planLetter).trim() !== '') {
     const plan = findPlanByLetter(planLetter);
@@ -457,14 +508,14 @@ function findAvailableSlots(dateStr, planLetter, miniappVt, glassCode) {
     baseDuration = getDurationFor(plan, miniappVt);
   }
 
-  if (glassCode) {
-    const glassOpt = (typeof findOptionByCode === 'function') ? findOptionByCode(glassCode) : null;
-    if (glassOpt) {
-      glassDuration = getOptionDurationFor(glassOpt, miniappVt);
-    }
+  if (optionCodes) {
+    const resolved = resolveOptionCodes_(optionCodes);
+    resolved.options.forEach(function(opt) {
+      optionDuration += getOptionDurationFor(opt, miniappVt);
+    });
   }
 
-  const duration = baseDuration + glassDuration;
+  const duration = baseDuration + optionDuration;
   if (!duration) return { ok: false, error: 'INVALID_DURATION' };
 
   // ── 定休日チェック（日曜）──
@@ -595,22 +646,31 @@ function createBooking(params) {
       if (!plan) return { status: 'error', message: 'プラン不正: ' + params.planLetter };
     }
 
-    // ── 1-b. GLASS オプション(Menu v2)の解決 ──
-    let glassOpt = null;
-    if (params.glassOption) {
-      glassOpt = findOptionByCode(params.glassOption);
-      if (!glassOpt) {
-        return { status: 'error', message: 'オプション不正: ' + params.glassOption };
-      }
-      // ⚠️ 2026-05-08: requiresPlan の厳格チェックは緩和(GLASS 単体注文を許容するため)
-      // GLASS は WASH 推奨だが必須ではない、運用上の整合性は管理側で確認
+    // ── 1-b. オプション(GLASS / HEADLIGHT 等)の解決 ──
+    // Menu v4 (2026-09-22): optionCodes(配列) を正とし、旧 glassOption(単一) も互換で受ける
+    const codeList = [];
+    if (Array.isArray(params.optionCodes)) {
+      params.optionCodes.forEach(function(c) { if (c) codeList.push(String(c)); });
+    } else if (typeof params.optionCodes === 'string' && params.optionCodes.trim() !== '') {
+      params.optionCodes.split(',').forEach(function(c) { if (c.trim()) codeList.push(c.trim()); });
     }
+    if (params.glassOption && codeList.indexOf(String(params.glassOption)) < 0) {
+      codeList.push(String(params.glassOption));
+    }
+    const resolved = resolveOptionCodes_(codeList);
+    if (!resolved.ok) {
+      return { status: 'error', message: 'オプション不正: ' + resolved.invalid };
+    }
+    const options = resolved.options;             // [{code, kind, nameEn, ...}]
+    const optionCodesCsv = options.map(function(o) { return o.code; }).join(',');
+    // 互換: 既存の通知・ログが参照する「GLASS 1件」(複数 GLASS は想定外、先頭のみ)
+    const glassOpt = options.filter(function(o) { return optionKindLabel_(o) === 'GLASS'; })[0] || null;
 
     // ── 1-b'. 「最低 1 つ」のバリデーション ──
-    if (!plan && !glassOpt) {
+    if (!plan && options.length === 0) {
       return {
         status: 'error',
-        message: 'SAMURAI WASH か SAMURAI GLASS のどちらか1つは選択してください。'
+        message: 'SAMURAI WASH / GLASS / HEADLIGHT のいずれか1つは選択してください。'
       };
     }
 
@@ -622,14 +682,23 @@ function createBooking(params) {
 
     // ── 1-c. 料金・所要時間の合算 ──
     const baseDuration = plan ? getDurationFor(plan, vehicleType) : 0;
-    const glassDuration = getOptionDurationFor(glassOpt, vehicleType);
-    const duration = baseDuration + glassDuration;
+    let optionDuration = 0;
+    let optionAmount = 0;
+    const optionLines = [];                       // [{opt, amount, duration}] 通知・カレンダー用
+    options.forEach(function(opt) {
+      const d = getOptionDurationFor(opt, vehicleType);
+      const a = getOptionPriceFor(opt, vehicleType);
+      optionDuration += d;
+      optionAmount += a;
+      optionLines.push({ opt: opt, amount: a, duration: d });
+    });
+    const duration = baseDuration + optionDuration;
 
     const baseAmount = plan ? getBasePriceFor(plan, vehicleType) : 0;
-    const glassAmount = getOptionPriceFor(glassOpt, vehicleType);
+    const glassAmount = getOptionPriceFor(glassOpt, vehicleType); // 互換(ファネルログ等)
     // 店舗作業は出張料ゼロ、出張作業のみ料金設定シートの「出張料」を加算
     const dispatchFeeAmount = (serviceType === '店舗') ? 0 : getDispatchFeeFor(vehicleType);
-    const serviceSubtotal = baseAmount + glassAmount;            // 割引対象(WASH+GLASS)
+    const serviceSubtotal = baseAmount + optionAmount;           // 割引対象(WASH+GLASS+HEADLIGHT)
     const subtotal = serviceSubtotal + dispatchFeeAmount;        // 表示上の合計(出張料含む、割引前)
 
     // ── 1-d. キャンペーン割引(Menu v2 / 2026-05-06: GRAND OPENING -30%) ──
@@ -646,7 +715,7 @@ function createBooking(params) {
     // plan が無い(GLASS-only)場合は findAvailableSlots が無効。簡易検証のみ実施。
     // 注: GLASS-only の race condition リスクは低ボリュームのため運用上許容、将来拡張。
     if (plan) {
-      const avail = findAvailableSlots(params.date, params.planLetter, vehicleType);
+      const avail = findAvailableSlots(params.date, params.planLetter, vehicleType, optionCodesCsv);
       if (!avail.ok) return { status: 'error', message: '空き枠取得失敗: ' + avail.error };
       if (avail.slots.indexOf(params.startTime) < 0) {
         return {
@@ -678,24 +747,28 @@ function createBooking(params) {
     // ── 6. カレンダー登録 ──
     const sysCfg = getConfig();
     const calendar = CalendarApp.getCalendarById(sysCfg.bookingCalendarId);
-    // タイトル / ラベル: plan / glassOpt の有無で分岐(GLASS-only も対応)
-    const planCodeForTitle = plan ? plan.letter : (glassOpt ? glassOpt.code : '');
+    // タイトル / ラベル: plan / options の有無で分岐(WASH なしの単体予約も対応)
     const titleParts = [];
     if (plan) titleParts.push(plan.letter);
-    if (glassOpt) titleParts.push(glassOpt.code);
+    options.forEach(function(o) { titleParts.push(o.code); });
     const eventTitle = '【' + titleParts.join('+') + '】' +
                        (params.name || 'Guest') + ' / ' + normalizeVehicleType(vehicleType);
 
     const planDescLine = plan ? ('プラン: ' + plan.planFull + '\n') : '';
+    const optionDescLines = optionLines.map(function(l) {
+      return optionKindLabel_(l.opt) + ': ' + l.opt.nameEn + ' (' + l.opt.code + ')\n';
+    }).join('');
+    const calPriceParts = [];
+    if (plan) calPriceParts.push('WASH $' + baseAmount);
+    optionLines.forEach(function(l) { calPriceParts.push(optionKindLabel_(l.opt) + ' $' + l.amount); });
     const calendarDesc =
       '予約ID: ' + bookingId + '\n' +
       planDescLine +
-      (glassOpt ? 'オプション: ' + glassOpt.nameEn + ' (' + glassOpt.code + ')\n' : '') +
+      optionDescLines +
       '車種: ' + vehicleType + '\n' +
       '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
       '場所: ' + params.location + '\n' +
-      '料金: ' + (plan ? '$' + baseAmount : '') +
-      (glassOpt ? (plan ? ' + ' : '') + 'GLASS $' + glassAmount : '') +
+      '料金: ' + calPriceParts.join(' + ') +
       ' + 出張料 $' + dispatchFeeAmount +
       ' = 合計 $' + amount;
     const event = calendar.createEvent(eventTitle, startDt, endDt, {
@@ -712,7 +785,7 @@ function createBooking(params) {
       '車種タイプ':     normalizeVehicleType(vehicleType),
       '車種名':         '',
       'プラン':         plan ? plan.planFull : '',
-      'オプション':     glassOpt ? glassOpt.code : '',
+      'オプション':     optionCodesCsv,                              // 'GLASS_3' / 'GLASS_3,HEADLIGHT' / ''
       '予約日':         ymdToSheetDate_(params.date),  // 文字列でなく日付値で記録（ダッシュボード $0 集計バグ対策）
       '予約時刻':       params.startTime,
       '所要時間(分)':   duration,
@@ -747,6 +820,7 @@ function createBooking(params) {
       logFunnelEvent(params.chatId, 'booking_completed', 'booking.html', bookingId, {
         plan: plan ? plan.letter : null,
         glass: glassOpt ? glassOpt.code : null,
+        options: optionCodesCsv || null,
         amount: amount,
         vehicleType: vehicleType,
         serviceType: serviceType
@@ -759,8 +833,9 @@ function createBooking(params) {
       chatId: params.chatId,
       name: params.name,
       plan: plan,
-      glassOption: glassOpt,
-      glassAmount: glassAmount,
+      glassOption: glassOpt,        // 互換(単一 GLASS)
+      glassAmount: glassAmount,     // 互換
+      options: optionLines,         // Menu v4: [{opt, amount, duration}] 全オプション
       vehicleType: vehicleType,
       date: params.date,
       startTime: params.startTime,
@@ -813,14 +888,28 @@ function notifyBookingCreated(info) {
   const discount = (typeof info.discountAmount === 'number') ? info.discountAmount : 0;
   const camp = info.campaign || null;
   const glassOpt = info.glassOption || null;
-  // plan が null の場合は GLASS 単体予約
+  // Menu v4 (2026-09-22): options = [{opt, amount, duration}] 全オプション(GLASS/HEADLIGHT)。
+  // 旧呼び出し(glassOption 単一)との互換のため、options 未指定なら glassOption から組み立てる
+  const optionLines = Array.isArray(info.options)
+    ? info.options
+    : (glassOpt ? [{ opt: glassOpt, amount: glassAmt, duration: 0 }] : []);
+  const optionAmtTotal = optionLines.reduce(function(s, l) { return s + (Number(l.amount) || 0); }, 0);
+  // plan が null の場合は WASH なしの単体予約
   const hasPlan = !!(info.plan);
-  const planDisplayName = hasPlan
-    ? ((info.plan.jp ? info.plan.jp + ' ' : '') + info.plan.name)
-    : (glassOpt ? 'SAMURAI GLASS (' + glassOpt.nameEn + ')' : 'SAMURAI Service');
+  // 顧客向け表示名: 各サービスは対等(GLASS は add-on ではなく単品メニュー)
+  const serviceNames = [];
+  if (hasPlan) serviceNames.push(info.plan.name || 'SAMURAI WASH');
+  optionLines.forEach(function(l) {
+    serviceNames.push(optionDisplayName_(l.opt));
+  });
+  const planDisplayName = serviceNames.length ? serviceNames.join(' + ') : 'SAMURAI Service';
+
+  // 対外(顧客向け)の USD 表記は「数字+$」後置で統一(カンボジア慣習)
+  const usd = function(n) { return (typeof n === 'number' ? n : Number(n) || 0) + '$'; };
+  const usd2 = function(n) { return (Number(n) || 0).toFixed(2) + '$'; };
 
   // 案a: サービス料金のみ -30%、Delivery は通常価格
-  const serviceSubtotal = baseAmt + glassAmt;
+  const serviceSubtotal = baseAmt + optionAmtTotal;
   const serviceAfterDiscount = serviceSubtotal - discount;
 
   let customerText =
@@ -828,36 +917,34 @@ function notifyBookingCreated(info) {
     '━━━━━━━━━━━━━━━━\n' +
     '📋 ' + info.bookingId + '\n' +
     '📦 Service: ' + planDisplayName + '\n';
-  if (glassOpt && hasPlan) {
-    customerText += '✨ Add-on: ' + glassOpt.nameEn + '\n';
-  }
   customerText +=
     '📅 ' + info.date + ' ' + info.startTime + ' - ' + info.endTime + '\n' +
     '━━━━━━━━━━━━━━━━\n';
   // WASH 行(plan ありの時だけ)
   if (hasPlan) {
-    customerText += '💰 ' + (info.plan.name || 'WASH') + ':   $' + baseAmt + '\n';
+    customerText += '💰 ' + (info.plan.name || 'WASH') + ':   ' + usd(baseAmt) + '\n';
   }
-  // GLASS 行(glassOpt ありの時だけ)
-  if (glassOpt) {
-    customerText += '✨ GLASS (' + glassOpt.nameEn + '):  $' + glassAmt + '\n';
-  }
+  // オプション行(GLASS / HEADLIGHT ごとに1行)
+  optionLines.forEach(function(l) {
+    const icon = (optionKindLabel_(l.opt) === 'HEADLIGHT') ? '💡' : '✨';
+    customerText += icon + ' ' + optionDisplayName_(l.opt).replace(/^SAMURAI /, '') + ':  ' + usd(l.amount) + '\n';
+  });
   if (camp && discount > 0) {
     customerText +=
       '─────────────────\n' +
-      '📊 Service subtotal:        $' + serviceSubtotal.toFixed(2) + '\n' +
-      '🎌 ' + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -$' + discount.toFixed(2) + '\n' +
-      '✓ Service (after discount): $' + serviceAfterDiscount.toFixed(2) + '\n';
+      '📊 Service subtotal:        ' + usd2(serviceSubtotal) + '\n' +
+      '🎌 ' + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -' + usd2(discount) + '\n' +
+      '✓ Service (after discount): ' + usd2(serviceAfterDiscount) + '\n';
   }
   // サービスタイプによってデリバリー費の表示を分岐
   if (isInStore) {
-    customerText += '🏪 In-store service / សេវានៅហាង:  $0.00\n';
+    customerText += '🏪 In-store service / សេវានៅហាង:  0$\n';
   } else {
-    customerText += '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  $' + feeAmt + '\n';
+    customerText += '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  ' + usd(feeAmt) + '\n';
   }
   customerText +=
     '─────────────────\n' +
-    '💵 Total / សរុប:                  $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount) + '\n' +
+    '💵 Total / សរុប:                  ' + (typeof info.amount === 'number' ? usd2(info.amount) : info.amount + '$') + '\n' +
     '━━━━━━━━━━━━━━━━\n';
 
   // ── 店舗作業: 来店案内 / 出張作業: 通常フロー ──
@@ -949,18 +1036,18 @@ function notifyBookingCreated(info) {
   if (hasPlan) {
     adminText += 'プラン: ' + info.plan.planFull + '\n';
   } else {
-    adminText += '⚠️ プラン: なし (GLASS 単体予約)\n';
+    adminText += '⚠️ プラン: なし (WASH なしの単体予約)\n';
   }
-  if (glassOpt) {
-    adminText += 'オプション: ' + glassOpt.nameEn + ' (' + glassOpt.code + ')\n';
-  }
+  optionLines.forEach(function(l) {
+    adminText += optionKindLabel_(l.opt) + ': ' + l.opt.nameEn + ' (' + l.opt.code + ')\n';
+  });
   adminText +=
     '車種: ' + info.vehicleType + '\n' +
     '日時: ' + info.date + ' ' + info.startTime + '〜' + info.endTime + ' (' + info.duration + '分)\n';
-  // 料金内訳: hasPlan / glassOpt の有無で組み立て
+  // 料金内訳: hasPlan / options の有無で組み立て
   const priceParts = [];
   if (hasPlan) priceParts.push('WASH $' + baseAmt);
-  if (glassOpt) priceParts.push('GLASS $' + glassAmt);
+  optionLines.forEach(function(l) { priceParts.push(optionKindLabel_(l.opt) + ' $' + l.amount); });
   const priceJoin = priceParts.join(' + ');
 
   // サービスタイプによって料金内訳の表示を分岐

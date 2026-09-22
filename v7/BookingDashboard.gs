@@ -583,13 +583,15 @@ function buildBkMenuV2Analytics_(sh, row, ss) {
     sh.getRange(c1 + i, 3).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat(r[2]);
   });
 
-  // ── ✨ GLASS 構成 (E-F) ──
-  sh.getRange(row, 5, 1, 2).setValues([['✨ GLASS 構成', '件数']])
+  // ── ✨ GLASS / HEADLIGHT 構成 (E-F) ──
+  // Menu v4 (2026-09-22): G 列は複数コードのカンマ区切り('GLASS_3,HEADLIGHT')になり得るためワイルドカード一致
+  sh.getRange(row, 5, 1, 2).setValues([['✨ GLASS / HEADLIGHT 構成', '件数']])
     .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
   const glassRows = [
-    ['No glass',   '=IFERROR(COUNTIFS(予約!G:G,"",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
-    ['GLASS_3',    '=IFERROR(COUNTIFS(予約!G:G,"GLASS_3",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
-    ['GLASS_ALL',  '=IFERROR(COUNTIFS(予約!G:G,"GLASS_ALL",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)']
+    ['No option',  '=IFERROR(COUNTIFS(予約!G:G,"",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
+    ['GLASS_3',    '=IFERROR(COUNTIFS(予約!G:G,"*GLASS_3*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
+    ['GLASS_ALL',  '=IFERROR(COUNTIFS(予約!G:G,"*GLASS_ALL*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
+    ['HEADLIGHT',  '=IFERROR(COUNTIFS(予約!G:G,"*HEADLIGHT*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)']
   ];
   glassRows.forEach(function(r, i) {
     sh.getRange(c1 + i, 5).setValue(r[0]).setFontColor(BK_COLOR.text);

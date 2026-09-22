@@ -211,19 +211,24 @@ function apiBookingInit(params) {
  */
 function apiBookingSlots(params) {
   // Menu v2.1: plan が optional 化、glassOption も受ける
+  // Menu v4 (2026-09-22): options(カンマ区切り: GLASS_3,HEADLIGHT 等)を正とし、glassOption は互換
   const date = params.date;
   const planLetter = String(params.plan || '');
   const vehicleType = params.vehicleType;
   const glassOption = String(params.glassOption || '');
+  const optionsCsv = [String(params.options || ''), glassOption]
+    .join(',').split(',').map(function(s) { return s.trim(); })
+    .filter(function(s, i, arr) { return s && arr.indexOf(s) === i; })
+    .join(',');
 
   if (!date || !vehicleType) {
     return { status: 'error', message: 'date/vehicleType required' };
   }
-  if (!planLetter && !glassOption) {
-    return { status: 'error', message: 'plan or glassOption required' };
+  if (!planLetter && !optionsCsv) {
+    return { status: 'error', message: 'plan or options required' };
   }
 
-  const res = findAvailableSlots(date, planLetter, vehicleType, glassOption);
+  const res = findAvailableSlots(date, planLetter, vehicleType, optionsCsv);
   if (!res.ok) {
     return { status: 'error', message: res.error };
   }
