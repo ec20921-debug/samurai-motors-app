@@ -109,6 +109,8 @@ function apiBookingToday() {
         customerName: customerName,
         chatId: chatId,
         planLetter: planLetter,
+        // Menu v4 (2026-09-22): オプション(GLASS_3,HEADLIGHT 等の CSV)を現場画面へ
+        options: headers['オプション'] ? String(row[headers['オプション'] - 1] || '') : '',
         vehicleType: String(row[(headers['車種タイプ'] || 1) - 1] || ''),
         startTime: startTime,
         endTime: endTime,
@@ -294,6 +296,7 @@ function apiJobStart(body) {
         '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
         '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
         '✨ Plan ' + (body.plan || '-') + ' (' + (body.vehicleType || '-') + ')\n' +
+        (manualOptionCodesCsv_(body) ? '➕ オプション: ' + manualOptionCodesCsv_(body) + '\n' : '') +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
         '📷 Before ' + photoResult.urls.length + '枚';
@@ -472,6 +475,7 @@ function apiJobEnd(body) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
+        '✨ ' + (body.plan || '-') + (manualOptionCodesCsv_(body) ? ' + ' + manualOptionCodesCsv_(body) : '') + '\n' +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';

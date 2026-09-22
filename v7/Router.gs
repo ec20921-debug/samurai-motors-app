@@ -56,6 +56,11 @@ function doGet(e) {
         result = apiBookingSlots(e.parameter);
         break;
 
+      // Menu v4 (2026-09-22): 業務ミニアプリ(job-manager)向けメニュー価格。ファネルログには記録しない
+      case 'menu_prices':
+        result = apiMenuPrices();
+        break;
+
       // ── Phase 4: 業務ミニアプリ ──
       case 'booking_today':
         result = apiBookingToday();
@@ -202,6 +207,20 @@ function apiBookingInit(params) {
     options: options,
     dispatchFee: dispatchFee,
     campaign: campaign
+  };
+}
+
+/**
+ * GET menu_prices
+ * Response: { status:'ok', plans, options, dispatchFee }
+ * job-manager.html の価格ラベル・参考合計用(メニューシート連動・60秒キャッシュ)
+ */
+function apiMenuPrices() {
+  return {
+    status: 'ok',
+    plans: getActivePlans(),
+    options: (typeof getActiveOptions === 'function') ? getActiveOptions() : [],
+    dispatchFee: getDispatchFee()
   };
 }
 

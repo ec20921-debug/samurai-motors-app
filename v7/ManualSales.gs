@@ -19,6 +19,23 @@
  */
 
 /**
+ * 手入力ジョブの optionCodes(配列) と旧 glassOption(単一) を CSV に正規化する
+ * Menu v4 (2026-09-22): job-manager.html は両方を送る(新: optionCodes / 互換: glassOption)
+ * @return {string} 'GLASS_3,HEADLIGHT,BODY' / ''
+ */
+function manualOptionCodesCsv_(body) {
+  var list = [];
+  if (Array.isArray(body.optionCodes)) {
+    body.optionCodes.forEach(function(c) { c = String(c || '').trim(); if (c && list.indexOf(c) < 0) list.push(c); });
+  } else if (typeof body.optionCodes === 'string' && body.optionCodes.trim()) {
+    body.optionCodes.split(',').forEach(function(c) { c = c.trim(); if (c && list.indexOf(c) < 0) list.push(c); });
+  }
+  var g = String(body.glassOption || '').trim();
+  if (g && list.indexOf(g) < 0) list.push(g);
+  return list.join(',');
+}
+
+/**
  * 手動ジョブが有償なら「予約」シートに売上1行を計上する（冪等）。
  *
  * @param {Object} body - job_end / job の受信ペイロード
@@ -108,7 +125,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
         '車種タイプ':     String(body.vehicleType || ''),
         '車種名':         carModel,
         'プラン':         String(body.plan || ''),
-        'オプション':     String(body.glassOption || ''),
+        'オプション':     manualOptionCodesCsv_(body),   // Menu v4: 'GLASS_3,HEADLIGHT,BODY' 等(glassOption 互換)
         '予約日':         todayDate,
         '予約時刻':       Utilities.formatDate(startDate, tz, 'HH:mm'),
         '所要時間(分)':   duration,
