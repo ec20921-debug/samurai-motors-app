@@ -158,6 +158,37 @@ function ensureJobsAmountColumn_() {
 }
 
 /**
+ * Menu v4 (2026-09-23): 作業記録シートに「サービス」列を冪等確保する。
+ * 無料施工（売上計上なし）でも「何のサービスに何分かかったか」をシートに残すため。
+ */
+var JOBS_COL_SERVICE = 'サービス';
+
+function ensureJobsServiceColumn_() {
+  try {
+    var sheet = getSheet(SHEET_NAMES.JOBS);
+    var headers = getHeaderMap(SHEET_NAMES.JOBS);
+    if (!headers[JOBS_COL_SERVICE]) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue(JOBS_COL_SERVICE);
+    }
+  } catch (e) {
+    Logger.log('⚠️ ensureJobsServiceColumn_ 失敗（記録は継続）: ' + e);
+  }
+}
+
+/**
+ * 手入力ジョブの選択サービスを CSV にする: 'WASH,GLASS_3,HEADLIGHT' / 'BODY' / ''
+ * body.plan は "SAMURAI WASH (W)" 形式 → 'WASH' に正規化。オプションは manualOptionCodesCsv_（ManualSales.gs）
+ */
+function jobServiceCsv_(body) {
+  var parts = [];
+  var plan = String(body.plan || '').trim();
+  if (plan) parts.push(/WASH|\(W\)/i.test(plan) ? 'WASH' : plan);
+  var opts = (typeof manualOptionCodesCsv_ === 'function') ? manualOptionCodesCsv_(body) : String(body.glassOption || '');
+  if (opts) parts.push(opts);
+  return parts.join(',');
+}
+
+/**
  * 料金が「記録すべき値」か（空文字/undefined/null 以外。0=無料も記録対象）
  */
 function hasAmountValue_(v) {
@@ -204,6 +235,7 @@ function apiJobStart(body) {
 
     // ── 2. 作業記録シートに行追加 ──
     ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
+    ensureJobsServiceColumn_(); // 「サービス」列を冪等確保（Menu v4）
     // QR連携: 列確保＋スキャン先行分（pendlink）の解決
     var linkedChatId = '';
     if (linkToken && typeof ensureJobsLinkColumns_ === 'function') {
@@ -225,6 +257,7 @@ function apiJobStart(body) {
       '施工時間':       '',
       '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
     };
+    jobRowObj[JOBS_COL_SERVICE] = jobServiceCsv_(body);   // 無料施工でもサービス内容を残す
     if (linkToken) {
       jobRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
       if (linkedChatId) jobRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
@@ -368,12 +401,15 @@ function apiJobEnd(body) {
         : findLastRow(SHEET_NAMES.JOBS, '予約ID', bookingId);
       if (jobRow) {
         try {
-          updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, {
+          var endUpdates = {
             '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
             'After写真URL':   photoResult.urls.join('\n'),
             '作業状態':       '完了',
             '施工時間':       duration + '分'
-          });
+          };
+          var svcEnd = jobServiceCsv_(body);
+          if (svcEnd) { ensureJobsServiceColumn_(); endUpdates[JOBS_COL_SERVICE] = svcEnd; }
+          updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, endUpdates);
         } catch (e) {
           Logger.log('⚠️ 作業記録更新失敗: ' + e);
         }
@@ -413,12 +449,15 @@ function apiJobEnd(body) {
         if (linkRows.length > 0) {
           var linkJobRow = linkRows[linkRows.length - 1];
           try {
-            updateRow(SHEET_NAMES.JOBS, linkJobRow.rowIndex, {
+            var linkUpdates = {
               '完了時刻':     body.endTime ? new Date(body.endTime) : new Date(),
               'After写真URL': photoResult.urls.join('\n'),
               '作業状態':     '完了',
               '施工時間':     duration + '分'
-            });
+            };
+            var svcLink = jobServiceCsv_(body);
+            if (svcLink) { ensureJobsServiceColumn_(); linkUpdates[JOBS_COL_SERVICE] = svcLink; }
+            updateRow(SHEET_NAMES.JOBS, linkJobRow.rowIndex, linkUpdates);
           } catch (eUpd) {
             Logger.log('⚠️ 手動ジョブ作業記録更新失敗: ' + eUpd);
           }
@@ -583,10 +622,13 @@ function apiJobFinal(body) {
       if (beforeUrls.length > 0 && !jobRow.data['Before写真URL']) {
         updates['Before写真URL'] = beforeUrls.join('\n');
       }
+      var svcFinal = jobServiceCsv_(body);
+      if (svcFinal && !jobRow.data[JOBS_COL_SERVICE]) { ensureJobsServiceColumn_(); updates[JOBS_COL_SERVICE] = svcFinal; }
       updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, updates);
     } else {
       // job_start が届かなかったケース
       ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
+      ensureJobsServiceColumn_(); // 「サービス」列を冪等確保（Menu v4）
       var linkedChatIdFinal = '';
       if (linkToken && typeof ensureJobsLinkColumns_ === 'function') {
         ensureJobsLinkColumns_();
@@ -605,6 +647,7 @@ function apiJobFinal(body) {
         'After写真URL':   afterUrls.join('\n'),
         '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
       };
+      finalRowObj[JOBS_COL_SERVICE] = jobServiceCsv_(body);
       if (linkToken) {
         finalRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
         if (linkedChatIdFinal) finalRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatIdFinal;
