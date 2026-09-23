@@ -189,6 +189,27 @@ function jobServiceCsv_(body) {
 }
 
 /**
+ * 管理グループ通知用のサービス行（2026-09-23 Daisuke 指示: WASH の有無が一目で分かるように）
+ * 例: '✨ サービス: WASH + BODY（セダン）'
+ *     '✨ サービス: BODY（セダン）\n⚠️ WASH 未選択（洗車もした場合は現場に確認）'
+ */
+function jobServiceLine_(body) {
+  var csv = jobServiceCsv_(body);
+  var names = csv ? csv.split(',') : [];
+  var label = {
+    'WASH': 'WASH', 'GLASS_3': 'GLASS 3面', 'GLASS_ALL': 'GLASS 全面',
+    'HEADLIGHT': 'HEADLIGHT', 'BODY': 'BODY'
+  };
+  var shown = names.map(function(n) { return label[n] || n; });
+  var line = '✨ サービス: ' + (shown.length ? shown.join(' + ') : '未選択') +
+             '（' + (body.vehicleType || '-') + '）\n';
+  if (shown.length && names.indexOf('WASH') < 0) {
+    line += '⚠️ WASH 未選択（洗車もした場合は現場に確認）\n';
+  }
+  return line;
+}
+
+/**
  * 料金が「記録すべき値」か（空文字/undefined/null 以外。0=無料も記録対象）
  */
 function hasAmountValue_(v) {
@@ -328,8 +349,7 @@ function apiJobStart(body) {
         '👤 ' + (body.name || '-') + '\n' +
         '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
         '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
-        '✨ Plan ' + (body.plan || '-') + ' (' + (body.vehicleType || '-') + ')\n' +
-        (manualOptionCodesCsv_(body) ? '➕ オプション: ' + manualOptionCodesCsv_(body) + '\n' : '') +
+        jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
         '📷 Before ' + photoResult.urls.length + '枚';
@@ -514,7 +534,7 @@ function apiJobEnd(body) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
-        '✨ ' + (body.plan || '-') + (manualOptionCodesCsv_(body) ? ' + ' + manualOptionCodesCsv_(body) : '') + '\n' +
+        jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
