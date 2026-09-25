@@ -18,10 +18,21 @@
 function doGet(e) {
   const action = (e.parameter && e.parameter.action) || 'ping';
 
+  // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+  try {
+    if (e.parameter) {
+      auditTelegramAuth_(action, e.parameter.chatId || '', extractInitData_(e.parameter));
+      delete e.parameter._tg;
+    }
+  } catch (auditErr) { Logger.log('⚠️ auth audit skipped: ' + auditErr); }
+
   try {
     switch (action) {
       case 'ping':
         return jsonOut({ ok: true, service: 'v7-operations', time: new Date().toISOString() });
+
+      case 'auth_audit':
+        return jsonOut(apiAuthAudit_(e.parameter));
 
       case 'staff_list':
         return jsonOut({ ok: true, staff: getActiveStaff() });
@@ -66,6 +77,12 @@ function doPost(e) {
   }
 
   const action = body.action || '';
+
+  // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+  try {
+    auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
+    delete body._tgInitData;
+  } catch (auditErr) { Logger.log('⚠️ auth audit skipped: ' + auditErr); }
 
   try {
     switch (action) {

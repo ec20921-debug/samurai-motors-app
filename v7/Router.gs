@@ -37,7 +37,17 @@ function doGet(e) {
     const action = (e && e.parameter && e.parameter.action) || '';
     let result;
 
+    // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+    if (e && e.parameter) {
+      auditTelegramAuth_(action, e.parameter.chatId || '', extractInitData_(e.parameter));
+      delete e.parameter._tg; // 下流（ファネルログ等）に署名データを残さない
+    }
+
     switch (action) {
+      case 'auth_audit':
+        result = apiAuthAudit_(e.parameter);
+        break;
+
       case 'ping':
         // build: deploy.cmd が生成する BUILD_VERSION（本番反映の機械確認用）
         result = {
@@ -95,6 +105,10 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     const action = body.action || '';
     let result;
+
+    // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+    auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
+    delete body._tgInitData;
 
     switch (action) {
       case 'booking_register_customer':
