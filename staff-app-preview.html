@@ -598,7 +598,7 @@ function renderJob() {
     var sl = slotsFor(j, 'before');
     html += groupCard('<span class="km">រូបថតមុនលាង</span><span class="jp">作業前の写真（4方向）</span>', '', sl.filter(function (s) { return s.group === 'base'; }));
     html += groupCard('<span class="km">ស្រោបកញ្ចក់</span><span class="jp">GLASS 作業前</span>', '同じ角度で作業後も撮ります。', sl.filter(function (s) { return s.group === 'glass'; }));
-    html += groupCard('<span class="km">ស្ដារភ្លើងមុខ</span><span class="jp">HEADLIGHT 作業前</span>', '左右それぞれ正面から。作業後も同じ位置で撮ります。', sl.filter(function (s) { return s.group === 'hl'; }));
+    html += groupCard('<span class="km">ខាត់ចង្កៀងមុខ</span><span class="jp">HEADLIGHT 作業前</span>', '左右それぞれ正面から。作業後も同じ位置で撮ります。', sl.filter(function (s) { return s.group === 'hl'; }));
     html += damageCard(j);
     html += groupCard('<span class="jp" style="font-weight:700;color:var(--text)">室内</span>', '任意。汚れ・忘れ物の状態を残したいときに。', sl.filter(function (s) { return s.group === 'interior'; }));
   } else if (S.phase === 'working') {
@@ -606,7 +606,7 @@ function renderJob() {
     var sa = slotsFor(j, 'after');
     html += groupCard('<span class="km">រូបថតក្រោយលាង</span><span class="jp">作業後の写真（4方向）</span>', '作業前と同じ角度で撮ると、ビフォー・アフターが並べやすくなります。', sa.filter(function (s) { return s.group === 'base'; }));
     html += groupCard('<span class="km">ស្រោបកញ្ចក់</span><span class="jp">GLASS 作業後</span>', '', sa.filter(function (s) { return s.group === 'glass'; }));
-    html += groupCard('<span class="km">ស្ដារភ្លើងមុខ</span><span class="jp">HEADLIGHT 作業後</span>', '', sa.filter(function (s) { return s.group === 'hl'; }));
+    html += groupCard('<span class="km">ខាត់ចង្កៀងមុខ</span><span class="jp">HEADLIGHT 作業後</span>', '', sa.filter(function (s) { return s.group === 'hl'; }));
   } else {
     var mins = Math.max(1, Math.round((S.endAt - S.startAt) / 60000));
     var nPhotos = Object.keys(S.photos).length + (S.damages[j.id] || []).length;
