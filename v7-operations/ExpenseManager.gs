@@ -40,7 +40,8 @@ const EXPENSE_CATEGORIES_ = [
 const EXPENSE_CURRENCIES_ = ['USD', 'KHR', 'JPY'];
 
 // 立替区分（ミニアプリ側のトグル → シートに保存される値）
-const EXPENSE_PAYMENT_TYPES_ = ['立替', '会社直払い'];
+// 2026-09-27: 「前払い金」を追加。現場スタッフ（admin 以外）の支出は常にこれ＝飯泉さんの前払い金から（選択させない）
+const EXPENSE_PAYMENT_TYPES_ = ['立替', '会社直払い', '前払い金'];
 
 // 精算期限のデフォルト（営業日考慮なし・カレンダー日）
 const REIMBURSE_DUE_DEFAULT_DAYS_ = 3;
@@ -142,6 +143,10 @@ function submitExpense(chatId, payload) {
   // Phase A: 立替精算関連
   var paymentType = String((payload && payload.paymentType) || '会社直払い').trim();
   if (EXPENSE_PAYMENT_TYPES_.indexOf(paymentType) < 0) paymentType = '会社直払い';
+  // 現場スタッフ（admin 以外＝ロン君等）の支出はすべて飯泉さんの前払い金から。
+  // 画面側の選択（古いキャッシュの画面で「会社直払い」「立替」を選んだ場合も含む）に関係なく「前払い金」に固定する。
+  // → 精算タスク・精算先・未精算ステータスは作らない／前払い管理の残金が自動で減る（2026-09-27 Daisuke 指示）
+  if (staff.role !== 'admin') paymentType = '前払い金';
   const isReimburse = paymentType === '立替';
   const reimburseTo = isReimburse ? String((payload && payload.reimburseTo) || '').trim() : '';
 
@@ -209,8 +214,8 @@ function submitExpense(chatId, payload) {
     }
   }
 
-  // 立替なら「未精算」、会社直払いは精算不要なので「会社負担」
-  const statusValue = isReimburse ? '未精算' : '会社負担';
+  // 立替なら「未精算」、前払い金は精算不要（残金から減る）、会社直払いは「会社負担」
+  const statusValue = isReimburse ? '未精算' : (paymentType === '前払い金' ? '前払い金から支出' : '会社負担');
 
   // Phase B: 立替時は先に精算タスクを自動生成 → 関連タスクIDをシートに書く
   var linkedTaskId = '';
@@ -389,9 +394,9 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
       ? '\n🤝 立替先: ' + escapeHtml_(expenseInfo.reimburseTo)
       : '';
 
-    // 立替は前払い(petty cash)から使う → 現在の残金を通知（ledger-driven：立替入力で残金が減る）
+    // 前払い金（petty cash）から使った支出 → 現在の残金を通知（入力で残金が減る）
     let balanceLine = '';
-    if (expenseInfo.paymentType === '立替') {
+    if (expenseInfo.paymentType === '前払い金' || expenseInfo.paymentType === '立替') {
       const bal = getRonPrepaidBalance_();
       if (bal !== null) {
         balanceLine = '\n💵 ロン君 残金: <b>$' + bal.toFixed(2) + '</b>'
@@ -853,7 +858,7 @@ function appendToExpenseMaster_(p) {
   //   ロン君以外の「立替」: 本人が個人で立て替えた支出。支払方法=「立替」、負担先=本人。
   //   会社直払い: 会社資金（＝飯泉さん）から直接支払い。負担先=飯泉。
   let gLabel, payer;
-  if (p.paymentType === '立替' && inputUser === 'ロン') {
+  if (p.paymentType === '前払い金' || (p.paymentType === '立替' && inputUser === 'ロン')) {
     gLabel = PREPAID_LABEL_;
     payer = PREPAID_PAYER_;
   } else if (p.paymentType === '立替') {
