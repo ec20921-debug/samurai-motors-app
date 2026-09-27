@@ -13,8 +13,8 @@
  * 【方針】
  *   - 既に元IDが経費マスター(O列)にあるものはスキップ
  *   - テスト・金額0・Codex等の動作確認行はスキップ
- *   - 立替は appendToExpenseMaster_ 側で「立替（残金別管理）」ラベル付与＝D2集計対象外
- *     （ロン君残金は前払い管理シートの実残高カウントで管理する物理アンカー方式）
+ *   - ロン君の立替入力は appendToExpenseMaster_ 側で「前払い金（ロン君）」・負担先=飯泉 として記録
+ *     （前払い管理 D2 に算入され残金が自動で減る。2026-09-27 改訂）
  */
 
 function syncMissingBotExpensesToMaster() {
@@ -56,7 +56,11 @@ function syncMissingBotExpensesToMaster() {
     try {
       appendToExpenseMaster_({
         expenseId:   expenseId,
-        txDate:      String(r[2] || '').trim(),           // C: 取引日
+        // C: 取引日。セルが Date 型だと String() で "Fri Jun 26 2026 ..." になり月別集計から漏れる
+        //    （2026-06〜07 に6件発生）→ Date は yyyy-MM-dd に整形する（2026-09-27 修正）
+        txDate:      (r[2] instanceof Date)
+                       ? Utilities.formatDate(r[2], 'Asia/Phnom_Penh', 'yyyy-MM-dd')
+                       : String(r[2] || '').trim(),
         desc:        desc,
         amount:      amount,
         currency:    String(r[5] || 'USD').trim().toUpperCase(), // F: 通貨

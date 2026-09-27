@@ -408,7 +408,9 @@ function buildExpensesSection_(ym, fx) {
     if (!jpy) return;
 
     const payer = String(row[5] || '会社').trim();  // F: 負担先
-    if (payer === 'ロン君') ronAllJpy += jpy;        // 全期間累計（前払い残額の計算用）
+    // 全期間累計（前払い残額のフォールバック計算用）。2026-09-27〜 ロン君の支出は
+    // 負担先=飯泉・支払方法=「前払い金（ロン君）」で記録されるため支払方法で判定（旧データの負担先=ロン君も拾う）
+    if (String(row[6] || '') === '前払い金（ロン君）' || payer === 'ロン君') ronAllJpy += jpy;
 
     if (mIdx.hasOwnProperty(m)) monthly[mIdx[m]].jpy += jpy;
     if (m === prevYm) prevJpy += jpy;
@@ -480,7 +482,7 @@ function buildRonPrepaidSection_(ronAllTimeJpy, fx) {
       if (isNaN(val)) continue;
       if (/残金|残額/.test(label))                 sheetBalanceUsd  = val;
       else if (/累計前払い|前払い合計/.test(label)) sheetPrepaidUsd  = val;
-      else if (/立替/.test(label))                 sheetAdvancesUsd = val;
+      else if (/立替|使用額/.test(label))          sheetAdvancesUsd = val;   // 2026-09-27 ラベル「累計使用額」へ変更
     }
   } catch (e) { /* 読めなければ従来計算にフォールバック */ }
 
@@ -492,7 +494,7 @@ function buildRonPrepaidSection_(ronAllTimeJpy, fx) {
   let headerRow = -1, dateCol = -1, amtCol = -1, curCol = -1, noteCol = -1;
   for (let i = 0; i < scan.length && headerRow < 0; i++) {
     const cells = scan[i].map(function(c) { return String(c); });
-    if (cells.some(function(c) { return /残金|累計前払い|累計立替/.test(c); })) continue; // 集計セル行は除外
+    if (cells.some(function(c) { return /残金|累計前払い|累計立替|累計使用額/.test(c); })) continue; // 集計セル行は除外
     const looksHeader = cells.some(function(c) { return DATE_RE.test(c) || /送金額|金額|amount/i.test(c); });
     if (!looksHeader) continue;
     headerRow = i + 1;
