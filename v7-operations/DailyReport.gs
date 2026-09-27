@@ -52,6 +52,7 @@ function sendDailyReport() {
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
   const uncountedSection = buildManualJobUncountedSection_(ppToday); // 手動ジョブ未計上チェック（2026-08-25 Incident対策）
+  const inventorySection = buildInventorySection_(ppToday); // 金曜のみ: 在庫の少ない品目（2026-09-27 Daisuke 指示・InventoryManager.gs）
   // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
   // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
   //   const taskSection = buildTaskSection_();
@@ -62,6 +63,7 @@ function sendDailyReport() {
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection +
     (uncountedSection ? '\n\n' + uncountedSection : '') +
+    (inventorySection ? '\n\n' + inventorySection : '') +
     (salesLogSection ? '\n\n' + salesLogSection : '');
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
