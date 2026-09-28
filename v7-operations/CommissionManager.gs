@@ -48,7 +48,52 @@ function commissionAmountCents_(revenueCents, rate) {
 const COMMISSION_COLLECTORS = ['店', '当社'];
 const COMMISSION_PAY_STATUSES = ['未払い', '支払済み'];
 const COMMISSION_PAY_METHODS = ['現金', 'ABA', 'その他'];
-const COMMISSION_DEFAULT_RATE = 30; // 売上の30%（2026-07-22 裁可）
+const COMMISSION_DEFAULT_RATE = 30; // 売上の30%（2026-07-22 裁可）。店マスターの率が空欄の時の予備値
+
+// 提携先ごとの紹介料条件（2026-09-28 Daisuke 裁可「紹介料の提携先別管理 v1」）
+// 店マスター（v7 Database）末尾の列。空欄は既定値（率30%・店集金・紹介者なし・無期限）
+//   紹介者 = 提携先を紹介してくれた人。報酬は本部から「売上の◯%」を月末払い。
+//   ⚖️ 1段限り（紹介者の紹介者には払わない）— 設計書 v3 §2-3・§7-1 の反ピラミッド法リスク対策
+const SHOP_TERMS_HEADERS = ['紹介料率(%)', '既定の集金者', '紹介者名', '紹介者率(%)', '紹介者報酬の期限'];
+
+/**
+ * 店マスター行 → 紹介料条件（空欄・不正値は既定値で補完）
+ * @return {Object} { rate, collector, introducerName, introducerRate, introducerUntil('yyyy-MM-dd' or '') }
+ */
+function shopCommissionTerms_(obj) {
+  const rate = parsePercentCell_(obj['紹介料率(%)']);
+  const collector = String(obj['既定の集金者'] || '').trim();
+  const introducerName = String(obj['紹介者名'] || '').trim();
+  const introducerRate = introducerName ? (parsePercentCell_(obj['紹介者率(%)']) || 0) : 0;
+  return {
+    rate:            rate === null ? COMMISSION_DEFAULT_RATE : rate,
+    collector:       COMMISSION_COLLECTORS.indexOf(collector) >= 0 ? collector : COMMISSION_COLLECTORS[0],
+    introducerName:  introducerRate > 0 ? introducerName : '',
+    introducerRate:  introducerRate,
+    introducerUntil: formatSalesLogDateCell_(obj['紹介者報酬の期限']).substring(0, 10)
+  };
+}
+
+/**
+ * 施工日に紹介者報酬が付くか（期限が空欄なら無期限。期限日当日までを含む）
+ */
+function introducerAppliesOn_(terms, serviceDate) {
+  if (!(terms.introducerRate > 0)) return false;
+  return !terms.introducerUntil || String(serviceDate) <= terms.introducerUntil;
+}
+
+/**
+ * 率セルの読み取り。空欄・範囲外は null。
+ * GSS で「20%」と入力されたセルは 0.2 になるため、0〜1 未満は百分率に戻す
+ */
+function parsePercentCell_(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  let n = Number(String(v).replace('%', '').trim());
+  if (!isFinite(n)) return null;
+  if (n > 0 && n < 1 && typeof v === 'number') n = n * 100;
+  n = Math.round(n * 100) / 100;
+  return (n < 0 || n > 100) ? null : n;
+}
 
 // ====== 公開 API（Router からディスパッチ） ======
 

@@ -79,6 +79,7 @@ function setupShopProvisioning() {
     typeItem.createChoice('タイヤ'),
     typeItem.createChoice('板金・塗装'),
     typeItem.createChoice('ゴルフ場・ゴルフ練習場'),
+    typeItem.createChoice('レジデンス'),
     typeItem.createChoice('その他')
   ]);
 
@@ -139,7 +140,7 @@ function handleShopFormSubmit(e) {
     var shopType = get(SHOP_PROV_FIELDS.SHOP_TYPE);
     // 店マスターに保存を許可する業種（フォーム選択肢と一致させること）。
     // ※「ゴルフ場・ゴルフ練習場」は提携用の新分類。営業ログミニアプリの SALESLOG_SHOP_TYPES とは独立
-    var knownTypes = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'ゴルフ場・ゴルフ練習場', 'その他'];
+    var knownTypes = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'ゴルフ場・ゴルフ練習場', 'レジデンス', 'その他'];
     var typeForMaster = (knownTypes.indexOf(shopType) >= 0) ? shopType : 'その他';
 
     brandBot = get(SHOP_PROV_FIELDS.BRAND_BOT).indexOf('はい') === 0;

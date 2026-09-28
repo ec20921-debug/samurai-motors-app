@@ -45,7 +45,7 @@ const SALESLOG_SHOP_HEADERS = [
 
 // 車屋の業種（複数選択・カンマ区切りで保存。今後の提案先セグメントの基礎データ）
 // ※ 暫定セット（2026-07-25 Daisuke 指示）。ロン君ヒアリング後に見直す — 変更はこの1箇所
-const SALESLOG_SHOP_TYPES = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'その他'];
+const SALESLOG_SHOP_TYPES = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'レジデンス', 'その他'];
 
 /**
  * 業種配列をカンマ区切り文字列に正規化。
@@ -493,7 +493,41 @@ function getShopSheet_() {
     ensureColumnAfter_(sheet, '店名', '業種');
     ensureColumnAfter_(sheet, '電話', 'Facebook');
   }
+  // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
+  ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS);
   return sheet;
+}
+
+/**
+ * 不足しているヘッダー列をシート末尾にまとめて追加（既にあれば何もしない・冪等）
+ * ※ 既存列の位置を一切動かしたくない時用（ensureColumnAfter_ は関連列の隣へ挿入する）
+ * ※ ensureColumnAfter_ と同じくダブルチェックロッキングで二重追加を防ぐ
+ */
+function ensureColumnsAtEnd_(sheet, newHeaders) {
+  const isMissing = function(hs) {
+    return newHeaders.filter(function(h) { return hs.indexOf(h) < 0; });
+  };
+  if (!isMissing(getSheetHeaders_(sheet)).length) return; // 通常パスはロックなし
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20 * 1000);
+  } catch (e) {
+    Logger.log('⚠️ ensureColumnsAtEnd_ lock取得失敗（先行実行が処理中の可能性）: ' + e);
+    return;
+  }
+  try {
+    const headers = getSheetHeaders_(sheet);
+    const missing = isMissing(headers);
+    if (!missing.length) return;
+    const startCol = headers.length + 1;
+    const needCols = startCol + missing.length - 1 - sheet.getMaxColumns();
+    if (needCols > 0) sheet.insertColumnsAfter(sheet.getMaxColumns(), needCols);
+    sheet.getRange(1, startCol, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    Logger.log('🆕 ' + sheet.getName() + ' に列を追加: ' + missing.join(', '));
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -618,7 +652,14 @@ function visitRowToApi_(obj) {
 }
 
 function shopRowToApi_(obj) {
+  const terms = shopCommissionTerms_(obj);
   return {
+    // 紹介料条件（空欄は既定値で補完済み。コミッション記帳フォームの初期値に使う）
+    commissionRate:   terms.rate,
+    defaultCollector: terms.collector,
+    introducerName:   terms.introducerName,
+    introducerRate:   terms.introducerRate,
+    introducerUntil:  terms.introducerUntil,
     shopId:       String(obj['shop_id'] || ''),
     shopName:     String(obj['店名'] || ''),
     shopTypes:    String(obj['業種'] || '').split(',')
