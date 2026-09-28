@@ -74,8 +74,23 @@ function shopCommissionTerms_(obj) {
     collector:       COMMISSION_COLLECTORS.indexOf(collector) >= 0 ? collector : COMMISSION_COLLECTORS[0],
     introducerName:  introducerRate > 0 ? introducerName : '',
     introducerRate:  introducerRate,
-    introducerUntil: formatSalesLogDateCell_(obj['紹介者報酬の期限']).substring(0, 10)
+    introducerUntil: normalizeYmd_(formatSalesLogDateCell_(obj['紹介者報酬の期限']))
   };
+}
+
+/**
+ * 日付文字列を yyyy-MM-dd に正規化（'2027/3/31' 等のテキスト入力も可）。
+ * 空欄は ''（無期限）。読めない値は '0000-00-00' ＝ 期限切れ扱い（払い過ぎ防止のため安全側に倒す）
+ */
+function normalizeYmd_(s) {
+  s = String(s || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if (!m) {
+    Logger.log('⚠️ 紹介者報酬の期限を日付として読めません（期限切れ扱い）: ' + s);
+    return '0000-00-00';
+  }
+  return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
 }
 
 /**
@@ -115,6 +130,8 @@ function commissionList(chatId, shopId) {
   entries.sort(function(a, b) { return String(b.serviceDate).localeCompare(String(a.serviceDate)); });
 
   // 未払い残: 店集金 → 店がうちに払う分(当社受取額) / 当社集金 → うちが店に払う分(コミッション額)
+  // ⚠️ 集金者→支払の向きの判定は PartnerSettlement.aggregateSettlementRows_ /
+  //    ShopProvisioningManager.aggregateCommissionsByShop_ と同一（変更時は3箇所同期必須）
   let unpaidToShop = 0, unpaidFromShop = 0;
   entries.forEach(function(c) {
     if (c.payStatus !== '未払い') return;

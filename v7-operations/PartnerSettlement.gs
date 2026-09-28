@@ -61,12 +61,28 @@ function buildPartnerSettlement(ym) {
 
 /** メニュー用: 今月分を再集計 */
 function rebuildPartnerSettlementThisMonth() {
-  toastSettlement_(buildPartnerSettlement(settlementYm_(0)));
+  rebuildPartnerSettlementFromMenu_(settlementYm_(0));
 }
 
 /** メニュー用: 先月分を再集計 */
 function rebuildPartnerSettlementLastMonth() {
-  toastSettlement_(buildPartnerSettlement(settlementYm_(-1)));
+  rebuildPartnerSettlementFromMenu_(settlementYm_(-1));
+}
+
+function rebuildPartnerSettlementFromMenu_(ym) {
+  let msg;
+  try {
+    const res = buildPartnerSettlement(ym);
+    msg = res.ym + ' を再集計しました（' + res.rows + '行）';
+  } catch (e) {
+    msg = '⚠️ 再集計に失敗: ' + e.message;
+    Logger.log(msg);
+  }
+  try {
+    getSalesLogSs_().toast(msg, '💰 パートナー精算', 8);
+  } catch (e) {
+    Logger.log('ℹ️ toast skipped: ' + e);
+  }
 }
 
 /**
@@ -111,7 +127,7 @@ function aggregateSettlementRows_(ledger, ym) {
     if (!c.commissionId || c.serviceDate.substring(0, 7) !== ym) return;
     const revenueCents = Math.round(c.revenue * 100);
 
-    // 提携先との精算（集金者で向きが決まる）
+    // 提携先との精算（集金者で向きが決まる。CommissionManager.commissionList と同期必須）
     const toShop = c.collector === '当社';
     const dir = toShop ? PS_DIR_TO_SHOP : PS_DIR_FROM_SHOP;
     const p = add([PS_KIND_PARTNER, c.shopId, dir].join('|'), {
@@ -315,12 +331,4 @@ function settlementDueDate_(ym) {
   const idx = Number(parts[0]) * 12 + (Number(parts[1]) - 1) + 1;
   return Math.floor(idx / 12) + '-' + String(idx % 12 + 1).padStart(2, '0') + '-' +
          String(PS_PAY_DAY).padStart(2, '0');
-}
-
-function toastSettlement_(res) {
-  try {
-    getSalesLogSs_().toast(res.ym + ' を再集計しました（' + res.rows + '行）', '💰 パートナー精算', 5);
-  } catch (e) {
-    Logger.log('ℹ️ toast skipped: ' + e);
-  }
 }

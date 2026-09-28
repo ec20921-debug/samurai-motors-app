@@ -406,6 +406,7 @@ function aggregateCommissionsByShop_(ymLabel) {
     if (collector === '店' && payStatus === '未払い') {
       a.outstanding += ourShare;
     }
+    // ⚠️ 集金者→向きの判定は CommissionManager.commissionList と同期必須
     if (collector === '当社' && payStatus === '未払い') {
       a.owedToShop += Number(row[col['コミッション額(USD)']] || 0);
     }
