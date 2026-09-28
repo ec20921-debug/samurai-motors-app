@@ -20,7 +20,9 @@
  *   commission_id / 記録日時 / shop_id / 店名 / 施工日 / 施工内容 / 売上(USD) /
  *   率(%) / コミッション額(USD・店の取り分) / 当社受取額(USD・売上−コミッション額) /
  *   集金者(店/当社) / 支払ステータス / 支払日 / 支払方法 / 記録者 /
- *   最終更新日時 / 更新者 / メモ
+ *   最終更新日時 / 更新者 / メモ / 紹介者名 / 紹介者率(%) / 紹介者報酬(USD・売上×紹介者率)
+ *   ※ 紹介料率・集金者・紹介者の条件は記帳時に店マスターから行へ「写し取る」。
+ *     後から店マスターの条件を変えても過去の行は変わらない（2026-09-28 裁可）
  */
 
 // ====== 定数 ======
@@ -29,8 +31,10 @@ const COMMISSION_SHEET_NAME = 'コミッション台帳';
 const COMMISSION_HEADERS = [
   'commission_id', '記録日時', 'shop_id', '店名', '施工日', '施工内容',
   '売上(USD)', '率(%)', 'コミッション額(USD)', '当社受取額(USD)', '集金者',
-  '支払ステータス', '支払日', '支払方法', '記録者', '最終更新日時', '更新者', 'メモ'
+  '支払ステータス', '支払日', '支払方法', '記録者', '最終更新日時', '更新者', 'メモ',
+  '紹介者名', '紹介者率(%)', '紹介者報酬(USD)'
 ];
+const COMMISSION_INTRODUCER_HEADERS = ['紹介者名', '紹介者率(%)', '紹介者報酬(USD)'];
 
 /**
  * コミッション額の計算（セント単位の整数演算）
@@ -138,8 +142,16 @@ function commissionCreate(chatId, p) {
   const shop = findSheetRow_(getShopSheet_(), 'shop_id', String(p.shopId || ''));
   if (!shop) return { ok: false, error: 'SHOP_NOT_FOUND' };
 
-  const norm = normalizeCommissionInput_(p);
+  // 率・集金者は画面入力を優先し、未入力なら店マスターの条件（それも空なら 30%・店集金）
+  const terms = shopCommissionTerms_(shop.obj);
+  const norm = normalizeCommissionInput_(p, { rate: terms.rate, collector: terms.collector });
   if (norm.error) return { ok: false, error: norm.error };
+
+  // 紹介者報酬: 施工日が期限内なら店マスターから写し取る（本部→紹介者・売上×紹介者率）
+  const intro = introducerAppliesOn_(terms, norm.serviceDate)
+    ? { name: terms.introducerName, rate: terms.introducerRate,
+        amount: commissionAmountCents_(Math.round(norm.revenue * 100), terms.introducerRate) / 100 }
+    : { name: '', rate: '', amount: '' };
 
   const commissionId = generateDateTimeId('CM') + '-' + Utilities.getUuid().slice(0, 8);
   const nowStr = salesLogNow_();
@@ -161,10 +173,14 @@ function commissionCreate(chatId, p) {
     '記録者':             staff.nameJp,
     '最終更新日時':        nowStr,
     '更新者':             staff.nameJp,
-    'メモ':               String(p.memo || '')
+    'メモ':               String(p.memo || ''),
+    '紹介者名':           intro.name,
+    '紹介者率(%)':        intro.rate,
+    '紹介者報酬(USD)':    intro.amount
   });
 
-  return { ok: true, commissionId: commissionId, amount: norm.amount };
+  return { ok: true, commissionId: commissionId, amount: norm.amount,
+           introducerAmount: intro.amount === '' ? 0 : intro.amount };
 }
 
 /**
@@ -181,10 +197,16 @@ function commissionUpdate(chatId, commissionId, p) {
   const found = findSheetRow_(sheet, 'commission_id', String(commissionId));
   if (!found) return { ok: false, error: 'COMMISSION_NOT_FOUND' };
 
-  const norm = normalizeCommissionInput_(p);
+  // 未入力時は行に保存済みの値を維持（店マスターの現在の条件では上書きしない）
+  const norm = normalizeCommissionInput_(p, {
+    rate:      found.obj['率(%)'] === '' ? null : Number(found.obj['率(%)']),
+    collector: String(found.obj['集金者'] || '')
+  });
   if (norm.error) return { ok: false, error: norm.error };
 
-  updateSheetRow_(sheet, found.row, {
+  // 紹介者名・率は記帳時の写しを保持し、報酬額だけ売上に合わせて再計算
+  const introRate = Number(found.obj['紹介者率(%)']) || 0;
+  const updates = {
     '施工日':             norm.serviceDate,
     '施工内容':           norm.serviceDesc,
     '売上(USD)':          norm.revenue,
@@ -198,7 +220,11 @@ function commissionUpdate(chatId, commissionId, p) {
     '最終更新日時':        salesLogNow_(),
     '更新者':             staff.nameJp,
     'メモ':               String(p.memo || '')
-  });
+  };
+  if (String(found.obj['紹介者名'] || '') && introRate > 0) {
+    updates['紹介者報酬(USD)'] = commissionAmountCents_(Math.round(norm.revenue * 100), introRate) / 100;
+  }
+  updateSheetRow_(sheet, found.row, updates);
 
   return { ok: true, commissionId: String(commissionId), amount: norm.amount };
 }
@@ -210,15 +236,20 @@ function commissionUpdate(chatId, commissionId, p) {
  * コミッション額(店の取り分) = 売上 × 率 / 100（セント整数演算）
  * 当社受取額 = 売上 − コミッション額（店集金時に店がうちへ払う金額）
  */
-function normalizeCommissionInput_(p) {
+function normalizeCommissionInput_(p, defaults) {
   const revenue = Number(p.revenue);
   if (!isFinite(revenue) || revenue <= 0) return { error: 'INVALID_REVENUE' };
 
-  let rate = Number(p.rate);
-  if (!isFinite(rate) || rate < 0 || rate > 100) rate = COMMISSION_DEFAULT_RATE;
+  // 未入力・不正値 → defaults（店マスターの条件 or 行の保存値）→ それも無ければ 30%・店集金
+  const d = defaults || {};
+  const fallbackRate = (d.rate === null || d.rate === undefined) ? COMMISSION_DEFAULT_RATE : d.rate;
+  let rate = (p.rate === '' || p.rate === null || p.rate === undefined) ? NaN : Number(p.rate);
+  if (!isFinite(rate) || rate < 0 || rate > 100) rate = fallbackRate;
 
+  const fallbackCollector = COMMISSION_COLLECTORS.indexOf(String(d.collector || '')) >= 0
+    ? String(d.collector) : COMMISSION_COLLECTORS[0]; // 既定 = 店集金
   const collector = COMMISSION_COLLECTORS.indexOf(String(p.collector || '').trim()) >= 0
-    ? String(p.collector).trim() : COMMISSION_COLLECTORS[0]; // 既定 = 店集金
+    ? String(p.collector).trim() : fallbackCollector;
   const payStatus = COMMISSION_PAY_STATUSES.indexOf(String(p.payStatus || '').trim()) >= 0
     ? String(p.payStatus).trim() : COMMISSION_PAY_STATUSES[0];
   const payMethod = COMMISSION_PAY_METHODS.indexOf(String(p.payMethod || '').trim()) >= 0
@@ -264,6 +295,7 @@ function getCommissionSheet_() {
     Logger.log('🆕 勤務用スプレッドシートに「' + COMMISSION_SHEET_NAME + '」タブを新規作成');
   } else {
     ensureCommissionCollectorSchema_(sheet);
+    ensureColumnsAtEnd_(sheet, COMMISSION_INTRODUCER_HEADERS);
   }
   return sheet;
 }
@@ -331,7 +363,10 @@ function commissionRowToApi_(obj) {
     recordedBy:   String(obj['記録者'] || ''),
     updatedAt:    formatSalesLogDateCell_(obj['最終更新日時']),
     updatedBy:    String(obj['更新者'] || ''),
-    memo:         String(obj['メモ'] || '')
+    memo:         String(obj['メモ'] || ''),
+    introducerName:   String(obj['紹介者名'] || ''),
+    introducerRate:   Number(obj['紹介者率(%)']) || 0,
+    introducerAmount: Number(obj['紹介者報酬(USD)']) || 0
   };
 }
 
