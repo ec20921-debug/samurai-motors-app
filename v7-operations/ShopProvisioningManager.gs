@@ -274,6 +274,13 @@ function sendShopMonthlyReports() {
   var lastMonthEnd = new Date(firstOfThisMonth.getTime() - 1);
   var ymLabel = Utilities.formatDate(lastMonthEnd, tz, 'yyyy-MM');
 
+  // 前月分のパートナー精算（提携先・紹介者）を先に作る。失敗してもレポート送信は続行
+  try {
+    buildPartnerSettlement(ymLabel);
+  } catch (err) {
+    Logger.log('⚠️ パートナー精算の自動集計失敗: ' + err);
+  }
+
   // 連携済み店舗の一覧
   var linkSheet = ensureShopLinkSheet_();
   var linkRows = linkSheet.getDataRange().getValues();
@@ -287,9 +294,15 @@ function sendShopMonthlyReports() {
   if (!linkedShops.length) { Logger.log('ℹ️ 連携済み店舗なし。レポート送信スキップ'); return; }
 
   // コミッション台帳から前月分を shop_id 別に集計
-  // 【精算フロー（2026-08-09 Daisuke 決定）】お客様は店に全額支払い → 店が30%を確保 →
-  //   当社は70%を施工完了時にその場回収（現金 or ABA）。未回収分だけがレポートに残る。
+  // 【精算フロー（2026-08-09 Daisuke 決定・2026-09-28 率を店ごとに）】店集金: お客様は店に全額支払い →
+  //   店が紹介料を確保 → 当社取り分は施工完了時にその場回収（現金 or ABA）。未回収分だけがレポートに残る。
+  //   当社集金（レジデンス等）: 当社が集金 → 紹介料を翌月10日に店へ支払う。
   var agg = aggregateCommissionsByShop_(ymLabel);
+  // 施工ゼロの店の率表示用（店マスターの現在の条件）
+  var termsByShop = {};
+  readSheetObjects_(getShopSheet_()).forEach(function(sr) {
+    termsByShop[String(sr.obj['shop_id'])] = shopCommissionTerms_(sr.obj);
+  });
 
   var props = getShopProvProps_();
   var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果', ''];
@@ -298,7 +311,13 @@ function sendShopMonthlyReports() {
     var shopId = String(r[idx['shop_id']]);
     var shopName = String(r[idx['店名']]);
     var groupChatId = String(r[idx['グループchat_id']]);
-    var a = agg[shopId] || { count: 0, sales: 0, commission: 0, ourShare: 0, outstanding: 0 };
+    var a = agg[shopId] || { count: 0, sales: 0, commission: 0, ourShare: 0, outstanding: 0, owedToShop: 0, rates: {} };
+    // 率は台帳の行ごとの写しから。月内で混在なら mixed、施工ゼロなら店マスターの条件
+    var rateKeys = Object.keys(a.rates);
+    var rate = rateKeys.length === 1 ? Number(rateKeys[0])
+             : (rateKeys.length ? null : (termsByShop[shopId] || { rate: COMMISSION_DEFAULT_RATE }).rate);
+    var yourPct = rate === null ? 'mixed' : rate + '%';
+    var ourPct = rate === null ? 'mixed' : (Math.round((100 - rate) * 100) / 100) + '%';
 
     // 店舗向け（英語。クメール語版は Panha 校閲後に差し替え可）
     var shopLines = [
@@ -307,9 +326,14 @@ function sendShopMonthlyReports() {
       'Shop: ' + shopName,
       'Jobs: ' + a.count,
       'Total sales: ' + a.sales.toFixed(2) + '$',
-      'Your commission (30%): ' + a.commission.toFixed(2) + '$',
-      'Samurai Motors share (70%): ' + a.ourShare.toFixed(2) + '$'
+      'Your commission (' + yourPct + '): ' + a.commission.toFixed(2) + '$',
+      'Samurai Motors share (' + ourPct + '): ' + a.ourShare.toFixed(2) + '$'
     ];
+    if (a.owedToShop > 0) {
+      // 当社集金の案件: 紹介料は当社から店へ翌月10日に支払う
+      shopLines.push('');
+      shopLines.push('💵 We will pay your commission ' + a.owedToShop.toFixed(2) + '$ by the 10th (ABA).');
+    }
     if (a.outstanding > 0) {
       shopLines.push('');
       shopLines.push('⏳ Not yet settled: ' + a.outstanding.toFixed(2) + '$');
@@ -324,7 +348,8 @@ function sendShopMonthlyReports() {
 
     var ok = sendViaBookingBot_(props.bookingBotToken, groupChatId, shopLines.join('\n'));
     adminLines.push((ok ? '✅ ' : '❌ ') + shopName + ': ' + a.count + '台 / 売上' + a.sales.toFixed(2) +
-      '$ / 店取分' + a.commission.toFixed(2) + '$ / 未回収' + a.outstanding.toFixed(2) + '$');
+      '$ / 店取分(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 未回収' + a.outstanding.toFixed(2) + '$' +
+      (a.owedToShop > 0 ? ' / 当社→店 未払い' + a.owedToShop.toFixed(2) + '$' : ''));
   });
 
   // 管理グループへ日本語サマリー
@@ -333,8 +358,8 @@ function sendShopMonthlyReports() {
     var opts = { disable_web_page_preview: true };
     if (cfg.adminPartnerThreadId) opts.message_thread_id = Number(cfg.adminPartnerThreadId);
     adminLines.push('');
-    adminLines.push('💰 精算ルール: 客→店に全額支払い / 店が30%確保 / 当社70%は施工完了時にその場回収。');
-    adminLines.push('未回収がある店は次回訪問時に回収（台帳の支払ステータスを更新すること）');
+    adminLines.push('💰 精算ルール: 率は店ごと（店マスター「紹介料率(%)」）。店集金 → 当社取り分を施工完了時にその場回収 / 当社集金 → 紹介料を翌月10日に店へ支払い。');
+    adminLines.push('未回収・未払いは台帳の支払ステータスを更新すること。紹介者への報酬は「パートナー精算」タブ参照');
     sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, adminLines.join('\n'), opts);
   } catch (err) {
     Logger.log('⚠️ 管理サマリー送信失敗: ' + err);
@@ -344,7 +369,8 @@ function sendShopMonthlyReports() {
 /**
  * コミッション台帳から指定月（yyyy-MM）の shop_id 別集計を返す。
  * 未回収 = 集金者が「店」（客のお金が店にある）かつ 支払ステータス「未払い」の当社受取額。
- * @return {Object} { shopId: { count, sales, commission, ourShare, outstanding } }
+ * 当社→店 未払い = 集金者が「当社」かつ「未払い」のコミッション額。
+ * @return {Object} { shopId: { count, sales, commission, ourShare, outstanding, owedToShop, rates } }
  */
 function aggregateCommissionsByShop_(ymLabel) {
   var cfg = getConfig();
@@ -367,9 +393,10 @@ function aggregateCommissionsByShop_(ymLabel) {
     if (label !== ymLabel) return;
     var shopId = String(row[col['shop_id']] || '');
     if (!shopId) return;
-    if (!agg[shopId]) agg[shopId] = { count: 0, sales: 0, commission: 0, ourShare: 0, outstanding: 0 };
+    if (!agg[shopId]) agg[shopId] = { count: 0, sales: 0, commission: 0, ourShare: 0, outstanding: 0, owedToShop: 0, rates: {} };
     var a = agg[shopId];
     a.count++;
+    a.rates[Number(row[col['率(%)']] || 0)] = true;
     a.sales += Number(row[col['売上(USD)']] || 0);
     a.commission += Number(row[col['コミッション額(USD)']] || 0);
     var ourShare = Number(row[col['当社受取額(USD)']] || 0);
@@ -378,6 +405,9 @@ function aggregateCommissionsByShop_(ymLabel) {
     var payStatus = String(row[col['支払ステータス']] || '');
     if (collector === '店' && payStatus === '未払い') {
       a.outstanding += ourShare;
+    }
+    if (collector === '当社' && payStatus === '未払い') {
+      a.owedToShop += Number(row[col['コミッション額(USD)']] || 0);
     }
   });
   return agg;
