@@ -125,6 +125,8 @@ function buildSalesLogSection_(ppToday) {
         return escapeHtml_(v.shopName) + (v.reaction ? '(' + v.reaction + ')' : '');
       }).join(' / ');
       lines.push('　🚶 本日の訪問: ' + todaysVisits.length + '件 — ' + names);
+      // 訪問時の現場メモ（2026-09-30 Daisuke 要望。追加のシート読取なし＝上の todaysVisits を再利用）
+      lines.push.apply(lines, buildVisitMemoLines_(todaysVisits));
     } else {
       lines.push('　🚶 本日の訪問: なし');
     }
@@ -143,6 +145,53 @@ function buildSalesLogSection_(ppToday) {
     return lines.join('\n');
   } catch (err) {
     Logger.log('⚠️ 日報: 車屋営業状況セクション生成失敗（スキップ）: ' + err);
+    return '';
+  }
+}
+
+/**
+ * 本日の訪問のうちメモがある行を「📝 店名(反応)『メモ』」形式で返す（2026-09-30 Daisuke 要望）
+ * - クメール語のみのメモには機械訳（参考）を添える（管理者＝日本語のため）
+ * - Telegram の 4096 字上限対策で 1件 MEMO_TRUNC 字・最大 MEMO_MAX 件に抑え、超過は件数のみ表示
+ * - 失敗時は空配列（車屋営業状況セクション・日報全体は止めない）
+ */
+function buildVisitMemoLines_(todaysVisits) {
+  try {
+    const MEMO_MAX = 8, MEMO_TRUNC = 100; // 最大でも約2,100字（日報全体で4096字に収める）
+    const withMemo = todaysVisits.filter(function(v) { return String(v.memo || '').trim(); });
+    const out = withMemo.slice(0, MEMO_MAX).map(function(v) {
+      const memo = String(v.memo).trim().replace(/\s*\n\s*/g, ' ');
+      const short = memo.length > MEMO_TRUNC ? memo.substring(0, MEMO_TRUNC) + '…' : memo;
+      let line = '　📝 ' + escapeHtml_(v.shopName) + (v.reaction ? '(' + escapeHtml_(v.reaction) + ')' : '') +
+                 '『' + escapeHtml_(short) + '』';
+      const ja = translateKmToJa_(short);
+      if (ja) {
+        line += '\n　　↳ <i>(機械訳・参考) ' +
+                escapeHtml_(ja.length > MEMO_TRUNC ? ja.substring(0, MEMO_TRUNC) + '…' : ja) + '</i>';
+      }
+      return line;
+    });
+    if (withMemo.length > MEMO_MAX) out.push('　📝 …他' + (withMemo.length - MEMO_MAX) + '件（詳細は営業ログGSS）');
+    return out;
+  } catch (e) {
+    Logger.log('⚠️ 日報: 訪問メモ行の生成失敗（スキップ）: ' + e);
+    return [];
+  }
+}
+
+/**
+ * クメール文字(U+1780-17FF)を含み日本語文字を含まない本文のみ km→ja 機械訳。
+ * 対象外・翻訳失敗時は ''（原文のみ表示）
+ */
+function translateKmToJa_(text) {
+  try {
+    const s = String(text || '');
+    if (!/[ក-៿]/.test(s)) return '';                 // クメール文字なし → 対象外
+    if (/[぀-ヿ一-鿿]/.test(s)) return '';     // 日本語（かな・漢字）混在 → 対象外
+    const ja = LanguageApp.translate(s, 'km', 'ja');
+    return String(ja || '').trim();
+  } catch (e) {
+    Logger.log('⚠️ 日報: 機械訳失敗（原文のみ表示）: ' + e);
     return '';
   }
 }
@@ -491,6 +540,8 @@ function debugPreviewDailyReport() {
   const ppToday = Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
   Logger.log('--- 売上セクション ---');
   Logger.log(buildSalesSection_(ppToday));
+  Logger.log('--- 車屋営業状況（訪問メモ含む）---');
+  Logger.log(buildSalesLogSection_(ppToday));
   Logger.log('--- タスクセクション ---');
   Logger.log(buildTaskSection_());
 }
