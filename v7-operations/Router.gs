@@ -16,6 +16,7 @@
  * GET リクエスト（ヘルスチェック・静的データ取得）
  */
 function doGet(e) {
+  enableConfigMemo_();
   const action = (e.parameter && e.parameter.action) || 'ping';
 
   // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
@@ -62,6 +63,7 @@ function doGet(e) {
  * POST リクエスト（ミニアプリからの書き込み系）
  */
 function doPost(e) {
+  enableConfigMemo_();
   // v7 booking.html と同一方式:
   //   ミニアプリ側は Content-Type: 'text/plain;charset=utf-8' + body: JSON.stringify(...)
   //   GAS 側は e.postData.contents を JSON.parse

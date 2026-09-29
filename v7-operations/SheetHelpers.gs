@@ -57,6 +57,16 @@ function getHeaders(sheetName) {
 }
 
 /**
+ * ヘッダー＋データ行を1回の読み取りで取得（データ行なしは null）
+ * ※ 以前は getLastRow / getLastColumn / ヘッダー / データ の4回に分けて読んでいた。範囲は同一
+ */
+function readAllValues_(sheetName) {
+  const values = getSheet(sheetName).getDataRange().getValues();
+  if (values.length < 2) return null;
+  return { headers: values[0], values: values.slice(1) };
+}
+
+/**
  * オブジェクト形式で1行追加
  * dict: { '列名': 値, ... } のハッシュ
  */
@@ -75,15 +85,14 @@ function appendRow(sheetName, dict) {
  * @return {{row: number, data: Object} | null}
  */
 function findRow(sheetName, columnName, value) {
-  const sheet = getSheet(sheetName);
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
+  const all = readAllValues_(sheetName);
+  if (!all) return null;
 
-  const headers = getHeaders(sheetName);
+  const headers = all.headers;
   const colIdx = headers.indexOf(columnName);
   if (colIdx < 0) throw new Error('❌ 列未発見: ' + columnName + ' in ' + sheetName);
 
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const values = all.values;
   for (let i = 0; i < values.length; i++) {
     if (String(values[i][colIdx]) === String(value)) {
       const data = {};
@@ -115,13 +124,11 @@ function updateRow(sheetName, rowNumber, updates) {
  * 全行をオブジェクト配列で取得
  */
 function getAllRows(sheetName) {
-  const sheet = getSheet(sheetName);
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
+  const all = readAllValues_(sheetName);
+  if (!all) return [];
 
-  const headers = getHeaders(sheetName);
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values.map(function(row) {
+  const headers = all.headers;
+  return all.values.map(function(row) {
     const o = {};
     headers.forEach(function(h, j) { o[h] = row[j]; });
     return o;

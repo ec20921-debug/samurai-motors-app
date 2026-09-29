@@ -303,17 +303,25 @@ function normalizeCommissionInput_(p, defaults) {
 /**
  * 「コミッション台帳」タブ（勤務用スプレッドシート側・無ければ自動作成）
  */
+let _commissionSheetCache_ = null;
 function getCommissionSheet_() {
-  const cfg = getConfig();
-  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  if (_commissionSheetCache_) return _commissionSheetCache_;
+  const ss = getOpsSs_();
   let sheet = ss.getSheetByName(COMMISSION_SHEET_NAME);
   if (!sheet) {
     sheet = createHeaderedSheet_(ss, COMMISSION_SHEET_NAME, COMMISSION_HEADERS);
     Logger.log('🆕 勤務用スプレッドシートに「' + COMMISSION_SHEET_NAME + '」タブを新規作成');
   } else {
-    ensureCommissionCollectorSchema_(sheet);
-    ensureColumnsAtEnd_(sheet, COMMISSION_INTRODUCER_HEADERS);
+    // 旧スキーマ移行・列追加の確認は数時間に1回（毎回だと台帳の全件読みが1回増える）
+    runAtMostEvery_(['schema', COMMISSION_SHEET_NAME, '集金者', '当社受取額(USD)']
+      .concat(COMMISSION_INTRODUCER_HEADERS).join('|'), 6 * 60 * 60, function() {
+      return [
+        ensureCommissionCollectorSchema_(sheet),
+        ensureColumnsAtEnd_(sheet, COMMISSION_INTRODUCER_HEADERS)
+      ].every(Boolean);
+    });
   }
+  _commissionSheetCache_ = sheet;
   return sheet;
 }
 
@@ -339,7 +347,7 @@ function ensureCommissionCollectorSchema_(sheet) {
       sheet.getRange(2, dirIdx + 1, lastRow - 1, 1).setValues(conv);
     }
   }
-  ensureColumnAfter_(sheet, 'コミッション額(USD)', '当社受取額(USD)');
+  const columnOk = ensureColumnAfter_(sheet, 'コミッション額(USD)', '当社受取額(USD)');
 
   // 既存行の当社受取額を補完（売上 − コミッション額）
   const rows = readSheetObjects_(sheet);
@@ -359,6 +367,7 @@ function ensureCommissionCollectorSchema_(sheet) {
     sheet.getRange(2, col, rows.length, 1).setValues(colVals);
     Logger.log('🔄 コミッション台帳: 当社受取額を ' + targets.length + '行補完');
   }
+  return columnOk;
 }
 
 function commissionRowToApi_(obj) {

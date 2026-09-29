@@ -89,8 +89,16 @@ const OPS_TZ = 'Asia/Phnom_Penh';
 
 /**
  * 設定値を取得する。必須キーが未登録なら例外。
+ * ★ Web アプリ（doGet/doPost）の1リクエスト内だけ結果を使い回す（1リクエストで数十回呼ばれ、
+ *   毎回 Script Properties 全件読みになっていたため）。トリガー・セットアップ関数は従来どおり毎回読む
+ *   （同じ実行内で setProperty した直後の値を読む箇所があるため）
  */
+let _configMemo_ = null;
+let _configMemoEnabled_ = false;
+function enableConfigMemo_() { _configMemoEnabled_ = true; }
+
 function getConfig() {
+  if (_configMemoEnabled_ && _configMemo_) return _configMemo_;
   const props = PropertiesService.getScriptProperties();
   const all = props.getProperties();
 
@@ -104,7 +112,7 @@ function getConfig() {
     throw new Error('❌ PropertiesService 未登録: ' + missing.join(', '));
   }
 
-  return {
+  const cfg = {
     botTokenInternal:         all[CONFIG_KEYS.BOT_TOKEN_INTERNAL],
     adminGroupId:             all[CONFIG_KEYS.ADMIN_GROUP_ID],
     attendanceTopicId:        all[CONFIG_KEYS.ATTENDANCE_TOPIC_ID] || '',
@@ -128,6 +136,8 @@ function getConfig() {
     jetroAdminEmail:          all[CONFIG_KEYS.JETRO_ADMIN_EMAIL] || '',
     ronChatId:                all[CONFIG_KEYS.RON_CHAT_ID] || ''
   };
+  if (_configMemoEnabled_) _configMemo_ = Object.freeze(cfg);
+  return cfg;
 }
 
 /**

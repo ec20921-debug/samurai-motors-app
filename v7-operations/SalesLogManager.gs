@@ -86,7 +86,8 @@ function salesLogShops(chatId) {
   const staff = findStaffByChatId(chatId);
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
 
-  ensureSalesLogV2Migration_();
+  // v1→v2 移行は 2026-07 に完了済み。安全網として1時間に1回だけ確認する（毎回だと全件読み2回分遅い）
+  runAtMostEvery_('saleslog_v2_migration', 60 * 60, ensureSalesLogV2Migration_);
 
   const shops = readSheetObjects_(getShopSheet_())
     .map(function(r) { return shopRowToApi_(r.obj); })
@@ -263,17 +264,18 @@ function ensureSalesLogV2Migration_() {
       return String(r.obj['shop_id'] || '') && String(r.obj['最新反応'] || '') && !String(r.obj['最新反応内容'] || '');
     })
     .map(function(r) { return String(r.obj['shop_id']); });
-  if (!hasOrphan && !hasMissingLabel && !shopsMissingLabel.length) return;
+  if (!hasOrphan && !hasMissingLabel && !shopsMissingLabel.length) return true;
 
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20 * 1000);
   } catch (e) {
     Logger.log('⚠️ 営業ログ移行 lock 取得失敗（先行実行が処理中の可能性）: ' + e);
-    return;
+    return false; // 未確認（runAtMostEvery_ はフラグを立てず次回再確認）
   }
   try {
     runSalesLogV2Migration_(shopsMissingLabel);
+    return true;
   } finally {
     lock.releaseLock();
   }
@@ -450,18 +452,49 @@ function computeShopAggregates_(visits) {
 
 // ====== シート取得（自動作成・列自動追加） ======
 
+let _salesLogSsCache_ = null;
+let _salesLogSheetCache_ = {};
 function getSalesLogSs_() {
+  if (_salesLogSsCache_) return _salesLogSsCache_;
   const cfg = getConfig();
   if (!cfg.v7SpreadsheetId) {
     throw new Error('❌ V7_SPREADSHEET_ID 未設定（営業ログ/店マスターは v7 Database 側のタブです）');
   }
-  return SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+  _salesLogSsCache_ = SpreadsheetApp.openById(cfg.v7SpreadsheetId);
+  return _salesLogSsCache_;
+}
+
+/**
+ * fn を「key ごとに ttlSec 秒に1回」だけ実行する（CacheService のフラグで判定）。
+ * 列チェック・移行チェックのような「毎回やる必要のない確認」をリクエスト経路から外すため。
+ *   - key には確認対象の列名一覧などを含める → 列を足すとキーが変わり、次のリクエストで即確認される
+ *   - fn が false を返した（ロック取得失敗など）時はフラグを立てず、次回また確認する
+ *   - CacheService の障害時は毎回 fn を実行して続行（以前と同じ挙動に戻るだけ）
+ */
+function runAtMostEvery_(key, ttlSec, fn) {
+  let cache = null, k = '';
+  try {
+    cache = CacheService.getScriptCache();
+    k = 'once_' + Utilities.base64EncodeWebSafe(
+      Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, key, Utilities.Charset.UTF_8));
+    if (cache.get(k)) return;
+  } catch (e) {
+    Logger.log('⚠️ runAtMostEvery_ cache 読み取り失敗（毎回確認で続行）: ' + e);
+    cache = null;
+  }
+  if (fn() === false || !cache) return;
+  try {
+    cache.put(k, '1', ttlSec);
+  } catch (e) {
+    Logger.log('⚠️ runAtMostEvery_ cache 書き込み失敗（次回も確認）: ' + e);
+  }
 }
 
 /**
  * 「営業ログ」タブ（無ければヘッダー付きで自動作成。v1 由来なら shop_id 列を自動追加）
  */
 function getSalesLogSheet_() {
+  if (_salesLogSheetCache_[SALESLOG_SHEET_NAME]) return _salesLogSheetCache_[SALESLOG_SHEET_NAME];
   const ss = getSalesLogSs_();
   let sheet = ss.getSheetByName(SALESLOG_SHEET_NAME);
   if (!sheet) {
@@ -469,12 +502,15 @@ function getSalesLogSheet_() {
     setColumnTextFormat_(sheet, SALESLOG_HEADERS, '電話');
   } else {
     // 旧版シートへの列追加（コードはヘッダー名参照なので挿入位置による破綻はない）
-    const headers = getSheetHeaders_(sheet);
-    if (headers.indexOf('shop_id') < 0) {
-      sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
-    }
-    ensureColumnAfter_(sheet, '反応', '反応内容');
+    runAtMostEvery_('schema|' + SALESLOG_SHEET_NAME + '|shop_id|反応内容', 6 * 60 * 60, function() {
+      const headers = getSheetHeaders_(sheet);
+      if (headers.indexOf('shop_id') < 0) {
+        sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
+      }
+      return ensureColumnAfter_(sheet, '反応', '反応内容');
+    });
   }
+  _salesLogSheetCache_[SALESLOG_SHEET_NAME] = sheet;
   return sheet;
 }
 
@@ -482,19 +518,28 @@ function getSalesLogSheet_() {
  * 「店マスター」タブ（無ければヘッダー付きで自動作成）
  */
 function getShopSheet_() {
+  if (_salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME]) return _salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME];
   const ss = getSalesLogSs_();
   let sheet = ss.getSheetByName(SALESLOG_SHOP_SHEET_NAME);
+  const ensureShopColumns = function() {
+    return [
+      ensureColumnAfter_(sheet, '最新反応', '最新反応内容'),
+      ensureColumnAfter_(sheet, '店名', '業種'),
+      ensureColumnAfter_(sheet, '電話', 'Facebook'),
+      // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
+      ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS)
+    ].every(Boolean);
+  };
   if (!sheet) {
     sheet = createHeaderedSheet_(ss, SALESLOG_SHOP_SHEET_NAME, SALESLOG_SHOP_HEADERS);
     setColumnTextFormat_(sheet, SALESLOG_SHOP_HEADERS, '電話');
     Logger.log('🆕 v7 Database に「' + SALESLOG_SHOP_SHEET_NAME + '」タブを新規作成');
+    ensureShopColumns(); // 作成直後はフラグに関係なく必ず列を揃える
   } else {
-    ensureColumnAfter_(sheet, '最新反応', '最新反応内容');
-    ensureColumnAfter_(sheet, '店名', '業種');
-    ensureColumnAfter_(sheet, '電話', 'Facebook');
+    runAtMostEvery_(['schema', SALESLOG_SHOP_SHEET_NAME, '最新反応内容', '業種', 'Facebook']
+      .concat(SHOP_TERMS_HEADERS).join('|'), 6 * 60 * 60, ensureShopColumns);
   }
-  // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
-  ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS);
+  _salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME] = sheet;
   return sheet;
 }
 
@@ -507,24 +552,25 @@ function ensureColumnsAtEnd_(sheet, newHeaders) {
   const isMissing = function(hs) {
     return newHeaders.filter(function(h) { return hs.indexOf(h) < 0; });
   };
-  if (!isMissing(getSheetHeaders_(sheet)).length) return; // 通常パスはロックなし
+  if (!isMissing(getSheetHeaders_(sheet)).length) return true; // 通常パスはロックなし
 
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20 * 1000);
   } catch (e) {
     Logger.log('⚠️ ensureColumnsAtEnd_ lock取得失敗（先行実行が処理中の可能性）: ' + e);
-    return;
+    return false; // 未確認（runAtMostEvery_ はフラグを立てず次回再確認）
   }
   try {
     const headers = getSheetHeaders_(sheet);
     const missing = isMissing(headers);
-    if (!missing.length) return;
+    if (!missing.length) return true;
     const startCol = headers.length + 1;
     const needCols = startCol + missing.length - 1 - sheet.getMaxColumns();
     if (needCols > 0) sheet.insertColumnsAfter(sheet.getMaxColumns(), needCols);
     sheet.getRange(1, startCol, 1, missing.length).setValues([missing]).setFontWeight('bold');
     Logger.log('🆕 ' + sheet.getName() + ' に列を追加: ' + missing.join(', '));
+    return true;
   } finally {
     lock.releaseLock();
   }
@@ -537,26 +583,27 @@ function ensureColumnsAtEnd_(sheet, newHeaders) {
  *   二重挿入されるレース対策・ダブルチェックロッキング）
  */
 function ensureColumnAfter_(sheet, afterHeader, newHeader) {
-  if (getSheetHeaders_(sheet).indexOf(newHeader) >= 0) return; // 通常パスはロックなし
+  if (getSheetHeaders_(sheet).indexOf(newHeader) >= 0) return true; // 通常パスはロックなし
 
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20 * 1000);
   } catch (e) {
     Logger.log('⚠️ ensureColumnAfter_ lock取得失敗（先行実行が処理中の可能性）: ' + e);
-    return;
+    return false; // 未確認（runAtMostEvery_ はフラグを立てず次回再確認）
   }
   try {
     // ロック内で再確認（先行実行が挿入済みなら何もしない）
     const headers = getSheetHeaders_(sheet);
-    if (headers.indexOf(newHeader) >= 0) return;
+    if (headers.indexOf(newHeader) >= 0) return true;
     const afterIdx = headers.indexOf(afterHeader);
     if (afterIdx < 0) {
       sheet.getRange(1, headers.length + 1).setValue(newHeader).setFontWeight('bold');
-      return;
+      return true;
     }
     sheet.insertColumnAfter(afterIdx + 1);
     sheet.getRange(1, afterIdx + 2).setValue(newHeader).setFontWeight('bold');
+    return true;
   } finally {
     lock.releaseLock();
   }
@@ -592,11 +639,11 @@ function getSheetHeaders_(sheet) {
  * 全データ行を { row, obj } の配列で返す
  */
 function readSheetObjects_(sheet) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  const headers = getSheetHeaders_(sheet);
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values.map(function(row, i) {
+  // 1回の読み取りでヘッダー＋データ（以前は4回に分けて読んでいた。範囲は同一）
+  const all = sheet.getDataRange().getValues();
+  if (all.length < 2) return [];
+  const headers = all[0].map(String);
+  return all.slice(1).map(function(row, i) {
     const obj = {};
     headers.forEach(function(h, j) { obj[h] = row[j]; });
     return { row: i + 2, obj: obj };
@@ -718,8 +765,7 @@ let _salesLogTzCache_ = null;
 function getSalesLogTz_() {
   if (_salesLogTzCache_) return _salesLogTzCache_;
   try {
-    const id = getConfig().v7SpreadsheetId;
-    const tz = SpreadsheetApp.openById(id).getSpreadsheetTimeZone();
+    const tz = getSalesLogSs_().getSpreadsheetTimeZone();
     _salesLogTzCache_ = tz || OPS_TZ;
   } catch (e) {
     Logger.log('⚠️ getSalesLogTz_ failed: ' + e);
