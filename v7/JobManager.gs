@@ -198,7 +198,7 @@ function jobServiceLine_(body) {
   var names = csv ? csv.split(',') : [];
   var label = {
     'WASH': 'WASH', 'GLASS_3': 'GLASS 3面', 'GLASS_ALL': 'GLASS 全面',
-    'HEADLIGHT': 'HEADLIGHT', 'BODY': 'BODY'
+    'HEADLIGHT': 'HEADLIGHT', 'HEADLIGHT_MAGIC': 'HEADLIGHT MAGIC', 'BODY': 'BODY'
   };
   var shown = names.map(function(n) { return label[n] || n; });
   var line = '✨ サービス: ' + (shown.length ? shown.join(' + ') : '未選択') +
