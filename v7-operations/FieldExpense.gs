@@ -20,6 +20,12 @@ function ensureExpenseClientIdCol_() {
   return { sheet: sheet, col: idx + 1 };
 }
 
+/** シートに書く自由入力が = + - @ で始まると数式として動くため、先頭に ' を付けて文字として保存する */
+function safeCellText_(v) {
+  const s = String(v == null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
 function submitExpenseV2_(chatId, payload, clientId) {
   if (!/^[0-9a-fA-F-]{36}$/.test(String(clientId || ''))) return { ok: false, error: 'INVALID_CLIENT_ID' };
   const lock = LockService.getScriptLock();
@@ -37,6 +43,10 @@ function submitExpenseV2_(chatId, payload, clientId) {
       }
     }
     payload.clientId = clientId;
+    payload.skipFuzzyDup = true;
+    payload.description = safeCellText_(payload.description);
+    payload.memo = safeCellText_(payload.memo);
+    payload.vendor = safeCellText_(payload.vendor);
     const res = submitExpense(chatId, payload);
     if (res && res.ok) res.status = res.duplicate ? 'duplicate' : 'ok';
     return res;

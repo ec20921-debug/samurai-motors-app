@@ -62,7 +62,18 @@ function getTodayAttendance(chatId) {
 /**
  * 打刻共通処理
  */
+// 2026-10-09 レビュー M2: 送り直しが同時に2本届いても出勤行が2つできないよう、確認→書き込みをロックで囲む
 function doPunch_(type, chatId, gps, opts) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { ok: false, error: 'BUSY', message: '混雑中。あとで自動で送り直します' };
+  try {
+    return doPunchLocked_(type, chatId, gps, opts);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doPunchLocked_(type, chatId, gps, opts) {
   opts = opts || {};
   const staff = findStaffByChatId(chatId);
   if (!staff) {
@@ -70,14 +81,14 @@ function doPunch_(type, chatId, gps, opts) {
   }
 
   // 2026-10-08: 現場アプリ v2 は圏外でも端末に保存して後から送る → 「押した時刻」(opts.at) で記録する。
-  //   受け付けるのは受信時刻の 24 時間前〜2 分後まで（それ以外・不正値は受信時刻）
+  //   受け付けるのは受信時刻の 72 時間前〜2 分後まで（それ以外・不正値は受信時刻。圏外が長い日もあるため 72h）
   const received = new Date();
   let now = received;
   let late = false;
   if (opts.at) {
     const a = new Date(opts.at);
     if (!isNaN(a.getTime()) && a.getTime() <= received.getTime() + 2 * 60000 &&
-        a.getTime() >= received.getTime() - 24 * 3600000) {
+        a.getTime() >= received.getTime() - 72 * 3600000) {
       now = a;
       late = (received.getTime() - a.getTime()) > 5 * 60000;
     }

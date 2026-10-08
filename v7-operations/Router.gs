@@ -96,7 +96,9 @@ function doPost(e) {
       // iOS Safari / Telegram WebView 対策で GET ではなく POST(text/plain) 経由でも受け付ける
       case 'whoami': {
         const chatId = String(body.chatId || '');
-        const staff = chatId ? findStaffByChatId(chatId) : null;
+        const s = chatId ? findStaffByChatId(chatId) : null;
+        // 匿名で呼べるため、画面に要る項目だけ返す（給与などは返さない。2026-10-09 レビュー）
+        const staff = s ? { staffId: s.staffId, nameJp: s.nameJp, nameEn: s.nameEn, role: s.role } : null;
         const res = { ok: true, staff: staff };
         // 2026-10-08: 現場アプリ v2 のスタッフ専用リンク（?u=&k=）の鍵が正しいか（FieldLink.gs）
         if (body.k !== undefined) res.keyOk = !!(chatId && fieldLinkKeyOk_(chatId, String(body.k || '')));

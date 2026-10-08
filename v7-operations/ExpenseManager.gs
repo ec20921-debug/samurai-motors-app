@@ -160,7 +160,9 @@ function submitExpense(chatId, payload) {
   // 同一 chatId・同一摘要・同一金額・同一通貨が直近 10 分以内に登録済みなら重複とみなす。
   // ケース: ①送信ボタン2度押し ②レシート添付し忘れて再登録（後者はレシート付きを優先）。
   const hasNewReceipt = !!(payload && payload.photoBase64);
-  try {
+  // 現場アプリ v2 は client_id で照合済み（FieldExpense.gs）。圏外でためた「同じ金額の別の経費」を
+  // 重複と誤判定して捨てないよう、ここのあいまい判定は使わない（2026-10-09 レビュー H1）
+  if (!(payload && payload.skipFuzzyDup)) try {
     const dup = findRecentDuplicateExpense_(String(chatId), desc, amount, currency, 600);
     if (dup) {
       // 既存にレシートが無く、今回レシート付きで来た場合 → 既存行のレシートだけ更新し、新規行は作らない

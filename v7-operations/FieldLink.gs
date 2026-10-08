@@ -51,6 +51,8 @@ function fieldLinkKeyOk_(chatId, key) {
 function fieldLinkIssue_(initDataRaw, body) {
   var v = verifyTelegramInitData_(initDataRaw);
   if (!v || !v.ok) return { ok: false, error: 'AUTH_REQUIRED', message: 'Telegram から開いてください' };
+  // 古い署名の使い回しを防ぐ（2026-10-09 レビュー M4）
+  if (!(v.ageSec >= 0 && v.ageSec < 24 * 3600)) return { ok: false, error: 'AUTH_EXPIRED', message: 'Telegram からもう一度開いてください' };
   var me = findStaffByChatId(v.userId);
   if (!me || me.role !== 'admin') return { ok: false, error: 'AUTH_FORBIDDEN', message: '管理者のみ発行できます' };
 
