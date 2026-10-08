@@ -1794,9 +1794,15 @@ document.addEventListener('DOMContentLoaded', function() {
   // 2026-10-08: 前回のメニューが端末にあれば即表示し、裏で必ず最新を取り直す
   var cached = readInitCache_();
   if (cached) {
-    applyMenuData_(cached);
-    state.shownFromCache = true;
-    showView('view-plan');
+    try {
+      applyMenuData_(cached);
+      state.shownFromCache = true;
+      showView('view-plan');
+    } catch (e) {
+      // 壊れたキャッシュは捨てて従来の読み込みに戻す
+      state.shownFromCache = false;
+      try { localStorage.removeItem(INIT_CACHE_KEY); } catch (e2) {}
+    }
   }
   loadInit();
 });
@@ -2444,9 +2450,12 @@ function prefetchSlots_() {
       var entry = { at: Date.now(), durationMin: res.durationMin, byDate: {}, full: true };
       res.days.forEach(function(d) { entry.byDate[d.date] = d.slots || []; });
       slotCache[key] = entry;
+      delete slotInflight[key];
       return entry;
-    })
-    .finally(function() { delete slotInflight[key]; });
+    }, function(err) {
+      delete slotInflight[key];
+      throw err;
+    });
   slotInflight[key] = p;
   // 日付画面を開いていれば「Full」表示と選択中の日の枠を反映
   p.then(function() {
@@ -2647,7 +2656,9 @@ function handleNext() {
         showToast('Please select at least one service', true);
         return;
       }
-      prefetchSlots_();   // 2026-10-08: 12日分の空き枠を1回で先読み（日付タップを即時に）
+      // 2026-10-08: メニュー・車種が変わったら前の時刻は無効（所要時間が変わるため）
+      if (state.lastSlotKey !== slotKey_()) { state.selectedSlot = ''; state.lastSlotKey = slotKey_(); }
+      try { prefetchSlots_(); } catch (e) { /* 先読み失敗でも従来の1日取得で続行 */ }   // 2026-10-08: 12日分を1回で先読み
       showView('view-datetime');
       break;
 
@@ -2679,12 +2690,13 @@ function handleNext() {
       }
       // 2026-10-08: 確認画面の金額は必ずこの起動で取った最新データで出す
       if (state.initFresh) { showView('view-confirm'); break; }
-      setBtnLoading(true);
+      var nb = document.getElementById('actionBtn');
+      nb.disabled = true;
       ensureFreshInit_().then(function() {
-        setBtnLoading(false);
+        nb.disabled = false;
         if (state.currentView === 'view-location') showView('view-confirm');
       }).catch(function() {
-        setBtnLoading(false);
+        nb.disabled = false;
         showToast('Connection error — please try again', true);
       });
       break;

@@ -15,7 +15,8 @@ var FUNNEL_Q_PREFIX_   = 'funnelq_';
 var FUNNEL_HB_KEY_     = 'funnel_flush_hb';   // CacheService: 書き出しが生きている印（7200秒）
 var FUNNEL_CNT_KEY_    = 'funnel_q_count';    // CacheService: 溜まっている概算件数（21600秒）
 var FUNNEL_Q_MAX_      = 100;                 // これ以上溜まっていたら直接書く
-var FUNNEL_FLUSH_MAX_  = 200;                 // 1回の書き出し上限
+var FUNNEL_FLUSH_MAX_  = 100;                 // 1回の書き出し上限
+var FUNNEL_RUN_KEY_    = 'funnel_flush_running';   // CacheService: 書き出し同士の排他（予約のスクリプトロックは使わない）
 
 /**
  * Funnel イベントを記録（本番コードから呼ぶ。失敗してもメイン処理を止めない）
@@ -49,7 +50,8 @@ function enqueueFunnelEvent_(ev) {
   if (json.length > 1000) return false;
   var key = FUNNEL_Q_PREFIX_ + ev.t + '_' + Utilities.getUuid().slice(0, 8);
   PropertiesService.getScriptProperties().setProperty(key, json);
-  cache.put(FUNNEL_CNT_KEY_, String(n + 1), 21600);
+  // ここまで来たら保存済み。カウンタ更新の失敗では直接書き込みに落とさない（二重記録防止）
+  try { cache.put(FUNNEL_CNT_KEY_, String(n + 1), 21600); } catch (e) {}
   return true;
 }
 
@@ -87,40 +89,45 @@ function flushFunnelQueue_(props, all) {
     cache.put(FUNNEL_HB_KEY_, '1', 7200);           // 生存確認だけ更新
     return 0;
   }
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(0)) return 0;                   // 予約処理中なら次回に回す
+  // 書き出し同士の排他は CacheService の旗で行う（予約確定の ScriptLock を待たせない）
+  if (cache.get(FUNNEL_RUN_KEY_)) return 0;
+  cache.put(FUNNEL_RUN_KEY_, '1', 300);
+  // 書き出し中も直接書き込みへ切り替わらないよう、先に生存確認を延長
+  cache.put(FUNNEL_HB_KEY_, '1', 7200);
   try {
-    all = props.getProperties();                    // ロック後に読み直し
-    keys = funnelQueueKeys_(all).slice(0, FUNNEL_FLUSH_MAX_);
+    keys = keys.slice(0, FUNNEL_FLUSH_MAX_);
     var sheet = getSheet(SHEET_NAMES.FUNNEL_LOG);
     var headers = getHeaderMap(SHEET_NAMES.FUNNEL_LOG);
     var lastCol = sheet.getLastColumn();
-    var rows = [];
+    var written = 0;
     keys.forEach(function(k) {
+      var raw = props.getProperty(k);
+      if (!raw) return;                             // 他の実行が書き出し済み
+      var ev;
+      try { ev = JSON.parse(raw); } catch (pe) {
+        Logger.log('⚠️ flushFunnelQueue_: 壊れた行を破棄 ' + k);
+        try { props.deleteProperty(k); } catch (e2) {}
+        return;
+      }
       try {
-        var obj = funnelRowObject_(JSON.parse(all[k]));
+        var obj = funnelRowObject_(ev);
         var row = new Array(lastCol).fill('');
         Object.keys(obj).forEach(function(col) {
           if (headers[col]) row[headers[col] - 1] = obj[col];
         });
-        rows.push(row);
+        sheet.appendRow(row);                       // 1行ずつ（同時の直接書き込みと行が重ならない）
+        written++;
       } catch (e) {
-        Logger.log('⚠️ flushFunnelQueue_: 壊れた行を破棄 ' + k);
+        Logger.log('⚠️ flushFunnelQueue_: 書けなかった行（次回再試行） ' + k + ' : ' + e);
+        return;
       }
+      try { props.deleteProperty(k); } catch (e3) { Logger.log('⚠️ flushFunnelQueue_: キー削除失敗 ' + k); }
     });
-    if (rows.length > 0) {
-      var start = sheet.getLastRow() + 1;
-      var need = start + rows.length - 1 - sheet.getMaxRows();
-      if (need > 0) sheet.insertRowsAfter(sheet.getMaxRows(), need);
-      sheet.getRange(start, 1, rows.length, lastCol).setValues(rows);
-      SpreadsheetApp.flush();
-    }
-    keys.forEach(function(k) { props.deleteProperty(k); });
     cache.remove(FUNNEL_CNT_KEY_);
     cache.put(FUNNEL_HB_KEY_, '1', 7200);
-    return rows.length;
+    return written;
   } finally {
-    lock.releaseLock();
+    cache.remove(FUNNEL_RUN_KEY_);
   }
 }
 
