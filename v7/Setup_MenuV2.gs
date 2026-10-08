@@ -331,22 +331,4 @@ function ensureBookingCampaignColumnsV2_() {
   }
 }
 
-/**
- * Funnel イベントを記録(本番コードからも呼ぶ簡易ヘルパー)
- *  - 失敗してもメイン処理を止めないよう try/catch で保護
- */
-function logFunnelEvent(chatId, event, source, bookingId, metadata) {
-  try {
-    appendRow(SHEET_NAMES.FUNNEL_LOG, {
-      'タイムスタンプ': new Date(),
-      'チャットID':     String(chatId || ''),
-      'イベント':       String(event || ''),
-      'ソース':         String(source || ''),
-      '予約ID':         String(bookingId || ''),
-      'メタデータ(JSON)': metadata ? JSON.stringify(metadata) : ''
-    });
-  } catch (err) {
-    // ファネルログは欠損しても業務影響なし(計測のみ)
-    Logger.log('⚠️ logFunnelEvent 失敗(無視可): ' + err);
-  }
-}
+// logFunnelEvent は 2026-10-08 に v7/FunnelLog.gs へ移設（書き込みの後回し化）

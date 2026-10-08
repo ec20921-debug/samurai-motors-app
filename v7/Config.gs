@@ -75,7 +75,9 @@ const TTL = {
  *
  * @return {Object} 全設定値を格納したオブジェクト
  */
+var __cfgMemo_ = null;   // 2026-10-08: 1回の実行内では設定を読み直さない（実行中に設定キーを書き換える本番コードは無い）
 function getConfig() {
+  if (__cfgMemo_) return __cfgMemo_;
   const props = PropertiesService.getScriptProperties();
   const all = props.getProperties();
 
@@ -95,7 +97,7 @@ function getConfig() {
     throw new Error('❌ PropertiesService 未登録: ' + missing.join(', '));
   }
 
-  return {
+  __cfgMemo_ = {
     botTokenBooking:              all[CONFIG_KEYS.BOT_TOKEN_BOOKING],
     botTokenField:                all[CONFIG_KEYS.BOT_TOKEN_FIELD],
     adminGroupId:                 all[CONFIG_KEYS.ADMIN_GROUP_ID],
@@ -108,6 +110,7 @@ function getConfig() {
     bookingMiniappUrl:            all[CONFIG_KEYS.BOOKING_MINIAPP_URL] || '',
     jobManagerMiniappUrl:         all[CONFIG_KEYS.JOB_MANAGER_MINIAPP_URL] || ''
   };
+  return __cfgMemo_;
 }
 
 /**

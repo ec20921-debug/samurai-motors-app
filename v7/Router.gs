@@ -66,6 +66,11 @@ function doGet(e) {
         result = apiBookingSlots(e.parameter);
         break;
 
+      // 2026-10-08: 12日分の空き枠を1回で返す（表示専用・BookingSlotsRange.gs）
+      case 'booking_slots_range':
+        result = apiBookingSlotsRange(e.parameter);
+        break;
+
       // Menu v4 (2026-09-22): 業務ミニアプリ(job-manager)向けメニュー価格。ファネルログには記録しない
       case 'menu_prices':
         result = apiMenuPrices();
@@ -183,7 +188,8 @@ function apiBookingInit(params) {
   }
 
   let customer = null;
-  const row = findCustomerRow(chatId);
+  // 2026-10-08: 起動専用の軽い検索（シート1回読み。BookingFast.gs）
+  const row = findCustomerForInit_(chatId);
   if (row) {
     customer = {
       customerId: row.data['顧客ID'],
@@ -227,7 +233,7 @@ function apiBookingInit(params) {
 /**
  * GET menu_prices
  * Response: { status:'ok', plans, options, dispatchFee }
- * job-manager.html の価格ラベル・参考合計用(メニューシート連動・60秒キャッシュ)
+ * job-manager.html の価格ラベル・参考合計用(メニューシート連動。実行内でメニューを1回だけ読む)
  */
 function apiMenuPrices() {
   return {

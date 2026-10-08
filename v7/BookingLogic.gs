@@ -79,18 +79,46 @@ function getActivePlans() {
  * 「メニュー」統合シートから WASH 行を読む(種別=WASH のみ抽出)
  * シートが存在しない場合は null を返し、呼び出し側がフォールバックする
  */
-function readPlansFromMenuSheet_() {
+// ── 2026-10-08: メニュー行の実行内スナップショット ──
+// getActivePlans / getActiveOptions / findPlanByLetter / findOptionByCode が同じ実行内で
+// 何度もシートを読み直していた（起動2回・空き枠1+N回・確定2+2N回）のを1回にする。
+// 保存は同じ実行内かつ30秒以内だけ（長く走るトリガー内でもほぼ直接読みと同じ鮮度）。
+var __menuSnap_ = null;   // {at, rows} / rows=null はメニューシート無し（旧シートへフォールバック）
+var MENU_SNAP_TTL_MS_ = 30 * 1000;
+
+function getMenuRows_() {
+  if (__menuSnap_ && (Date.now() - __menuSnap_.at) < MENU_SNAP_TTL_MS_) return __menuSnap_.rows;
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAMES.MENU);
-  if (!sheet) return null;
+  let rows = null;
+  if (sheet) {
+    const lastRow = sheet.getLastRow();
+    // メニューシート列構造 (Setup_MenuV3.gs MENU_HEADERS と同期):
+    // A:コード B:種別 C:名称(英) D:名称(クメール) E:名称(日)
+    // F:セダン価格 G:SUV価格 H:セダン所要 I:SUV所要 J:有効 K:備考
+    rows = (lastRow < 2) ? [] : sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  }
+  __menuSnap_ = { at: Date.now(), rows: rows };
+  return rows;
+}
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
+function clearMenuSnapshot_() {
+  __menuSnap_ = null;
+  __bookingCalMemo_ = null;
+}
 
-  // メニューシート列構造 (Setup_MenuV3.gs MENU_HEADERS と同期):
-  // A:コード B:種別 C:名称(英) D:名称(クメール) E:名称(日)
-  // F:セダン価格 G:SUV価格 H:セダン所要 I:SUV所要 J:有効 K:備考
-  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+// 予約カレンダーの取得結果を実行内で使い回す（予定 getEvents は毎回カレンダーから直接読む）
+var __bookingCalMemo_ = null;
+function getBookingCalendar_() {
+  if (__bookingCalMemo_) return __bookingCalMemo_;
+  const sysCfg = getConfig();
+  __bookingCalMemo_ = CalendarApp.getCalendarById(sysCfg.bookingCalendarId) || null;
+  return __bookingCalMemo_;
+}
+
+function readPlansFromMenuSheet_() {
+  const data = getMenuRows_();
+  if (data === null) return null;
   const plans = [];
 
   data.forEach(function(row) {
@@ -247,14 +275,8 @@ function getActiveOptions() {
  * 戻り値に kind(種別) を含め、ミニアプリ側でカテゴリ分けに使う。
  */
 function readGlassFromMenuSheet_() {
-  const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAMES.MENU);
-  if (!sheet) return null;
-
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-
-  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const data = getMenuRows_();
+  if (data === null) return null;
   const out = [];
 
   data.forEach(function(row) {
@@ -544,8 +566,7 @@ function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes) {
   const bizEnd = cfg.businessHourEnd || 18;
 
   // ── 対象日の既存予約（カレンダー）を取得 ──
-  const sysCfg = getConfig();
-  const calendar = CalendarApp.getCalendarById(sysCfg.bookingCalendarId);
+  const calendar = getBookingCalendar_();
   if (!calendar) return { ok: false, error: 'CALENDAR_NOT_FOUND' };
 
   const dayStart = parseDateTimePhnomPenh(dateStr, bizStart, 0);
@@ -608,10 +629,10 @@ function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes) {
     }
   }
 
-  // フロントに診断情報を返す（空のときにユーザーに何が原因か見せるため）
+  // フロントに診断情報を返す（件数のみ）
+  // 2026-10-08: 予定タイトル(他の客の名前)は顧客向け API に出さない。サーバーログ(上の Logger.log)には残る
   let debug = 'events=' + events.length +
     ' past=' + skipPast + ' conflict=' + skipConflict + ' overflow=' + skipOverflow;
-  if (evDiag.length) debug += ' blockedBy=[' + evDiag.join(' | ') + ']';
 
   return { ok: true, slots: slots, durationMin: duration, debug: debug };
 }
@@ -712,10 +733,10 @@ function createBooking(params) {
     const amount = Math.max(0, subtotal - discountAmount); // 請求総額(WASH+GLASS×(1-%) + Delivery)
 
     // ── 2. 空き枠再確認(ロック後に取り直し) ──
-    // plan が無い(GLASS-only)場合は findAvailableSlots が無効。簡易検証のみ実施。
-    // 注: GLASS-only の race condition リスクは低ボリュームのため運用上許容、将来拡張。
-    if (plan) {
-      const avail = findAvailableSlots(params.date, params.planLetter, vehicleType, optionCodesCsv);
+    // 2026-10-08: WASH なし(GLASS/HEADLIGHT 単体)の予約も再確認する（メニューシートの所要時間 H/I 列が全行 >0 であること）。
+    //   画面側で空き枠を先読み・キャッシュするようになったため、最終判断は常にここで行う。
+    {
+      const avail = findAvailableSlots(params.date, plan ? params.planLetter : '', vehicleType, optionCodesCsv);
       if (!avail.ok) return { status: 'error', message: '空き枠取得失敗: ' + avail.error };
       if (avail.slots.indexOf(params.startTime) < 0) {
         return {
@@ -745,8 +766,7 @@ function createBooking(params) {
     const bookingId = generateDateSeqId('BK', SHEET_NAMES.BOOKINGS, '予約ID');
 
     // ── 6. カレンダー登録 ──
-    const sysCfg = getConfig();
-    const calendar = CalendarApp.getCalendarById(sysCfg.bookingCalendarId);
+    const calendar = getBookingCalendar_();
     // タイトル / ラベル: plan / options の有無で分岐(WASH なしの単体予約も対応)
     const titleParts = [];
     if (plan) titleParts.push(plan.letter);

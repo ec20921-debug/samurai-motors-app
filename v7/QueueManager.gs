@@ -138,6 +138,13 @@ function cleanupOldProcessedIds() {
   if (deleted > 0) {
     Logger.log('🧹 cleanupOldProcessedIds: ' + deleted + '件削除');
   }
+
+  // 2026-10-08: 溜めておいたファネルログをまとめてシートへ（FunnelLog.gs。失敗しても本処理に影響させない）
+  try {
+    if (typeof flushFunnelQueue_ === 'function') flushFunnelQueue_(props, all);
+  } catch (err) {
+    Logger.log('⚠️ flushFunnelQueue_ 失敗(次回に持ち越し): ' + err);
+  }
 }
 
 /**

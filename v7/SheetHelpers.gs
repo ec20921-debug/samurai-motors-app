@@ -21,8 +21,10 @@
 var __ssCache = null;
 function getSpreadsheet() {
   if (__ssCache) return __ssCache;
-  const cfg = getConfig();
-  __ssCache = SpreadsheetApp.openById(cfg.spreadsheetId);
+  // 2026-10-08: 必要なのは SPREADSHEET_ID だけなので全プロパティ読み(getConfig)を避ける
+  let id = PropertiesService.getScriptProperties().getProperty(CONFIG_KEYS.SPREADSHEET_ID);
+  if (!id) id = getConfig().spreadsheetId;
+  __ssCache = SpreadsheetApp.openById(id);
   return __ssCache;
 }
 
@@ -241,12 +243,18 @@ function updateRow(sheetName, rowIndex, updates) {
  *   businessHourEnd: number
  * }}
  */
+var __bookingCfgMemo_ = null;   // 2026-10-08: 実行内メモ {at, cfg}（CacheService と同じ60秒以内だけ使う）
 function getBookingConfig() {
+  if (__bookingCfgMemo_ && (Date.now() - __bookingCfgMemo_.at) < TTL.PLAN_PRICES_CACHE * 1000) {
+    return __bookingCfgMemo_.cfg;
+  }
   const cache = CacheService.getScriptCache();
   const cached = cache.get('plan_prices_cache');
   if (cached) {
     try {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      __bookingCfgMemo_ = { at: Date.now(), cfg: parsed };
+      return parsed;
     } catch (e) {
       // キャッシュ破損 → 再読込
     }
@@ -312,6 +320,7 @@ function getBookingConfig() {
   });
 
   cache.put('plan_prices_cache', JSON.stringify(config), TTL.PLAN_PRICES_CACHE);
+  __bookingCfgMemo_ = { at: Date.now(), cfg: config };
   return config;
 }
 
@@ -320,6 +329,10 @@ function getBookingConfig() {
  */
 function clearBookingConfigCache() {
   CacheService.getScriptCache().remove('plan_prices_cache');
+  // 2026-10-08: 実行内メモもまとめて捨てる（設定・メニュー・カレンダー）
+  __bookingCfgMemo_ = null;
+  if (typeof __cfgMemo_ !== 'undefined') __cfgMemo_ = null;
+  if (typeof clearMenuSnapshot_ === 'function') clearMenuSnapshot_();
   Logger.log('🧹 plan_prices_cache をクリアしました');
 }
 
