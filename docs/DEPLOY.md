@@ -75,6 +75,23 @@ done
 git add -A && git commit -m "sync: 本体リポジトリから配信ファイル同期" && git push
 ```
 
+### 現場アプリ v2（field/）の配信（2026-10-08〜）
+
+- 配信先: `https://ec20921-debug.github.io/samurai-motors-miniapp/field/`（**配信用リポジトリ側**。開発用リポジトリが将来非公開になっても止まらない）
+- 版番号を入れてから同期する（入れ忘れると端末が新しい版に切り替わらない）:
+
+```bash
+cd /c/Users/drymp/dev/samurai-motors-app && python field/stamp_build.py   # index.html と sw.js に同じ版番号
+git add field && git commit -m "..." && git push
+cd /c/Users/drymp/dev/samurai-motors-miniapp && mkdir -p field
+cp ../samurai-motors-app/field/{index.html,outbox.js,sw.js,manifest.webmanifest,icon-192.png,icon-512.png,apple-touch-icon.png} field/
+git add field && git commit -m "sync: field/" && git push
+```
+
+- 端末側は「新しい版があります」の帯をタップすると切り替わる（送信待ちの記録は端末の保管庫にあるので消えない）
+- 戻すときは配信用リポジトリの field/ を前のコミットに戻して push（Service Worker は画面を毎回サーバーに確認するので、次に開いた時に戻る）
+- テストで送信を試すときは本番 GAS に書き込まないよう fetch を模擬に差し替え、終わったら端末の `sm_field_v1`（IndexedDB）を削除すること
+
 - 反映は push 後 1〜2 分（GitHub Pages ビルド）。チラシ画像の差し替えは**必ず別ファイル名**で（Telegram の URL キャッシュ対策。v7/BookingBot.gs の差替手順コメント参照）
 
 ## 万一壊れた場合の戻し方
