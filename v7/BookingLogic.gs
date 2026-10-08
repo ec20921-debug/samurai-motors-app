@@ -939,7 +939,8 @@ function notifyBookingCreated(info) {
   // サービスタイプによってデリバリー費の表示を分岐
   if (isInStore) {
     customerText += '🏪 In-store service / សេវានៅហាង:  0$\n';
-  } else {
+  } else if (feeAmt > 0) {
+    // 2026-10-08: 出張料 0（当面徴収しない・Daisuke 指示）のときは行ごと出さない
     customerText += '🚚 Delivery fee / ថ្លៃដឹកជញ្ជូន:  ' + usd(feeAmt) + '\n';
   }
   customerText +=
