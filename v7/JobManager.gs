@@ -241,7 +241,10 @@ function calcEndTime(startHHmm, durationMin) {
  *   4. 顧客へ: Before写真アルバム（キャプション: 「開始しました」）
  *   5. 管理グループへ: Before写真アルバム（キャプション: 「▶️ 作業開始」詳細付き）
  */
-function apiJobStart(body) {
+function apiJobStart(body, opts) {
+  // opts（2026-10-08 v2）: { rowIndex, jobId } … JobIdempotency.gs が先に書いた行を使う
+  opts = opts || {};
+  var adminDelivered = false;
   try {
     var bookingId = body.bookingId || '';
     var cfg = getConfig();
@@ -263,7 +266,7 @@ function apiJobStart(body) {
       ensureJobsLinkColumns_();
       linkedChatId = consumePendingLink_(linkToken);
     }
-    var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
+    var jobId = opts.rowIndex ? opts.jobId : generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
     var jobRowObj = {
       'ジョブID':       jobId,
       '予約ID':         bookingId,
@@ -283,11 +286,28 @@ function apiJobStart(body) {
       jobRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
       if (linkedChatId) jobRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
     }
-    appendRow(SHEET_NAMES.JOBS, jobRowObj);
+    if (opts.rowIndex) {
+      // v2: 行は二重処理対策の入口で作成済み。送り直しで QR 連携を消費済みなら行の値を使う。
+      // 作業状態・完了時刻・After写真・施工時間は書かない（終了が先に届いた行を「作業中」に戻さない）
+      var existingRow = readRow(SHEET_NAMES.JOBS, opts.rowIndex);
+      if (!linkedChatId && existingRow[JOBS_COL_CUSTOMER_CHAT]) linkedChatId = String(existingRow[JOBS_COL_CUSTOMER_CHAT]);
+      var v2StartUpdates = {
+        'Before写真URL': jobRowObj['Before写真URL'],
+        '車種':          jobRowObj['車種']
+      };
+      if (hasAmountValue_(body.amount)) v2StartUpdates['料金(USD)'] = body.amount;
+      v2StartUpdates[JOBS_COL_SERVICE] = jobRowObj[JOBS_COL_SERVICE];
+      if (linkToken) v2StartUpdates[JOBS_COL_LINK_TOKEN] = linkToken;
+      if (linkedChatId) v2StartUpdates[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
+      updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2StartUpdates);
+    } else {
+      appendRow(SHEET_NAMES.JOBS, jobRowObj);
+    }
 
     // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
     var bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
-    if (bkRow) {
+    // v2: 予約がすでに「作業完了」なら巻き戻さない（開始の遅延到着）
+    if (bkRow && !(opts.rowIndex && String(bkRow.data['進行状態'] || '') === '作業完了')) {
       try {
         updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
           '進行状態': '作業中'
@@ -321,7 +341,8 @@ function apiJobStart(body) {
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     // 有償の手動ジョブ（予約なし・料金>0）のみ費用を表示（無償は金額を出さない・2026-08-28 A案）
     var manualPaidStart = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
-    if (customerChatId) {
+    if (customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'start'))) {
+      if (typeof jobMarkCustSent_ === 'function') jobMarkCustSent_(opts, 'start');   // v2: 再送で顧客に重複させない
       try {
         var custText =
           '🚗 ការលាងសម្អាតរថយន្តរបស់អ្នកចាប់ផ្តើមហើយ!\n' +
@@ -357,9 +378,15 @@ function apiJobStart(body) {
       var adminOpts = {};
       if (threadId) adminOpts.message_thread_id = threadId;
 
-      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      var adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      if (opts.rowIndex && !(adminRes && adminRes.ok) && adminOpts.message_thread_id) {
+        adminOpts = {};   // v2: トピックが消えている等 → 一般スレッドに送る
+        adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      }
+      adminDelivered = !!(adminRes && adminRes.ok);
       if (photoResult.blobs.length > 0) {
-        sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+        var albumRes = sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+        if (!(albumRes && albumRes.ok)) adminDelivered = false;
       }
     } catch (e) {
       Logger.log('⚠️ 管理グループ通知失敗: ' + e);
@@ -379,6 +406,17 @@ function apiJobStart(body) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
     }
 
+    // v2: 管理通知が届かない／写真を1枚も保存できない場合は「配信済み」にしない（送り直しで再配信）
+    if (opts.rowIndex) {
+      var startPhotosExpected = (body.beforePhotos || []).length;
+      if (!adminDelivered || (startPhotosExpected > 0 && photoResult.urls.length === 0)) {
+        // 上限回数に達したら配信済みとして進め、要確認の印だけ返す
+        if (opts.lastChance) return { status: 'ok', jobId: jobId, warning: 'DELIVERY_PARTIAL',
+                 adminSent: adminDelivered, photosSaved: photoResult.urls.length, photosExpected: startPhotosExpected };
+        return { status: 'error', error: 'DELIVERY_FAILED', retryable: true, jobId: jobId,
+                 adminSent: adminDelivered, photosSaved: photoResult.urls.length, photosExpected: startPhotosExpected };
+      }
+    }
     return { status: 'ok', jobId: jobId };
   } catch (err) {
     Logger.log('❌ apiJobStart error: ' + err + ' stack=' + (err.stack || ''));
@@ -399,7 +437,10 @@ function apiJobStart(body) {
  *   5. 管理グループへ: After写真アルバム（キャプション: 「⏹ 作業終了」詳細付き）
  *   [Phase 5: 続けて QR コード送信]
  */
-function apiJobEnd(body) {
+function apiJobEnd(body, opts) {
+  // opts（2026-10-08 v2）: { rowIndex, jobId, rowData } … JobIdempotency.gs が特定した行
+  opts = opts || {};
+  var adminDelivered = false;
   try {
     var bookingId = body.bookingId || '';
     var cfg = getConfig();
@@ -414,7 +455,23 @@ function apiJobEnd(body) {
     }
 
     // ── 2. 作業記録シート更新（同一予約IDで複数行ある場合は最新行を更新） ──
-    if (bookingId) {
+    if (opts.rowIndex) {
+      // v2: client_id で特定済みの行を更新（予約IDの最新行に頼らない＝他端末の行を取り違えない）
+      try {
+        var v2Updates = {
+          '完了時刻':     body.endTime ? new Date(body.endTime) : new Date(),
+          'After写真URL': photoResult.urls.join('\n'),
+          '作業状態':     '完了',
+          '施工時間':     duration + '分'
+        };
+        var svcV2 = jobServiceCsv_(body);
+        if (svcV2) v2Updates[JOBS_COL_SERVICE] = svcV2;
+        if (hasAmountValue_(body.amount)) v2Updates['料金(USD)'] = body.amount;
+        updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2Updates);
+      } catch (e) {
+        Logger.log('⚠️ 作業記録更新失敗(v2): ' + e);
+      }
+    } else if (bookingId) {
       // jobId が body で指定されていればそれで検索、なければ 予約ID の最新ヒット行
       var jobRow = body.jobId
         ? findRow(SHEET_NAMES.JOBS, 'ジョブID', body.jobId)
@@ -463,7 +520,13 @@ function apiJobEnd(body) {
     // 従来、予約IDが無い手動ジョブは作業記録が job_end で更新されず、
     // 顧客チャットIDも無いため写真がお客さんに届かなかった。
     // QRスキャン済みなら 作業記録「顧客チャットID」から送信先を復元する。
-    if (!bookingId && linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
+    if (opts.rowIndex && !customerChatId && opts.rowData && opts.rowData['顧客チャットID']) {
+      // v2 の手動ジョブ: 作業開始時に QR 連携できていれば、その顧客に送る
+      customerChatId = String(opts.rowData['顧客チャットID']);
+      var v2Cust = findCustomerRow(customerChatId);
+      if (v2Cust && v2Cust.data['トピックID']) threadId = v2Cust.data['トピックID'];
+    }
+    if (!opts.rowIndex && !bookingId && linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
       try {
         var linkRows = findJobsRowsByLinkToken_(linkToken);
         if (linkRows.length > 0) {
@@ -499,7 +562,8 @@ function apiJobEnd(body) {
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     // 有償の手動ジョブ（予約なし・料金>0）のみ合計表示＋支払いご案内（無償は送らない・2026-08-28 A案）
     var manualPaidEnd = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
-    if (customerChatId) {
+    if (customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'end'))) {
+      if (typeof jobMarkCustSent_ === 'function') jobMarkCustSent_(opts, 'end');   // v2: 再送で顧客に重複させない
       try {
         var custText =
           '✅ ការលាងសម្អាតបញ្ចប់ហើយ!\n' +
@@ -542,12 +606,31 @@ function apiJobEnd(body) {
       var adminOpts = {};
       if (threadId) adminOpts.message_thread_id = threadId;
 
-      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      var adminResEnd = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      if (opts.rowIndex && !(adminResEnd && adminResEnd.ok) && adminOpts.message_thread_id) {
+        adminOpts = {};   // v2: トピックが消えている等 → 一般スレッドに送る
+        adminResEnd = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+      }
+      adminDelivered = !!(adminResEnd && adminResEnd.ok);
       if (photoResult.blobs.length > 0) {
-        sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+        var albumResEnd = sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+        if (!(albumResEnd && albumResEnd.ok)) adminDelivered = false;
       }
     } catch (e) {
       Logger.log('⚠️ 管理グループ通知失敗: ' + e);
+    }
+
+    // v2: 管理通知が届かない／写真を1枚も保存できない場合は売上計上・QR の前に止めて再送を待つ
+    var endPartial = null;
+    if (opts.rowIndex) {
+      var endPhotosExpected = (body.afterPhotos || []).length;
+      if (!adminDelivered || (endPhotosExpected > 0 && photoResult.urls.length === 0)) {
+        // 上限回数に達したら売上計上・QR へ進め、要確認の印だけ返す
+        if (opts.lastChance) endPartial = { warning: 'DELIVERY_PARTIAL', adminSent: adminDelivered,
+                 photosSaved: photoResult.urls.length, photosExpected: endPhotosExpected };
+        else return { status: 'error', error: 'DELIVERY_FAILED', retryable: true,
+                 adminSent: adminDelivered, photosSaved: photoResult.urls.length, photosExpected: endPhotosExpected };
+      }
     }
 
     // ── 5.5. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
@@ -567,6 +650,7 @@ function apiJobEnd(body) {
 
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
     try {
+      // 2026-10-08 D4: 支払区分による可否は recordManualJobSaleIfNeeded_ の入口で判定
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
         recordManualJobSaleIfNeeded_(body, 'job_end');
       }
@@ -591,6 +675,7 @@ function apiJobEnd(body) {
       }
     }
 
+    if (endPartial) { endPartial.status = 'ok'; return endPartial; }
     return { status: 'ok' };
   } catch (err) {
     Logger.log('❌ apiJobEnd error: ' + err + ' stack=' + (err.stack || ''));

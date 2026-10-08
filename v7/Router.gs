@@ -113,6 +113,13 @@ function doPost(e) {
 
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
+    // 2026-10-08: 現場アプリ v2（client_id 付き）は送り主を署名から確定して記録する
+    if (body.client_id) {
+      try {
+        var vAuth = verifyTelegramInitData_(extractInitData_(body));
+        body._authUserId = (vAuth && vAuth.ok) ? String(vAuth.userId || '') : '';
+      } catch (eAuth) { body._authUserId = ''; }
+    }
     delete body._tgInitData;
 
     switch (action) {
@@ -125,12 +132,13 @@ function doPost(e) {
         break;
 
       // ── Phase 4: 業務ミニアプリ ──
+      // 2026-10-08: client_id 付き（現場アプリ v2）は二重処理対策つきの入口へ（JobIdempotency.gs）
       case 'job_start':
-        result = apiJobStart(body);
+        result = body.client_id ? apiJobStartV2(body) : apiJobStart(body);
         break;
 
       case 'job_end':
-        result = apiJobEnd(body);
+        result = body.client_id ? apiJobEndV2(body) : apiJobEnd(body);
         break;
 
       case 'job':
@@ -165,7 +173,13 @@ function doPost(e) {
     return jsonResponse(result);
   } catch (err) {
     Logger.log('❌ doPost error: ' + err + ' stack=' + (err.stack || ''));
-    return jsonResponse({ status: 'error', message: String(err) });
+    // 2026-10-08: 送信待ち箱が判定できるよう client_id をエコー（再送で回復しうるエラー）
+    var errRes = { status: 'error', message: String(err), retryable: true };
+    try {
+      var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+      if (b.client_id) { errRes.client_id = String(b.client_id); errRes.request_id = String(b.request_id || b.client_id); }
+    } catch (ignore) {}
+    return jsonResponse(errRes);
   }
 }
 

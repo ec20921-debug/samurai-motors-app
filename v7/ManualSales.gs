@@ -46,6 +46,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
   try {
     var bookingId = String(body.bookingId || '');
     if (bookingId) return null;  // 予約経由は既存フローで売上に乗る
+    // 2026-10-08 D4: 現場アプリ v2 の支払区分が現金・ABA 以外（提携店払い・未収・無料デモ）は自動計上しない
+    var payType = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    if (payType && payType !== 'cash' && payType !== 'aba') {
+      Logger.log('ℹ️ 手動ジョブ売上: 支払区分=' + payType + ' のため自動計上しない (' + sourceAction + ')');
+      return null;
+    }
     var amount = Number(body.amount);
     if (!(amount > 0)) return null;  // 無料・未入力は計上しない
 
@@ -251,6 +257,8 @@ function syncMissingManualJobSales() {
       // QR連携済みなら顧客チャットIDを引き継ぐ（列が無い環境では空のまま）
       var linkedChat = idx['顧客チャットID'] !== undefined
         ? String(r[idx['顧客チャットID']] || '').trim() : '';
+      // 2026-10-08 D4: v2 の支払区分（列が無い環境・旧アプリの行は空＝従来どおり）
+      var payTypeCell = idx['支払区分'] !== undefined ? String(r[idx['支払区分']] || '').trim() : '';
 
       var created = recordManualJobSaleIfNeeded_({
         bookingId: '',
@@ -265,7 +273,8 @@ function syncMissingManualJobSales() {
         plan: '',
         glassOption: '',
         building: '',
-        chatId: linkedChat
+        chatId: linkedChat,
+        paymentType: payTypeCell
       }, 'hourly_sync:' + jobId);
       if (created) count++;
     });
