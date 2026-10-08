@@ -255,7 +255,9 @@ function submitExpense(chatId, payload) {
     '精算期限':      reimburseDue,
     '精算日':        '',
     '精算方法':      '',
-    '関連タスクID':  linkedTaskId
+    '関連タスクID':  linkedTaskId,
+    // 2026-10-08: 現場アプリ v2 の送り直し判定用（列が無いシートでは無視される。FieldExpense.gs が列を用意）
+    'client_id':     String((payload && payload.clientId) || '')
   });
 
   // 経費マスターへの自動転記（Phase 2: 集約SoT用、失敗しても本処理に影響させない）

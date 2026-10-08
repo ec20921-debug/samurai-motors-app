@@ -230,8 +230,12 @@ function doPost(e) {
 
       case 'expense_submit': {
         const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(submitExpense(chatId, {
+        if (!chatId) return jsonOut(withClientId_({ ok: false, error: 'MISSING_CHAT_ID' }, body));
+        // 2026-10-08: 現場アプリ v2（client_id 付き）は送り直しでも1件だけ登録する（FieldExpense.gs）
+        const run = body.client_id
+          ? function (p) { return withClientId_(submitExpenseV2_(chatId, p, String(body.client_id)), body); }
+          : function (p) { return submitExpense(chatId, p); };
+        return jsonOut(run({
           transactionDate:  String(body.transactionDate  || ''),
           description:      String(body.description      || ''),
           amount:           Number(body.amount           || 0),
@@ -471,7 +475,7 @@ function withClientId_(res, body) {
     res = res || {};
     res.client_id = String(body.client_id);
     // 決定的な失敗（スタッフ未登録・出勤前の退勤・必須項目なし）は送り直しても無駄
-    if (res.ok === false) res.retryable = !/^(STAFF_NOT_FOUND|NOT_PUNCHED_IN|MISSING_|WORK_REQUIRED)/.test(String(res.error || ''));
+    if (res.ok === false) res.retryable = !/^(STAFF_NOT_FOUND|NOT_PUNCHED_IN|MISSING_|WORK_REQUIRED|INVALID_|DESC_REQUIRED|AMOUNT_INVALID|CURRENCY_INVALID|REIMBURSE_TO_REQUIRED)/.test(String(res.error || ''));
   }
   return res;
 }
