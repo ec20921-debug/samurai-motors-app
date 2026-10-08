@@ -81,8 +81,10 @@ function doPost(e) {
   const action = body.action || '';
 
   // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+  let initDataRaw = '';
   try {
-    auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
+    initDataRaw = extractInitData_(body);
+    auditTelegramAuth_(action, body.chatId || '', initDataRaw);
     delete body._tgInitData;
   } catch (auditErr) { Logger.log('⚠️ auth audit skipped: ' + auditErr); }
 
@@ -95,7 +97,21 @@ function doPost(e) {
       case 'whoami': {
         const chatId = String(body.chatId || '');
         const staff = chatId ? findStaffByChatId(chatId) : null;
-        return jsonOut({ ok: true, staff: staff });
+        const res = { ok: true, staff: staff };
+        // 2026-10-08: 現場アプリ v2 のスタッフ専用リンク（?u=&k=）の鍵が正しいか（FieldLink.gs）
+        if (body.k !== undefined) res.keyOk = !!(chatId && fieldLinkKeyOk_(chatId, String(body.k || '')));
+        return jsonOut(res);
+      }
+
+      // 2026-10-08: スタッフ専用リンクの発行（Telegram 署名で確認した管理者のみ・FieldLink.gs）
+      case 'field_link_issue':
+        return jsonOut(fieldLinkIssue_(initDataRaw, body));
+
+      case 'field_link_staff': {
+        const v = verifyTelegramInitData_(initDataRaw);
+        const me = (v && v.ok) ? findStaffByChatId(v.userId) : null;
+        if (!me || me.role !== 'admin') return jsonOut({ ok: false, error: 'AUTH_FORBIDDEN' });
+        return jsonOut({ ok: true, staff: fieldLinkStaffList_() });
       }
 
       case 'attendance_today': {
@@ -104,16 +120,17 @@ function doPost(e) {
         return jsonOut(getTodayAttendance(chatId));
       }
 
+      // 2026-10-08: 現場アプリ v2 は「押した時刻」(at) と送り直し判定用の client_id を送る
       case 'punch_in': {
         const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(punchIn(chatId, body.gps || null));
+        if (!chatId) return jsonOut(withClientId_({ ok: false, error: 'MISSING_CHAT_ID' }, body));
+        return jsonOut(withClientId_(punchIn(chatId, body.gps || null, { at: body.at, clientId: body.client_id }), body));
       }
 
       case 'punch_out': {
         const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(punchOut(chatId, body.gps || null));
+        if (!chatId) return jsonOut(withClientId_({ ok: false, error: 'MISSING_CHAT_ID' }, body));
+        return jsonOut(withClientId_(punchOut(chatId, body.gps || null, { at: body.at, clientId: body.client_id }), body));
       }
 
       // ── タスク管理ミニアプリ ──
@@ -189,13 +206,13 @@ function doPost(e) {
 
       case 'report_submit': {
         const chatId = String(body.chatId || '');
-        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(submitDailyReport(chatId, {
+        if (!chatId) return jsonOut(withClientId_({ ok: false, error: 'MISSING_CHAT_ID' }, body));
+        return jsonOut(withClientId_(submitDailyReport(chatId, {
           work:       String(body.work       || ''),
           notes:      String(body.notes      || ''),
           tomorrow:   String(body.tomorrow   || ''),
           targetDate: String(body.targetDate || '')
-        }));
+        }), body));
       }
 
       // ── 経費入力ミニアプリ ──
@@ -448,6 +465,17 @@ function doPost(e) {
 /**
  * JSON レスポンス生成ヘルパー
  */
+/** 現場アプリ v2 の送信待ち箱が「送信済み」を判定できるよう client_id をエコー（2026-10-08） */
+function withClientId_(res, body) {
+  if (body && body.client_id) {
+    res = res || {};
+    res.client_id = String(body.client_id);
+    // 決定的な失敗（スタッフ未登録・出勤前の退勤・必須項目なし）は送り直しても無駄
+    if (res.ok === false) res.retryable = !/^(STAFF_NOT_FOUND|NOT_PUNCHED_IN|MISSING_|WORK_REQUIRED)/.test(String(res.error || ''));
+  }
+  return res;
+}
+
 function jsonOut(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))

@@ -23,15 +23,15 @@
  * @param {Object} gps - { lat, lng, accuracy } または null
  * @return {Object} { ok, time, error }
  */
-function punchIn(chatId, gps) {
-  return doPunch_('in', chatId, gps);
+function punchIn(chatId, gps, opts) {
+  return doPunch_('in', chatId, gps, opts);
 }
 
 /**
  * 退勤打刻
  */
-function punchOut(chatId, gps) {
-  return doPunch_('out', chatId, gps);
+function punchOut(chatId, gps, opts) {
+  return doPunch_('out', chatId, gps, opts);
 }
 
 /**
@@ -62,21 +62,37 @@ function getTodayAttendance(chatId) {
 /**
  * 打刻共通処理
  */
-function doPunch_(type, chatId, gps) {
+function doPunch_(type, chatId, gps, opts) {
+  opts = opts || {};
   const staff = findStaffByChatId(chatId);
   if (!staff) {
     return { ok: false, error: 'STAFF_NOT_FOUND', message: 'スタッフ未登録' };
   }
 
-  const now = new Date();
-  const today = todayStr_();
+  // 2026-10-08: 現場アプリ v2 は圏外でも端末に保存して後から送る → 「押した時刻」(opts.at) で記録する。
+  //   受け付けるのは受信時刻の 24 時間前〜2 分後まで（それ以外・不正値は受信時刻）
+  const received = new Date();
+  let now = received;
+  let late = false;
+  if (opts.at) {
+    const a = new Date(opts.at);
+    if (!isNaN(a.getTime()) && a.getTime() <= received.getTime() + 2 * 60000 &&
+        a.getTime() >= received.getTime() - 24 * 3600000) {
+      now = a;
+      late = (received.getTime() - a.getTime()) > 5 * 60000;
+    }
+  }
+  const today = Utilities.formatDate(now, getSheetTz_(), 'yyyy-MM-dd');
   const timeStr = Utilities.formatDate(now, OPS_TZ, 'HH:mm');
+  const lateNote = late ? ('端末時刻で記録・受信 ' + Utilities.formatDate(received, OPS_TZ, 'MM/dd HH:mm')) : '';
 
   const existing = findTodayRow_(today, staff.staffId);
 
   if (type === 'in') {
     // 既に出勤打刻済み
     if (existing && existing.data['出勤時刻']) {
+      // 現場アプリ v2 の送り直し（client_id 付き）は「処理済み」として扱う
+      if (opts.clientId) return { ok: true, status: 'duplicate', type: 'in', time: formatTimeCell_(existing.data['出勤時刻']) };
       return {
         ok: false,
         error: 'ALREADY_PUNCHED_IN',
@@ -99,11 +115,11 @@ function doPunch_(type, chatId, gps) {
       '退勤経度':       '',
       '退勤マップリンク': '',
       '位置精度(m)':    gps ? Math.round(gps.accuracy || 0) : '',
-      'メモ':           gps ? '' : 'GPS不可'
+      'メモ':           [gps ? '' : 'GPS不可', lateNote].filter(String).join(' / ')
     };
 
     appendRow(SHEET_NAMES.ATTENDANCE, payload);
-    notifyAdminSimple_('🟢 ' + timeStr + ' ' + staff.nameJp + ' 出勤', gps);
+    notifyAdminSimple_('🟢 ' + timeStr + ' ' + staff.nameJp + ' 出勤' + (late ? '（圏外から後送）' : ''), gps);
 
     return { ok: true, type: 'in', time: timeStr };
   }
@@ -117,6 +133,7 @@ function doPunch_(type, chatId, gps) {
     };
   }
   if (existing.data['退勤時刻']) {
+    if (opts.clientId) return { ok: true, status: 'duplicate', type: 'out', time: formatTimeCell_(existing.data['退勤時刻']) };
     return {
       ok: false,
       error: 'ALREADY_PUNCHED_OUT',
@@ -136,13 +153,14 @@ function doPunch_(type, chatId, gps) {
     '退勤マップリンク': gps ? mapLink_(gps.lat, gps.lng) : ''
   };
   // 精度は上書きしない（出勤時のを保持）。GPS不可メモは追記
-  if (!gps) {
+  if (!gps || lateNote) {
     const prevMemo = String(existing.data['メモ'] || '');
-    updates['メモ'] = prevMemo ? prevMemo + ' / 退勤GPS不可' : '退勤GPS不可';
+    const add = [gps ? '' : '退勤GPS不可', lateNote ? '退勤は' + lateNote : ''].filter(String).join(' / ');
+    updates['メモ'] = prevMemo ? prevMemo + ' / ' + add : add;
   }
 
   updateRow(SHEET_NAMES.ATTENDANCE, existing.row, updates);
-  notifyAdminSimple_('🔴 ' + timeStr + ' ' + staff.nameJp + ' 退勤', gps);
+  notifyAdminSimple_('🔴 ' + timeStr + ' ' + staff.nameJp + ' 退勤' + (late ? '（圏外から後送）' : ''), gps);
 
   return { ok: true, type: 'out', time: timeStr, workMinutes: workMinutes };
 }
