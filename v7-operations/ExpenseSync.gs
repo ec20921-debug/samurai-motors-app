@@ -107,7 +107,7 @@ function postOctoberRoutineCatchUpOnce_() {
   }
 }
 
-// 2026-10-09: 入力規則の不具合で未転記だった3件。転記がそろったら管理グループへ1回だけ訂正を知らせる（Daisuke 指示）
+// 2026-10-09: 入力規則の不具合で未転記だった3件。転記がそろったら管理グループへ1回だけ残金を知らせる（Daisuke 指示）
 const BALANCE_NOTICE_FLAG_20261009_ = 'BALANCE_NOTICE_20261009';
 const BALANCE_NOTICE_IDS_20261009_ = ['EXP-20261002-001', 'EXP-20261006-001', 'EXP-20261009-001'];
 
@@ -119,8 +119,7 @@ function notifyRonBalanceCorrectionOnce_() {
   if (!cfg.adminGroupId) return;
   const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
   const master = ss.getSheetByName(EXPENSE_MASTER_SHEET_);
-  const bot = ss.getSheetByName(SHEET_NAMES.EXPENSES);
-  if (!master || !bot || master.getLastRow() < 4 || bot.getLastRow() < 2) return;
+  if (!master || master.getLastRow() < 4) return;
 
   // 3件すべてが経費マスターに入るまでは待つ
   const inMaster = {};
@@ -129,30 +128,11 @@ function notifyRonBalanceCorrectionOnce_() {
   });
   if (BALANCE_NOTICE_IDS_20261009_.some(function(id) { return !inMaster[id]; })) return;
 
-  // 金額・内容は「経費」タブ（Bot入力）から読む
-  const byId = {};
-  bot.getRange(2, 1, bot.getLastRow() - 1, 6).getValues().forEach(function(r) {
-    byId[String(r[0]).trim()] = { desc: String(r[3] || ''), amount: Number(r[4]) || 0, currency: String(r[5] || 'USD') };
-  });
-  let totalUsd = 0;
-  const lines = BALANCE_NOTICE_IDS_20261009_.map(function(id) {
-    const e = byId[id] || { desc: '', amount: 0, currency: 'USD' };
-    if (e.currency.toUpperCase() === 'USD') totalUsd += e.amount;
-    return '・' + escapeHtml_(id) + ' ' + escapeHtml_(e.desc) + ' ' + e.amount.toFixed(2) + ' ' + escapeHtml_(e.currency);
-  });
-
   const bal = getRonPrepaidBalance_();
   if (bal === null) return;
 
-  const text =
-    '💵 <b>ロン君 残金の訂正</b>(経費マスター転記の不具合)\n\n' +
-    '10/2〜10/9 に現場から入った経費のうち3件が、残金の計算元「経費マスター」に入っていませんでした。\n' +
-    '原因: 経費マスターの「分類」列の選択肢が 9/27 の分類変更前のままで、「車両費」「広告宣伝費」の書き込みがはじかれていたため。' +
-    'このため残金が減らず、経費追加の通知にも残金が出ていませんでした。10/9 に修正済みです。\n\n' +
-    '今回反映した経費:\n' + lines.join('\n') + '\n' +
-    '計 $' + totalUsd.toFixed(2) + '\n\n' +
-    '💵 ロン君 残金: $' + (bal + totalUsd).toFixed(2) + ' → <b>$' + bal.toFixed(2) + '</b>' +
-    (bal < 10 ? ' ⚠️ 低残高' : '');
+  // 文面は残金のみ（Daisuke 指示 2026-10-09）
+  const text = '💵 ロン君 残金: <b>$' + bal.toFixed(2) + '</b>' + (bal < 10 ? ' ⚠️ 低残高' : '');
 
   const opts = { parse_mode: 'HTML' };
   if (cfg.adminExpenseThreadId) opts.message_thread_id = Number(cfg.adminExpenseThreadId);
