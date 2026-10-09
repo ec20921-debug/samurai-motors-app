@@ -79,7 +79,90 @@ function syncMissingBotExpensesToMaster() {
     }
   });
   Logger.log('🔄 sync: ' + count + '件を経費マスターへ転記');
+  try { postOctoberRoutineCatchUpOnce_(); } catch (e) { Logger.log('⚠️ 10月ルーティン追い計上失敗: ' + e); }
+  try { notifyRonBalanceCorrectionOnce_(); } catch (e) { Logger.log('⚠️ 残金訂正のお知らせ失敗: ' + e); }
   return count;
+}
+
+// 2026-10-01 の月次自動計上は家賃の書き込み失敗で止まり、RT-002（家賃）・RT-003（スターリンク）・RT-004（Claude）の
+// 10月分が未計上。そろうまで毎時の同期で追い計上する（2026-10 中のみ。元IDで冪等。Daisuke 指示 2026-10-09）
+const ROUTINE_CATCHUP_FLAG_202610_ = 'ROUTINE_CATCHUP_2026_10';
+const ROUTINE_CATCHUP_IDS_202610_ = ['RT-002-2026-10', 'RT-003-2026-10', 'RT-004-2026-10'];
+
+function postOctoberRoutineCatchUpOnce_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(ROUTINE_CATCHUP_FLAG_202610_) === 'done') return;
+  // autoPostRoutineExpenses は「当月分」を計上するため、10月を過ぎたら何もしない
+  if (Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM') !== '2026-10') return;
+
+  Logger.log('🔁 10月ルーティン追い計上: ' + autoPostRoutineExpenses() + '件');
+
+  const master = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId).getSheetByName(EXPENSE_MASTER_SHEET_);
+  const posted = {};
+  master.getRange(4, 15, Math.max(1, master.getLastRow() - 3), 1).getValues().forEach(function(r) {
+    posted[String(r[0]).trim()] = true;
+  });
+  if (ROUTINE_CATCHUP_IDS_202610_.every(function(id) { return posted[id]; })) {
+    props.setProperty(ROUTINE_CATCHUP_FLAG_202610_, 'done');
+  }
+}
+
+// 2026-10-09: 入力規則の不具合で未転記だった3件。転記がそろったら管理グループへ1回だけ訂正を知らせる（Daisuke 指示）
+const BALANCE_NOTICE_FLAG_20261009_ = 'BALANCE_NOTICE_20261009';
+const BALANCE_NOTICE_IDS_20261009_ = ['EXP-20261002-001', 'EXP-20261006-001', 'EXP-20261009-001'];
+
+function notifyRonBalanceCorrectionOnce_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(BALANCE_NOTICE_FLAG_20261009_) === 'sent') return;
+
+  const cfg = getConfig();
+  if (!cfg.adminGroupId) return;
+  const ss = SpreadsheetApp.openById(cfg.operationsSpreadsheetId);
+  const master = ss.getSheetByName(EXPENSE_MASTER_SHEET_);
+  const bot = ss.getSheetByName(SHEET_NAMES.EXPENSES);
+  if (!master || !bot || master.getLastRow() < 4 || bot.getLastRow() < 2) return;
+
+  // 3件すべてが経費マスターに入るまでは待つ
+  const inMaster = {};
+  master.getRange(4, 15, master.getLastRow() - 3, 1).getValues().forEach(function(r) {
+    inMaster[String(r[0]).trim()] = true;
+  });
+  if (BALANCE_NOTICE_IDS_20261009_.some(function(id) { return !inMaster[id]; })) return;
+
+  // 金額・内容は「経費」タブ（Bot入力）から読む
+  const byId = {};
+  bot.getRange(2, 1, bot.getLastRow() - 1, 6).getValues().forEach(function(r) {
+    byId[String(r[0]).trim()] = { desc: String(r[3] || ''), amount: Number(r[4]) || 0, currency: String(r[5] || 'USD') };
+  });
+  let totalUsd = 0;
+  const lines = BALANCE_NOTICE_IDS_20261009_.map(function(id) {
+    const e = byId[id] || { desc: '', amount: 0, currency: 'USD' };
+    if (e.currency.toUpperCase() === 'USD') totalUsd += e.amount;
+    return '・' + escapeHtml_(id) + ' ' + escapeHtml_(e.desc) + ' ' + e.amount.toFixed(2) + ' ' + escapeHtml_(e.currency);
+  });
+
+  const bal = getRonPrepaidBalance_();
+  if (bal === null) return;
+
+  const text =
+    '💵 <b>ロン君 残金の訂正</b>(経費マスター転記の不具合)\n\n' +
+    '10/2〜10/9 に現場から入った経費のうち3件が、残金の計算元「経費マスター」に入っていませんでした。\n' +
+    '原因: 経費マスターの「分類」列の選択肢が 9/27 の分類変更前のままで、「車両費」「広告宣伝費」の書き込みがはじかれていたため。' +
+    'このため残金が減らず、経費追加の通知にも残金が出ていませんでした。10/9 に修正済みです。\n\n' +
+    '今回反映した経費:\n' + lines.join('\n') + '\n' +
+    '計 $' + totalUsd.toFixed(2) + '\n\n' +
+    '💵 ロン君 残金: $' + (bal + totalUsd).toFixed(2) + ' → <b>$' + bal.toFixed(2) + '</b>' +
+    (bal < 10 ? ' ⚠️ 低残高' : '');
+
+  const opts = { parse_mode: 'HTML' };
+  if (cfg.adminExpenseThreadId) opts.message_thread_id = Number(cfg.adminExpenseThreadId);
+  const res = sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, opts);
+  if (res && res.ok) {
+    props.setProperty(BALANCE_NOTICE_FLAG_20261009_, 'sent');
+    Logger.log('📣 残金訂正のお知らせを管理グループへ送信: $' + bal.toFixed(2));
+  } else {
+    Logger.log('⚠️ 残金訂正のお知らせ送信失敗(次回の同期で再試行): ' + JSON.stringify(res));
+  }
 }
 
 /**
