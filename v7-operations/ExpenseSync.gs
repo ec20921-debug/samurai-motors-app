@@ -102,3 +102,56 @@ function debugSyncMissingBotExpenses() {
   const n = syncMissingBotExpensesToMaster();
   Logger.log('結果: ' + n + '件転記');
 }
+
+/**
+ * 【1回だけ手動実行】2026-10 の経費マスター転記失敗の後始末（2026-10-09）
+ *   原因: 経費マスター B列の入力規則が旧10分類のままで「車両費」「広告宣伝費」「地代家賃」等が拒否されていた。
+ *   ① B列の入力規則を 17分類に更新
+ *   ② 転記失敗で残った「日付(A列)だけの行」（B〜Q がすべて空）を削除（毎時の同期リトライで約170行）
+ *   ③ 取りこぼし同期（経費タブ→経費マスター）と当月ルーティン経費の自動計上をやり直す
+ *   → ロン君残金（前払い管理 F2）に未反映だった経費が反映される
+ * 先に previewExpenseMasterRepair() で対象をログ確認してから実行するのが安全。
+ */
+function repairExpenseMasterAfterValidationBug() {
+  return runExpenseMasterRepair_(false);
+}
+
+/** 上の修復の確認だけ（シートは変更しない） */
+function previewExpenseMasterRepair() {
+  return runExpenseMasterRepair_(true);
+}
+
+function runExpenseMasterRepair_(dryRun) {
+  const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
+  const sheet = ss.getSheetByName(EXPENSE_MASTER_SHEET_);
+  if (!sheet) { Logger.log('⚠️ 経費マスターなし'); return; }
+  Logger.log('残金(修復前): ' + getRonPrepaidBalance_());
+
+  const lastRow = sheet.getLastRow();
+  const junk = [];
+  if (lastRow >= 4) {
+    sheet.getRange(4, 1, lastRow - 3, 17).getValues().forEach(function(r, i) {
+      if (!(r[0] instanceof Date)) return;
+      for (let c = 1; c < 17; c++) { if (r[c] !== '' && r[c] !== null) return; }
+      junk.push(4 + i);
+    });
+  }
+  Logger.log('日付だけの行: ' + junk.length + '行 ' + (junk.length ? '(' + junk[0] + '〜' + junk[junk.length - 1] + ')' : ''));
+  if (dryRun) { Logger.log('（確認のみ。変更なし）'); return junk.length; }
+
+  ensureMasterCategoryValidation_(sheet, '車両費');
+
+  // 下から連続区間ごとに削除（行番号がずれないように）
+  for (let k = junk.length - 1; k >= 0; ) {
+    let start = junk[k], count = 1;
+    while (k - count >= 0 && junk[k - count] === start - 1) { start--; count++; }
+    sheet.deleteRows(start, count);
+    k -= count;
+  }
+  SpreadsheetApp.flush();
+
+  Logger.log('同期: ' + syncMissingBotExpensesToMaster() + '件');
+  Logger.log('ルーティン: ' + autoPostRoutineExpenses() + '件');
+  Logger.log('残金(修復後): ' + getRonPrepaidBalance_());
+  return junk.length;
+}

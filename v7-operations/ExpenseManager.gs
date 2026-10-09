@@ -434,7 +434,9 @@ function notifyExpenseCreatedIfField_(expenseInfo, creatorChatId) {
  */
 function getRonPrepaidBalance_() {
   try {
-    SpreadsheetApp.flush(); // 直前の立替転記(K式)を確定させD2を再計算させる
+    // 直前の転記(K式)を確定させD2を再計算させる。直前の書き込みが失敗していると flush が
+    // その例外を投げ直すため、ここで止めずに残金の読み取りは続ける（2026-10-09: 残金が通知に出なかった原因）
+    try { SpreadsheetApp.flush(); } catch (flushErr) { Logger.log('⚠️ flush 失敗(残金は読み取り続行): ' + flushErr); }
     const ss = SpreadsheetApp.openById(getConfig().operationsSpreadsheetId);
     const sh = ss.getSheetByName('前払い管理');
     if (!sh) return null;
@@ -724,6 +726,58 @@ const EXPENSE_MASTER_SHEET_ = '経費マスター';
 const PREPAID_LABEL_ = '前払い金（ロン君）';
 const PREPAID_PAYER_ = '飯泉';
 
+// 経費マスター B列の分類（2026-09-27 再編・17分類）。正典=「設定」タブ A12:A28 の分類表。
+const MASTER_CATEGORIES_ = ['人件費', '地代家賃', '水道光熱費', '通信費', '洗車資材費', '車両費', '旅費交通費', '広告宣伝費',
+  '消耗品・修繕費', 'システム・IT費', '交際・福利厚生費', '試作・開発費', 'その他',
+  '内装工事', '家具家電・機材', '車両購入', '敷金・保証金'];
+
+/**
+ * 経費マスター B列（分類）の入力規則が書き込む分類を受け付けるようにする。
+ * 2026-09-27 の分類再編でコードは新分類名を書くようになったが、シートの入力規則は旧10分類のまま残り、
+ * 「車両費」「広告宣伝費」「地代家賃」等の書き込みが拒否されて転記が失敗していた
+ * （→ ロン君残金が減らない・通知に残金が出ない・日付だけのゴミ行が毎時増える。2026-10-09 発覚）。
+ */
+function ensureMasterCategoryValidation_(sheet, category) {
+  const rule = sheet.getRange(4, 2).getDataValidation();
+  if (!rule) return;
+  if (rule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) return;
+  const criteria = rule.getCriteriaValues();
+  const listed = criteria[0] || [];
+  if (listed.indexOf(category) >= 0) return;
+  const merged = MASTER_CATEGORIES_.slice();
+  if (category && merged.indexOf(category) < 0) merged.push(category);
+  const newRule = rule.copy().requireValueInList(merged, criteria[1] !== false).build();
+  sheet.getRange(4, 2, sheet.getMaxRows() - 3, 1).setDataValidation(newRule);
+  Logger.log('🔧 経費マスター B列の入力規則を更新: ' + merged.join(','));
+}
+
+/** 経費マスター M列(ID)の最大値+1。末尾行が空でも連番が 1 に戻らないよう列全体の最大値を使う。 */
+function nextMasterId_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 4) return 1;
+  let maxId = 0;
+  sheet.getRange(4, 13, lastRow - 3, 1).getValues().forEach(function(r) {
+    const n = Number(r[0]);
+    if (!isNaN(n) && n > maxId) maxId = n;
+  });
+  return maxId + 1;
+}
+
+/**
+ * 経費マスターに1行(A〜Q)を書き込む。書き込みに失敗したら途中まで書かれたセルを消して例外を投げ直す
+ * （失敗時に日付だけの行が残ると、次回以降の追記位置・ID がずれていくため）。
+ */
+function writeMasterRow_(sheet, newRow, rowValues) {
+  ensureMasterCategoryValidation_(sheet, rowValues[0][1]);
+  try {
+    sheet.getRange(newRow, 1, 1, 17).setValues(rowValues);
+    SpreadsheetApp.flush(); // 入力規則違反などの書き込みエラーをここで確定させる
+  } catch (err) {
+    try { sheet.getRange(newRow, 1, 1, 17).clearContent(); } catch (e2) { /* 後始末の失敗は無視 */ }
+    throw err;
+  }
+}
+
 /**
  * 経費マスターの分類（2026-09-27 再編・17分類）への正規化。正典=「設定」タブ A12:D28 の分類表。
  *   運転費: 人件費 / 地代家賃 / 水道光熱費 / 通信費 / 洗車資材費 / 車両費 / 旅費交通費 / 広告宣伝費 /
@@ -739,10 +793,7 @@ function normalizeCategoryV7_(catRaw, itemName) {
   const item = String(itemName || '');
 
   // 既に新分類名ならそのまま（現場アプリ・ルーティン経費は新分類で送る）
-  const NEW_CATS = ['人件費', '地代家賃', '水道光熱費', '通信費', '洗車資材費', '車両費', '旅費交通費', '広告宣伝費',
-    '消耗品・修繕費', 'システム・IT費', '交際・福利厚生費', '試作・開発費', 'その他',
-    '内装工事', '家具家電・機材', '車両購入', '敷金・保証金'];
-  if (NEW_CATS.indexOf(cat) >= 0 && cat !== 'その他') return cat;
+  if (MASTER_CATEGORIES_.indexOf(cat) >= 0 && cat !== 'その他') return cat;
 
   // 手数料の項目別振り分け
   if (cat === '手数料') {
@@ -896,13 +947,8 @@ function appendToExpenseMaster_(p) {
     'IF(E' + rowIndex + '="JPY",D' + rowIndex + ',0)))))';
   const monthFormula = '=IFERROR(TEXT(A' + rowIndex + ',"yyyy-mm"),"")';
 
-  // ID（連番）= 既存最終行のM列 +1
-  let nextId = 1;
-  if (lastRow >= 4) {
-    const prevId = sheet.getRange(lastRow, 13).getValue();
-    if (typeof prevId === 'number') nextId = prevId + 1;
-    else if (prevId) nextId = (Number(prevId) || 0) + 1;
-  }
+  // ID（連番）= M列の最大値 +1
+  const nextId = nextMasterId_(sheet);
 
   // A〜Q（17列）の値を一括書き込み
   const rowValues = [[
@@ -925,7 +971,7 @@ function appendToExpenseMaster_(p) {
     '●'                                    // Q: 経費計上（デフォルト●）
   ]];
 
-  sheet.getRange(newRow, 1, 1, 17).setValues(rowValues);
+  writeMasterRow_(sheet, newRow, rowValues);
 
   // 直前行から書式コピー（体裁統一）+ 行高
   if (lastRow >= 4) {

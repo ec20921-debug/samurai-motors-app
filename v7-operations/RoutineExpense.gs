@@ -58,13 +58,19 @@ function autoPostRoutineExpenses() {
     const oid = id + '-' + ym;                            // 元ID: RT-XXX-YYYY-MM
     if (posted[oid]) return;                              // 二重計上防止
 
-    appendRoutineToMaster_(msSheet, {
-      date: firstOfMonth,
-      category: category,
-      item: item + '（' + ym + '・自動計上）',
-      amount: amount, currency: currency, payer: payer, payMethod: payMethod,
-      note: 'ルーティン ' + id + ' / 月次自動計上', oid: oid
-    });
+    // 1件の失敗で残りの計上が止まらないよう個別に捕捉する（2026-10-01 は家賃の失敗で RT-002〜004 が全滅した）
+    try {
+      appendRoutineToMaster_(msSheet, {
+        date: firstOfMonth,
+        category: category,
+        item: item + '（' + ym + '・自動計上）',
+        amount: amount, currency: currency, payer: payer, payMethod: payMethod,
+        note: 'ルーティン ' + id + ' / 月次自動計上', oid: oid
+      });
+    } catch (e) {
+      Logger.log('⚠️ routine 計上失敗 ' + oid + ': ' + e);
+      return;
+    }
     posted[oid] = true;
     rtSheet.getRange(5 + idx, 13).setValue(firstOfMonth); // M:最終自動計上 更新
     count++;
@@ -89,13 +95,8 @@ function appendRoutineToMaster_(sheet, p) {
     'IF(E' + r + '="KHR",D' + r + '*設定!$B$5,' +
     'IF(E' + r + '="JPY",D' + r + ',0)))))';
   const monthFormula = '=IFERROR(TEXT(A' + r + ',"yyyy-mm"),"")';
-  let nextId = 1;
-  if (lastRow >= 4) {
-    const prevId = sheet.getRange(lastRow, 13).getValue();
-    if (typeof prevId === 'number') nextId = prevId + 1;
-    else if (prevId) nextId = (Number(prevId) || 0) + 1;
-  }
-  sheet.getRange(newRow, 1, 1, 17).setValues([[
+  const nextId = nextMasterId_(sheet);
+  writeMasterRow_(sheet, newRow, [[
     p.date, p.category, p.item, p.amount, p.currency, p.payer, p.payMethod, '',
     p.note, '自動', jpyFormula, monthFormula, nextId, 'ルーティン自動計上', p.oid, '○', '●'
   ]]);
