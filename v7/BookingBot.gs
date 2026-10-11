@@ -15,6 +15,9 @@
  *   QueueManager.processTelegramQueue() から botType===BOOKING の update で呼ばれる
  */
 
+// Samurai Motors 公式 Facebook ページ（Day1 tools/meta_*.py の FB_PAGE_URL と同じ）
+const SAMURAI_FB_PAGE_URL = 'https://www.facebook.com/samuraimotors.kh';
+
 /**
  * 予約Bot の update を処理するメインディスパッチャ
  * QueueManager から botType===BOOKING で呼ばれる
@@ -215,9 +218,12 @@ function sendWelcomeMessage(msg, opts) {
   // 2026-05-30: Drive 版も新チラシへ同期済(キャンペーン素材フォルダ内の
   //   SamuraiMoters_チラシ_2026-05.jpg を指す)。旧 ...pAHE は未使用(残置)。
   // 2026-07-03: 配信元を samurai-motors-miniapp（配信専用 public リポジトリ）へ分離。
-  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-miniapp/flyer-2026-05.jpg';
-  const FLYER_DRIVE_ID = '1ttiP6z9gUlxD-_0aPefChnUBOeYIf3MS';
-  const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese-style mobile car wash';
+  // 2026-10-11: 全サービスチラシ（10/8 版・クメール語）へ差し替え（Daisuke 指示）。
+  //   元 PDF = Deliverables/2026-10-08_SamuraiMotors_全サービスチラシ_km.pdf を 200dpi で JPG 化。
+  //   Drive フォールバックも同じ画像（「キャンペーン素材」フォルダの SamuraiMotors_チラシ_2026-10-08.jpg）。
+  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-miniapp/flyer-2026-10-08.jpg';
+  const FLYER_DRIVE_ID = '1AOR1382WNdu1LJmOGG2depn1PQxHOHgH';
+  const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese car care, we come to you';
   let flyerSent = false;
   try {
     const r = sendPhoto(BOT_TYPE.BOOKING, msg.chat.id, FLYER_URL, { caption: FLYER_CAPTION });
@@ -256,23 +262,35 @@ function sendWelcomeMessage(msg, opts) {
     ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n\n'
     : '';
 
+  // 2026-10-11 改訂（Daisuke 指示）: クメール語を先に・お客様の行動は
+  //   「① Booking ボタン ② メッセージ（ボイス可）」の2択に絞る・Facebook ページを添える。
+  //   クメール語は Panha 校閲済み（条件付き承認・名前なしは「សួស្តីបង!」で分岐）。
+  const greetKm = name ? 'សួស្តី ' + name + '! 👋' : 'សួស្តីបង! 👋';
+  const greetEn = name ? 'Hello ' + name + '! ' : 'Hello! ';
   const text =
-    'Hello' + (name ? ' ' + name : '') + '! 👋\n' +
-    'Welcome to SAMURAI MOTORS.\n' +
+    greetKm + '\n' +
+    'សូមស្វាគមន៍មកកាន់ SAMURAI MOTORS 🙏\n' +
+    greetEn + 'Welcome to SAMURAI MOTORS.\n' +
     '\n' +
-    'សួស្តី! សូមស្វាគមន៍\n' +
+    'ការថែទាំរថយន្តគុណភាពជប៉ុន ដល់ទីតាំងអ្នក\n' +
+    'Premium Japanese car care — we come to you.\n' +
     '\n' +
     referralLine +
     campaignLine +
-    '👇 Tap the "Booking" button below to reserve your slot now\n' +
-    '👇 ចុចប៊ូតុង "Booking" ខាងក្រោមឆ្វេងដើម្បីកក់\n' +
+    '👇 កក់ ឬសាកសួរ / Book or ask:\n' +
     '\n' +
-    '🗓 Or use /book to start\n' +
-    '📸 Or send a photo of your car for questions';
+    '① 🚗 ចុចប៊ូតុង «Booking» នៅជ្រុងខាងឆ្វេងក្រោម\n' +
+    '   Tap the "Booking" button (bottom left)\n' +
+    '\n' +
+    '② 💬 ផ្ញើសារមកយើងនៅទីនេះ — ផ្ញើជាសារសំឡេងក៏បាន 🎤\n' +
+    '   Or just send us a message here — voice messages OK 🎤\n' +
+    '\n' +
+    '📘 Facebook: ' + SAMURAI_FB_PAGE_URL;
 
   // メニューボタンは冒頭の ensureBookingMenuButton_ で設定済み（取りこぼし防止）
 
-  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, text);
+  // FB リンクのプレビューカードは大きく本文を押し流すので出さない
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, text, { disable_web_page_preview: true });
 
   // 管理グループにも通知
   sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
@@ -382,4 +400,46 @@ function setupBookingBotMenuButton() {
 function resetBookingBotMenuButton() {
   const res = setChatMenuButton(BOT_TYPE.BOOKING, { type: 'default' });
   Logger.log('🔄 メニューボタン初期化: ' + JSON.stringify(res));
+}
+
+/**
+ * 予約Bot のプロフィール説明文を設定する（2026-10-11 追加）
+ *   - short description（About）: プロフィール画面・共有時に出る一言（上限120字）
+ *   - description: トークを開いて START を押す前の空チャットに出る説明（上限512字）
+ *
+ * 【使い方】GASエディタからこの関数を1回実行するだけ。設定前の値もログに残す（戻すとき用）。
+ * クメール語は Panha 校閲済み（2026-10-11・条件付き承認）。
+ * START 前は Booking ボタンが見えないため、案内は「START を押した後に」の形にしてある。
+ */
+function setupBookingBotProfile() {
+  const shortDescription =
+    'ការថែទាំរថយន្តគុណភាពជប៉ុន ដល់ទីតាំងអ្នក 🚗 Premium Japanese car care — we come to you.';
+
+  const description =
+    '🚗 SAMURAI MOTORS — ភ្នំពេញ / Phnom Penh\n' +
+    'ការថែទាំរថយន្តគុណភាពជប៉ុន ដល់ទីតាំងអ្នក\n' +
+    'Premium Japanese car care — we come to you.\n' +
+    '\n' +
+    '✨ លាងដោយដៃ បែប Waterless · ស្រោបទឹកមិនជាប់លើកញ្ចក់ · ខាត់ចង្កៀងមុខ · ខាត់ខ្លួនរថយន្ត\n' +
+    '✨ Waterless wash · Glass coating · Headlight · Polish\n' +
+    '\n' +
+    '📅 បន្ទាប់ពីចុច START — កក់តាមប៊ូតុង Booking ឬផ្ញើសារមកយើង (សារសំឡេងក៏បាន)\n' +
+    '📅 After tapping START — book with the Booking button, or just message us (voice OK)\n' +
+    '\n' +
+    '📘 ' + SAMURAI_FB_PAGE_URL;
+
+  // 上限チェック（超えると Telegram が拒否するので先に止める）
+  if (shortDescription.length > 120 || description.length > 512) {
+    Logger.log('❌ 文字数超過: short=' + shortDescription.length + '/120, description=' + description.length + '/512');
+    return;
+  }
+
+  // 現在の値を記録（戻す時に使う）
+  Logger.log('📝 変更前 short: ' + JSON.stringify(callTelegramApi(BOT_TYPE.BOOKING, 'getMyShortDescription', {})));
+  Logger.log('📝 変更前 description: ' + JSON.stringify(callTelegramApi(BOT_TYPE.BOOKING, 'getMyDescription', {})));
+
+  const r1 = callTelegramApi(BOT_TYPE.BOOKING, 'setMyShortDescription', { short_description: shortDescription });
+  const r2 = callTelegramApi(BOT_TYPE.BOOKING, 'setMyDescription', { description: description });
+  Logger.log((r1 && r1.ok ? '✅' : '❌') + ' short description (' + shortDescription.length + '字): ' + JSON.stringify(r1));
+  Logger.log((r2 && r2.ok ? '✅' : '❌') + ' description (' + description.length + '字): ' + JSON.stringify(r2));
 }
