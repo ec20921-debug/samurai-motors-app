@@ -124,7 +124,12 @@ function apiBookingToday() {
         // 2026-05-31: 手動特価予約のため
         paymentStatus: paymentStatus,
         campaignName: campaignName,
-        manualCampaign: manualCampaign
+        manualCampaign: manualCampaign,
+        // 2026-10-15: 専用QR（流入元）。現場アプリで「🏢 Picasso #部屋」を出す
+        source: (headers['流入元'] && row[headers['流入元'] - 1] && typeof sourceStaffLabel_ === 'function')
+          ? sourceStaffLabel_(String(row[headers['流入元'] - 1])) : '',
+        room: headers['部屋番号'] ? String(row[headers['部屋番号'] - 1] || '') : '',
+        perk: headers['特典'] ? String(row[headers['特典'] - 1] || '') : ''
       });
     }
 
@@ -267,6 +272,15 @@ function apiJobStart(body, opts) {
       linkedChatId = consumePendingLink_(linkToken);
     }
     var jobId = opts.rowIndex ? opts.jobId : generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
+    // 予約行（作業記録の流入元・予約ステータス・トピック ID に使う）
+    // 失敗しても作業記録は必ず残す（従来はこの検索が記録の後だった）
+    var bkRow = null;
+    try {
+      bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
+    } catch (e) {
+      Logger.log('⚠️ apiJobStart: 予約行の検索失敗（作業記録は続行）: ' + e);
+    }
+    var jobSource = (bkRow && bkRow.data['流入元']) ? String(bkRow.data['流入元']) : '';
     var jobRowObj = {
       'ジョブID':       jobId,
       '予約ID':         bookingId,
@@ -282,6 +296,7 @@ function apiJobStart(body, opts) {
       '料金(USD)':      hasAmountValue_(body.amount) ? body.amount : ''
     };
     jobRowObj[JOBS_COL_SERVICE] = jobServiceCsv_(body);   // 無料施工でもサービス内容を残す
+    if (jobSource) jobRowObj['流入元'] = jobSource;          // 2026-10-15 専用QR（流入元）
     if (linkToken) {
       jobRowObj[JOBS_COL_LINK_TOKEN] = linkToken;
       if (linkedChatId) jobRowObj[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
@@ -297,6 +312,7 @@ function apiJobStart(body, opts) {
       };
       if (hasAmountValue_(body.amount)) v2StartUpdates['料金(USD)'] = body.amount;
       v2StartUpdates[JOBS_COL_SERVICE] = jobRowObj[JOBS_COL_SERVICE];
+      if (jobSource) v2StartUpdates['流入元'] = jobSource;
       if (linkToken) v2StartUpdates[JOBS_COL_LINK_TOKEN] = linkToken;
       if (linkedChatId) v2StartUpdates[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
       updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2StartUpdates);
@@ -305,7 +321,6 @@ function apiJobStart(body, opts) {
     }
 
     // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
-    var bkRow = bookingId ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId) : null;
     // v2: 予約がすでに「作業完了」なら巻き戻さない（開始の遅延到着）
     if (bkRow && !(opts.rowIndex && String(bkRow.data['進行状態'] || '') === '作業完了')) {
       try {
@@ -367,6 +382,7 @@ function apiJobStart(body, opts) {
       var adminText = '▶️ 作業開始\n' +
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
+        (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
         '👤 ' + (body.name || '-') + '\n' +
         '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
         '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
@@ -597,6 +613,7 @@ function apiJobEnd(body, opts) {
       var adminText = '⏹ 作業終了\n' +
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
+        (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +

@@ -234,13 +234,24 @@ function apiBookingInit(params) {
     Logger.log('⚠️ apiBookingInit: campaign 取得エラー(無視可): ' + e);
   }
 
+  // 2026-10-15: 専用QR（流入元）の情報。顧客の紐付けを優先し、なければ画面の ?src= を使う（SourceCampaign.gs）
+  let source = null;
+  try {
+    if (typeof resolveBookingSource_ === 'function') {
+      source = sourceInitPayload_(resolveBookingSource_(chatId, params.src));
+    }
+  } catch (e) {
+    Logger.log('⚠️ apiBookingInit: source 取得エラー(無視可): ' + e);
+  }
+
   return {
     status: 'ok',
     customer: customer,
     plans: plans,
     options: options,
     dispatchFee: dispatchFee,
-    campaign: campaign
+    campaign: campaign,
+    source: source
   };
 }
 
@@ -323,7 +334,9 @@ function apiBookingRegisterCustomer(body) {
     'ユーザー名':   body.username || '',
     '氏名':         body.name || '',
     '電話番号':     '',
-    '言語':         'クメール語',
+    // 専用QR（英語メインの流入元）から来た新規は英語（2026-10-15）
+    '言語':         (typeof getSourceConfig_ === 'function' && getSourceConfig_(body.src) &&
+                     getSourceConfig_(body.src).lang === 'en-ja') ? '英語' : 'クメール語',
     'トピックID':   '',
     '登録日時':     new Date(),
     '最終連絡日時': new Date(),

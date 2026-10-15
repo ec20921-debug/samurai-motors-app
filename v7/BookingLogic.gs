@@ -699,7 +699,16 @@ function createBooking(params) {
     // '店舗' = 顧客が店舗に来店してサービスを受ける → 出張料 $0
     // '出張' = 既存通り、顧客指定場所へ出向く → 出張料あり
     // デフォルトは '出張'（既存予約との互換性維持）
-    const serviceType = (params.serviceType === '店舗') ? '店舗' : '出張';
+    // 2026-10-15: 専用QR（流入元）。場所が決まっている流入元（Picasso 等）は出張扱い＋部屋番号必須
+    const srcCfg = (typeof resolveBookingSource_ === 'function') ? resolveBookingSource_(params.chatId, params.src) : null;
+    const srcFixedPlace = !!(srcCfg && srcCfg.active && srcCfg.placeName);
+    // 顧客入力はシートで数式として解釈されないよう先頭の = + - @ を外す
+    const unitNo = srcCfg ? sourceSafeText_(params.unitNo, 40) : '';
+    const carModel = srcCfg ? sourceSafeText_(params.carModel, 80) : '';
+    if (srcFixedPlace && !unitNo) {
+      return { status: 'error', message: 'Please enter your unit number. / 部屋番号を入力してください。' };
+    }
+    const serviceType = srcFixedPlace ? '出張' : ((params.serviceType === '店舗') ? '店舗' : '出張');
 
     // ── 1-c. 料金・所要時間の合算 ──
     const baseDuration = plan ? getDurationFor(plan, vehicleType) : 0;
@@ -724,13 +733,23 @@ function createBooking(params) {
 
     // ── 1-d. キャンペーン割引(Menu v2 / 2026-05-06: GRAND OPENING -30%) ──
     // 採用: 案a — サービス料金(WASH+GLASS)のみに -X%。出張料は通常価格(透明性)。
+    // 2026-10-15: 流入元の特典（期間内のみ・品目別の割引率）が効く予約は全体キャンペーンを使わない（併用不可）
+    const srcDisc = (srcCfg && typeof computeSourceDiscount_ === 'function')
+      ? computeSourceDiscount_(srcCfg, params.date,
+          (plan ? [{ code: 'WASH', amount: baseAmount }] : []).concat(
+            optionLines.map(function(l) { return { code: l.opt.code, amount: l.amount }; })))
+      : null;
     const cfg = getBookingConfig();
-    const camp = cfg.campaign || { active: false, percent: 0 };
+    const camp = srcDisc ? { active: false, percent: 0 } : (cfg.campaign || { active: false, percent: 0 });
     let discountAmount = 0;
-    if (camp.active && camp.percent > 0) {
+    if (srcDisc) {
+      discountAmount = srcDisc.total;
+    } else if (camp.active && camp.percent > 0) {
       discountAmount = Math.round(serviceSubtotal * camp.percent) / 100;
     }
-    const amount = Math.max(0, subtotal - discountAmount); // 請求総額(WASH+GLASS×(1-%) + Delivery)
+    const amount = Math.max(0, Math.round((subtotal - discountAmount) * 100) / 100); // 請求総額(WASH+GLASS×(1-%) + Delivery)
+    const srcPerkText = !srcCfg ? '' :
+      (srcDisc ? sourcePerkSummaryJa_(srcCfg) + ' -$' + srcDisc.total : '期間外・特典なし');
 
     // ── 2. 空き枠再確認(ロック後に取り直し) ──
     // 2026-10-08: WASH なし(GLASS/HEADLIGHT 単体)の予約も再確認する（メニューシートの所要時間 H/I 列が全行 >0 であること）。
@@ -760,7 +779,9 @@ function createBooking(params) {
       ' (startDt=' + startDt.toISOString() + ' endDt=' + endDt.toISOString() + ')');
 
     // ── 4. 位置情報をパース ──
-    const loc = parseLocationString(params.location);
+    const locationStr = srcFixedPlace ? sourceLocationString_(srcCfg) : params.location;
+    const loc = parseLocationString(locationStr);
+    if (srcFixedPlace && !loc.lat && srcCfg.lat && srcCfg.lng) { loc.lat = srcCfg.lat; loc.lng = srcCfg.lng; }
 
     // ── 5. 予約ID採番 ──
     const bookingId = generateDateSeqId('BK', SHEET_NAMES.BOOKINGS, '予約ID');
@@ -771,7 +792,8 @@ function createBooking(params) {
     const titleParts = [];
     if (plan) titleParts.push(plan.letter);
     options.forEach(function(o) { titleParts.push(o.code); });
-    const eventTitle = '【' + titleParts.join('+') + '】' +
+    const eventTitle = (srcCfg ? '🏢' + srcCfg.label + (unitNo ? ' #' + unitNo : '') + ' ' : '') +
+                       '【' + titleParts.join('+') + '】' +
                        (params.name || 'Guest') + ' / ' + normalizeVehicleType(vehicleType);
 
     const planDescLine = plan ? ('プラン: ' + plan.planFull + '\n') : '';
@@ -787,13 +809,15 @@ function createBooking(params) {
       optionDescLines +
       '車種: ' + vehicleType + '\n' +
       '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
-      '場所: ' + params.location + '\n' +
+      '場所: ' + locationStr + '\n' +
+      (srcCfg ? '流入元: ' + sourceDisplay_(srcCfg) + (unitNo ? '・部屋 ' + unitNo : '') + '\n特典: ' + srcPerkText + '\n' : '') +
+      (carModel ? '車: ' + carModel + '\n' : '') +
       '料金: ' + calPriceParts.join(' + ') +
       ' + 出張料 $' + dispatchFeeAmount +
       ' = 合計 $' + amount;
     const event = calendar.createEvent(eventTitle, startDt, endDt, {
       description: calendarDesc,
-      location: loc.mapsUrl || params.location
+      location: loc.mapsUrl || locationStr
     });
     const calendarEventId = event.getId();
 
@@ -803,7 +827,7 @@ function createBooking(params) {
       '顧客ID':         params.customerId || '',
       'チャットID':     String(params.chatId),
       '車種タイプ':     normalizeVehicleType(vehicleType),
-      '車種名':         '',
+      '車種名':         carModel,
       'プラン':         plan ? plan.planFull : '',
       'オプション':     optionCodesCsv,                              // 'GLASS_3' / 'GLASS_3,HEADLIGHT' / ''
       '予約日':         ymdToSheetDate_(params.date),  // 文字列でなく日付値で記録（ダッシュボード $0 集計バグ対策）
@@ -829,10 +853,18 @@ function createBooking(params) {
       // ── キャンペーン分析用 3 列 (Menu v2: 2026-05-06) ──
       '割引前金額(USD)': subtotal,                                  // WASH+GLASS+Delivery の合計(割引前)
       '割引額(USD)':    discountAmount,                            // 割引で引かれた額(0 = キャンペーンなし)
-      'キャンペーン名': (camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : '',
+      'キャンペーン名': srcDisc ? (srcCfg.label + ' 特典')
+                      : ((camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : ''),
       // ── サービスタイプ (2026-05-20: 店舗/出張区分) ──
-      'サービスタイプ': serviceType                                 // '店舗' or '出張'
+      'サービスタイプ': serviceType,                                // '店舗' or '出張'
+      // ── 専用QR（流入元）(2026-10-15 SourceCampaign.gs) ──
+      '流入元':         srcCfg ? srcCfg.code : '',                 // チャネル別コード（picasso_signage 等）
+      '特典':           srcPerkText,
+      '部屋番号':       unitNo
     });
+    // 画面の ?src= だけで来た（/start を経ていない）場合も、以後の案内のために紐付けを残す
+    if (srcCfg && !getSourceRefForCustomer(params.chatId)) setSourceRefForCustomer_(String(params.chatId), srcCfg.code);
+    if (srcCfg) warnIfSourceColumnsMissing_();
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
     // 2026-05-20 fix: GLASS 単体予約時 plan が null になるため、null ガードを追加
@@ -843,7 +875,8 @@ function createBooking(params) {
         options: optionCodesCsv || null,
         amount: amount,
         vehicleType: vehicleType,
-        serviceType: serviceType
+        serviceType: serviceType,
+        source: srcCfg ? srcCfg.code : null
       });
     }
 
@@ -867,8 +900,14 @@ function createBooking(params) {
       discountAmount: discountAmount,
       campaign: (camp && camp.active && camp.percent > 0) ? camp : null,
       amount: amount,
-      mapsUrl: loc.mapsUrl || params.location,
-      serviceType: serviceType                       // '店舗' or '出張' (2026-05-20)
+      mapsUrl: loc.mapsUrl || locationStr,
+      serviceType: serviceType,                      // '店舗' or '出張' (2026-05-20)
+      // 2026-10-15: 専用QR（流入元）
+      source: srcCfg ? { label: srcCfg.label, display: sourceDisplay_(srcCfg), lang: srcCfg.lang, placeName: srcCfg.placeName } : null,
+      srcDiscount: srcDisc,
+      srcPerkText: srcPerkText,
+      unitNo: unitNo,
+      carModel: carModel
     });
 
     return {
@@ -1012,12 +1051,16 @@ function notifyBookingCreated(info) {
     'តាម Telegram។ សូមបង់ប្រាក់តាម QR Code នោះ។\n' +
     '━━━━━━━━━━━━━━━━\n' +
     'Thank you! / សូមអរគុណ!';
+  // 2026-10-15: 英語メインの流入元（Picasso 等）は英語＋日本語の確定文（駐車場所のお願いも同梱）
+  // （info.source は有効な流入元のときだけ入る＝ resolveBookingSource_ が無効な紐付けを返さない）
+  const enjaSource = !!(info.source && info.source.lang === 'en-ja' && typeof buildSourceCustomerConfirm_ === 'function');
+  if (enjaSource) customerText = buildSourceCustomerConfirm_(info);
   sendMessage(BOT_TYPE.BOOKING, info.chatId, customerText);
 
   // ── 駐車場所のヒアリング（出張作業のみ、店舗作業は不要） ──
   // 出張: カンボジアはビル駐車場で階が多いため、車両前面の写真と階数を聞く
   // 店舗: 顧客が車を持って来るので、階数等は不要
-  if (!isInStore) {
+  if (!isInStore && !enjaSource) {
     const parkingInfoText =
       '📍 សូមផ្ញើបន្ថែម / Please also send:\n' +
       '━━━━━━━━━━━━━━━━\n' +
@@ -1054,6 +1097,7 @@ function notifyBookingCreated(info) {
     '━━━━━━━━━━━━━━━━\n' +
     '予約番号: ' + info.bookingId + '\n' +
     '顧客: ' + (info.name || 'Guest') + ' (chat_id=' + info.chatId + ')\n';
+  if (info.source && typeof sourceAdminLinesForBooking_ === 'function') adminText += sourceAdminLinesForBooking_(info);
   if (hasPlan) {
     adminText += 'プラン: ' + info.plan.planFull + '\n';
   } else {
@@ -1080,6 +1124,14 @@ function notifyBookingCreated(info) {
       '\n→ サービス計(割引後): $' + serviceAfterDiscount.toFixed(2) +
       (isInStore ? '\n🏪 店舗作業のため出張料なし' : ('\n+ 出張料: $' + feeAmt)) +
       '\n→ 請求額: $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount);
+  } else if (info.srcDiscount && discount > 0) {
+    // 流入元の特典（品目別の割引率・2026-10-15）
+    adminText +=
+      '料金: ' + priceJoin + ' = サービス計 $' + serviceSubtotal +
+      '\n🎁 ' + info.source.label + ' 特典: -$' + discount + '（' +
+      info.srcDiscount.detail.map(function(d) { return d.code + ' -' + d.pct + '%'; }).join(' / ') + '）' +
+      '\n+ ' + feeLabel +
+      '\n→ 請求額: $' + info.amount;
   } else {
     adminText +=
       '料金: ' + priceJoin + ' + ' + feeLabel + ' = 合計 $' + info.amount;

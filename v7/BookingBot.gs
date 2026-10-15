@@ -99,6 +99,13 @@ function handleCustomerMessage(msg) {
     return;
   }
 
+  // /start <流入元コード> → 専用QR経由（Picasso 等のレジデンス・2026-10-15 SourceCampaign.gs）
+  // 流入元タブに無いコードは false が返り、従来どおり下の処理へ流れる
+  if (text.indexOf('/start ') === 0 &&
+      typeof handleSourceStart_ === 'function' && handleSourceStart_(msg, text)) {
+    return;
+  }
+
   // /start コマンド → 挨拶のみ返す（転送しない）
   if (text === '/start') {
     sendWelcomeMessage(msg);
@@ -149,7 +156,9 @@ function handleCustomerMessage(msg) {
  * Telegram Web Apps の web_app ボタン仕様に従い、booking.html を開く
  */
 function sendBookingMiniApp(msg) {
-  const url = getBookingMiniAppUrl();
+  // 専用QR経由のお客様は ?src=<流入元> 付き（SourceCampaign.gs）
+  const url = (typeof bookingMiniAppUrlForChat_ === 'function')
+    ? bookingMiniAppUrlForChat_(msg.chat.id) : getBookingMiniAppUrl();
   if (!url) {
     sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
       '⚠️ ការកក់មិនអាចបានទេឥឡូវ / Booking unavailable now\n' +
@@ -308,7 +317,9 @@ function sendWelcomeMessage(msg, opts) {
  */
 function ensureBookingMenuButton_(chatId) {
   try {
-    const url = getBookingMiniAppUrl();
+    // 専用QR経由のお客様は ?src=<流入元> 付き（6h ごとの自己修復でも外れない・SourceCampaign.gs）
+    const url = (typeof bookingMiniAppUrlForChat_ === 'function')
+      ? bookingMiniAppUrlForChat_(chatId) : getBookingMiniAppUrl();
     if (!url) {
       Logger.log('⚠️ ensureBookingMenuButton_: BOOKING_MINIAPP_URL 未設定');
       return;
