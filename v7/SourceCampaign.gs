@@ -8,7 +8,8 @@
  *
  * 【設定】v7 Database「流入元」タブ（1行 = 1流入元＝1つのQR）。料金・期間・割引率はコードに書かない（CLAUDE.md ルール8）。
  *   列: 流入元コード / 表示名 / チャネル / 有効 / 開始日 / 終了日 / サービス割引(%) / 個別割引 / 場所名 / マップリンク /
- *       緯度 / 経度 / 言語 / チラシURL / shop_id / メモ
+ *       緯度 / 経度 / 言語 / チラシURL / 期間中の日曜営業 / shop_id / メモ
+ *   - 期間中の日曜営業=TRUE: 期間内の日曜（定休日）を、この流入元のお客様だけ予約可にする（2026-10-15 Picasso 11/1）
  *   - 同じ場所でも掲示物ごとに QR を分ける（例: picasso_tg / picasso_signage / picasso_poster / picasso_flyer）。
  *     表示名は共通（Picasso City Garden）、チャネルで出し分けを比べる。予約タブ「流入元」には コード を記録する
  *     （"picasso" で始まるものをまとめれば Picasso 全体の集計になる）
@@ -72,6 +73,7 @@ function readSourceConfigs_() {
           lng: String(o['経度'] || '').trim(),
           lang: String(o['言語'] || '').trim().toLowerCase(),
           flyerUrl: String(o['チラシURL'] || '').trim(),
+          openSunday: o['期間中の日曜営業'] === true || String(o['期間中の日曜営業']).toUpperCase() === 'TRUE',
           shopId: String(o['shop_id'] || '').trim()
         };
       });
@@ -138,6 +140,14 @@ function sourceInPeriod_(cfg, ymd) {
   if (cfg.start && ymd < cfg.start) return false;
   if (cfg.end && ymd > cfg.end) return false;
   return true;
+}
+
+/**
+ * 定休日（日曜）でもこの流入元のお客様は予約できる日か。
+ * 有効・期間内・「期間中の日曜営業」=TRUE・期間が入っているときだけ（期間なしで日曜を開けっぱなしにしない）
+ */
+function sourceOpensClosedDay_(cfg, ymd) {
+  return !!(cfg && cfg.active && cfg.openSunday && cfg.start && cfg.end && sourceInPeriod_(cfg, ymd));
 }
 
 /** 品目コード（WASH / GLASS_3 / HEADLIGHT_MAGIC 等）の割引率(%) */
@@ -395,6 +405,7 @@ function sourceInitPayload_(cfg) {
     servicePct: cfg.servicePct,
     itemPct: cfg.itemPct,
     placeName: cfg.placeName,
+    openSunday: !!(cfg.openSunday && cfg.start && cfg.end),
     perkEn: sourceHasPerk_(cfg) ? sourcePerkLineEn_(cfg) : '',
     perkJa: sourceHasPerk_(cfg) ? sourcePerkLineJa_(cfg) : '',
     periodEn: (cfg.start || cfg.end) ? sourcePeriodEn_(cfg) : '',

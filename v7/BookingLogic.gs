@@ -517,7 +517,8 @@ const CAMBODIA_HOLIDAYS = [
   '2027-03-08'
 ];
 
-function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes) {
+function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes, opts) {
+  // opts（省略可・2026-10-15）: { openClosedDay: true } = 定休日でも枠を出す（専用QRの流入元・期間中のみ）
   // Menu v2.1 (2026-05-08): GLASS 単体予約に対応するため、plan/glass それぞれを optional 化
   // Menu v4 (2026-09-22): optionCodes は複数(カンマ区切り or 配列)。GLASS + HEADLIGHT 同時も可
   // plan または option の少なくとも一方は必要、両方なし = エラー
@@ -548,7 +549,7 @@ function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes) {
     parseInt(dp[1], 10) - 1,
     parseInt(dp[2], 10)
   )).getUTCDay(); // 0..6
-  if (CLOSED_WEEKDAYS.indexOf(weekday) >= 0) {
+  if (CLOSED_WEEKDAYS.indexOf(weekday) >= 0 && !(opts && opts.openClosedDay)) {
     return {
       ok: true,
       slots: [],
@@ -755,7 +756,8 @@ function createBooking(params) {
     // 2026-10-08: WASH なし(GLASS/HEADLIGHT 単体)の予約も再確認する（メニューシートの所要時間 H/I 列が全行 >0 であること）。
     //   画面側で空き枠を先読み・キャッシュするようになったため、最終判断は常にここで行う。
     {
-      const avail = findAvailableSlots(params.date, plan ? params.planLetter : '', vehicleType, optionCodesCsv);
+      const avail = findAvailableSlots(params.date, plan ? params.planLetter : '', vehicleType, optionCodesCsv,
+        { openClosedDay: !!(srcCfg && sourceOpensClosedDay_(srcCfg, params.date)) });
       if (!avail.ok) return { status: 'error', message: '空き枠取得失敗: ' + avail.error };
       if (avail.slots.indexOf(params.startTime) < 0) {
         return {

@@ -39,7 +39,9 @@ function apiBookingSlotsRange(params) {
     return { status: 'error', message: 'plan or options required' };
   }
 
-  const res = findAvailableSlotsRange_(from, days, planLetter, vehicleType, optionsCsv);
+  // 2026-10-15: 専用QRの流入元（期間中の日曜営業）。findAvailableSlots と同じ判定
+  const srcCfg = (typeof resolveBookingSource_ === 'function') ? resolveBookingSource_(params.chatId, params.src) : null;
+  const res = findAvailableSlotsRange_(from, days, planLetter, vehicleType, optionsCsv, srcCfg);
   if (!res.ok) return { status: 'error', message: res.error };
   return { status: 'ok', from: from, durationMin: res.durationMin, days: res.days };
 }
@@ -47,7 +49,7 @@ function apiBookingSlotsRange(params) {
 /**
  * @return {{ok:boolean, durationMin?:number, days?:Array<{date:string, closed:boolean, slots:Array<string>}>, error?:string}}
  */
-function findAvailableSlotsRange_(fromStr, days, planLetter, miniappVt, optionCodes) {
+function findAvailableSlotsRange_(fromStr, days, planLetter, miniappVt, optionCodes, srcCfg) {
   // ── 所要時間（findAvailableSlots と同じ求め方。resolved.ok を見ない癖もそのまま） ──
   let baseDuration = 0;
   let optionDuration = 0;
@@ -81,7 +83,8 @@ function findAvailableSlotsRange_(fromStr, days, planLetter, miniappVt, optionCo
       ('0' + dt.getUTCDate()).slice(-2);
     dayList.push({
       date: dateStr,
-      closed: CLOSED_WEEKDAYS.indexOf(dt.getUTCDay()) >= 0,
+      closed: CLOSED_WEEKDAYS.indexOf(dt.getUTCDay()) >= 0 &&
+              !(srcCfg && sourceOpensClosedDay_(srcCfg, dateStr)),
       start: parseDateTimePhnomPenh(dateStr, bizStart, 0),
       end: parseDateTimePhnomPenh(dateStr, bizEnd, 0)
     });

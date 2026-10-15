@@ -292,7 +292,10 @@ function apiBookingSlots(params) {
     return { status: 'error', message: 'plan or options required' };
   }
 
-  const res = findAvailableSlots(date, planLetter, vehicleType, optionsCsv);
+  // 2026-10-15: 専用QRの流入元で「期間中の日曜営業」なら定休日も枠を出す
+  const srcCfg = (typeof resolveBookingSource_ === 'function') ? resolveBookingSource_(params.chatId, params.src) : null;
+  const res = findAvailableSlots(date, planLetter, vehicleType, optionsCsv,
+    { openClosedDay: !!(srcCfg && sourceOpensClosedDay_(srcCfg, date)) });
   if (!res.ok) {
     return { status: 'error', message: res.error };
   }

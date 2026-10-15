@@ -2205,6 +2205,11 @@ function srcPctFor_(item) {
 function srcPriceActive_() {
   return srcHasPerk_() && (!state.selectedDate || srcInPeriod_(state.selectedDate));
 }
+// 空き枠の問い合わせに付ける流入元（期間中の日曜営業の判定用。chatId はサーバー側の紐付け確認用）
+function srcQuery_() {
+  if (!state.source) return '';
+  return '&src=' + encodeURIComponent(state.source.code) + '&chatId=' + encodeURIComponent(state.chatId);
+}
 function srcInPeriod_(ymd) {
   var s = state.source;
   if (!s || !ymd) return false;
@@ -2513,6 +2518,8 @@ function renderDates() {
     var dateStr = formatDate(d);
     // 2026-05-06 Daisuke 判断: 日曜だけ休み、祝日は通常営業
     var isClosed   = CLOSED_DAYS.indexOf(d.getDay()) >= 0;       // 日曜のみ
+    // 2026-10-15: 専用QR（流入元）の「期間中の日曜営業」。最終判断はサーバー（空き枠・予約確定）
+    if (isClosed && state.source && state.source.openSunday && srcInPeriod_(dateStr)) isClosed = false;
     var holidayName = CAMBODIA_HOLIDAYS[dateStr] || '';            // 情報ラベルのみに使用
 
     var cell = document.createElement('div');
@@ -2600,7 +2607,8 @@ function prefetchSlots_() {
     + '&days=12'
     + '&plan=' + encodeURIComponent(state.selectedPlan || '')
     + '&vehicleType=' + encodeURIComponent(state.selectedSize)
-    + '&options=' + encodeURIComponent(state.selectedOptions.join(','));
+    + '&options=' + encodeURIComponent(state.selectedOptions.join(','))
+    + srcQuery_();
   var p = fetch(url)
     .then(function(r) { return r.json(); })
     .then(function(res) {
@@ -2678,7 +2686,8 @@ function fetchDaySlots_(date, key, seq, quiet) {
     + '&date=' + encodeURIComponent(date)
     + '&plan=' + encodeURIComponent(state.selectedPlan || '')
     + '&vehicleType=' + encodeURIComponent(state.selectedSize)
-    + '&options=' + encodeURIComponent(state.selectedOptions.join(','));
+    + '&options=' + encodeURIComponent(state.selectedOptions.join(','))
+    + srcQuery_();
   fetch(url)
     .then(function(r) { return r.json(); })
     .then(function(res) {
