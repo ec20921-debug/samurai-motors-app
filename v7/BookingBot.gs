@@ -230,7 +230,10 @@ function sendWelcomeMessage(msg, opts) {
   // 2026-10-11: 全サービスチラシ（10/8 版・クメール語）へ差し替え（Daisuke 指示）。
   //   元 PDF = Deliverables/2026-10-08_SamuraiMotors_全サービスチラシ_km.pdf を 200dpi で JPG 化。
   //   Drive フォールバックも同じ画像（「キャンペーン素材」フォルダの SamuraiMotors_チラシ_2026-10-08.jpg）。
-  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-miniapp/flyer-2026-10-08.jpg';
+  // 2026-10-19: 出張料の記載を削除・ヘッドライトを STANDARD 15$ / SAMURAI MAGIC 30$ の2択に（Daisuke 2026-10-18）。
+  //   生成元 = suzuki-empire-day1 tools/motors_service_flyer/build.py --lang km --print --qr を 200dpi で JPG 化（Panha 校閲済み）。
+  //   ⚠️ Drive フォールバック（FLYER_DRIVE_ID）は旧 10/8 版のまま。差し替える場合は同フォルダに新 JPG を置いて ID を更新。
+  const FLYER_URL = 'https://ec20921-debug.github.io/samurai-motors-miniapp/flyer-2026-10-19.jpg';
   const FLYER_DRIVE_ID = '1AOR1382WNdu1LJmOGG2depn1PQxHOHgH';
   const FLYER_CAPTION = '🚗 SAMURAI MOTORS — Premium Japanese car care, we come to you';
   let flyerSent = false;
