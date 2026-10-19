@@ -21,6 +21,14 @@
  *   中古車屋: 在庫 定価合計 = 軽い黄ばみ × HEADLIGHT + ひどい黄ばみ × HEADLIGHT_MAGIC + ガラス × ガラス単価、
  *             提携価格 = 定価合計 × (1 − 30%)、
  *             月の件数 = round(月の来店客数 ÷ N)、紹介料 = 月の件数 × 平均単価 × 紹介料率
+ *   施設（ゴルフ場・レストラン・ホテル・モール・レジデンス。2026-10-20 追加）:
+ *             毎日停まっている車 = round(駐車台数 × 埋まり具合%)、
+ *             月の件数はサービス別（WASH / GLASS_3 / HEADLIGHT / HEADLIGHT_MAGIC）に画面で入れる（初期値は自動提案）。
+ *             駐車時間で選べるサービスを絞る（1時間未満 = WASH・HEADLIGHT／1〜3時間 = ＋GLASS／3時間以上 = ＋MAGIC。
+ *             メニュータブの所要時間 WASH 30-45分・HEADLIGHT 40分・GLASS 60-100分・MAGIC 90分 から）、
+ *             お客さんの支払い = Σ 件数 × 料金、紹介料 = 支払い × 紹介料率
+ *   見込み評価（全モード・社内用）: 紹介料(月) が S 150$以上 / A 60$以上 / B 20$以上 / C それ未満
+ *             （2026-10-20 Daisuke「任せる」で仮決め。1か月分のデータで見直す）
  */
 
 const HEARING_SHEET_NAME = '商談ヒアリング';
@@ -30,9 +38,30 @@ const HEARING_HEADERS = [
   '月の件数', 'お客さんの支払い(月・USD)', '紹介料率(%)', '紹介料(月・USD)', '紹介料(年・USD)',
   '在庫台数', '軽い黄ばみ(台)', 'ひどい黄ばみ(台)', 'ガラス要手入れ(台)', 'ガラス単価(USD)',
   '在庫 定価合計(USD)', '在庫 提携価格(USD)', '割引額(USD)',
-  '言われたこと・在庫メモ', '緯度', '経度'
+  '言われたこと・在庫メモ', '緯度', '経度',
+  // ↓ 2026-10-20 施設モード・見込み評価（既存列の位置を動かさないよう末尾に追加）
+  '見込み評価', '駐車台数', '混む時間の埋まり具合(%)', '1台あたりの駐車時間', '混む時間帯', '1日のお客さん数',
+  '毎日停まっている車', 'WASH件数', 'GLASS件数', 'HEADLIGHT件数', 'MAGIC件数'
 ];
-const HEARING_MODES = { garage: '整備工場', dealer: '中古車屋' };
+const HEARING_MODES = { garage: '整備工場', dealer: '中古車屋', facility: '施設' };
+const HEARING_STAYS = { lt1: '1時間未満', '1to3': '1〜3時間', gt3: '3時間以上' };
+const HEARING_PEAKS = { day: '昼', night: '夜', both: '両方' };
+// 駐車時間ごとに、その場でできるサービス（メニュータブの所要時間から）
+const HEARING_STAY_SERVICES = {
+  lt1:   ['WASH', 'HEADLIGHT'],
+  '1to3': ['WASH', 'HEADLIGHT', 'GLASS_3'],
+  gt3:   ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC']
+};
+const HEARING_COUNT_KEYS = { WASH: 'wash', GLASS_3: 'glass3', HEADLIGHT: 'headlight', HEADLIGHT_MAGIC: 'magic' };
+// 見込み評価のしきい値（紹介料・月 USD）。仮決め（2026-10-20）
+const HEARING_POTENTIAL = [['S', 150], ['A', 60], ['B', 20]];
+
+function hearingPotential_(mine) {
+  for (let i = 0; i < HEARING_POTENTIAL.length; i++) {
+    if (mine >= HEARING_POTENTIAL[i][1]) return HEARING_POTENTIAL[i][0];
+  }
+  return 'C';
+}
 const HEARING_STOCK_DISCOUNT = 30; // 在庫車は定価の30%オフ（2026-08-10 プライスリスト v2「在庫車＝30%オフ」）
 const HEARING_PRICE_CODES = ['HEADLIGHT', 'HEADLIGHT_MAGIC', 'GLASS_3', 'GLASS_ALL', 'WASH'];
 
@@ -74,7 +103,7 @@ function salesHearingCreate(chatId, p) {
 
   const rate = shopCommissionTerms_(shop.obj).rate;
   const prices = priceMap_(salesHearingPrices_());
-  if (p.mode === 'dealer' && (!prices.HEADLIGHT || !prices.HEADLIGHT_MAGIC)) {
+  if (p.mode !== 'garage' && (!prices.HEADLIGHT || !prices.HEADLIGHT_MAGIC)) {
     return { ok: false, error: 'MENU_PRICE_MISSING' }; // メニュータブにヘッドライトの料金が無い
   }
   const r = hearingCalc_(p.mode, p.inputs || {}, rate, prices);
@@ -97,11 +126,24 @@ function salesHearingCreate(chatId, p) {
     '平均単価(USD)': r.avg,
     '言われたこと・在庫メモ': String(p.note || '').substring(0, 2000),
     '緯度': gps ? gps.lat : '',
-    '経度': gps ? gps.lng : ''
+    '経度': gps ? gps.lng : '',
+    '見込み評価': hearingPotential_(r.mine)
   };
   if (p.mode === 'garage') {
     row['1日の整備台数'] = r.carsDay;
     row['月の営業日数'] = r.days;
+  } else if (p.mode === 'facility') {
+    row['月の営業日数'] = r.days;
+    row['駐車台数'] = r.spaces;
+    row['混む時間の埋まり具合(%)'] = r.occ;
+    row['1台あたりの駐車時間'] = HEARING_STAYS[r.stay];
+    row['混む時間帯'] = HEARING_PEAKS[r.peak] || '';
+    row['1日のお客さん数'] = r.visitors;
+    row['毎日停まっている車'] = r.parked;
+    row['WASH件数'] = r.wash;
+    row['GLASS件数'] = r.glass3;
+    row['HEADLIGHT件数'] = r.headlight;
+    row['MAGIC件数'] = r.magic;
   } else {
     row['月の来店客数'] = r.buyers;
     row['在庫台数'] = r.stock;
@@ -130,6 +172,25 @@ function salesHearingsForShop_(shopId) {
   return list;
 }
 
+/**
+ * 各店の最新ヒアリングの見込み評価（店一覧・地図で「強化すべき店」を並べ替えるため）
+ * @return {Object} shopId → { potential, mine, datetime }
+ */
+function salesHearingLatestByShop_() {
+  const sheet = getSalesLogSs_().getSheetByName(HEARING_SHEET_NAME);
+  if (!sheet) return {};
+  const out = {};
+  readSheetObjects_(sheet).forEach(function(r) {
+    const id = String(r.obj['shop_id'] || '');
+    if (!id || !r.obj['hearing_id']) return;
+    const dt = formatSalesLogDateCell_(r.obj['日時']);
+    if (out[id] && out[id].datetime >= dt) return;
+    const mine = Number(r.obj['紹介料(月・USD)']) || 0;
+    out[id] = { potential: String(r.obj['見込み評価'] || '') || hearingPotential_(mine), mine: mine, datetime: dt };
+  });
+  return out;
+}
+
 // ====== 試算（⚠️ saleslog-internal.html の hearingCalc_ と同じ式） ======
 
 function hearingCalc_(mode, inp, rate, prices) {
@@ -145,6 +206,29 @@ function hearingCalc_(mode, inp, rate, prices) {
     out.carsDay = n(inp.carsDay, 1000);
     out.days = Math.min(31, n(inp.days, 31));
     out.jobs = Math.round(out.carsDay * out.days / oneIn);
+  } else if (mode === 'facility') {
+    out.days = Math.min(31, n(inp.days, 31));
+    out.spaces = Math.round(n(inp.spaces, 10000));
+    out.occ = [30, 50, 80].indexOf(Number(inp.occ)) >= 0 ? Number(inp.occ) : 50;
+    out.stay = HEARING_STAY_SERVICES[inp.stay] ? inp.stay : 'lt1';
+    out.peak = HEARING_PEAKS[inp.peak] ? inp.peak : '';
+    out.visitors = Math.round(n(inp.visitors, 100000));
+    out.parked = Math.round(out.spaces * out.occ / 100);
+    const allowed = HEARING_STAY_SERVICES[out.stay];
+    let sales = 0, jobs = 0;
+    Object.keys(HEARING_COUNT_KEYS).forEach(function(code) {
+      const k = HEARING_COUNT_KEYS[code];
+      const c = allowed.indexOf(code) >= 0 ? Math.round(n(inp[k], 10000)) : 0; // 駐車時間に合わないサービスは数えない
+      out[k] = c;
+      jobs += c;
+      sales += c * (prices[code] || 0);
+    });
+    out.jobs = jobs;
+    out.sales = money(sales);
+    out.mine = money(out.sales * rate / 100);
+    out.year = money(out.mine * 12);
+    out.potential = hearingPotential_(out.mine);
+    return out;
   } else {
     out.buyers = n(inp.buyers, 10000);
     out.stock = Math.round(n(inp.stock, 5000));
@@ -160,6 +244,7 @@ function hearingCalc_(mode, inp, rate, prices) {
   out.sales = money(out.jobs * avg);
   out.mine = money(out.sales * rate / 100);
   out.year = money(out.mine * 12);
+  out.potential = hearingPotential_(out.mine);
   return out;
 }
 
@@ -200,7 +285,18 @@ function hearingRowToApi_(obj) {
     datetime:   formatSalesLogDateCell_(obj['日時']),
     shopId:     String(obj['shop_id'] || ''),
     staff:      String(obj['記録者'] || ''),
-    mode:       obj['種類'] === HEARING_MODES.dealer ? 'dealer' : 'garage',
+    mode:       obj['種類'] === HEARING_MODES.dealer ? 'dealer' : (obj['種類'] === HEARING_MODES.facility ? 'facility' : 'garage'),
+    potential:  String(obj['見込み評価'] || ''),
+    spaces:     num(obj['駐車台数']),
+    occ:        num(obj['混む時間の埋まり具合(%)']),
+    stayLabel:  String(obj['1台あたりの駐車時間'] || ''),
+    peakLabel:  String(obj['混む時間帯'] || ''),
+    visitors:   num(obj['1日のお客さん数']),
+    parked:     num(obj['毎日停まっている車']),
+    wash:       num(obj['WASH件数']),
+    glass3:     num(obj['GLASS件数']),
+    headlight:  num(obj['HEADLIGHT件数']),
+    magic:      num(obj['MAGIC件数']),
     carsDay:    num(obj['1日の整備台数']),
     days:       num(obj['月の営業日数']),
     buyers:     num(obj['月の来店客数']),

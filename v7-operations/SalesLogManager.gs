@@ -45,7 +45,9 @@ const SALESLOG_SHOP_HEADERS = [
 
 // 車屋の業種（複数選択・カンマ区切りで保存。今後の提案先セグメントの基礎データ）
 // ※ 暫定セット（2026-07-25 Daisuke 指示）。ロン君ヒアリング後に見直す — 変更はこの1箇所
-const SALESLOG_SHOP_TYPES = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'レジデンス', 'その他'];
+// 2026-10-20: 車屋以外の施設（商談計算の「施設」モード）向けに ゴルフ場・レストラン・ホテル・商業施設 を追加
+const SALESLOG_SHOP_TYPES = ['中古車販売', '整備・修理', '洗車', 'パーツ', 'タイヤ', '板金・塗装', 'レジデンス',
+  'ゴルフ場', 'レストラン', 'ホテル', '商業施設', 'その他'];
 
 /**
  * 業種配列をカンマ区切り文字列に正規化。
@@ -102,10 +104,15 @@ function salesLogShops(chatId) {
     const cur = lastByShop[v.shopId];
     if (!cur || String(v.datetime) > String(cur.datetime)) lastByShop[v.shopId] = v;
   });
+  let potentials = {};
+  try { potentials = salesHearingLatestByShop_(); } catch (e) { Logger.log('⚠️ salesHearingLatestByShop_: ' + e); }
   shops.forEach(function(s) {
     const v = lastByShop[s.shopId];
     s.lastMemo = v ? v.memo.substring(0, 200) : '';
     s.lastVisitAt = v ? v.datetime : '';
+    const pt = potentials[s.shopId];
+    s.potential = pt ? pt.potential : '';      // 最新の商談計算の見込み評価（S/A/B/C・未計算は空）
+    s.potentialMine = pt ? pt.mine : null;     // そのときの紹介料（月・USD）
   });
 
   // 最終訪問日の新しい順（空は最後）
