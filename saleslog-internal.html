@@ -1997,26 +1997,20 @@ var hMode = 'garage';
 var hIn = {
   garage: { carsDay: 5, days: 30, oneIn: 10, avg: 20 },
   dealer: { stock: 30, light: 8, heavy: 4, glass: 10, glassPrice: 0, buyers: 20, oneIn: 5, avg: 20 },
-  // 施設: 「何台に1台」は車屋より低い 50（2026-10-20 仮決め）。件数は facilitySuggest() で自動提案
-  facility: { spaces: 40, occ: 50, stay: '1to3', peak: 'day', visitors: 100, days: 30, oneIn: 50,
-              wash: 0, glass3: 0, headlight: 0, magic: 0 }
+  // 施設: 件数を直接入れる（2026-10-20 Daisuke「駐車場の計算にこだわりすぎない・まずは開拓」）。
+  // 初期値は小さめの施設の例。駐車場の質問は記録用（答えなくても計算できる。駐車時間を選んだ時だけ不可のサービスを外す）
+  facility: { spaces: 0, occ: 50, stay: '', peak: '', visitors: 0, days: 30,
+              wash: 8, glass3: 3, headlight: 3, magic: 1 }
 };
 // 駐車時間ごとに、その場でできるサービス（⚠️ SalesHearingManager.gs の HEARING_STAY_SERVICES と同じ）
-var H_STAY_SERVICES = { lt1: ['WASH', 'HEADLIGHT'], '1to3': ['WASH', 'HEADLIGHT', 'GLASS_3'], gt3: ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC'] };
+var H_STAY_SERVICES = { '': ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC'], lt1: ['WASH', 'HEADLIGHT'], '1to3': ['WASH', 'HEADLIGHT', 'GLASS_3'], gt3: ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC'] };
 var H_COUNT_KEYS = { WASH: 'wash', GLASS_3: 'glass3', HEADLIGHT: 'headlight', HEADLIGHT_MAGIC: 'magic' };
-var H_MIX = { wash: 0.55, glass3: 0.25, headlight: 0.15, magic: 0.05 }; // 件数の自動提案の割合（目安）
 var H_POTENTIAL = [['S', 150], ['A', 60], ['B', 20]];                    // ⚠️ サーバーと同じしきい値
 function hPotential(mine) { for (var i = 0; i < H_POTENTIAL.length; i++) if (mine >= H_POTENTIAL[i][1]) return H_POTENTIAL[i][0]; return 'C'; }
+// 駐車時間を選んだら、その時間ではできないサービスの件数を 0 にする（件数の自動提案はしない）
 function facilitySuggest() {
-  var f = hIn.facility;
-  var parked = Math.round(f.spaces * f.occ / 100);
-  var total = Math.round(parked * f.days / Math.max(1, f.oneIn));
-  var allowed = H_STAY_SERVICES[f.stay];
-  var keys = Object.keys(H_COUNT_KEYS).filter(function(c) { return allowed.indexOf(c) >= 0; }).map(function(c) { return H_COUNT_KEYS[c]; });
-  var wsum = keys.reduce(function(a, k) { return a + H_MIX[k]; }, 0);
-  ['wash', 'glass3', 'headlight', 'magic'].forEach(function(k) {
-    f[k] = keys.indexOf(k) >= 0 ? Math.round(total * H_MIX[k] / wsum) : 0;
-  });
+  var f = hIn.facility, allowed = H_STAY_SERVICES[f.stay] || H_STAY_SERVICES[''];
+  Object.keys(H_COUNT_KEYS).forEach(function(code) { if (allowed.indexOf(code) < 0) f[H_COUNT_KEYS[code]] = 0; });
 }
 var H_STOCK_DISCOUNT = 30; // 在庫車は定価の30%オフ（2026-08-10 プライスリスト v2）
 
@@ -2044,7 +2038,7 @@ function hearingCalc_(mode, inp, rate) {
     o.days = Math.min(31, n(inp.days, 31));
     o.spaces = Math.round(n(inp.spaces, 10000));
     o.occ = [30, 50, 80].indexOf(Number(inp.occ)) >= 0 ? Number(inp.occ) : 50;
-    o.stay = H_STAY_SERVICES[inp.stay] ? inp.stay : 'lt1';
+    o.stay = H_STAY_SERVICES[inp.stay] ? inp.stay : '';
     o.parked = Math.round(o.spaces * o.occ / 100);
     var allowed = H_STAY_SERVICES[o.stay], sales = 0, jobs = 0;
     Object.keys(H_COUNT_KEYS).forEach(function(code) {
@@ -2101,7 +2095,7 @@ function renderHearingInputs() {
   document.getElementById('hmDealer').className = hMode === 'dealer' ? 'sel' : '';
   document.getElementById('hmFacility').className = hMode === 'facility' ? 'sel' : '';
   if (hMode === 'facility') {
-    var f = hIn.facility, allowed = H_STAY_SERVICES[f.stay];
+    var f = hIn.facility, allowed = H_STAY_SERVICES[f.stay] || H_STAY_SERVICES[''];
     var chipSet = function(field, opts) {
       return '<div class="hchips">' + opts.map(function(o) {
         return '<button type="button" class="hchip' + (String(f[field]) === String(o[0]) ? ' sel' : '') + '" data-fac="' + field + '" data-v="' + o[0] + '">' + esc(hs(o[1])) + '</button>';
@@ -2116,16 +2110,13 @@ function renderHearingInputs() {
       }
       return '<div class="hrow"><label>' + esc(x[2]) + '<small>' + price + '$ × ' + esc(hsKm('jobs_unit')) + '</small></label>' + hStep(x[1], f[x[1]], 0, 10000) + '</div>';
     }).join('');
-    el.innerHTML = '<div class="hcard">' +
+    el.innerHTML = '<div class="hcard">' + lbl('orders_title') + rows + '</div>' +
+      '<div class="hcard">' +
       hRow('spaces', HS.cars_unit[1], 'spaces', f.spaces, 0, 10000) +
       lbl('occ') + chipSet('occ', [[30, 'occ30'], [50, 'occ50'], [80, 'occ80']]) +
       lbl('stay') + chipSet('stay', [['lt1', 'stay_lt1'], ['1to3', 'stay_1to3'], ['gt3', 'stay_gt3']]) +
       lbl('peak') + chipSet('peak', [['day', 'peak_day'], ['night', 'peak_night'], ['both', 'peak_both']]) +
-      hRow('visitors', '', 'visitors', f.visitors, 0, 100000) +
-      hRow('days_month', HS.days_unit[1], 'days', f.days, 1, 31) +
-      hRow('take_rate', HS.one_in[1].replace('{n}', f.oneIn), 'oneIn', f.oneIn, 1, 500) +
-      '<div class="hparked"><span>' + esc(hs('parked')) + '</span><b>' + Math.round(f.spaces * f.occ / 100) + ' ' + esc(HS.cars_unit[0]) + '</b></div></div>' +
-      '<div class="hcard">' + lbl('orders_title') + rows + '</div>';
+      hRow('visitors', '', 'visitors', f.visitors, 0, 100000) + '</div>';
     renderHearingResult();
     return;
   }
@@ -2182,7 +2173,6 @@ function openHearing() {
   var FAC_TYPES = ['レジデンス', 'ゴルフ場', 'レストラン', 'ホテル', '商業施設'];
   hMode = types.indexOf('中古車販売') >= 0 ? 'dealer'
         : types.some(function(t) { return FAC_TYPES.indexOf(t) >= 0; }) ? 'facility' : 'garage';
-  if (hMode === 'facility') facilitySuggest();
   document.getElementById('hearTitle').textContent = STR.hearTitle + ' — ' + currentShop.shopName;
   document.getElementById('hearNote').value = '';
   showView('hearing');
@@ -2194,8 +2184,6 @@ function hSetValue(key, raw, rerender) {
   if (!isFinite(v)) return;
   v = Math.max(Number(el.min), Math.min(Number(el.max), v));
   hIn[hMode][key] = v;
-  // 施設: 駐車場の数字が変わったら件数の提案を作り直す（件数を直接いじった時はそのまま）
-  if (rerender && hMode === 'facility' && ['spaces', 'days', 'oneIn'].indexOf(key) >= 0) facilitySuggest();
   if (rerender) renderHearingInputs(); else renderHearingResult();
 }
 document.getElementById('hearInputs').addEventListener('click', function(e) {
@@ -2204,7 +2192,7 @@ document.getElementById('hearInputs').addEventListener('click', function(e) {
     var key = b.getAttribute('data-hs');
     var el = document.getElementById('h_' + key);
     el.value = (parseFloat(el.value) || 0) + Number(b.getAttribute('data-d'));
-    var structural = key === 'oneIn' || (hMode === 'facility' && (key === 'spaces' || key === 'days'));
+    var structural = key === 'oneIn';
     hSetValue(key, el.value, structural);
     if (!structural) el.value = hIn[hMode][key];
     return;
@@ -2212,8 +2200,10 @@ document.getElementById('hearInputs').addEventListener('click', function(e) {
   var fc = e.target.closest('[data-fac]');
   if (fc) {
     var field = fc.getAttribute('data-fac'), val = fc.getAttribute('data-v');
-    hIn.facility[field] = field === 'occ' ? Number(val) : val;
-    if (field !== 'peak') facilitySuggest();
+    var cur = String(hIn.facility[field]);
+    // 選択中のチップをもう一度押すと「未回答」に戻す（記録用の質問なので答えなくてよい）
+    hIn.facility[field] = cur === val && field !== 'occ' ? '' : (field === 'occ' ? Number(val) : val);
+    if (field === 'stay') facilitySuggest();
     renderHearingInputs();
     return;
   }
@@ -2249,7 +2239,8 @@ function renderHearings() {
   if (!currentHearings.length) { list.innerHTML = '<div class="empty">' + esc(STR.hearEmpty) + '</div>'; return; }
   list.innerHTML = currentHearings.map(function(h) {
     var how = h.mode === 'facility'
-      ? '駐車場 ' + h.spaces + '台・埋まり ' + h.occ + '%・' + h.stayLabel + (h.peakLabel ? '・混むのは' + h.peakLabel : '') + ' → 毎日 ' + h.parked + '台 ／ WASH ' + h.wash + '・GLASS ' + h.glass3 + '・HEADLIGHT ' + h.headlight + '・MAGIC ' + h.magic + ' 件/月'
+      ? 'WASH ' + h.wash + '・GLASS ' + h.glass3 + '・HEADLIGHT ' + h.headlight + '・MAGIC ' + h.magic + ' 件/月' +
+        (h.spaces ? ' ／ 駐車場 ' + h.spaces + '台・埋まり ' + h.occ + '%' : '') + (h.stayLabel ? '・' + h.stayLabel : '') + (h.peakLabel ? '・混むのは' + h.peakLabel : '')
       : h.mode === 'dealer'
       ? '在庫 ' + h.stock + '台（軽い黄ばみ ' + h.light + '・ひどい黄ばみ ' + h.heavy + '・ガラス ' + h.glass + '）→ 提携価格 ' + hMoney(h.partner || 0) + '$ ／ 来店 ' + h.buyers + '人・' + h.oneIn + '人に1人'
       : '1日 ' + h.carsDay + '台 × ' + h.days + '日・' + h.oneIn + '台に1台・平均 ' + h.avg + '$ → 月 ' + h.jobs + '件';
@@ -2272,7 +2263,7 @@ document.getElementById('hmGarage').innerHTML = esc(HS.garage[0]) + '<br>' + esc
 document.getElementById('hmDealer').innerHTML = esc(HS.dealer[0]) + '<br>' + esc(HS.dealer[1]);
 document.getElementById('hmGarage').addEventListener('click', function() { hMode = 'garage'; renderHearingInputs(); });
 document.getElementById('hmDealer').addEventListener('click', function() { hMode = 'dealer'; renderHearingInputs(); });
-document.getElementById('hmFacility').addEventListener('click', function() { hMode = 'facility'; facilitySuggest(); renderHearingInputs(); });
+document.getElementById('hmFacility').addEventListener('click', function() { hMode = 'facility'; renderHearingInputs(); });
 // 施設モードの km を流し込む（Panha 未確定の間は日本語だけを表示）
 Object.keys(FAC_KM).forEach(function(k) { if (HS[k]) HS[k][0] = FAC_KM[k]; });
 SHOP_TYPES.forEach(function(t) { if (t.kmKey && FAC_KM[t.kmKey]) t.km = FAC_KM[t.kmKey]; else if (t.kmKey) t.km = t.jp; });

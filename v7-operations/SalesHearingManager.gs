@@ -23,8 +23,9 @@
  *             月の件数 = round(月の来店客数 ÷ N)、紹介料 = 月の件数 × 平均単価 × 紹介料率
  *   施設（ゴルフ場・レストラン・ホテル・モール・レジデンス。2026-10-20 追加）:
  *             毎日停まっている車 = round(駐車台数 × 埋まり具合%)、
- *             月の件数はサービス別（WASH / GLASS_3 / HEADLIGHT / HEADLIGHT_MAGIC）に画面で入れる（初期値は自動提案）。
- *             駐車時間で選べるサービスを絞る（1時間未満 = WASH・HEADLIGHT／1〜3時間 = ＋GLASS／3時間以上 = ＋MAGIC。
+ *             月の件数はサービス別（WASH / GLASS_3 / HEADLIGHT / HEADLIGHT_MAGIC）に画面で直接入れる
+ *             （2026-10-20 Daisuke「駐車場の計算にこだわりすぎない」→ 駐車場の質問は記録用・任意）。
+ *             駐車時間を答えた時だけ、選べるサービスを絞る（1時間未満 = WASH・HEADLIGHT／1〜3時間 = ＋GLASS／3時間以上 = ＋MAGIC。
  *             メニュータブの所要時間 WASH 30-45分・HEADLIGHT 40分・GLASS 60-100分・MAGIC 90分 から）、
  *             お客さんの支払い = Σ 件数 × 料金、紹介料 = 支払い × 紹介料率
  *   見込み評価（全モード・社内用）: 紹介料(月) が S 150$以上 / A 60$以上 / B 20$以上 / C それ未満
@@ -48,6 +49,7 @@ const HEARING_STAYS = { lt1: '1時間未満', '1to3': '1〜3時間', gt3: '3時�
 const HEARING_PEAKS = { day: '昼', night: '夜', both: '両方' };
 // 駐車時間ごとに、その場でできるサービス（メニュータブの所要時間から）
 const HEARING_STAY_SERVICES = {
+  '':    ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC'],  // 駐車時間は未回答（記録用の質問なので答えなくてよい）
   lt1:   ['WASH', 'HEADLIGHT'],
   '1to3': ['WASH', 'HEADLIGHT', 'GLASS_3'],
   gt3:   ['WASH', 'HEADLIGHT', 'GLASS_3', 'HEADLIGHT_MAGIC']
@@ -136,7 +138,7 @@ function salesHearingCreate(chatId, p) {
     row['月の営業日数'] = r.days;
     row['駐車台数'] = r.spaces;
     row['混む時間の埋まり具合(%)'] = r.occ;
-    row['1台あたりの駐車時間'] = HEARING_STAYS[r.stay];
+    row['1台あたりの駐車時間'] = HEARING_STAYS[r.stay] || '';
     row['混む時間帯'] = HEARING_PEAKS[r.peak] || '';
     row['1日のお客さん数'] = r.visitors;
     row['毎日停まっている車'] = r.parked;
@@ -210,7 +212,7 @@ function hearingCalc_(mode, inp, rate, prices) {
     out.days = Math.min(31, n(inp.days, 31));
     out.spaces = Math.round(n(inp.spaces, 10000));
     out.occ = [30, 50, 80].indexOf(Number(inp.occ)) >= 0 ? Number(inp.occ) : 50;
-    out.stay = HEARING_STAY_SERVICES[inp.stay] ? inp.stay : 'lt1';
+    out.stay = HEARING_STAY_SERVICES[inp.stay] ? inp.stay : '';
     out.peak = HEARING_PEAKS[inp.peak] ? inp.peak : '';
     out.visitors = Math.round(n(inp.visitors, 100000));
     out.parked = Math.round(out.spaces * out.occ / 100);
