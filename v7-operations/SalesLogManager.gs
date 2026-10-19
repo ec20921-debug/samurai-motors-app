@@ -93,12 +93,31 @@ function salesLogShops(chatId) {
     .map(function(r) { return shopRowToApi_(r.obj); })
     .filter(function(s) { return s.shopId; });
 
+  // 地図のピン・一覧で「前回どうだったか」をすぐ見せるため、各店の直近の訪問メモを添える
+  // （2026-10-20 Daisuke「2回目の訪問で前回の状況が確認できる営業支援に」）
+  const lastByShop = {};
+  readSheetObjects_(getSalesLogSheet_()).forEach(function(r) {
+    const v = visitRowToApi_(r.obj);
+    if (!v.visitId || !v.shopId) return;
+    const cur = lastByShop[v.shopId];
+    if (!cur || String(v.datetime) > String(cur.datetime)) lastByShop[v.shopId] = v;
+  });
+  shops.forEach(function(s) {
+    const v = lastByShop[s.shopId];
+    s.lastMemo = v ? v.memo.substring(0, 200) : '';
+    s.lastVisitAt = v ? v.datetime : '';
+  });
+
   // 最終訪問日の新しい順（空は最後）
   shops.sort(function(a, b) {
     return String(b.lastVisit || '').localeCompare(String(a.lastVisit || ''));
   });
 
-  return { ok: true, shops: shops };
+  // 商談計算の料金（メニュータブ）。読めなくても店一覧は返す
+  let prices = [];
+  try { prices = salesHearingPrices_(); } catch (e) { Logger.log('⚠️ salesHearingPrices_: ' + e); }
+
+  return { ok: true, shops: shops, prices: prices };
 }
 
 /**
@@ -117,7 +136,10 @@ function salesLogShopDetail(chatId, shopId) {
     .filter(function(v) { return v.visitId && v.shopId === String(shopId); });
   visits.sort(function(a, b) { return String(b.datetime).localeCompare(String(a.datetime)); });
 
-  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits };
+  let hearings = [];
+  try { hearings = salesHearingsForShop_(shopId); } catch (e) { Logger.log('⚠️ salesHearingsForShop_: ' + e); }
+
+  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings };
 }
 
 /**

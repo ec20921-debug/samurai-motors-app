@@ -313,6 +313,20 @@ function doPost(e) {
         }));
       }
 
+      // ── 車屋提携 商談ヒアリング（その場の紹介料試算・在庫車の記録 / SalesHearingManager.gs） ──
+      case 'saleslog_hearing_create': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(salesHearingCreate(chatId, {
+          shopId: shopId,
+          mode:   String(body.mode || ''),
+          inputs: (body.inputs && typeof body.inputs === 'object') ? body.inputs : {},
+          note:   String(body.note || ''),
+          gps:    body.gps || null
+        }));
+      }
+
       // ── 車屋提携 コミッション台帳（Phase 4・saleslog-internal.html） ──
       case 'commission_list': {
         const chatId = String(body.chatId || '');
