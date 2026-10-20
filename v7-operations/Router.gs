@@ -299,7 +299,8 @@ function doPost(e) {
           gps:       body.gps || null,
           nextAction: String(body.nextAction || ''),
           nextDue:   String(body.nextDue    || ''),
-          notes:     Array.isArray(body.notes) ? body.notes : []
+          notes:     Array.isArray(body.notes) ? body.notes : [],
+          clientId:  String(body.clientId || '')
         }));
       }
 
@@ -330,7 +331,8 @@ function doPost(e) {
           mode:   String(body.mode || ''),
           inputs: (body.inputs && typeof body.inputs === 'object') ? body.inputs : {},
           note:   String(body.note || ''),
-          gps:    body.gps || null
+          gps:    body.gps || null,
+          clientId: String(body.clientId || '')
         }));
       }
 
@@ -343,7 +345,8 @@ function doPost(e) {
           shopId:  shopId,
           texts:   Array.isArray(body.texts) ? body.texts : [String(body.text || '')],
           visitId: String(body.visitId || ''),
-          gps:     body.gps || null
+          gps:     body.gps || null,
+          clientId: String(body.clientId || '')
         }));
       }
 
