@@ -1,7 +1,7 @@
 /**
  * ScoutBoard.gs — SAMURAI SCOUT 営業ボード（PC で毎日見るスプレッドシート）2026-10-20
  *
- * Daisuke「ロン君たちが日々パソコンで確認する Google スプレッドシートも。それを見て会話する。
+ * Daisuke「Run Kosalたちが日々パソコンで確認する Google スプレッドシートも。それを見て会話する。
  *          他への影響が出ないように・重くなりすぎない形で。Excel での確認も考慮して」
  *
  * - 別ファイル（スクリプトプロパティ SCOUT_BOARD_SPREADSHEET_ID）。v7 Database は読むだけで、書き込まない
@@ -11,7 +11,7 @@
  * - タブ: 📅 今日 / 🏪 お店一覧 / 📝 最近の記録 / 📈 週ごと
  *
  * 初回だけ GAS エディタで scoutBoardSetup() を実行（ファイル作成・自動更新の登録・1回目の書き込み）。
- * 共有（ロン君たちに「閲覧者」で）は Daisuke が Drive の画面で行う。
+ * 共有（Run Kosalたちに「閲覧者」で）は Daisuke が Drive の画面で行う。
  */
 
 const SCOUT_BOARD_PROP = 'SCOUT_BOARD_SPREADSHEET_ID';
