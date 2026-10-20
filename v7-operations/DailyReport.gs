@@ -91,14 +91,28 @@ function buildSalesLogSection_(ppToday) {
     if (!shops.length) return ''; // 店ゼロの間はセクション自体を出さない
 
     // 本日の訪問（営業ログの日時が今日の行）
-    const todaysVisits = readSheetObjects_(getSalesLogSheet_())
+    const allVisits = readSheetObjects_(getSalesLogSheet_())
       .map(function(r) { return visitRowToApi_(r.obj); })
-      .filter(function(v) { return v.visitId && String(v.datetime).substring(0, 10) === ppToday; });
+      .filter(function(v) { return v.visitId; });
+    const todaysVisits = allVisits.filter(function(v) { return String(v.datetime).substring(0, 10) === ppToday; });
 
-    // 店の内訳（ステータス・最新反応）
-    let partner = 0, active = 0, dropped = 0, totalVisits = 0;
+    // フォロー期限切れ（各店の直近の訪問で決めた期日が今日より前。2026-10-20）
+    const latestByShop = {};
+    allVisits.forEach(function(v) {
+      if (!v.shopId) return;
+      if (!latestByShop[v.shopId] || String(v.datetime) >= String(latestByShop[v.shopId].datetime)) latestByShop[v.shopId] = v;
+    });
+    let overdue = 0;
+    Object.keys(latestByShop).forEach(function(id) {
+      const due = latestByShop[id].nextDue;
+      if (due && due < ppToday) overdue++;
+    });
+
+    // 店の内訳（ステータス・最新反応）。未訪問（見込みリストから移した店）は営業中に混ぜず別に数える
+    let partner = 0, active = 0, dropped = 0, unvisited = 0, totalVisits = 0;
     const reactionCount = { A: 0, B: 0 };
     shops.forEach(function(s) {
+      if (s.status === '未訪問') { unvisited++; return; }
       if (s.status === '提携済') partner++;
       else if (s.status === '見送り') dropped++;
       else active++;
@@ -130,8 +144,9 @@ function buildSalesLogSection_(ppToday) {
     } else {
       lines.push('　🚶 本日の訪問: なし');
     }
-    lines.push('　🏪 累計: ' + shops.length + '店（⭐提携 ' + partner + ' / 営業中 ' + active +
-               ' / 見送り ' + dropped + '）・訪問 ' + totalVisits + '回');
+    lines.push('　🏪 累計: ' + (shops.length - unvisited) + '店（⭐提携 ' + partner + ' / 営業中 ' + active +
+               ' / 見送り ' + dropped + '）・訪問 ' + totalVisits + '回' + (unvisited ? '・未訪問の見込み ' + unvisited + '店' : ''));
+    if (overdue) lines.push('　⏰ フォロー期限切れ: ' + overdue + '店');
     const hot = [];
     if (reactionCount.A) hot.push('A(デモ決定) ' + reactionCount.A + '店');
     if (reactionCount.B) hot.push('B(興味あり) ' + reactionCount.B + '店');

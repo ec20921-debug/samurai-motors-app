@@ -219,6 +219,34 @@ body {
 .pot { flex-shrink:0; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px; border:1px solid var(--gold); color:var(--gold); }
 .pot.S { background:var(--gold); color:#1a1a1a; }
 
+/* ── 2026-10-20 一本化: 未訪問の店（白いピン）・絞り込み・フォロー ── */
+.badge.unv { background:#f2f2f2; color:#333; }
+.filter-row { display:flex; gap:6px; margin-bottom:10px; }
+.filter-row button { flex:1; padding:8px 4px; border:1.5px solid var(--border); background:var(--card); color:var(--text-dim);
+  border-radius:10px; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; line-height:1.3; }
+.filter-row button.on { border-color:var(--gold); color:var(--gold); }
+.pin.unv { background:#fff !important; border-color:#555; }
+.pin.unv span { color:#333; font-size:11px; }
+.unv-toggle { position:absolute; left:10px; bottom:24px; z-index:500; border:1.5px solid #555; border-radius:10px; padding:8px 10px;
+  background:#fff; color:#222; font-weight:700; font-size:12px; font-family:inherit; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+.unv-toggle.off { background:#2a2a2a; color:#aaa; border-color:#444; }
+.follow-box { background:var(--card); border:1.5px solid var(--amber); border-radius:var(--radius); padding:10px 12px; margin-bottom:12px; }
+.follow-box .fh { font-size:13px; font-weight:700; color:var(--amber); margin-bottom:6px; }
+.follow-item { display:flex; gap:8px; align-items:flex-start; padding:8px 0; border-top:1px solid var(--border); cursor:pointer; }
+.follow-item:first-of-type { border-top:0; }
+.follow-item .fb { flex-shrink:0; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px; color:#fff; background:var(--amber); }
+.follow-item .fb.late { background:var(--red); }
+.follow-item .ft { flex:1; min-width:0; font-size:13px; line-height:1.45; }
+.follow-item .ft b { display:block; font-size:14px; }
+.follow-none { font-size:12px; color:var(--text-dim); }
+.due-row { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.due-row button { border:1.5px solid var(--border); background:#222; color:var(--text); border-radius:999px; padding:5px 11px; font-size:12px;
+  font-weight:700; font-family:inherit; cursor:pointer; }
+.due-row input { background:var(--card); border:1.5px solid var(--border); color:var(--text); border-radius:10px; padding:6px 8px;
+  font-family:inherit; font-size:13px; color-scheme:dark; }
+.vnext { font-size:12px; color:var(--amber); margin-top:4px; }
+.shop-src { font-size:12px; color:var(--text-dim); margin:-4px 0 12px; line-height:1.5; }
+
 /* ── フォーム共通 ── */
 .back-btn {
   background:none; border:none; color:var(--text-dim);
@@ -499,6 +527,17 @@ input[type="date"] { color-scheme: dark; }
       <button type="button" class="near-btn" id="btnPot">⭐</button>
     </div>
 
+    <div class="follow-box hidden" id="followBox">
+      <div class="fh" id="followHead"></div>
+      <div id="followList"></div>
+    </div>
+
+    <div class="filter-row" id="filterRow">
+      <button type="button" data-f="all" class="on"></button>
+      <button type="button" data-f="visited"></button>
+      <button type="button" data-f="unvisited"></button>
+    </div>
+
     <div id="listWrap">
       <div class="list-label" id="listLabel">បញ្ជីហាង / 店一覧</div>
       <div id="listBody">
@@ -507,7 +546,7 @@ input[type="date"] { color-scheme: dark; }
     </div>
 
     <div id="mapWrap">
-      <div class="map-tools"><div id="map"></div><button type="button" class="here-btn" id="btnHere"></button></div>
+      <div class="map-tools"><div id="map"></div><button type="button" class="here-btn" id="btnHere"></button><button type="button" class="unv-toggle" id="btnUnv"></button></div>
       <div class="map-hint" id="mapHint">—</div>
     </div>
   </div>
@@ -516,6 +555,7 @@ input[type="date"] { color-scheme: dark; }
   <div id="viewShop" class="hidden">
     <button class="back-btn" id="btnShopBack">← ត្រឡប់ / 戻る</button>
     <div class="form-title" id="shopTitle">ព័ត៌មានហាង / 店の情報</div>
+    <div class="shop-src hidden" id="shopSrc"></div>
     <button type="button" class="hear-btn" id="btnHear"></button>
 
     <div class="field">
@@ -629,6 +669,17 @@ input[type="date"] { color-scheme: dark; }
     <div class="field">
       <label>កំណត់ចំណាំ / メモ</label>
       <textarea id="fMemo" maxlength="2000" placeholder="អាចបំពេញពេលក្រោយបាន"></textarea>
+    </div>
+
+    <div class="field">
+      <label id="lblNext"></label>
+      <input type="text" id="fNext" maxlength="300">
+      <div class="due-row">
+        <input type="date" id="fDue" aria-label="due">
+        <button type="button" data-due="1" id="dueT"></button>
+        <button type="button" data-due="3" id="due3"></button>
+        <button type="button" data-due="7" id="due7"></button>
+      </div>
     </div>
 
     <button class="save-btn" id="btnSave">💾 រក្សាទុក / 保存</button>
@@ -781,7 +832,24 @@ var STR = {
   hearEmpty:   'មិនទាន់មានការគណនាទេ / まだ計算の記録がありません',
   hearNote:    'អ្វីដែលម្ចាស់ហាងនិយាយ និងកំណត់ចំណាំរថយន្តស្តុក / 言われたこと・在庫車のメモ',
   hearHint:    '※ រក្សាទុកក្នុង Google Sheet ផ្ទាំង «商談ヒアリング» / GSS の「商談ヒアリング」タブに保存されます',
-  priceErr:    'មិនអាចអានតម្លៃសេវាបានទេ / サービス料金（メニュー）を読めません'
+  priceErr:    'មិនអាចអានតម្លៃសេវាបានទេ / サービス料金（メニュー）を読めません',
+  // ↓ 2026-10-20 一本化（未訪問の店・フォロー）。Panha 校閲済み（provisional・Ron の確認待ち）
+  unvisited:   'មិនទាន់ចុះជួប / 未訪問',
+  fAll:        'ទាំងអស់ / すべて',
+  fVisited:    'បានចុះជួប / 訪問済み',
+  fUnvisited:  'មិនទាន់ចុះជួប / 未訪問',
+  mapUnv:      'បង្ហាញហាងមិនទាន់ចុះជួប / 未訪問の店を表示',
+  nextAction:  'អ្វីដែលត្រូវធ្វើបន្ទាប់ / 次にやること',
+  nextDue:     'ថ្ងៃកំណត់ / 期日',
+  dueTomorrow: 'ស្អែក / 明日',
+  due3d:       '3 ថ្ងៃទៀត / 3日後',
+  due1w:       '1 សប្តាហ៍ទៀត / 1週間後',
+  followHead:  '⏰ ត្រូវតាមដានថ្ងៃនេះ / 今日やるフォロー',
+  overdue:     'ហួសកំណត់ / 期限切れ',
+  dueToday:    'ថ្ងៃនេះ / 今日',
+  followNone:  'ថ្ងៃនេះគ្មានអ្វីត្រូវតាមដានទេ / 今日やるフォローはありません',
+  address:     'អាសយដ្ឋាន / 住所',
+  fromList:    'មកពីបញ្ជីហាងគោលដៅ / 見込みリストから登録'
 };
 // 商談計算の画面文言。km は Panha 校閲済み（2026-10-19 提携電卓アプリ UI と同一の確定文）
 var HS = {
@@ -826,7 +894,8 @@ function hsJp(k) { return HS[k][0] ? HS[k][1] : ''; }
 var STATUS_LABELS = {
   '営業中': 'កំពុងចរចា / 営業中',
   '提携済': 'ជាដៃគូ / 提携済',
-  '見送り': 'បោះបង់ / 見送り'
+  '見送り': 'បោះបង់ / 見送り',
+  '未訪問': 'មិនទាន់ចុះជួប / 未訪問'
 };
 // 車屋の業種（複数選択・保存値は日本語ラベル。バックエンド SALESLOG_SHOP_TYPES と一致必須）
 // ※ 暫定セット — ロン君ヒアリング後に見直す
@@ -861,7 +930,9 @@ var editingVisitId = null;    // edit 時の対象訪問
 var selectedReaction = '';
 var selectedStatus = '';
 var map = null, mapMarkers = [];
-var hereGps = null, meMarker = null, nearMode = false, potMode = false; // 現在地（一覧の近い順・地図の青い点）
+var hereGps = null, meMarker = null, nearMode = false, potMode = false;
+var listFilter = 'all', showUnvisited = true; // 一覧の絞り込み・地図の白いピン（未訪問の店）
+function isUnvisited(s) { return s.status === '未訪問'; } // 現在地（一覧の近い順・地図の青い点）
 var menuPrices = [];                                    // 商談計算の料金（メニュータブ）
 var currentHearings = [];
 
@@ -990,9 +1061,33 @@ function renderListError(msg) {
 }
 
 function badgeFor(shop) {
+  if (isUnvisited(shop)) return '<span class="badge unv">' + esc(STR.unvisited.split(' / ')[0]) + '</span>';
   if (shop.status === '提携済') return '<span class="badge partner">⭐ ' + esc(shop.lastReaction || 'A') + '</span>';
   var cls = shop.lastReaction ? 'r' + shop.lastReaction : 'rNone';
   return '<span class="badge ' + cls + '">' + esc(shop.lastReaction || '—') + '</span>';
+}
+
+// ホームの「今日やるフォロー」: 直近の訪問で決めた期日が今日以前の店（期限切れが先）
+function renderFollow() {
+  var box = document.getElementById('followBox');
+  var today = ppTodayStr();
+  var due = shopsCache.filter(function(s) { return s.nextDue && s.nextDue <= today; })
+    .sort(function(a, b) { return a.nextDue.localeCompare(b.nextDue); });
+  if (!shopsCache.length) { box.className = 'follow-box hidden'; return; }
+  box.className = 'follow-box';
+  document.getElementById('followHead').textContent = STR.followHead + (due.length ? ' · ' + due.length : '');
+  var list = document.getElementById('followList');
+  if (!due.length) { list.innerHTML = '<div class="follow-none">' + esc(STR.followNone) + '</div>'; return; }
+  list.innerHTML = '';
+  due.forEach(function(s) {
+    var late = s.nextDue < today;
+    var item = document.createElement('div');
+    item.className = 'follow-item';
+    item.innerHTML = '<span class="fb' + (late ? ' late' : '') + '">' + esc((late ? STR.overdue : STR.dueToday).split(' / ')[0]) +
+      '<br>' + esc(s.nextDue.substring(5)) + '</span><div class="ft"><b>' + esc(s.shopName) + '</b>' + esc(s.nextAction || '') + '</div>';
+    item.addEventListener('click', function() { openShop(s.shopId); });
+    list.appendChild(item);
+  });
 }
 
 function renderShopList() {
@@ -1003,8 +1098,11 @@ function renderShopList() {
     return;
   }
   var q = (document.getElementById('shopSearch').value || '').trim().toLowerCase();
+  renderFollow();
   var rows = shopsCache.filter(function(s) {
-    return !q || (s.shopName + ' ' + (s.phone || '') + ' ' + (s.ownerName || '')).toLowerCase().indexOf(q) >= 0;
+    if (listFilter === 'visited' && isUnvisited(s)) return false;
+    if (listFilter === 'unvisited' && !isUnvisited(s)) return false;
+    return !q || (s.shopName + ' ' + (s.phone || '') + ' ' + (s.ownerName || '') + ' ' + (s.address || '')).toLowerCase().indexOf(q) >= 0;
   });
   if (potMode) {
     var rank = { S: 0, A: 1, B: 2, C: 3 };
@@ -1027,6 +1125,13 @@ function renderShopList() {
     if (s.phone)     meta.push('☎ ' + s.phone);
     if (s.facebook)  meta.push('🔗FB');
     if (s.lat === null || s.lng === null) meta.push(STR.noLocation);
+    if (isUnvisited(s)) {
+      meta = [];
+      if (s.tier) meta.push('Tier ' + s.tier);
+      if (s.address) meta.push(s.address);
+      if (s.phone) meta.push('☎ ' + s.phone);
+      if (s.lat === null || s.lng === null) meta.push(STR.noLocation);
+    }
     var typesLine = (s.shopTypes && s.shopTypes.length)
       ? '<div class="shop-meta">🔧 ' + esc(s.shopTypes.join(' / ')) + '</div>' : '';
     var dist = (hereGps && s.lat !== null && s.lng !== null) ? fmtDist(distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng)) : '';
@@ -1039,7 +1144,8 @@ function renderShopList() {
       '</div>' +
       typesLine +
       '<div class="shop-meta">' + esc(meta.join(' · ')) + '</div>' +
-      (s.lastMemo ? '<div class="shop-last"><b>' + esc(STR.lastLabel) + '</b> ' + esc(s.lastMemo) + '</div>' : '');
+      (s.lastMemo ? '<div class="shop-last"><b>' + esc(STR.lastLabel) + '</b> ' + esc(s.lastMemo) + '</div>' : '') +
+      (s.nextAction || s.nextDue ? '<div class="vnext">⏰ ' + esc((s.nextDue ? s.nextDue + ' ' : '') + (s.nextAction || '')) + '</div>' : '');
     card.addEventListener('click', function() { openShop(s.shopId); });
     body.appendChild(card);
   });
@@ -1072,7 +1178,9 @@ function refreshMapMarkers() {
   mapMarkers.forEach(function(m) { map.removeLayer(m); });
   mapMarkers = [];
 
-  var located = shopsCache.filter(function(s) { return s.lat !== null && s.lng !== null; });
+  var located = shopsCache.filter(function(s) {
+    return s.lat !== null && s.lng !== null && (showUnvisited || !isUnvisited(s));
+  });
   document.getElementById('mapHint').textContent =
     located.length ? ('📍 ' + located.length) : STR.mapEmpty;
   if (!located.length) return;
@@ -1080,10 +1188,12 @@ function refreshMapMarkers() {
   var bounds = [];
   located.forEach(function(s) {
     var color = s.status === '提携済' ? '#c9a84c' : (REACTION_COLORS[s.lastReaction] || '#888');
-    var letter = s.status === '提携済' ? '★' : (s.lastReaction || '·');
+    var unv = isUnvisited(s);
+    var letter = unv ? (s.tier || '○') : (s.status === '提携済' ? '★' : (s.lastReaction || '·'));
     var marker = L.marker([s.lat, s.lng], {
       icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28],
-        html: '<div class="pin" style="background:' + color + '"><span>' + esc(letter) + '</span></div>' })
+        html: '<div class="pin' + (unv ? ' unv' : '') + '" style="background:' + color + '"><span>' + esc(letter) + '</span></div>' }),
+      zIndexOffset: unv ? -100 : 0
     }).addTo(map);
 
     var div = document.createElement('div');
@@ -1093,7 +1203,9 @@ function refreshMapMarkers() {
       esc((s.lastReaction || '—') + ' · 🔁 ' + s.visitCount + (s.lastVisit ? ' · ' + s.lastVisit : '')) +
       (hereGps ? ' · ' + esc(fmtDist(distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng))) : '') +
       (s.potential ? ' · ⭐' + esc(s.potential) + (s.potentialMine !== null ? ' (' + esc(hMoney(s.potentialMine)) + '$/月)' : '') : '') +
-      (s.lastMemo ? '<div class="popup-last"><b>' + esc(STR.lastLabel) + '</b><br>' + esc(s.lastMemo) + '</div>' : '');
+      (s.lastMemo ? '<div class="popup-last"><b>' + esc(STR.lastLabel) + '</b><br>' + esc(s.lastMemo) + '</div>' : '') +
+      (unv ? '<div class="popup-last">' + esc(STR.unvisited) + (s.tier ? ' · Tier ' + esc(s.tier) : '') + (s.address ? '<br>' + esc(s.address) : '') + '</div>' : '') +
+      (s.nextAction || s.nextDue ? '<div class="popup-last">⏰ ' + esc((s.nextDue ? s.nextDue + ' ' : '') + (s.nextAction || '')) + '</div>' : '');
     var btns = document.createElement('div');
     btns.className = 'popup-btns';
     var btn = document.createElement('button');
@@ -1178,6 +1290,9 @@ function switchTab(tab) {
   document.getElementById('tabMap').className  = 'tab-btn' + (isMap ? ' active' : '');
   document.getElementById('listWrap').style.display = isMap ? 'none' : '';
   document.getElementById('mapWrap').style.display  = isMap ? 'block' : 'none';
+  // 地図では「今日のフォロー」と一覧の絞り込みを隠して地図を広く（フォローは一覧タブで見る）
+  document.getElementById('filterRow').style.display = isMap ? 'none' : '';
+  document.getElementById('followBox').style.display = isMap ? 'none' : '';
   if (isMap) {
     ensureMap();
     if (map) setTimeout(function() { map.invalidateSize(); }, 100);
@@ -1473,6 +1588,13 @@ function saveCommission() {
 
 function renderShopDetail() {
   var s = currentShop;
+  var src = document.getElementById('shopSrc');
+  var srcParts = [];
+  if (isUnvisited(s)) srcParts.push(STR.unvisited);
+  if (s.source) srcParts.push(STR.fromList + (s.tier ? ' · Tier ' + s.tier : ''));
+  if (s.address) srcParts.push(STR.address + ': ' + s.address);
+  src.className = 'shop-src' + (srcParts.length ? '' : ' hidden');
+  src.textContent = srcParts.join(' ／ ');
   document.getElementById('sShop').value  = s.shopName;
   document.getElementById('sOwner').value = s.ownerName;
   document.getElementById('sPhone').value = s.phone;
@@ -1514,7 +1636,8 @@ function renderShopDetail() {
         '<span class="vdate">' + esc(v.datetime) + (v.lat !== null && v.lng !== null ? ' 📍' : '') + '</span>' +
         '<span class="badge ' + cls + '">' + esc(v.reaction || '—') + '</span>' +
       '</div>' +
-      (v.memo ? '<div class="vmemo">' + esc(v.memo) + '</div>' : '');
+      (v.memo ? '<div class="vmemo">' + esc(v.memo) + '</div>' : '') +
+      (v.nextAction || v.nextDue ? '<div class="vnext">⏰ ' + esc((v.nextDue ? v.nextDue + ' ' : '') + (v.nextAction || '')) + '</div>' : '');
     item.addEventListener('click', function() { openVisitEdit(v); });
     list.appendChild(item);
   });
@@ -1646,6 +1769,8 @@ function openForm(mode, opts) {
   document.getElementById('fPhone').value = '';
   document.getElementById('fFb').value    = '';
   document.getElementById('fMemo').value  = (mode === 'edit' && opts.visit) ? opts.visit.memo : '';
+  document.getElementById('fNext').value  = (mode === 'edit' && opts.visit) ? (opts.visit.nextAction || '') : '';
+  document.getElementById('fDue').value   = (mode === 'edit' && opts.visit) ? (opts.visit.nextDue || '') : '';
   setReaction((mode === 'edit' && opts.visit) ? opts.visit.reaction : '');
   clearSuggest();
 
@@ -1900,7 +2025,9 @@ function saveVisit() {
       action:   'saleslog_update',
       visitId:  editingVisitId,
       reaction: selectedReaction,
-      memo:     document.getElementById('fMemo').value
+      memo:     document.getElementById('fMemo').value,
+      nextAction: document.getElementById('fNext').value.trim(),
+      nextDue:  document.getElementById('fDue').value
     };
   } else if (formMode === 'append') {
     payload = {
@@ -1908,7 +2035,9 @@ function saveVisit() {
       shopId:   formShopId,
       reaction: selectedReaction,
       memo:     document.getElementById('fMemo').value,
-      gps:      currentGps
+      gps:      currentGps,
+      nextAction: document.getElementById('fNext').value.trim(),
+      nextDue:  document.getElementById('fDue').value
     };
   } else {
     var shopName = document.getElementById('fShop').value.trim();
@@ -1922,7 +2051,9 @@ function saveVisit() {
       facebook:  document.getElementById('fFb').value.trim(),
       reaction:  selectedReaction,
       memo:      document.getElementById('fMemo').value,
-      gps:       currentGps
+      gps:       currentGps,
+      nextAction: document.getElementById('fNext').value.trim(),
+      nextDue:   document.getElementById('fDue').value
     };
   }
 
@@ -2250,6 +2381,34 @@ function renderHearings() {
       (h.note ? '<div style="color:#cfc6b0">' + esc(h.note) + '</div>' : '') + '</div>';
   }).join('');
 }
+
+// 文言の流し込み（2026-10-20 一本化: 未訪問・フォロー）
+document.querySelector('#filterRow [data-f="all"]').textContent = STR.fAll;
+document.querySelector('#filterRow [data-f="visited"]').textContent = STR.fVisited;
+document.querySelector('#filterRow [data-f="unvisited"]').textContent = STR.fUnvisited;
+document.getElementById('filterRow').addEventListener('click', function(e) {
+  var b = e.target.closest('[data-f]'); if (!b) return;
+  listFilter = b.getAttribute('data-f');
+  var bs = this.querySelectorAll('[data-f]');
+  for (var i = 0; i < bs.length; i++) bs[i].className = bs[i] === b ? 'on' : '';
+  renderShopList();
+});
+document.getElementById('btnUnv').textContent = '○ ' + STR.mapUnv.split(' / ')[0];
+document.getElementById('btnUnv').addEventListener('click', function() {
+  showUnvisited = !showUnvisited;
+  this.className = 'unv-toggle' + (showUnvisited ? '' : ' off');
+  refreshMapMarkers();
+});
+document.getElementById('lblNext').textContent = STR.nextAction + ' · ' + STR.nextDue;
+document.getElementById('dueT').textContent = STR.dueTomorrow;
+document.getElementById('due3').textContent = STR.due3d;
+document.getElementById('due7').textContent = STR.due1w;
+document.querySelector('.due-row').addEventListener('click', function(e) {
+  var b = e.target.closest('[data-due]'); if (!b) return;
+  var t = ppTodayStr().split('-').map(Number);
+  var d = new Date(Date.UTC(t[0], t[1] - 1, t[2] + Number(b.getAttribute('data-due'))));
+  document.getElementById('fDue').value = d.toISOString().substring(0, 10);
+});
 
 // 文言の流し込み（2026-10-20 追加分）
 document.getElementById('shopSearch').placeholder = STR.search;

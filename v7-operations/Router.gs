@@ -296,7 +296,9 @@ function doPost(e) {
           facebook:  String(body.facebook  || ''),
           reaction:  String(body.reaction  || ''),
           memo:      String(body.memo      || ''),
-          gps:       body.gps || null
+          gps:       body.gps || null,
+          nextAction: String(body.nextAction || ''),
+          nextDue:   String(body.nextDue    || '')
         }));
       }
 
@@ -304,13 +306,17 @@ function doPost(e) {
         const chatId  = String(body.chatId  || '');
         const visitId = String(body.visitId || '');
         if (!chatId || !visitId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(salesLogUpdate(chatId, visitId, {
+        const upd = {
           shopName:  String(body.shopName  || ''),
           ownerName: String(body.ownerName || ''),
           phone:     String(body.phone     || ''),
           reaction:  String(body.reaction  || ''),
           memo:      String(body.memo      || '')
-        }));
+        };
+        // 次にやること・期日は、送られてきた時だけ更新（古い画面からの保存で消さない）
+        if (body.hasOwnProperty('nextAction')) upd.nextAction = String(body.nextAction || '');
+        if (body.hasOwnProperty('nextDue'))    upd.nextDue    = String(body.nextDue    || '');
+        return jsonOut(salesLogUpdate(chatId, visitId, upd));
       }
 
       // ── 車屋提携 商談ヒアリング（その場の紹介料試算・在庫車の記録 / SalesHearingManager.gs） ──

@@ -71,7 +71,20 @@ function normalizeShopTypes_(types) {
 const SALESLOG_REACTIONS = ['A', 'B', 'C', 'D'];
 // GSS を直接見る管理者向けの日本語ラベル（「A だけだと分からない」2026-07-25 Daisuke 指摘）
 const SALESLOG_REACTION_LABELS = { A: 'デモ決定', B: '興味あり', C: '保留', D: '断り' };
-const SALESLOG_SHOP_STATUSES = ['営業中', '提携済', '見送り'];
+// 未訪問 = 見込みリストから移した、まだ一度も行っていない店（2026-10-20 一本化）。初めて訪問を記録すると営業中になる
+// ※ 先頭（営業中）は新規店の既定値として [0] で参照しているので、追加は末尾に
+const SALESLOG_SHOP_STATUSES = ['営業中', '提携済', '見送り', '未訪問'];
+const SALESLOG_UNVISITED = '未訪問';
+// 店マスター末尾に足す列（見込みリストからの引き継ぎ情報）
+const SALESLOG_SHOP_EXTRA_HEADERS = ['Tier', '住所', '出典'];
+// 営業ログ末尾に足す列（訪問後のフォロー管理。2026-10-20）
+const SALESLOG_FOLLOW_HEADERS = ['次にやること', '期日'];
+
+/** 'yyyy-MM-dd' だけを通す（それ以外は空） */
+function normalizeSalesLogDue_(s) {
+  s = String(s || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
 
 function reactionLabel_(r) {
   return SALESLOG_REACTION_LABELS[String(r || '').trim().toUpperCase()] || '';
@@ -102,7 +115,7 @@ function salesLogShops(chatId) {
     const v = visitRowToApi_(r.obj);
     if (!v.visitId || !v.shopId) return;
     const cur = lastByShop[v.shopId];
-    if (!cur || String(v.datetime) > String(cur.datetime)) lastByShop[v.shopId] = v;
+    if (!cur || String(v.datetime) >= String(cur.datetime)) lastByShop[v.shopId] = v; // 同じ分なら後の行
   });
   let potentials = {};
   try { potentials = salesHearingLatestByShop_(); } catch (e) { Logger.log('⚠️ salesHearingLatestByShop_: ' + e); }
@@ -110,6 +123,8 @@ function salesLogShops(chatId) {
     const v = lastByShop[s.shopId];
     s.lastMemo = v ? v.memo.substring(0, 200) : '';
     s.lastVisitAt = v ? v.datetime : '';
+    s.nextAction = v ? v.nextAction : '';     // 直近の訪問で決めた「次にやること」と期日（ホームの「今日のフォロー」）
+    s.nextDue = v ? v.nextDue : '';
     const pt = potentials[s.shopId];
     s.potential = pt ? pt.potential : '';      // 最新の商談計算の見込み評価（S/A/B/C・未計算は空）
     s.potentialMine = pt ? pt.mine : null;     // そのときの紹介料（月・USD）
@@ -165,9 +180,17 @@ function salesLogCreate(chatId, p) {
 
   if (shopId) {
     // 既存店への訪問追記
-    const found = findSheetRow_(getShopSheet_(), 'shop_id', shopId);
+    const shopSheet = getShopSheet_();
+    const found = findSheetRow_(shopSheet, 'shop_id', shopId);
     if (!found) return { ok: false, error: 'SHOP_NOT_FOUND' };
     visitShopName = String(found.obj['店名'] || '');
+    // 見込みリストから移した「未訪問」の店は、初めての訪問で営業中にする。位置が無ければ訪問時の GPS を店の位置にする
+    const shopUpd = {};
+    if (String(found.obj['ステータス']) === SALESLOG_UNVISITED) shopUpd['ステータス'] = SALESLOG_SHOP_STATUSES[0];
+    if (gps && (found.obj['緯度'] === '' || found.obj['緯度'] === null)) {
+      shopUpd['緯度'] = gps.lat; shopUpd['経度'] = gps.lng; shopUpd['緯度経度結合'] = gps.lat + ',' + gps.lng;
+    }
+    if (Object.keys(shopUpd).length) updateSheetRow_(shopSheet, found.row, shopUpd);
   } else {
     // 新規店＋初回訪問
     const shopName = String(p.shopName || '').trim();
@@ -202,7 +225,9 @@ function salesLogCreate(chatId, p) {
     '反応内容':     reactionLabel_(p.reaction),
     'メモ':         String(p.memo || ''),
     '最終更新日時':  nowStr,
-    'shop_id':      shopId
+    'shop_id':      shopId,
+    '次にやること':  String(p.nextAction || '').trim().substring(0, 300),
+    '期日':         normalizeSalesLogDue_(p.nextDue)
   });
 
   refreshShopAggregates_(shopId);
@@ -231,6 +256,9 @@ function salesLogUpdate(chatId, visitId, p) {
   if (String(p.shopName || '').trim())  updates['店名']      = String(p.shopName).trim();
   if (String(p.ownerName || '').trim()) updates['オーナー名'] = String(p.ownerName).trim();
   if (String(p.phone || '').trim())     updates['電話']      = String(p.phone).trim();
+  // 次にやること・期日（空で送られたら消す＝フォロー完了）。古い画面は送ってこないので、その時は触らない
+  if (p.hasOwnProperty('nextAction')) updates['次にやること'] = String(p.nextAction || '').trim().substring(0, 300);
+  if (p.hasOwnProperty('nextDue'))    updates['期日'] = normalizeSalesLogDue_(p.nextDue);
 
   updateSheetRow_(sheet, found.row, updates);
 
@@ -531,12 +559,12 @@ function getSalesLogSheet_() {
     setColumnTextFormat_(sheet, SALESLOG_HEADERS, '電話');
   } else {
     // 旧版シートへの列追加（コードはヘッダー名参照なので挿入位置による破綻はない）
-    runAtMostEvery_('schema|' + SALESLOG_SHEET_NAME + '|shop_id|反応内容', 6 * 60 * 60, function() {
+    runAtMostEvery_(['schema', SALESLOG_SHEET_NAME, 'shop_id', '反応内容'].concat(SALESLOG_FOLLOW_HEADERS).join('|'), 6 * 60 * 60, function() {
       const headers = getSheetHeaders_(sheet);
       if (headers.indexOf('shop_id') < 0) {
         sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
       }
-      return ensureColumnAfter_(sheet, '反応', '反応内容');
+      return ensureColumnAfter_(sheet, '反応', '反応内容') && ensureColumnsAtEnd_(sheet, SALESLOG_FOLLOW_HEADERS);
     });
   }
   _salesLogSheetCache_[SALESLOG_SHEET_NAME] = sheet;
@@ -556,7 +584,8 @@ function getShopSheet_() {
       ensureColumnAfter_(sheet, '店名', '業種'),
       ensureColumnAfter_(sheet, '電話', 'Facebook'),
       // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
-      ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS)
+      ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS),
+      ensureColumnsAtEnd_(sheet, SALESLOG_SHOP_EXTRA_HEADERS)
     ].every(Boolean);
   };
   if (!sheet) {
@@ -566,7 +595,7 @@ function getShopSheet_() {
     ensureShopColumns(); // 作成直後はフラグに関係なく必ず列を揃える
   } else {
     runAtMostEvery_(['schema', SALESLOG_SHOP_SHEET_NAME, '最新反応内容', '業種', 'Facebook']
-      .concat(SHOP_TERMS_HEADERS).join('|'), 6 * 60 * 60, ensureShopColumns);
+      .concat(SHOP_TERMS_HEADERS).concat(SALESLOG_SHOP_EXTRA_HEADERS).join('|'), 6 * 60 * 60, ensureShopColumns);
   }
   _salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME] = sheet;
   return sheet;
@@ -723,7 +752,9 @@ function visitRowToApi_(obj) {
     phone:     String(obj['電話'] || ''),
     reaction:  String(obj['反応'] || ''),
     memo:      String(obj['メモ'] || ''),
-    updatedAt: formatSalesLogDateCell_(obj['最終更新日時'])
+    updatedAt: formatSalesLogDateCell_(obj['最終更新日時']),
+    nextAction: String(obj['次にやること'] || ''),
+    nextDue:   formatSalesLogDateCell_(obj['期日']).substring(0, 10)
   };
 }
 
@@ -752,7 +783,10 @@ function shopRowToApi_(obj) {
     visitCount:   Number(obj['訪問回数']) || 0,
     firstVisit:   formatSalesLogDateCell_(obj['初回訪問日']).substring(0, 10),
     lastVisit:    formatSalesLogDateCell_(obj['最終訪問日']).substring(0, 10),
-    memo:         String(obj['メモ'] || '')
+    memo:         String(obj['メモ'] || ''),
+    tier:         String(obj['Tier'] || ''),
+    address:      String(obj['住所'] || ''),
+    source:       String(obj['出典'] || '')
   };
 }
 

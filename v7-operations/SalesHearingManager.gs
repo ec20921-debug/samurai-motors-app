@@ -186,7 +186,7 @@ function salesHearingLatestByShop_() {
     const id = String(r.obj['shop_id'] || '');
     if (!id || !r.obj['hearing_id']) return;
     const dt = formatSalesLogDateCell_(r.obj['日時']);
-    if (out[id] && out[id].datetime >= dt) return;
+    if (out[id] && out[id].datetime > dt) return; // 同じ分なら後の行（あとから保存した方）を採る
     const mine = Number(r.obj['紹介料(月・USD)']) || 0;
     out[id] = { potential: String(r.obj['見込み評価'] || '') || hearingPotential_(mine), mine: mine, datetime: dt };
   });
