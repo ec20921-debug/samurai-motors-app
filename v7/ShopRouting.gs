@@ -170,8 +170,8 @@ function handleShopStart_(msg, text) {
 
   // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
   // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩）
-  var linkForWelcome = findShopLinkByShopId_(shopId);
-  var welcomeShopName = linkForWelcome ? String(linkForWelcome.obj['店名'] || '') : '';
+  // 店名は店舗グループ未連携でも店マスターから引く（2026-10-20）
+  var welcomeShopName = getShopNameById_(shopId);
   sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName });
   ensureCustomerTopic(msg);
 
@@ -202,9 +202,10 @@ function handleShopStart_(msg, text) {
   // 管理グループへも流入元を通知
   try {
     var cfg = getConfig();
-    var shopName = link ? String(link.obj['店名'] || shopId) : shopId;
+    var linked = !!(link && String(link.obj['状態']) === '連携済');
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-      '🏪 提携店QR経由の新規流入\n店: ' + shopName + '\n顧客: ' + custName);
+      '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
+      (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）'));
   } catch (err) {
     Logger.log('⚠️ 管理通知失敗（QR流入）: ' + err);
   }
@@ -228,6 +229,39 @@ function getShopRefForCustomer(chatId) {
   } catch (err) {
     return '';
   }
+}
+
+/**
+ * shop_id → 店名。Bot連携シート（連携済・待機中）→ 店マスター の順に探す。見つからなければ ''。
+ * 店マスターの読み取りは 5 分キャッシュ（OPS_LESSONS #8: 全読みをリクエスト毎に繰り返さない）
+ */
+var SHOP_NAME_CACHE_KEY = 'shop_master_names_v1';
+function getShopNameById_(shopId) {
+  if (!shopId) return '';
+  var link = findShopLinkByShopId_(shopId);
+  if (link && link.obj['店名']) return String(link.obj['店名']);
+  var cache = CacheService.getScriptCache();
+  var map = null;
+  try { map = JSON.parse(cache.get(SHOP_NAME_CACHE_KEY) || 'null'); } catch (ignore) {}
+  if (!map) {
+    map = {};
+    try {
+      var sh = getSpreadsheet().getSheetByName('店マスター');
+      if (sh && sh.getLastRow() >= 2) {
+        var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+        var ci = head.indexOf('shop_id'), ni = head.indexOf('店名');
+        if (ci >= 0 && ni >= 0) {
+          sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni) + 1).getValues().forEach(function(r) {
+            if (r[ci]) map[String(r[ci])] = String(r[ni] || '');
+          });
+        }
+      }
+      try { cache.put(SHOP_NAME_CACHE_KEY, JSON.stringify(map), 300); } catch (ignore) {}
+    } catch (err) {
+      Logger.log('⚠️ 店マスター読み取り失敗（店名なしで続行）: ' + err);
+    }
+  }
+  return map[String(shopId)] || '';
 }
 
 /**

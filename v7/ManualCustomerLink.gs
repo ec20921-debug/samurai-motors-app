@@ -461,6 +461,11 @@ function driveUrlsToBlobs_(urls) {
  */
 function sendManualPaymentInfo_(chatId, amount) {
   if (!(Number(amount) > 0)) return; // 防衛: 無償にはQRを送らない
+  // 提携店QR経由の顧客は店に支払う（2026-10-20）。当社QRの案内は送らない
+  if (typeof getShopRefForCustomer === 'function' && getShopRefForCustomer(chatId)) {
+    Logger.log('⏭️ 支払いご案内: 提携店経由のためスキップ chat=' + chatId);
+    return;
+  }
   var qr = (typeof getActiveQR === 'function') ? getActiveQR() : null;
   var caption =
     '💰 ការទូទាត់ប្រាក់ / Payment\n' +

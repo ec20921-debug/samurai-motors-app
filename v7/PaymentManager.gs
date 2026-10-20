@@ -27,10 +27,14 @@
  * 【2026-04-23 強化】
  *   失敗分岐ではすべて Admin グループに緊急通知を出す（気付き漏れ防止）
  *
+ * 【2026-10-20】提携店QR経由の顧客（shop_ref あり）には送らない（お客様→店に全額支払いのルール）。
+ *   店舗グループの連携の有無に関係なく判定する。どうしても送る時だけ opts.ignoreShopRef=true
+ *
  * @param {string} bookingId - 予約ID
+ * @param {{ignoreShopRef?: boolean}} [opts]
  * @return {{ok: boolean, reason?: string}}
  */
-function sendPaymentQR(bookingId) {
+function sendPaymentQR(bookingId, opts) {
   if (!bookingId) return { ok: false, reason: 'NO_BOOKING_ID' };
 
   // 2026-05-20: 同時実行による二重送信を完全防止するため LockService で排他制御
@@ -44,7 +48,7 @@ function sendPaymentQR(bookingId) {
   }
 
   try {
-    return sendPaymentQR_locked_(bookingId);
+    return sendPaymentQR_locked_(bookingId, opts || {});
   } finally {
     lock.releaseLock();
   }
@@ -53,7 +57,8 @@ function sendPaymentQR(bookingId) {
 /**
  * sendPaymentQR の本体(ロック獲得後に呼ばれる)
  */
-function sendPaymentQR_locked_(bookingId) {
+function sendPaymentQR_locked_(bookingId, opts) {
+  opts = opts || {};
   var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
   if (!bkRow) {
     Logger.log('⚠️ sendPaymentQR: 予約が見つからない bookingId=' + bookingId);
@@ -81,6 +86,14 @@ function sendPaymentQR_locked_(bookingId) {
     Logger.log('⚠️ sendPaymentQR: チャットID無し bookingId=' + bookingId);
     notifyAdminQRFailure_(bookingId, 'NO_CHAT_ID', '顧客のチャットIDが登録されていません');
     return { ok: false, reason: 'NO_CHAT_ID' };
+  }
+
+  // 提携店QR経由の顧客は店に全額支払い（2026-08-10 裁可）。当社のQRを送ると二重請求になるため送らない。
+  // 店舗グループ未連携の店でも同じ（2026-10-20: 以前は連携済の店だけ止めていた）。正常系なので Admin 通知なし
+  var shopRef = (typeof getShopRefForCustomer === 'function') ? getShopRefForCustomer(customerChatId) : '';
+  if (shopRef && !opts.ignoreShopRef) {
+    Logger.log('⏭️ sendPaymentQR: 提携店経由（shop=' + shopRef + '）のためスキップ bookingId=' + bookingId);
+    return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRef };
   }
 
   var amount = Number(bkRow.data['請求額(USD)'] || bkRow.data['料金(USD)'] || 0);
@@ -199,11 +212,13 @@ function notifyAdminQRFailure_(bookingId, reason, detail) {
  *
  * 使い方（GAS コンソール）:
  *   retryPaymentQR("BK-20260423-001")
+ *   retryPaymentQR("BK-20260423-001", true)   // 提携店QR経由の顧客でも当社QRを送る（店を通さず当社で集金する時だけ）
  *
  * @param {string} bookingId
+ * @param {boolean} [ignoreShopRef]
  * @return {Object} sendPaymentQR の結果
  */
-function retryPaymentQR(bookingId) {
+function retryPaymentQR(bookingId, ignoreShopRef) {
   if (!bookingId) {
     Logger.log('使い方: retryPaymentQR("BK-YYYYMMDD-NNN")');
     return { ok: false, reason: 'NO_BOOKING_ID' };
@@ -227,7 +242,7 @@ function retryPaymentQR(bookingId) {
   }
 
   // 再送
-  var res = sendPaymentQR(bookingId);
+  var res = sendPaymentQR(bookingId, { ignoreShopRef: ignoreShopRef === true });
   Logger.log('📤 sendPaymentQR 再送結果: ' + JSON.stringify(res));
   return res;
 }

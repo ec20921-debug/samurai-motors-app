@@ -599,7 +599,9 @@ function apiJobEnd(body, opts) {
         }
       }
       // 支払いのご案内（ABA QR・案内型 = 台帳の決済状態は触らない）
-      if (manualPaidEnd > 0 && typeof sendManualPaymentInfo_ === 'function') {
+      // 現場アプリの支払区分が「提携店払い(shop)」なら送らない（2026-10-20）
+      var payTypeEnd = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+      if (manualPaidEnd > 0 && payTypeEnd !== 'shop' && typeof sendManualPaymentInfo_ === 'function') {
         try {
           sendManualPaymentInfo_(customerChatId, manualPaidEnd);
         } catch (ePay) {
@@ -663,6 +665,21 @@ function apiJobEnd(body, opts) {
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
+    }
+    // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
+    if (!shopRef && customerChatId && typeof getShopRefForCustomer === 'function') {
+      shopRef = getShopRefForCustomer(customerChatId);
+    }
+    if (shopRef) {
+      try {
+        var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
+        var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+          '🏪 提携店経由: ' + shopNameEnd + '\n' +
+          'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 提携店経由の管理通知失敗: ' + e);
+      }
     }
 
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
