@@ -307,17 +307,14 @@ function doPost(e) {
       case 'saleslog_update': {
         const chatId  = String(body.chatId  || '');
         const visitId = String(body.visitId || '');
-        if (!chatId || !visitId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        const upd = {
-          shopName:  String(body.shopName  || ''),
-          ownerName: String(body.ownerName || ''),
-          phone:     String(body.phone     || ''),
-          reaction:  String(body.reaction  || ''),
-          memo:      String(body.memo      || '')
-        };
-        // 次にやること・期日は、送られてきた時だけ更新（古い画面からの保存で消さない）
-        if (body.hasOwnProperty('nextAction')) upd.nextAction = String(body.nextAction || '');
-        if (body.hasOwnProperty('nextDue'))    upd.nextDue    = String(body.nextDue    || '');
+        // visitClientId: 電波が無い時に作った訪問（まだ visit_id を知らない）を、作った時の clientId で指す
+        const visitClientId = String(body.visitClientId || '');
+        if (!chatId || (!visitId && !visitClientId)) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        // 送られてきた項目だけを直す（2026-10-20 こまめ保存: 反応だけ・次にやることだけ、を1タップずつ送る）
+        const upd = { visitClientId: visitClientId };
+        ['shopName', 'ownerName', 'phone', 'reaction', 'memo', 'nextAction', 'nextDue'].forEach(function(k) {
+          if (body.hasOwnProperty(k)) upd[k] = String(body[k] || '');
+        });
         return jsonOut(salesLogUpdate(chatId, visitId, upd));
       }
 

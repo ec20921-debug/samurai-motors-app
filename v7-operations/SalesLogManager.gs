@@ -126,11 +126,15 @@ function salesLogShops(chatId) {
     const cur = lastByShop[v.shopId];
     if (!cur || String(v.datetime) >= String(cur.datetime)) lastByShop[v.shopId] = v; // 同じ分なら後の行
   });
-  let potentials = {};
+  let potentials = {}, lastNotes = {};
   try { potentials = salesHearingLatestByShop_(); } catch (e) { Logger.log('⚠️ salesHearingLatestByShop_: ' + e); }
+  try { lastNotes = salesNotesLatestByShop_(); } catch (e) { Logger.log('⚠️ salesNotesLatestByShop_: ' + e); }
   shops.forEach(function(s) {
     const v = lastByShop[s.shopId];
-    s.lastMemo = v ? v.memo.substring(0, 200) : '';
+    // 「前回」= 訪問のメモとヒアリングメモのうち新しい方（こまめ保存の画面ではメモをヒアリングメモに書くため）
+    const nt = lastNotes[s.shopId];
+    const useNote = nt && (!v || !v.memo || String(nt.datetime) >= String(v.datetime));
+    s.lastMemo = useNote ? nt.text.substring(0, 200) : (v ? v.memo.substring(0, 200) : '');
     s.lastVisitAt = v ? v.datetime : '';
     s.nextAction = v ? v.nextAction : '';     // 直近の訪問で決めた「次にやること」と期日（ホームの「今日のフォロー」）
     s.nextDue = v ? v.nextDue : '';
@@ -261,15 +265,16 @@ function salesLogUpdate(chatId, visitId, p) {
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
 
   const sheet = getSalesLogSheet_();
-  const found = findSheetRow_(sheet, 'visit_id', visitId);
+  const found = visitId ? findSheetRow_(sheet, 'visit_id', visitId) : findByClientId_(sheet, p.visitClientId);
   if (!found) return { ok: false, error: 'VISIT_NOT_FOUND' };
 
-  const updates = {
-    '反応':        normalizeSalesLogReaction_(p.reaction),
-    '反応内容':    reactionLabel_(p.reaction),
-    'メモ':        String(p.memo || ''),
-    '最終更新日時': salesLogNow_()
-  };
+  // 送られてきた項目だけを直す（古い画面は反応・メモを毎回送ってくるので、従来どおり上書きになる）
+  const updates = { '最終更新日時': salesLogNow_() };
+  if (p.hasOwnProperty('reaction')) {
+    updates['反応'] = normalizeSalesLogReaction_(p.reaction);
+    updates['反応内容'] = reactionLabel_(p.reaction);
+  }
+  if (p.hasOwnProperty('memo')) updates['メモ'] = String(p.memo || '');
   // v1 互換: 店名/オーナー名/電話は「非空で送られた時のみ」上書き
   // （クリアは店マスター編集 saleslog_shop_update 側で行う）
   if (String(p.shopName || '').trim())  updates['店名']      = String(p.shopName).trim();
@@ -284,7 +289,7 @@ function salesLogUpdate(chatId, visitId, p) {
   const shopId = String(found.obj['shop_id'] || '');
   if (shopId) refreshShopAggregates_(shopId);
 
-  return { ok: true, visitId: String(visitId) };
+  return { ok: true, visitId: String(found.obj['visit_id'] || visitId) };
 }
 
 /**
