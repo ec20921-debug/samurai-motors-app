@@ -31,7 +31,7 @@ Google Apps Script + Google Form + 既存の v7-operations スプレッドシー
         ↓
 ⑥ パートナー: 紹介コード・体験コードを受け取り、紹介活動開始
         ↓
-⑦ 予約Bot: 予約時にコード入力 → 紹介履歴シートに記録
+⑦ 予約Bot: 予約時にコード入力 → 紹介履歴シートに記録（※ 未実装。2026-10-20 時点で予約Bot 側のコード入力は無い）
         ↓
 ⑧ 月末: 紹介履歴から支払額を集計 → ABA 送金
 ```
@@ -49,7 +49,7 @@ v7-operations GAS プロジェクトに以下のファイルを貼り付け or �
 | `Config.gs` | `ADMIN_PARTNER_THREAD_ID` `PARTNER_WELCOME_KIT_URL` `PARTNER_TRIAL_VOUCHER_PREFIX` を追加 |
 | `PartnerManager.gs` | **新規ファイル** |
 | `Setup.gs` | `setupPartnerProgram()` `setupPartnerFormTrigger()` を追記 |
-| `Router.gs` | `partner_lookup_by_code` `partner_record_referral` を追加 |
+| `Router.gs` | ~~`partner_lookup_by_code` `partner_record_referral` を追加~~ → 2026-10-20 に削除（認証なしで誰でも呼べ、紹介履歴に任意の行を足せたため。呼び出し元は無かった）。⑦を作る時はスタッフ確認か呼び出し元との署名を入れて作り直す |
 | `TaskManager.gs` | `handleTaskCallback_` にパートナーコールバック振分を追加 |
 
 反映後、一度「保存」してください。
