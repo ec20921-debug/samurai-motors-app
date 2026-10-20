@@ -607,7 +607,7 @@ nav.tabs button.plus { color:var(--gold2); }
 .today { background:var(--card); border:1.5px solid var(--gold); border-radius:22px; padding:14px 14px 16px; margin-bottom:12px; }
 .today-h { display:flex; align-items:center; gap:8px; font-size:17px; font-weight:700; color:var(--gold2); }
 .today-ok { margin-left:auto; font-size:13px; font-weight:700; color:#7fe0a6; text-align:right; }
-.today-ok.pend { color:var(--amber); }
+.today-ok.wait { color:#c25e00; }
 .today-hint { font-size:14px; color:var(--text-dim); margin:4px 0 10px; line-height:1.5; }
 .big-react { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .big-react button { display:flex; align-items:center; gap:10px; min-height:66px; border-radius:16px; border:1.5px solid var(--border);
@@ -1174,7 +1174,7 @@ var STR = {
   // ↓ 2026-10-20 ヒアリングメモ。Panha 校閲済み（provisional・Run Kosal の確認待ち）
   notesHead:   '🗒 កំណត់ចំណាំអ្វីដែលបានស្តាប់ / ヒアリングメモ',
   notesHint:   'អ្វីដែលបានស្តាប់ ឬសង្កេតឃើញ សរសេរបានច្រើនតាមចិត្ត។ AI នឹងសង្ខេបឱ្យ។ / 聞いたこと・気づいたことを、いくつでも書けます。まとめは AI がします',
-  notesPh:     'ឧទាហរណ៍៖ ម្ចាស់ហាងគិតពីពេលវេលា ច្រើនជាងតម្លៃសេវា',
+  notesPh:     'ឧទាហរណ៍៖ ម្ចាស់ហាងគិតពីពេលវេលា ច្រើនជាងតម្លៃសេវា / 例：オーナーは料金より時間を気にしている',
   notesAdd:    'បន្ថែម / 追加',
   notesMore:   '+ សរសេរមួយទៀត / もう1つ書く',
   notesEmpty:  'មិនទាន់មានកំណត់ចំណាំទេ / まだメモはありません',
@@ -1406,7 +1406,8 @@ function loadWho() {
   return fetchWho(1)
     .then(function(d) {
       if (d.staff) {
-        line.innerHTML = '👤 <strong>' + esc(d.staff.nameJp) + '</strong> (' + esc(d.staff.nameEn) + ')';
+        var en = String(d.staff.nameEn || '').trim(), jp = String(d.staff.nameJp || '').trim() || en;
+        line.innerHTML = '👤 <strong>' + esc(jp) + '</strong>' + (en && en !== jp ? ' (' + esc(en) + ')' : '');
       } else {
         // ok:true かつ staff なし = 本当に未登録（3回とも成功応答での確定）
         line.textContent = '⚠️ スタッフ未登録 chat_id=' + currentChatId;
@@ -2221,7 +2222,7 @@ function renderTodayCard() {
   var t = todayVisit;
   document.getElementById('todayHead').textContent = STR.todayHead;
   var ok = document.getElementById('todayOk');
-  ok.className = 'today-ok' + (t && !t.visitId ? ' pend' : '');
+  ok.className = 'today-ok' + (t && !t.visitId ? ' wait' : '');
   ok.textContent = t ? (t.visitId ? '✓ ' + (t.time || '') + ' ' + pickLang(STR.todaySaved) : '📶 ' + pickLang(STR.todayPend)) : '';
   document.getElementById('todayHint').textContent = t ? STR.todayHint2 : STR.todayHint;
   var bs = document.querySelectorAll('#bigReact [data-qr]');
@@ -3146,7 +3147,7 @@ function renderTips() {
   var rows = document.querySelectorAll('[data-tips]');
   for (var i = 0; i < rows.length; i++) {
     rows[i].innerHTML = STR.tips.map(function(t) {
-      return '<button type="button" data-tip="' + esc(t[0]) + '">+ ' + esc(t[0]) + ' <span style="color:var(--text-dim)">' + esc(t[1]) + '</span></button>';
+      return '<button type="button" data-tip="' + esc(t[0]) + '" data-tip-ja="' + esc(t[1]) + '">+ ' + esc(t[0] + ' / ' + t[1]) + '</button>';
     }).join('');
   }
 }
@@ -3160,7 +3161,7 @@ document.addEventListener('click', function(e) {
   } else {
     ta = document.getElementById(target);
   }
-  var head = b.getAttribute('data-tip') + '៖ ';
+  var head = LANG === 'ja' ? b.getAttribute('data-tip-ja') + '：' : b.getAttribute('data-tip') + '៖ ';
   if (ta.value.indexOf(head) !== 0) ta.value = head + ta.value;
   ta.focus();
 });
