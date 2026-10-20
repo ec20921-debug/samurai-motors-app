@@ -266,6 +266,20 @@ function salesNotesForShop_(shopId) {
   return list.reverse();
 }
 
+/** 店ごとの一番新しいヒアリングメモ { shopId: {datetime, text} }（店一覧の「前回」用） */
+function salesNotesLatestByShop_() {
+  const sheet = getSalesLogSs_().getSheetByName(NOTES_SHEET_NAME);
+  const out = {};
+  if (!sheet) return out;
+  readSheetObjects_(sheet).forEach(function(r) {
+    const id = String(r.obj['shop_id'] || '');
+    if (!id || !r.obj['note_id']) return;
+    const dt = formatSalesLogDateCell_(r.obj['日時']);
+    if (!out[id] || dt >= out[id].datetime) out[id] = { datetime: dt, text: String(r.obj['内容'] || '') }; // 同じ分なら後の行
+  });
+  return out;
+}
+
 function getNotesSheet_() {
   if (_salesLogSheetCache_[NOTES_SHEET_NAME]) return _salesLogSheetCache_[NOTES_SHEET_NAME];
   const ss = getSalesLogSs_();
