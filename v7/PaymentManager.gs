@@ -90,7 +90,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
 
   // 提携店QR経由の顧客は店に全額支払い（2026-08-10 裁可）。当社のQRを送ると二重請求になるため送らない。
   // 店舗グループ未連携の店でも同じ（2026-10-20: 以前は連携済の店だけ止めていた）。正常系なので Admin 通知なし
-  var shopRef = (typeof getShopRefForCustomer === 'function') ? getShopRefForCustomer(customerChatId) : '';
+  var shopRef = (typeof getValidShopRef_ === 'function') ? getValidShopRef_(customerChatId) : '';
   if (shopRef && !opts.ignoreShopRef) {
     Logger.log('⏭️ sendPaymentQR: 提携店経由（shop=' + shopRef + '）のためスキップ bookingId=' + bookingId);
     return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRef };
@@ -228,6 +228,13 @@ function retryPaymentQR(bookingId, ignoreShopRef) {
   if (!bkRow) {
     Logger.log('❌ 予約が見つかりません: ' + bookingId);
     return { ok: false, reason: 'BOOKING_NOT_FOUND' };
+  }
+
+  // 提携店経由（店集金）の予約は、送らないのに状態だけ「未清算」に戻さないよう先に止める（2026-10-20）
+  var shopRefRetry = (typeof getValidShopRef_ === 'function') ? getValidShopRef_(String(bkRow.data['チャットID'] || '')) : '';
+  if (shopRefRetry && ignoreShopRef !== true) {
+    Logger.log('⏭️ retryPaymentQR: 提携店経由（shop=' + shopRefRetry + '）のため何もしない。当社で集金する時は retryPaymentQR("' + bookingId + '", true)');
+    return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRefRetry };
   }
 
   // QR送信日時を強制クリア（二重送信ガードを解除）

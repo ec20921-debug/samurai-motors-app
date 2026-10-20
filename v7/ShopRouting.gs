@@ -168,23 +168,39 @@ function handleShopStart_(msg, text) {
   if (!m) return false;
   var shopId = m[1];
 
+  // 店マスターに無い shop_id・停止中の店のリンクは店扱いにしない（2026-10-20）
+  // shop_ref があると当社の決済QRを止めるため、誤植・古いQR・自作リンクで止まらないよう入口で確かめる
+  var welcomeShopName = getShopNameById_(shopId);
+  var link = findShopLinkByShopId_(shopId);
+  if (!welcomeShopName || (link && String(link.obj['状態']) === '停止')) {
+    sendWelcomeMessage(msg);
+    ensureCustomerTopic(msg);
+    try {
+      sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
+        '⚠️ 店QRのリンクから来たが、店として扱わなかった（' + (welcomeShopName ? '停止中の店' : '店マスターに無い shop_id') + '）\n' +
+        'shop_id: ' + shopId + '\n顧客 chat_id: ' + msg.chat.id + '\n→ 通常のお客様として案内（決済QRも通常どおり）');
+    } catch (err) {
+      Logger.log('⚠️ 管理通知失敗（不明な店QR）: ' + err);
+    }
+    return true;
+  }
+
   // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
   // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩）
-  // 店名は店舗グループ未連携でも店マスターから引く（2026-10-20）
-  var welcomeShopName = getShopNameById_(shopId);
   sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName });
   ensureCustomerTopic(msg);
 
   // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
+  // 最後に読んだQRを優先: レジデンス等の流入元（src_ref）は外す（2026-10-20）
   try {
-    PropertiesService.getScriptProperties()
-      .setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    var sp = PropertiesService.getScriptProperties();
+    sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    sp.deleteProperty('src_ref_' + String(msg.chat.id));
   } catch (err) {
     Logger.log('⚠️ shop_ref 保存失敗: ' + err);
   }
 
   // 店舗グループへ来店通知
-  var link = findShopLinkByShopId_(shopId);
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
 
@@ -213,11 +229,14 @@ function handleShopStart_(msg, text) {
 }
 
 function findShopLinkByShopId_(shopId) {
-  var links = readShopLinks_();
+  // 同じ shop_id の行が複数ある時は 連携済 → 待機中 → それ以外（停止など）の順に選ぶ（2026-10-20）
+  var links = readShopLinks_(), best = null, rank = { '連携済': 3, '待機中': 2 };
   for (var i = 0; i < links.length; i++) {
-    if (String(links[i].obj['shop_id']) === String(shopId)) return links[i];
+    if (String(links[i].obj['shop_id']) !== String(shopId)) continue;
+    var r = rank[String(links[i].obj['状態'])] || 1;
+    if (!best || r > best.r) best = { r: r, link: links[i] };
   }
-  return null;
+  return best ? best.link : null;
 }
 
 /**
@@ -243,6 +262,7 @@ function getShopNameById_(shopId) {
   var cache = CacheService.getScriptCache();
   var map = null;
   try { map = JSON.parse(cache.get(SHOP_NAME_CACHE_KEY) || 'null'); } catch (ignore) {}
+  if (map && !Object.prototype.hasOwnProperty.call(map, String(shopId))) map = null;   // キャッシュ後に登録された店は読み直す
   if (!map) {
     map = {};
     try {
@@ -262,6 +282,19 @@ function getShopNameById_(shopId) {
     }
   }
   return map[String(shopId)] || '';
+}
+
+/**
+ * 「店に支払う」お客様か（= 当社の決済QR・支払いのご案内を送らない）。該当すれば shop_id、しなければ ''。
+ * shop_ref があり、その店が店マスターにあり、Bot連携で停止になっていない時だけ（2026-10-20）
+ */
+function getValidShopRef_(chatId) {
+  var shopId = getShopRefForCustomer(chatId);
+  if (!shopId) return '';
+  if (!getShopNameById_(shopId)) return '';
+  var link = findShopLinkByShopId_(shopId);
+  if (link && String(link.obj['状態']) === '停止') return '';
+  return shopId;
 }
 
 /**

@@ -599,11 +599,11 @@ function apiJobEnd(body, opts) {
         }
       }
       // 支払いのご案内（ABA QR・案内型 = 台帳の決済状態は触らない）
-      // 現場アプリの支払区分が「提携店払い(shop)」なら送らない（2026-10-20）
-      var payTypeEnd = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
-      if (manualPaidEnd > 0 && payTypeEnd !== 'shop' && typeof sendManualPaymentInfo_ === 'function') {
+      // 提携店払い（支払区分 shop・店QR経由の客）には送らない判定は sendManualPaymentInfo_ 側（2026-10-20）
+      if (manualPaidEnd > 0 && typeof sendManualPaymentInfo_ === 'function') {
         try {
-          sendManualPaymentInfo_(customerChatId, manualPaidEnd);
+          sendManualPaymentInfo_(customerChatId, manualPaidEnd,
+            String(body.paymentType || (body.v2 && body.v2.payment_type) || ''));
         } catch (ePay) {
           Logger.log('⚠️ 支払いご案内送信失敗: ' + ePay);
         }
@@ -667,10 +667,12 @@ function apiJobEnd(body, opts) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
     }
     // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
-    if (!shopRef && customerChatId && typeof getShopRefForCustomer === 'function') {
-      shopRef = getShopRefForCustomer(customerChatId);
+    if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
+      shopRef = getValidShopRef_(customerChatId);
     }
-    if (shopRef) {
+    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
+    var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
         var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
