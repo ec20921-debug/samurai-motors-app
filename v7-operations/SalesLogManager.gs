@@ -79,6 +79,15 @@ const SALESLOG_UNVISITED = '未訪問';
 const SALESLOG_SHOP_EXTRA_HEADERS = ['Tier', '住所', '出典'];
 // 営業ログ末尾に足す列（訪問後のフォロー管理。2026-10-20）
 const SALESLOG_FOLLOW_HEADERS = ['次にやること', '期日'];
+// 電波がない時にスマホに貯めた記録を、あとで送り直しても二重にならないための番号（2026-10-20 オフライン対策）
+const SALESLOG_CLIENT_HEADER = 'client_id';
+
+/** その番号の行が既にあれば { row, obj } を返す（送り直しの二重登録防止） */
+function findByClientId_(sheet, clientId) {
+  clientId = String(clientId || '').trim();
+  if (!clientId) return null;
+  return findSheetRow_(sheet, SALESLOG_CLIENT_HEADER, clientId);
+}
 
 /** 'yyyy-MM-dd' だけを通す（それ以外は空） */
 function normalizeSalesLogDue_(s) {
@@ -179,6 +188,10 @@ function salesLogCreate(chatId, p) {
   let shopId = String(p.shopId || '').trim();
   let visitShopName;
 
+  // 送り直し（オフラインで貯めた記録の再送）なら、前に入った行をそのまま返す。新しい店も二重に作らない
+  const dup = findByClientId_(getSalesLogSheet_(), p.clientId);
+  if (dup) return { ok: true, visitId: String(dup.obj['visit_id']), shopId: String(dup.obj['shop_id']), duplicate: true };
+
   if (shopId) {
     // 既存店への訪問追記
     const shopSheet = getShopSheet_();
@@ -228,13 +241,14 @@ function salesLogCreate(chatId, p) {
     '最終更新日時':  nowStr,
     'shop_id':      shopId,
     '次にやること':  String(p.nextAction || '').trim().substring(0, 300),
-    '期日':         normalizeSalesLogDue_(p.nextDue)
+    '期日':         normalizeSalesLogDue_(p.nextDue),
+    'client_id':    String(p.clientId || '').trim().substring(0, 80)
   });
 
   refreshShopAggregates_(shopId);
   // 訪問記録と一緒に書いたヒアリングメモ（何件でも・任意）。失敗しても訪問記録は成功のまま
   let notesAdded = 0;
-  try { notesAdded = salesNotesAppend_(shopId, visitShopName, staff, p.notes, visitId, gps); }
+  try { notesAdded = salesNotesAppend_(shopId, visitShopName, staff, p.notes, visitId, gps, p.clientId); }
   catch (e) { Logger.log('⚠️ salesNotesAppend_: ' + e); }
   return { ok: true, visitId: visitId, shopId: shopId, notesAdded: notesAdded };
 }
@@ -564,12 +578,13 @@ function getSalesLogSheet_() {
     setColumnTextFormat_(sheet, SALESLOG_HEADERS, '電話');
   } else {
     // 旧版シートへの列追加（コードはヘッダー名参照なので挿入位置による破綻はない）
-    runAtMostEvery_(['schema', SALESLOG_SHEET_NAME, 'shop_id', '反応内容'].concat(SALESLOG_FOLLOW_HEADERS).join('|'), 6 * 60 * 60, function() {
+    runAtMostEvery_(['schema', SALESLOG_SHEET_NAME, 'shop_id', '反応内容', SALESLOG_CLIENT_HEADER].concat(SALESLOG_FOLLOW_HEADERS).join('|'), 6 * 60 * 60, function() {
       const headers = getSheetHeaders_(sheet);
       if (headers.indexOf('shop_id') < 0) {
         sheet.getRange(1, headers.length + 1).setValue('shop_id').setFontWeight('bold');
       }
-      return ensureColumnAfter_(sheet, '反応', '反応内容') && ensureColumnsAtEnd_(sheet, SALESLOG_FOLLOW_HEADERS);
+      return ensureColumnAfter_(sheet, '反応', '反応内容') &&
+             ensureColumnsAtEnd_(sheet, SALESLOG_FOLLOW_HEADERS.concat([SALESLOG_CLIENT_HEADER]));
     });
   }
   _salesLogSheetCache_[SALESLOG_SHEET_NAME] = sheet;

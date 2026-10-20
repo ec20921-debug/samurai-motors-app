@@ -42,7 +42,8 @@ const HEARING_HEADERS = [
   '言われたこと・在庫メモ', '緯度', '経度',
   // ↓ 2026-10-20 施設モード・見込み評価（既存列の位置を動かさないよう末尾に追加）
   '見込み評価', '駐車台数', '混む時間の埋まり具合(%)', '1台あたりの駐車時間', '混む時間帯', '1日のお客さん数',
-  '毎日停まっている車', 'WASH件数', 'GLASS件数', 'HEADLIGHT件数', 'MAGIC件数'
+  '毎日停まっている車', 'WASH件数', 'GLASS件数', 'HEADLIGHT件数', 'MAGIC件数',
+  'client_id'  // 送り直しの二重登録防止（2026-10-20 オフライン対策）
 ];
 const HEARING_MODES = { garage: '整備工場', dealer: '中古車屋', facility: '施設' };
 const HEARING_STAYS = { lt1: '1時間未満', '1to3': '1〜3時間', gt3: '3時間以上' };
@@ -103,6 +104,9 @@ function salesHearingCreate(chatId, p) {
   const shop = findSheetRow_(getShopSheet_(), 'shop_id', p.shopId);
   if (!shop) return { ok: false, error: 'SHOP_NOT_FOUND' };
 
+  const dup = findByClientId_(getHearingSheet_(), p.clientId);
+  if (dup) return { ok: true, hearingId: String(dup.obj['hearing_id']), hearing: hearingRowToApi_(dup.obj), duplicate: true };
+
   const rate = shopCommissionTerms_(shop.obj).rate;
   const prices = priceMap_(salesHearingPrices_());
   if (p.mode !== 'garage' && (!prices.HEADLIGHT || !prices.HEADLIGHT_MAGIC)) {
@@ -129,7 +133,8 @@ function salesHearingCreate(chatId, p) {
     '言われたこと・在庫メモ': String(p.note || '').substring(0, 2000),
     '緯度': gps ? gps.lat : '',
     '経度': gps ? gps.lng : '',
-    '見込み評価': hearingPotential_(r.mine)
+    '見込み評価': hearingPotential_(r.mine),
+    'client_id': String(p.clientId || '').trim().substring(0, 80)
   };
   if (p.mode === 'garage') {
     row['1日の整備台数'] = r.carsDay;
@@ -198,7 +203,7 @@ function salesHearingLatestByShop_() {
 // まとめは 3日ごとの自己改善タスク（docs/SALES_APP_IMPROVEMENT_LOG.md）が読んで作る
 
 const NOTES_SHEET_NAME = 'ヒアリングメモ';
-const NOTES_HEADERS = ['note_id', '日時', 'shop_id', '店名', '記録者', '内容', 'visit_id', '緯度', '経度'];
+const NOTES_HEADERS = ['note_id', '日時', 'shop_id', '店名', '記録者', '内容', 'visit_id', '緯度', '経度', 'client_id'];
 const NOTES_MAX_PER_SAVE = 20;
 const NOTES_MAX_LEN = 1000;
 
@@ -211,13 +216,17 @@ function salesNoteCreate(chatId, p) {
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
   const shop = findSheetRow_(getShopSheet_(), 'shop_id', p.shopId);
   if (!shop) return { ok: false, error: 'SHOP_NOT_FOUND' };
-  const n = salesNotesAppend_(String(p.shopId), String(shop.obj['店名'] || ''), staff, p.texts, p.visitId, p.gps);
+  // 送り直しなら書き足さない（1回目のメモは「番号#0」から始まる）
+  if (p.clientId && findByClientId_(getNotesSheet_(), String(p.clientId) + '#0')) {
+    return { ok: true, added: 0, duplicate: true, notes: salesNotesForShop_(p.shopId) };
+  }
+  const n = salesNotesAppend_(String(p.shopId), String(shop.obj['店名'] || ''), staff, p.texts, p.visitId, p.gps, p.clientId);
   if (!n) return { ok: false, error: 'EMPTY_NOTE' };
   return { ok: true, added: n, notes: salesNotesForShop_(p.shopId) };
 }
 
 /** 空でないメモだけを書き足し、足した件数を返す */
-function salesNotesAppend_(shopId, shopName, staff, texts, visitId, gps) {
+function salesNotesAppend_(shopId, shopName, staff, texts, visitId, gps, clientId) {
   const list = (Array.isArray(texts) ? texts : [texts])
     .map(function(t) { return String(t || '').trim(); })
     .filter(function(t) { return t; })
@@ -226,7 +235,7 @@ function salesNotesAppend_(shopId, shopName, staff, texts, visitId, gps) {
   const g = normalizeSalesLogGps_(gps);
   const sheet = getNotesSheet_();
   const now = salesLogNow_();
-  list.forEach(function(t) {
+  list.forEach(function(t, i) {
     appendSheetRow_(sheet, {
       'note_id': generateDateTimeId('NT') + '-' + Utilities.getUuid().slice(0, 8),
       '日時': now,
@@ -236,7 +245,8 @@ function salesNotesAppend_(shopId, shopName, staff, texts, visitId, gps) {
       '内容': t.substring(0, NOTES_MAX_LEN),
       'visit_id': String(visitId || ''),
       '緯度': g ? g.lat : '',
-      '経度': g ? g.lng : ''
+      '経度': g ? g.lng : '',
+      'client_id': clientId ? String(clientId).substring(0, 80) + '#' + i : ''
     });
   });
   return list.length;
@@ -268,6 +278,10 @@ function getNotesSheet_() {
     } finally {
       lock.releaseLock();
     }
+  } else {
+    runAtMostEvery_(['schema', NOTES_SHEET_NAME].concat(NOTES_HEADERS).join('|'), 6 * 60 * 60, function() {
+      return ensureColumnsAtEnd_(sheet, NOTES_HEADERS);
+    });
   }
   _salesLogSheetCache_[NOTES_SHEET_NAME] = sheet;
   return sheet;
