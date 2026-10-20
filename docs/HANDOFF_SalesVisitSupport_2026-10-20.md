@@ -75,6 +75,17 @@ Daisuke「最初に“いいね”と言った提携電卓の感じが無くな�
 4. GAS エディタで `scoutBoardSetup` を1回実行（初回は権限の確認 → 許可）→ ログに出た URL が営業ボード。Drive で「SAMURAI SCOUT 営業ボード」をRun Kosalたちに **閲覧者** で共有（直すのはアプリで・ボードは見るだけ）。置き場所は Samurai Motors のフォルダへ移してよい
 5. Run Kosalの実機確認: Telegram を一度閉じて開き直す → 右上で ខ្មែរ → お店を開いて反応を1つ押す → 「✓ 時刻 保存済み」→ 次にやること・いつを押す → 営業ボード（1時間以内に反映。すぐ見たい時は GAS エディタで `scoutBoardRefresh`）
 
+## ホーム画面アプリ（同日・Daisuke「Telegram じゃなくて Safari でホーム画面に追加したい。1タップで立ち上げが現場ファースト」）
+
+- Telegram の外（Safari・ホーム画面）では、スタッフ専用リンク `saleslog-internal.html?gas=<本番 /exec>&u=<chatId>&k=<鍵>` で本人を決める。鍵は現場アプリ v2 と同じ（FieldLink.gs・スタッフごと）。開いたリンクは端末に覚え、次からはリンク無しでも開ける。iPhone の「ホーム画面に追加」で、そのリンクがそのまま起動先になる
+- 新ファイル: `scout.webmanifest`・`scout-icon-192.png`・`scout-icon-512.png`・`scout-apple-touch-icon.png`（白地に家紋＋SCOUT）。**ミニアプリ同期リストに追加済み**（docs/DEPLOY.md）
+- Safari で開いた時だけ「ホーム画面に追加すると1タップで開けます（共有ボタン □↑ →「ホーム画面に追加」）」の帯（✕ で閉じたら出さない）。リンクが無い端末では「自分専用のリンクから開いてください」
+- リンクの作り方（どちらでも同じ鍵）:
+  - PC: GAS エディタで `scoutHomeLinks` を実行 → 実行ログに全員分のリンク。事前にスクリプトプロパティ `SCOUT_GAS_URL` = 本番の /exec URL（`https://script.google.com/macros/s/<@41 のデプロイID>/exec`）を入れておく
+  - スマホ: 管理者が Telegram から SAMURAI SCOUT を開く → 一覧の下「🔗 ホーム画面用リンク（管理者）」
+- リンクは本人だけに送る（他人に渡るとその人として記録できる）。全員の鍵を無効にする時は スクリプトプロパティ `FIELD_LINK_SECRET` を削除（現場アプリ v2 のリンクも同時に無効になる）
+- サーバー側は鍵を確認して結果を返すだけ（署名必須化 Phase 2 まではブロックしない・現場アプリ v2 と同じ）
+
 ## バックエンド（v7-operations）
 
 - 新ファイル `SalesHearingManager.gs`
