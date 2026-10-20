@@ -35,13 +35,14 @@ function doGet(e) {
       case 'auth_audit':
         return jsonOut(apiAuthAudit_(e.parameter));
 
-      case 'staff_list':
-        return jsonOut({ ok: true, staff: getActiveStaff() });
+      // staff_list（全スタッフの月給・Chat ID・備考をそのまま返していた）は 2026-10-20 に削除。
+      // 呼んでいる画面は無かった。担当者の選択肢は POST staff_list_for_tasks を使う
 
       case 'whoami': {
         const chatId = String(e.parameter.chatId || '');
-        const staff = chatId ? findStaffByChatId(chatId) : null;
-        return jsonOut({ ok: true, staff: staff });
+        const s = chatId ? findStaffByChatId(chatId) : null;
+        // POST の whoami と同じく画面に要る項目だけ（2026-10-20: GET 側も給与などを返していた）
+        return jsonOut({ ok: true, staff: whoamiStaff_(s) });
       }
 
       case 'attendance_today': {
@@ -97,9 +98,7 @@ function doPost(e) {
       case 'whoami': {
         const chatId = String(body.chatId || '');
         const s = chatId ? findStaffByChatId(chatId) : null;
-        // 匿名で呼べるため、画面に要る項目だけ返す（給与などは返さない。2026-10-09 レビュー）
-        const staff = s ? { staffId: s.staffId, nameJp: s.nameJp, nameEn: s.nameEn, role: s.role } : null;
-        const res = { ok: true, staff: staff };
+        const res = { ok: true, staff: whoamiStaff_(s) };
         // 2026-10-08: 現場アプリ v2 のスタッフ専用リンク（?u=&k=）の鍵が正しいか（FieldLink.gs）
         if (body.k !== undefined) res.keyOk = !!(chatId && fieldLinkKeyOk_(chatId, String(body.k || '')));
         return jsonOut(res);
@@ -500,6 +499,14 @@ function doPost(e) {
     Logger.log('❌ doPost error action=' + action + ' err=' + err);
     return jsonOut({ ok: false, error: String(err) });
   }
+}
+
+/**
+ * whoami の返し方（GET / POST 共通）
+ * 匿名で呼べるため、画面に要る項目だけ返す（給与・Chat ID・備考などは返さない。2026-10-09 レビュー）
+ */
+function whoamiStaff_(s) {
+  return s ? { staffId: s.staffId, nameJp: s.nameJp, nameEn: s.nameEn, role: s.role } : null;
 }
 
 /**
