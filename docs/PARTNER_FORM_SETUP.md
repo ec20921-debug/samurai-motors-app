@@ -226,7 +226,7 @@ debugMockPartnerFormSubmit()
    - 相手から start が来たら、その Chat ID をパートナーシート「Telegram Chat ID」欄に貼り付け
    - `sendPartnerWelcomeDm_('PTR-XXXXXX-XXX')` を実行すると Welcome DM が飛ぶ
 4. **紹介開始**: パートナーが紹介コード `SM-XXX` を知人に共有
-5. **予約時**: お客さまが予約Bot に紹介コードを入力
+5. **予約時**: お客さまが予約Bot に紹介コードを入力（※ 未実装。当面は紹介履歴シートに手動で記帳）
 6. **月末**: 紹介履歴から集計 → ABA 送金 → 支払ステータス「支払済み」に更新
 
 ### 承認後 Chat ID を取得するフロー

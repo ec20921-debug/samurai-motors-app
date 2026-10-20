@@ -420,7 +420,7 @@ function doPost(e) {
 
       // ── 撥水モニター施策 ──
       // water_repellent_lookup（モニターID だけで撥水モニターの行を丸ごと返していた: 会社名・経営者/ドライバーの
-      // 氏名と連絡先・ナンバー・備考・アンケート。ID は WRM-YYMMDD-NNN で数えられる）と
+      // 氏名と連絡先・ナンバー・備考・アンケート。ID は WRM-YYMMDD-NNN なので総当たりで列挙できる）と
       // water_repellent_stats（件数の集計）は 2026-10-20 に削除。どちらも呼んでいる画面は無かった
       case 'water_repellent_complete': {
         // 現場スタッフが施工完了マークを入れる用（home-internal.html 拡張時に使用）
