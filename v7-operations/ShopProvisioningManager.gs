@@ -259,6 +259,8 @@ function notifyShopProvisioned_(shopId, shopName, qrUrl, otc, brandBot) {
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, lines.join('\n'), opts);
 }
 
+// ②-b 既存の shop_id で店舗グループ連携コードを出す → ShopLinkCodes.gs（2026-10-20）
+
 // ====== ③ 月次レポート（透明性の核: 「今月◯台→◯$」を双方に同じ数字で） ======
 
 /**

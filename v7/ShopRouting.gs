@@ -168,23 +168,42 @@ function handleShopStart_(msg, text) {
   if (!m) return false;
   var shopId = m[1];
 
+  // 店マスターに無い shop_id・停止中の店のリンクは店扱いにしない（2026-10-20）
+  // shop_ref があると当社の決済QRを止めるため、誤植・古いQR・自作リンクで止まらないよう入口で確かめる
+  var master = lookupShopMaster_(shopId);   // 読み取りエラー時は店扱いで進める（決済の判定は getValidShopRef_ で再確認）
+  var link = null;
+  try { link = findShopLinkByShopId_(shopId); } catch (err) { Logger.log('⚠️ Bot連携の読み取り失敗: ' + err); }
+  var stopped = !!(link && String(link.obj['状態']) === '停止');
+  var welcomeShopName = (link && link.obj['店名']) ? String(link.obj['店名']) : (master.found ? (master.name || shopId) : '');
+  if ((!master.found && !master.error) || stopped) {
+    sendWelcomeMessage(msg);
+    ensureCustomerTopic(msg);
+    try {
+      sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
+        '⚠️ 店QRのリンクから来たが、店として扱わなかった（' + (stopped ? '停止中の店' : '店マスターに無い shop_id') + '）\n' +
+        'shop_id: ' + shopId + '\n顧客 chat_id: ' + msg.chat.id + '\n→ 通常のお客様として案内（決済QRも通常どおり）');
+    } catch (err) {
+      Logger.log('⚠️ 管理通知失敗（不明な店QR）: ' + err);
+    }
+    return true;
+  }
+
   // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
   // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩）
-  var linkForWelcome = findShopLinkByShopId_(shopId);
-  var welcomeShopName = linkForWelcome ? String(linkForWelcome.obj['店名'] || '') : '';
   sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName });
   ensureCustomerTopic(msg);
 
   // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
+  // 最後に読んだQRを優先: レジデンス等の流入元（src_ref）は外す（2026-10-20）
   try {
-    PropertiesService.getScriptProperties()
-      .setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    var sp = PropertiesService.getScriptProperties();
+    sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    sp.deleteProperty('src_ref_' + String(msg.chat.id));
   } catch (err) {
     Logger.log('⚠️ shop_ref 保存失敗: ' + err);
   }
 
   // 店舗グループへ来店通知
-  var link = findShopLinkByShopId_(shopId);
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
 
@@ -202,9 +221,10 @@ function handleShopStart_(msg, text) {
   // 管理グループへも流入元を通知
   try {
     var cfg = getConfig();
-    var shopName = link ? String(link.obj['店名'] || shopId) : shopId;
+    var linked = !!(link && String(link.obj['状態']) === '連携済');
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-      '🏪 提携店QR経由の新規流入\n店: ' + shopName + '\n顧客: ' + custName);
+      '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
+      (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）'));
   } catch (err) {
     Logger.log('⚠️ 管理通知失敗（QR流入）: ' + err);
   }
@@ -212,11 +232,14 @@ function handleShopStart_(msg, text) {
 }
 
 function findShopLinkByShopId_(shopId) {
-  var links = readShopLinks_();
+  // 同じ shop_id の行が複数ある時は 連携済 → 待機中 → それ以外（停止など）の順に選ぶ（2026-10-20）
+  var links = readShopLinks_(), best = null, rank = { '連携済': 3, '待機中': 2 };
   for (var i = 0; i < links.length; i++) {
-    if (String(links[i].obj['shop_id']) === String(shopId)) return links[i];
+    if (String(links[i].obj['shop_id']) !== String(shopId)) continue;
+    var r = rank[String(links[i].obj['状態'])] || 1;
+    if (!best || r > best.r) best = { r: r, link: links[i] };
   }
-  return null;
+  return best ? best.link : null;
 }
 
 /**
@@ -227,6 +250,83 @@ function getShopRefForCustomer(chatId) {
     return PropertiesService.getScriptProperties().getProperty('shop_ref_' + String(chatId)) || '';
   } catch (err) {
     return '';
+  }
+}
+
+/**
+ * shop_id → 店名。Bot連携シート（連携済・待機中）→ 店マスター の順に探す。見つからなければ ''。
+ * 店マスターの読み取りは 5 分キャッシュ（OPS_LESSONS #8: 全読みをリクエスト毎に繰り返さない）
+ */
+var SHOP_NAME_CACHE_KEY = 'shop_master_names_v1';
+
+/**
+ * 店マスターを shop_id で引く。{found, name, error}
+ *   found = 店マスターに行がある / error = 読み取りに失敗して分からない（found は false）
+ * 店マスターの読み取りは 5 分キャッシュ。キャッシュに無い id だけ読み直す（キャッシュ後に登録された店）
+ * Object のプロトタイプ名（constructor 等）に当たらないよう hasOwnProperty で確かめる
+ */
+function lookupShopMaster_(shopId) {
+  var id = String(shopId || '');
+  if (!id) return { found: false, name: '', error: false };
+  var has = function(m) { return !!m && Object.prototype.hasOwnProperty.call(m, id) && typeof m[id] === 'string'; };
+  var cache = CacheService.getScriptCache();
+  var map = null;
+  try { map = JSON.parse(cache.get(SHOP_NAME_CACHE_KEY) || 'null'); } catch (ignore) {}
+  if (has(map)) return { found: true, name: map[id], error: false };
+  try {
+    map = {};
+    var sh = getSpreadsheet().getSheetByName('店マスター');
+    if (!sh) throw new Error('店マスター タブがありません');
+    if (sh.getLastRow() >= 2) {
+      var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+      var ci = head.indexOf('shop_id'), ni = head.indexOf('店名');
+      if (ci < 0 || ni < 0) throw new Error('店マスターに shop_id / 店名 の列がありません');
+      sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni) + 1).getValues().forEach(function(r) {
+        if (r[ci]) map[String(r[ci])] = String(r[ni] || '');
+      });
+    }
+    try { cache.put(SHOP_NAME_CACHE_KEY, JSON.stringify(map), 300); } catch (ignore) {}
+  } catch (err) {
+    Logger.log('⚠️ 店マスター読み取り失敗: ' + err);
+    return { found: false, name: '', error: true };
+  }
+  return has(map) ? { found: true, name: map[id], error: false } : { found: false, name: '', error: false };
+}
+
+/** shop_id → 店名（Bot連携 → 店マスター）。分からなければ ''。表示用（判定には lookupShopMaster_ / getValidShopRef_） */
+function getShopNameById_(shopId) {
+  if (!shopId) return '';
+  try {
+    var link = findShopLinkByShopId_(shopId);
+    if (link && link.obj['店名']) return String(link.obj['店名']);
+  } catch (err) {
+    Logger.log('⚠️ Bot連携の読み取り失敗（店名は店マスターから）: ' + err);
+  }
+  var hit = lookupShopMaster_(shopId);
+  return hit.found ? (hit.name || String(shopId)) : '';
+}
+
+/**
+ * 「店に支払う」お客様か（= 当社の決済QR・支払いのご案内を送らない）。該当すれば shop_id、しなければ ''。
+ * shop_ref があり、その店が店マスターにあり、Bot連携で停止になっていない時だけ（2026-10-20）
+ * 読み取りエラーで分からない時は店扱い（当社QRを送ると取り消せない・二重請求になるため止める側に倒す）。例外は外へ出さない
+ */
+function getValidShopRef_(chatId) {
+  var shopId = getShopRefForCustomer(chatId);
+  if (!shopId) return '';
+  try {
+    var hit = lookupShopMaster_(shopId);
+    if (hit.error) {
+      Logger.log('⚠️ getValidShopRef_: 店マスターを読めないため店扱い（shop=' + shopId + '）');
+      return shopId;
+    }
+    if (!hit.found) return '';
+    var link = findShopLinkByShopId_(shopId);
+    if (link && String(link.obj['状態']) === '停止') return '';
+    return shopId;
+  } catch (err) {
+    Logger.log('⚠️ getValidShopRef_ 判定エラー（店扱い）: ' + err);
+    return shopId;
   }
 }
 

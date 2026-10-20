@@ -49,6 +49,24 @@ v7-operations 側も同様に `clasp push --force`。
 - 毎月1日: 店別レポートが各店グループ＋管理グループに自動送信
 - **日本側がやること**: 月次サマリーで未回収の多い店がないか眺めるだけ
 
+## 2.5 すでに専用QRを配った店をグループ連携する（2026-10-20 追加）
+
+営業で先に専用QR（`start=shop_<店マスターの既存shop_id>`）を配った店は、**フォームを使わない**（フォームは新しい shop_id を採番するので、配った QR と食い違う）。
+
+1. 店マスターの「QRリンク(BookingBot)」に、その店の予約Botリンク（`https://t.me/SAMURAI_MOTORS_BOOKING_BOT?start=shop_<shop_id>`）が入っていることを確認する
+2. v7-operations の GAS エディタで `issueShopLinkCodesForQrShops()` を実行
+   → Bot連携シートに「待機中」の行（既存の shop_id のまま・6桁コード）ができ、管理グループのパートナートピックに **店名とコードの一覧** が届く。何度実行しても二重には作らない（発行済みの店は同じコードを再掲、連携済みの店は ✅ 表示）。【サンプル】行は対象外
+   - 店を指定して出すときは `issueShopLinkCodes(['SHOP-…', 'SHOP-…'])`
+3. 店ごとに、お店の人と Telegram グループを作り予約Botを招待 → `/register <コード>` を送る → ✅ で完了
+
+**決済QRについて（2026-10-20 修正）**: 店QR経由のお客様には、**店舗グループが未連携でも** 当社の決済QR・支払いのご案内を送らない（お客様は店に定価を払うため）。管理グループの作業終了通知に「🏪 提携店経由」と出る。
+- 店扱いになる条件: 店QRのリンクの shop_id が **店マスターにあり**、Bot連携で **停止になっていない** こと。店マスターに無い・停止中の店のリンクから来た人は通常のお客様として案内し、管理グループに「⚠️ 店として扱わなかった」と出る
+- **最後に読んだQRが優先**: 店QRを読むとレジデンス等の流入元（src_ref）は外れ、有効な流入元QR（Picasso 等）を読むと店の紐付け（shop_ref）は外れる
+- 予約なしの手動ジョブの「支払いのご案内」: 現場アプリの支払区分が 現金・ABA なら送る（現場の明示が優先）／提携店払い・無料なら送らない／未選択・後払いなら店QR経由のお客様には送らない
+- 店マスターが一時的に読めない時は店扱い（当社QRを送らない側）に倒す
+- 店を通さず当社で集金する例外だけ `retryPaymentQR("<予約ID>", true)` で送れる（第2引数なしだと何も変えずに止まる）
+- 関連ファイル: v7/ShopRouting.gs（getValidShopRef_ / lookupShopMaster_）・v7/PaymentManager.gs・v7/ManualCustomerLink.gs・v7-operations/ShopLinkCodes.gs
+
 ## 3. ブランドBot希望の店が出たら（+10分）
 
 フォームの「ブランドBot希望=はい」通知が来た場合のみ:
@@ -73,6 +91,7 @@ v7-operations 側も同様に `clasp push --force`。
 ## 5. 関連ファイル
 
 - `v7-operations/ShopProvisioningManager.gs` — フォーム・採番・QR・通知・月次レポート
-- `v7/ShopRouting.gs` — /register・ディープリンク・店舗グループ通知
+- `v7/ShopRouting.gs` — /register・ディープリンク・店舗グループ通知・店集金の判定（getValidShopRef_）
+- `v7-operations/ShopLinkCodes.gs` — 既存 shop_id のまま連携コードを出す（issueShopLinkCodesForQrShops）
 - `v7/BookingBot.gs` — フック2箇所（グループ /register・/start shop_）
 - `docs/SHOP_PROVISIONING_MANUAL_LOCAL.md` — 現地スタッフ用（小学生レベル）

@@ -216,6 +216,11 @@ function handleSourceStart_(msg, text) {
   var chatId = String(msg.chat.id);
   // 先に紐付けを保存（直後のメニューボタン設定で ?src= 付きの URL にするため）
   setSourceRefForCustomer_(chatId, cfg.code);
+  // 最後に読んだQRを優先: 有効な流入元なら提携店の紐付け（shop_ref = 店集金・当社QRなし）は外す（2026-10-20）
+  // 無効（有効=FALSE）の流入元は通常扱いに戻るだけなので、店の紐付けは残す（resolveBookingSource_ と同じ考え方）
+  if (cfg.active) {
+    try { PropertiesService.getScriptProperties().deleteProperty('shop_ref_' + chatId); } catch (ignore) {}
+  }
 
   if (cfg.active && cfg.lang === 'en-ja') {
     sendSourceWelcome_(msg, cfg);

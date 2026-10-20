@@ -599,9 +599,11 @@ function apiJobEnd(body, opts) {
         }
       }
       // 支払いのご案内（ABA QR・案内型 = 台帳の決済状態は触らない）
+      // 提携店払い（支払区分 shop・店QR経由の客）には送らない判定は sendManualPaymentInfo_ 側（2026-10-20）
       if (manualPaidEnd > 0 && typeof sendManualPaymentInfo_ === 'function') {
         try {
-          sendManualPaymentInfo_(customerChatId, manualPaidEnd);
+          sendManualPaymentInfo_(customerChatId, manualPaidEnd,
+            String(body.paymentType || (body.v2 && body.v2.payment_type) || ''));
         } catch (ePay) {
           Logger.log('⚠️ 支払いご案内送信失敗: ' + ePay);
         }
@@ -664,6 +666,23 @@ function apiJobEnd(body, opts) {
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
     }
+    // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
+    if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
+      try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
+    }
+    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
+    var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
+      try {
+        var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
+        var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+          '🏪 提携店経由: ' + shopNameEnd + '\n' +
+          'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 提携店経由の管理通知失敗: ' + e);
+      }
+    }
 
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
     try {
@@ -679,7 +698,7 @@ function apiJobEnd(body, opts) {
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
     // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
-    if (shopRef) {
+    if (bookingId && shopRef) {
       Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
     } else if (bookingId && typeof sendPaymentQR === 'function') {
       try {

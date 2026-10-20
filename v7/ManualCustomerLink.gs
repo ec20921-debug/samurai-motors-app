@@ -157,17 +157,18 @@ function linkTokenScan_(token, chatId) {
   var sent = sendCatchupPhotos_(chatId, urls.before, urls.after);
 
   // 有償の手動ジョブが完了済みなら支払いのご案内も送る（無償はQRを送らない・2026-08-28 A案）
-  var paidAmount = 0;
+  var paidAmount = 0, paidPayType = '';
   for (var pi = rows.length - 1; pi >= 0; pi--) {
     var pd = rows[pi].data;
     if (String(pd['予約ID'] || '').trim()) continue;      // 予約経由は既存の決済フロー管轄
     if (String(pd['作業状態'] || '') !== '完了') continue; // 作業中は料金未確定
     var amt = Number(pd['料金(USD)']);
-    if (amt > 0) { paidAmount = amt; break; }
+    if (amt > 0) { paidAmount = amt; paidPayType = String(pd['支払区分'] || ''); break; }
   }
   if (paidAmount > 0) {
     try {
-      sendManualPaymentInfo_(chatId, paidAmount);
+      // 送らなかった時（提携店払い等）は管理通知に「ご案内送付」と出さない（2026-10-20）
+      if (!sendManualPaymentInfo_(chatId, paidAmount, paidPayType)) paidAmount = 0;
     } catch (ePay) {
       Logger.log('⚠️ 支払いご案内送信失敗(catch-up): ' + ePay);
     }
@@ -456,11 +457,22 @@ function driveUrlsToBlobs_(urls) {
  *   - スクショ返送依頼はしない（sendPaymentQR の追跡フローとは別物）
  *   - 無償ジョブ（amount<=0）には送らない（呼び出し側で分岐＋本関数でも防衛）
  *
+ * 【2026-10-20】提携店のお客様（店に支払う）には送らない。判定の優先順:
+ *   現場アプリの支払区分 shop / free → 送らない ／ cash / aba（現場が明示）→ 送る ／ それ以外（空・later）→ 店QR経由なら送らない
+ *
  * @param {string} chatId
  * @param {number} amount - USD
+ * @param {string} [payType] - 現場アプリの支払区分（cash / aba / shop / free / later）
+ * @return {boolean} ご案内を送ったか
  */
-function sendManualPaymentInfo_(chatId, amount) {
-  if (!(Number(amount) > 0)) return; // 防衛: 無償にはQRを送らない
+function sendManualPaymentInfo_(chatId, amount, payType) {
+  if (!(Number(amount) > 0)) return false; // 防衛: 無償にはQRを送らない
+  var pt = String(payType || '');
+  if (pt === 'shop' || pt === 'free') return false;
+  if (pt !== 'cash' && pt !== 'aba' && typeof getValidShopRef_ === 'function' && getValidShopRef_(chatId)) {
+    Logger.log('⏭️ 支払いご案内: 提携店経由のためスキップ chat=' + chatId);
+    return false;
+  }
   var qr = (typeof getActiveQR === 'function') ? getActiveQR() : null;
   var caption =
     '💰 ការទូទាត់ប្រាក់ / Payment\n' +
@@ -476,6 +488,7 @@ function sendManualPaymentInfo_(chatId, amount) {
     // QR未設定でも金額のご案内だけは送る
     sendMessage(BOT_TYPE.BOOKING, chatId, caption);
   }
+  return true;
 }
 
 // ====== 管理グループ通知 ======
