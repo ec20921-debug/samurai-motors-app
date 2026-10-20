@@ -595,24 +595,9 @@ function buildTaskInlineKeyboard_(tasks) {
 // ============================================================
 
 /**
- * 勤務Bot の update ディスパッチ
- * QueueManager の processInternalQueue からコールされる
+ * 勤務Bot のインラインボタン押下（callback_query）
+ * 入口は InternalBotDispatcher.gs の handleInternalBotUpdate
  */
-function handleInternalBotUpdate(update) {
-  try {
-    if (update.callback_query) {
-      handleTaskCallback_(update.callback_query);
-      return;
-    }
-    if (update.message && update.message.text) {
-      handleTextCommand_(update.message);
-      return;
-    }
-  } catch (err) {
-    Logger.log('❌ handleInternalBotUpdate: ' + err);
-  }
-}
-
 function handleTaskCallback_(cb) {
   const data = String(cb.data || '');
   const cbId = cb.id;

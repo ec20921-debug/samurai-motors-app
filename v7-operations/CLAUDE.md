@@ -16,7 +16,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 
 | グループ | ファイル |
 |---|---|
-| 基盤 | Config / Router / TelegramAPI / SheetHelpers / QueueManager / BotPoller |
+| 基盤 | Config / Router / TelegramAPI / SheetHelpers / QueueManager / BotPoller / InternalBotDispatcher（勤務Bot の update 入口はここ1か所） |
 | 勤怠・日報・タスク | AttendanceManager / DailyReport / TaskManager |
 | 経費 | ExpenseManager / ExpenseSync / RoutineExpense |
 | 経営・レポート | Dashboard / ExecDashboard / ExecChat / ReportManager |
@@ -50,6 +50,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 5. スタンドアロン GAS で `getActiveSpreadsheet()` は **null**。`openById` + TZ 統一（日付1日ズレの元凶）
 6. フォーラムトピックの thread_id は URL の**真ん中**の数字（`t.me/c/<group>/<topic>/<msg>`）
 7. 原因説明を繰り返さない。**修正→commit→push を1ターンで完結**
+9. **同じ名前のトップレベル関数を2つ書かない**（全 .gs が1つのグローバル空間・後に読まれた方が勝ち、片方は黙って死ぬ）。push 前に全 .gs を連結して `node --check`（.mjs）で確認
 
 ## 🚦 現況（2026-07-03 更新 — 旧 Phase 表は廃止）
 
