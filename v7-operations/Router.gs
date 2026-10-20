@@ -298,7 +298,8 @@ function doPost(e) {
           memo:      String(body.memo      || ''),
           gps:       body.gps || null,
           nextAction: String(body.nextAction || ''),
-          nextDue:   String(body.nextDue    || '')
+          nextDue:   String(body.nextDue    || ''),
+          notes:     Array.isArray(body.notes) ? body.notes : []
         }));
       }
 
@@ -330,6 +331,19 @@ function doPost(e) {
           inputs: (body.inputs && typeof body.inputs === 'object') ? body.inputs : {},
           note:   String(body.note || ''),
           gps:    body.gps || null
+        }));
+      }
+
+      // ── 車屋提携 ヒアリングメモ（何件でも足せる・SalesHearingManager.gs） ──
+      case 'saleslog_note_create': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(salesNoteCreate(chatId, {
+          shopId:  shopId,
+          texts:   Array.isArray(body.texts) ? body.texts : [String(body.text || '')],
+          visitId: String(body.visitId || ''),
+          gps:     body.gps || null
         }));
       }
 

@@ -158,10 +158,11 @@ function salesLogShopDetail(chatId, shopId) {
     .filter(function(v) { return v.visitId && v.shopId === String(shopId); });
   visits.sort(function(a, b) { return String(b.datetime).localeCompare(String(a.datetime)); });
 
-  let hearings = [];
+  let hearings = [], notes = [];
   try { hearings = salesHearingsForShop_(shopId); } catch (e) { Logger.log('⚠️ salesHearingsForShop_: ' + e); }
+  try { notes = salesNotesForShop_(shopId); } catch (e) { Logger.log('⚠️ salesNotesForShop_: ' + e); }
 
-  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings };
+  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings, notes: notes };
 }
 
 /**
@@ -231,7 +232,11 @@ function salesLogCreate(chatId, p) {
   });
 
   refreshShopAggregates_(shopId);
-  return { ok: true, visitId: visitId, shopId: shopId };
+  // 訪問記録と一緒に書いたヒアリングメモ（何件でも・任意）。失敗しても訪問記録は成功のまま
+  let notesAdded = 0;
+  try { notesAdded = salesNotesAppend_(shopId, visitShopName, staff, p.notes, visitId, gps); }
+  catch (e) { Logger.log('⚠️ salesNotesAppend_: ' + e); }
+  return { ok: true, visitId: visitId, shopId: shopId, notesAdded: notesAdded };
 }
 
 /**

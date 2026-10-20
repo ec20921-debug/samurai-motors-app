@@ -147,6 +147,20 @@ function buildSalesLogSection_(ppToday) {
     lines.push('　🏪 累計: ' + (shops.length - unvisited) + '店（⭐提携 ' + partner + ' / 営業中 ' + active +
                ' / 見送り ' + dropped + '）・訪問 ' + totalVisits + '回' + (unvisited ? '・未訪問の見込み ' + unvisited + '店' : ''));
     if (overdue) lines.push('　⏰ フォロー期限切れ: ' + overdue + '店');
+    // 本日のヒアリングメモ件数（中身は「ヒアリングメモ」タブ。まとめは 3日ごとの自己改善タスク）
+    try {
+      const noteSheet = getSalesLogSs_().getSheetByName('ヒアリングメモ');
+      if (noteSheet) {
+        const todaysNotes = readSheetObjects_(noteSheet).filter(function(r) {
+          return r.obj['note_id'] && formatSalesLogDateCell_(r.obj['日時']).substring(0, 10) === ppToday;
+        });
+        if (todaysNotes.length) {
+          const shopsN = {};
+          todaysNotes.forEach(function(r) { shopsN[String(r.obj['店名'] || '')] = true; });
+          lines.push('　🗒 本日のヒアリングメモ: ' + todaysNotes.length + '件（' + Object.keys(shopsN).length + '店）');
+        }
+      }
+    } catch (e) { Logger.log('⚠️ 日報: ヒアリングメモ件数の取得失敗（スキップ）: ' + e); }
     const hot = [];
     if (reactionCount.A) hot.push('A(デモ決定) ' + reactionCount.A + '店');
     if (reactionCount.B) hot.push('B(興味あり) ' + reactionCount.B + '店');

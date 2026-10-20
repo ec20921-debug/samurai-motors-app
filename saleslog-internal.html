@@ -247,6 +247,22 @@ body {
 .vnext { font-size:12px; color:var(--amber); margin-top:4px; }
 .shop-src { font-size:12px; color:var(--text-dim); margin:-4px 0 12px; line-height:1.5; }
 
+/* ── 2026-10-20 ヒアリングメモ（何件でも） ── */
+.notes-hint { font-size:12px; color:var(--text-dim); line-height:1.5; margin:-2px 0 8px; }
+.tip-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.tip-row button { border:1.5px dashed var(--border); background:transparent; color:var(--text); border-radius:999px; padding:4px 10px;
+  font-size:12px; font-family:inherit; cursor:pointer; }
+.note-input { width:100%; min-height:56px; background:var(--card); border:1.5px solid var(--border); border-radius:12px; color:var(--text);
+  padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical; margin-bottom:8px; }
+.note-add-row { display:flex; gap:8px; }
+.note-add-row .note-input { flex:1; margin-bottom:0; }
+.note-add-btn { flex:none; border:none; border-radius:12px; padding:0 16px; background:var(--gold); color:#1a1a1a; font-weight:700;
+  font-size:14px; font-family:inherit; cursor:pointer; }
+.note-more { border:1.5px dashed var(--gold); background:transparent; color:var(--gold); border-radius:12px; padding:8px 12px;
+  font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; width:100%; }
+.note-item { background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:9px 12px; margin-top:8px; font-size:13.5px; line-height:1.55; }
+.note-item .nm { font-size:11px; color:var(--text-dim); margin-bottom:2px; }
+
 /* ── フォーム共通 ── */
 .back-btn {
   background:none; border:none; color:var(--text-dim);
@@ -597,6 +613,17 @@ input[type="date"] { color-scheme: dark; }
     <button class="save-btn" id="btnShopSave">💾 រក្សាទុក / 保存</button>
 
     <div class="section-head">
+      <span class="h" id="notesHead"></span>
+    </div>
+    <div class="notes-hint" id="notesHint"></div>
+    <div class="tip-row" data-tips="sNoteText"></div>
+    <div class="note-add-row">
+      <textarea class="note-input" id="sNoteText" maxlength="1000"></textarea>
+      <button type="button" class="note-add-btn" id="btnNoteAdd"></button>
+    </div>
+    <div id="noteList"></div>
+
+    <div class="section-head">
       <span class="h" id="historyHead">ប្រវត្តិការចុះជួប / 訪問履歴</span>
       <button class="add-visit-btn" id="btnAddVisit">➕ បន្ថែមការចុះជួប / 追記</button>
     </div>
@@ -669,6 +696,14 @@ input[type="date"] { color-scheme: dark; }
     <div class="field">
       <label>កំណត់ចំណាំ / メモ</label>
       <textarea id="fMemo" maxlength="2000" placeholder="អាចបំពេញពេលក្រោយបាន"></textarea>
+    </div>
+
+    <div class="field" id="formNotesField">
+      <label id="lblFormNotes"></label>
+      <div class="notes-hint" id="formNotesHint"></div>
+      <div class="tip-row" data-tips="formNotes"></div>
+      <div id="formNotes"></div>
+      <button type="button" class="note-more" id="btnNoteMore"></button>
     </div>
 
     <div class="field">
@@ -849,7 +884,19 @@ var STR = {
   dueToday:    'ថ្ងៃនេះ / 今日',
   followNone:  'ថ្ងៃនេះគ្មានអ្វីត្រូវតាមដានទេ / 今日やるフォローはありません',
   address:     'អាសយដ្ឋាន / 住所',
-  fromList:    'មកពីបញ្ជីហាងគោលដៅ / 見込みリストから登録'
+  fromList:    'មកពីបញ្ជីហាងគោលដៅ / 見込みリストから登録',
+  // ↓ 2026-10-20 ヒアリングメモ。Panha 校閲済み（provisional・Ron の確認待ち）
+  notesHead:   '🗒 កំណត់ចំណាំអ្វីដែលបានស្តាប់ / ヒアリングメモ',
+  notesHint:   'អ្វីដែលបានស្តាប់ ឬសង្កេតឃើញ សរសេរបានច្រើនតាមចិត្ត។ AI នឹងសង្ខេបឱ្យ។ / 聞いたこと・気づいたことを、いくつでも書けます。まとめは AI がします',
+  notesPh:     'ឧទាហរណ៍៖ ម្ចាស់ហាងគិតពីពេលវេលា ច្រើនជាងតម្លៃសេវា',
+  notesAdd:    'បន្ថែម / 追加',
+  notesMore:   '+ សរសេរមួយទៀត / もう1つ書く',
+  notesEmpty:  'មិនទាន់មានកំណត់ចំណាំទេ / まだメモはありません',
+  notesSaved:  'បានរក្សាទុកកំណត់ចំណាំហើយ ✅',
+  notesNeed:   'សូមសរសេរកំណត់ចំណាំសិន / メモを書いてください',
+  // ヒントのチップ [km, ja]。押すと「km៖ 」を欄の先頭に入れる（Panha 指定の区切り）
+  tips:        [['បញ្ហាដែលកំពុងជួប', '困っていること'], ['ស្ថានភាពរថយន្តរបស់ភ្ញៀវ', 'お客さんの車の状態'],
+                ['ប្រតិកម្មចំពោះតម្លៃសេវា', '料金への反応'], ['អ្នកសម្រេចចិត្តគឺនរណា', '決める人は誰か']]
 };
 // 商談計算の画面文言。km は Panha 校閲済み（2026-10-19 提携電卓アプリ UI と同一の確定文）
 var HS = {
@@ -935,6 +982,7 @@ var listFilter = 'all', showUnvisited = true; // 一覧の絞り込み・地図�
 function isUnvisited(s) { return s.status === '未訪問'; } // 現在地（一覧の近い順・地図の青い点）
 var menuPrices = [];                                    // 商談計算の料金（メニュータブ）
 var currentHearings = [];
+var currentNotes = [];
 
 if (window.Telegram && Telegram.WebApp) {
   Telegram.WebApp.ready();
@@ -1334,8 +1382,10 @@ function openShop(shopId, toHearing) {
       currentShop = d.shop;
       currentVisits = d.visits || [];
       currentHearings = d.hearings || [];
+      currentNotes = d.notes || [];
       renderShopDetail();
       renderHearings();
+      renderNotes();
       loadCommissions(shopId);
       if (toHearing) openHearing();
     })
@@ -1770,6 +1820,10 @@ function openForm(mode, opts) {
   document.getElementById('fFb').value    = '';
   document.getElementById('fMemo').value  = (mode === 'edit' && opts.visit) ? opts.visit.memo : '';
   document.getElementById('fNext').value  = (mode === 'edit' && opts.visit) ? (opts.visit.nextAction || '') : '';
+  // ヒアリングメモ（新規・追記のときだけ。編集のときは店の画面の「ヒアリングメモ」から足す）
+  document.getElementById('formNotesField').className = 'field' + (mode === 'edit' ? ' hidden' : '');
+  document.getElementById('formNotes').innerHTML = '';
+  addFormNote();
   document.getElementById('fDue').value   = (mode === 'edit' && opts.visit) ? (opts.visit.nextDue || '') : '';
   setReaction((mode === 'edit' && opts.visit) ? opts.visit.reaction : '');
   clearSuggest();
@@ -2037,7 +2091,8 @@ function saveVisit() {
       memo:     document.getElementById('fMemo').value,
       gps:      currentGps,
       nextAction: document.getElementById('fNext').value.trim(),
-      nextDue:  document.getElementById('fDue').value
+      nextDue:  document.getElementById('fDue').value,
+      notes:    formNoteTexts()
     };
   } else {
     var shopName = document.getElementById('fShop').value.trim();
@@ -2053,7 +2108,8 @@ function saveVisit() {
       memo:      document.getElementById('fMemo').value,
       gps:       currentGps,
       nextAction: document.getElementById('fNext').value.trim(),
-      nextDue:   document.getElementById('fDue').value
+      nextDue:   document.getElementById('fDue').value,
+      notes:     formNoteTexts()
     };
   }
 
@@ -2381,6 +2437,79 @@ function renderHearings() {
       (h.note ? '<div style="color:#cfc6b0">' + esc(h.note) + '</div>' : '') + '</div>';
   }).join('');
 }
+
+// ═══════════════════════════════════════════
+//  ヒアリングメモ（2026-10-20）— 聞いたこと・気づいたことを何件でも。まとめは 3日ごとの AI（自己改善タスク）
+// ═══════════════════════════════════════════
+function addFormNote() {
+  var box = document.getElementById('formNotes');
+  var ta = document.createElement('textarea');
+  ta.className = 'note-input'; ta.maxLength = 1000; ta.placeholder = STR.notesPh;
+  box.appendChild(ta);
+  return ta;
+}
+function formNoteTexts() {
+  var out = [], tas = document.querySelectorAll('#formNotes textarea');
+  for (var i = 0; i < tas.length; i++) { var t = tas[i].value.trim(); if (t) out.push(t); }
+  return out;
+}
+function renderTips() {
+  var rows = document.querySelectorAll('[data-tips]');
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].innerHTML = STR.tips.map(function(t) {
+      return '<button type="button" data-tip="' + esc(t[0]) + '">+ ' + esc(t[0]) + ' <span style="color:var(--text-dim)">' + esc(t[1]) + '</span></button>';
+    }).join('');
+  }
+}
+// ヒントのチップ: 押すと、その欄（訪問記録では最後の空欄、無ければ新しい欄）の先頭に「◯◯：」を入れる
+document.addEventListener('click', function(e) {
+  var b = e.target.closest('[data-tip]'); if (!b) return;
+  var target = b.parentNode.getAttribute('data-tips'), ta;
+  if (target === 'formNotes') {
+    var tas = document.querySelectorAll('#formNotes textarea');
+    ta = tas.length && !tas[tas.length - 1].value.trim() ? tas[tas.length - 1] : addFormNote();
+  } else {
+    ta = document.getElementById(target);
+  }
+  var head = b.getAttribute('data-tip') + '៖ ';
+  if (ta.value.indexOf(head) !== 0) ta.value = head + ta.value;
+  ta.focus();
+});
+function renderNotes() {
+  var list = document.getElementById('noteList');
+  if (!currentNotes.length) { list.innerHTML = '<div class="empty" style="padding:12px 0">' + esc(STR.notesEmpty) + '</div>'; return; }
+  list.innerHTML = currentNotes.map(function(n) {
+    return '<div class="note-item"><div class="nm">' + esc(n.datetime) + (n.staff ? ' · ' + esc(n.staff) : '') + '</div>' + esc(n.text) + '</div>';
+  }).join('');
+}
+function saveShopNote() {
+  if (!currentShop) return;
+  var ta = document.getElementById('sNoteText');
+  var text = ta.value.trim();
+  if (!text) { toast(STR.notesNeed, 'err'); return; }
+  var btn = document.getElementById('btnNoteAdd');
+  btn.disabled = true;
+  api({ action: 'saleslog_note_create', shopId: currentShop.shopId, texts: [text], gps: hereGps || null })
+    .then(function(d) {
+      btn.disabled = false;
+      if (!d.ok) { toast('⚠️ ' + (d.error || STR.netError), 'err'); return; }
+      ta.value = '';
+      currentNotes = d.notes || currentNotes;
+      renderNotes();
+      toast(STR.notesSaved, 'ok');
+    })
+    .catch(function() { btn.disabled = false; toast('⚠️ ' + STR.netError, 'err'); });
+}
+document.getElementById('notesHead').textContent = STR.notesHead;
+document.getElementById('notesHint').textContent = STR.notesHint;
+document.getElementById('sNoteText').placeholder = STR.notesPh;
+document.getElementById('btnNoteAdd').textContent = STR.notesAdd;
+document.getElementById('btnNoteAdd').addEventListener('click', saveShopNote);
+document.getElementById('lblFormNotes').textContent = STR.notesHead;
+document.getElementById('formNotesHint').textContent = STR.notesHint;
+document.getElementById('btnNoteMore').textContent = STR.notesMore;
+document.getElementById('btnNoteMore').addEventListener('click', function() { addFormNote().focus(); });
+renderTips();
 
 // 文言の流し込み（2026-10-20 一本化: 未訪問・フォロー）
 document.querySelector('#filterRow [data-f="all"]').textContent = STR.fAll;

@@ -193,6 +193,86 @@ function salesHearingLatestByShop_() {
   return out;
 }
 
+// ====== ヒアリングメモ（2026-10-20 Daisuke「聞いたこと・思ったことを何個でも記録したい。まとめは AI に」） ======
+// 1件=1行。店ごとに何件でも足せる。訪問記録と一緒に書いた分は visit_id が入る。
+// まとめは 3日ごとの自己改善タスク（docs/SALES_APP_IMPROVEMENT_LOG.md）が読んで作る
+
+const NOTES_SHEET_NAME = 'ヒアリングメモ';
+const NOTES_HEADERS = ['note_id', '日時', 'shop_id', '店名', '記録者', '内容', 'visit_id', '緯度', '経度'];
+const NOTES_MAX_PER_SAVE = 20;
+const NOTES_MAX_LEN = 1000;
+
+/**
+ * メモを足す（店の画面の「追加」・訪問記録と一緒の保存の両方から）
+ * @param {Object} p - { shopId, texts: [string], visitId?, gps? }
+ */
+function salesNoteCreate(chatId, p) {
+  const staff = findStaffByChatId(chatId);
+  if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+  const shop = findSheetRow_(getShopSheet_(), 'shop_id', p.shopId);
+  if (!shop) return { ok: false, error: 'SHOP_NOT_FOUND' };
+  const n = salesNotesAppend_(String(p.shopId), String(shop.obj['店名'] || ''), staff, p.texts, p.visitId, p.gps);
+  if (!n) return { ok: false, error: 'EMPTY_NOTE' };
+  return { ok: true, added: n, notes: salesNotesForShop_(p.shopId) };
+}
+
+/** 空でないメモだけを書き足し、足した件数を返す */
+function salesNotesAppend_(shopId, shopName, staff, texts, visitId, gps) {
+  const list = (Array.isArray(texts) ? texts : [texts])
+    .map(function(t) { return String(t || '').trim(); })
+    .filter(function(t) { return t; })
+    .slice(0, NOTES_MAX_PER_SAVE);
+  if (!list.length) return 0;
+  const g = normalizeSalesLogGps_(gps);
+  const sheet = getNotesSheet_();
+  const now = salesLogNow_();
+  list.forEach(function(t) {
+    appendSheetRow_(sheet, {
+      'note_id': generateDateTimeId('NT') + '-' + Utilities.getUuid().slice(0, 8),
+      '日時': now,
+      'shop_id': shopId,
+      '店名': shopName,
+      '記録者': staff.nameJp || staff.nameEn || '',
+      '内容': t.substring(0, NOTES_MAX_LEN),
+      'visit_id': String(visitId || ''),
+      '緯度': g ? g.lat : '',
+      '経度': g ? g.lng : ''
+    });
+  });
+  return list.length;
+}
+
+/** 1店のメモ（新しい順） */
+function salesNotesForShop_(shopId) {
+  const sheet = getSalesLogSs_().getSheetByName(NOTES_SHEET_NAME);
+  if (!sheet) return [];
+  const list = readSheetObjects_(sheet)
+    .filter(function(r) { return String(r.obj['shop_id']) === String(shopId) && r.obj['note_id']; })
+    .map(function(r) {
+      return { noteId: String(r.obj['note_id']), datetime: formatSalesLogDateCell_(r.obj['日時']),
+               staff: String(r.obj['記録者'] || ''), text: String(r.obj['内容'] || ''), visitId: String(r.obj['visit_id'] || '') };
+    });
+  // 同じ分に書いた複数件は書いた順に並べたいので、行番号の逆順（新しい行が先）
+  return list.reverse();
+}
+
+function getNotesSheet_() {
+  if (_salesLogSheetCache_[NOTES_SHEET_NAME]) return _salesLogSheetCache_[NOTES_SHEET_NAME];
+  const ss = getSalesLogSs_();
+  let sheet = ss.getSheetByName(NOTES_SHEET_NAME);
+  if (!sheet) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20 * 1000);
+    try {
+      sheet = ss.getSheetByName(NOTES_SHEET_NAME) || createHeaderedSheet_(ss, NOTES_SHEET_NAME, NOTES_HEADERS);
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  _salesLogSheetCache_[NOTES_SHEET_NAME] = sheet;
+  return sheet;
+}
+
 // ====== 試算（⚠️ saleslog-internal.html の hearingCalc_ と同じ式） ======
 
 function hearingCalc_(mode, inp, rate, prices) {
