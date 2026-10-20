@@ -668,7 +668,7 @@ function apiJobEnd(body, opts) {
     }
     // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
     if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
-      shopRef = getValidShopRef_(customerChatId);
+      try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
     }
     // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
@@ -698,7 +698,7 @@ function apiJobEnd(body, opts) {
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
     // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
-    if (shopRef) {
+    if (bookingId && shopRef) {
       Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
     } else if (bookingId && typeof sendPaymentQR === 'function') {
       try {

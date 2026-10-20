@@ -112,8 +112,9 @@ function notifyShopLinkCodes_(results, mismatch) {
   var opts = { disable_web_page_preview: true };
   if (cfg.adminPartnerThreadId) opts.message_thread_id = Number(cfg.adminPartnerThreadId);
   var chunk = '';
-  lines.forEach(function(l) {   // Telegram の上限（4096文字）を超えないよう行単位で分ける
-    if ((chunk + '\n' + l).length > 3500) { sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, chunk, opts); chunk = l; }
+  lines.forEach(function(l) {   // Telegram の上限（4096文字）を超えないよう行単位で分ける。1行が長すぎる時は切り詰める
+    if (l.length > 3400) l = l.substring(0, 3400) + '…（以下略・実行ログを確認）';
+    if (chunk && (chunk + '\n' + l).length > 3500) { sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, chunk, opts); chunk = l; }
     else chunk = chunk ? chunk + '\n' + l : l;
   });
   if (chunk) sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, chunk, opts);
