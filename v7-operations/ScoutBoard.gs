@@ -254,3 +254,22 @@ function scoutBoardWriteWeekly_(board, d) {
                            'メモ (Notes)', '計算 (Calcs)'], rows, [130, 90, 150, 110, 110, 90, 90], []);
   sh.setFrozenRows(2);
 }
+
+// ====== ホーム画面用リンク（GAS エディタから実行・管理者だけが使える場所） ======
+
+/**
+ * スタッフ全員の SAMURAI SCOUT ホーム画面用リンクを実行ログに出す（2026-10-20）
+ * Daisuke「Safari でホーム画面に追加したい。1タップで立ち上げ」「拡張機能も使ってすべて自動で」
+ * - 鍵は現場アプリ v2 と同じ（FieldLink.gs・スタッフごと）。Telegram を開かなくても PC だけで作れる
+ * - リンクの gas= は、スクリプトプロパティ SCOUT_GAS_URL（本番の /exec URL）。無ければ ScriptApp の URL
+ * - リンクは本人だけに送る（他人に渡すとその人として記録できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除
+ */
+function scoutHomeLinks() {
+  var gas = PropertiesService.getScriptProperties().getProperty('SCOUT_GAS_URL') || ScriptApp.getService().getUrl();
+  var base = 'https://ec20921-debug.github.io/samurai-motors-miniapp/saleslog-internal.html';
+  getActiveStaff().forEach(function(s) {
+    if (!s.chatId) { Logger.log('— ' + (s.nameEn || s.nameJp) + '：Chat ID 未登録'); return; }
+    Logger.log('🔗 ' + (s.nameEn || s.nameJp) + '：' + base + '?gas=' + encodeURIComponent(gas) +
+               '&u=' + encodeURIComponent(s.chatId) + '&k=' + fieldLinkKey_(s.chatId));
+  });
+}
