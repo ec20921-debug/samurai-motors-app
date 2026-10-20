@@ -64,6 +64,7 @@ v7-operations 側も同様に `clasp push --force`。
 - **最後に読んだQRが優先**: 店QRを読むとレジデンス等の流入元（src_ref）は外れ、有効な流入元QR（Picasso 等）を読むと店の紐付け（shop_ref）は外れる
 - 予約なしの手動ジョブの「支払いのご案内」: 現場アプリの支払区分が 現金・ABA なら送る（現場の明示が優先）／提携店払い・無料なら送らない／未選択・後払いなら店QR経由のお客様には送らない
 - 店マスターが一時的に読めない時は店扱い（当社QRを送らない側）に倒す
+- **写真共有の告知（2026-10-21 Daisuke 決定）**: 店QRから来たお客様への歓迎メッセージで「作業前後の写真はこのお店にも共有されます」とクメール語＋英語で一言伝える（BookingBot.gs sendWelcomeMessage の referralLine）。現場が口頭で伝える必要はない
 - 店を通さず当社で集金する例外だけ `retryPaymentQR("<予約ID>", true)` で送れる（第2引数なしだと何も変えずに止まる）
 - 関連ファイル: v7/ShopRouting.gs（getValidShopRef_ / lookupShopMaster_）・v7/PaymentManager.gs・v7/ManualCustomerLink.gs・v7-operations/ShopLinkCodes.gs
 
