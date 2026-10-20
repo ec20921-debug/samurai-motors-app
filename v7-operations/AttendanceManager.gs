@@ -355,25 +355,33 @@ function toMinutes_(hhmm) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// ====== 勤務Bot update 処理（Queueからディスパッチ） ======
+// ====== 勤務Bot の /start・/menu（InternalBotDispatcher.gs から呼ばれる） ======
 
 /**
- * QueueManager.processInternalQueue から呼ばれる
- * /start コマンドにはミニアプリ起動ボタンを返信
+ * /start・/menu にミニアプリ起動ボタンを返す
+ *   - 個人チャットだけで返す（web_app ボタンはグループに送れない。
+ *     管理グループで他の Bot 宛ての /menu を拾っても反応しないように）
+ *   - スタッフマスターに登録済み（有効）の人だけに返す。未登録の人には返さず、登録用に chat id をログに残す
+ * ※ 2026-04-18 夕方〜2026-10-20 は handleInternalBotUpdate という名前で TaskManager.gs 側と重複しており、
+ *   後に読まれる TaskManager 側が勝つため、こちらは呼ばれていなかった（docs/OPS_LESSONS.md #9）
+ * @return {boolean} /start・/menu だった（ここで処理を終えた）なら true
  */
-function handleInternalBotUpdate(update) {
-  if (!update.message) return;
-  const msg = update.message;
-  const chatId = msg.chat.id;
-  const text = String(msg.text || '');
+function handleInternalMenuCommand_(msg) {
+  // 「/start abc」（ディープリンク）や「/menu@ボット名」も同じコマンドとして扱う
+  const cmd = String(msg.text || '').trim().split(/\s+/)[0].split('@')[0];
+  if (cmd !== '/start' && cmd !== '/menu') return false;
 
-  if (text === '/start' || text === '/menu') {
-    sendInternalMenu_(chatId);
-    return;
+  const chat = msg.chat || {};
+  if (chat.type !== 'private') return true;
+
+  if (!findStaffByChatId(chat.id)) {
+    const username = (msg.from && msg.from.username) ? '@' + msg.from.username : '（なし）';
+    Logger.log('ℹ️ 勤務Bot: 未登録の人から ' + cmd + ' chat=' + chat.id + ' username=' + username);
+    return true;
   }
 
-  // それ以外のメッセージは無視（現時点）
-  Logger.log('ℹ️ 勤務Bot: 未対応メッセージ chat=' + chatId + ' text=' + text);
+  sendInternalMenu_(chat.id);
+  return true;
 }
 
 /**
@@ -392,13 +400,17 @@ function sendInternalMenu_(chatId) {
     'Welcome to Samurai Motors Internal\n\n' +
     '👇 ខាងក្រោមបើកមិនីកម្មវិធី / Tap below to open the app';
 
-  sendMessage(BOT_TYPE.INTERNAL, chatId, text, {
+  const res = sendMessage(BOT_TYPE.INTERNAL, chatId, text, {
     reply_markup: {
       inline_keyboard: [[
         { text: '🚀 បើកកម្មវិធី / Open App', web_app: { url: cfg.internalMiniappUrl } }
       ]]
     }
   });
+  // 失敗しても例外にはならない（URL が https でない・ブロック済み等）。誰宛てで失敗したかを残す
+  if (!res || !res.ok) {
+    Logger.log('❌ sendInternalMenu_ 失敗 chat=' + chatId + ' res=' + JSON.stringify(res));
+  }
 }
 
 // ====== デバッグ用 ======
