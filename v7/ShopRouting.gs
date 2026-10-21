@@ -203,6 +203,11 @@ function handleShopStart_(msg, text) {
     Logger.log('⚠️ shop_ref 保存失敗: ' + err);
   }
 
+  // 流入分析用にファネルログへ記録（流入元QRの 'src:<コード>' と同じ形・2026-10-21）。失敗しても本処理は止めない
+  if (typeof logFunnelEvent === 'function') {
+    try { logFunnelEvent(msg.chat.id, 'bot_start', 'shop:' + shopId, '', null); } catch (err) { Logger.log('⚠️ ファネル記録失敗（店QR）: ' + err); }
+  }
+
   // 店舗グループへ来店通知
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
