@@ -270,8 +270,12 @@ function sendWelcomeMessage(msg, opts) {
   } catch (e) { /* 失敗しても welcome は送る */ }
 
   // 紹介元の店名行（提携店QR経由のみ。クメール語版は Panha 校閲後に追加予定）
+  // 2026-10-21 Daisuke 決定: 作業前後の写真を店にも共有することを、最初に一言伝える（個人情報の配慮）
+  //   クメール語は Panha panha_pass（provisional・Run Kosal 確認待ち）
   const referralLine = opts.shopName
-    ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n\n'
+    ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n' +
+      '📸 យើងនឹងចែករំលែករូបថតរថយន្តរបស់អ្នក មុន / ក្រោយ ជាមួយ ' + opts.shopName + ' ផងដែរ។\n' +
+      '📸 Your car\'s Before/After photos will also be shared with ' + opts.shopName + '.\n\n'
     : '';
 
   // 2026-10-11 改訂（Daisuke 指示）: クメール語を先に・お客様の行動は

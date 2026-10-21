@@ -224,6 +224,8 @@ debugMockPartnerFormSubmit()
 3. **承認後**: パートナーの Telegram Username に直接 DM して Chat ID を教えてもらう
    - 相手に「@SamuraiMotorsBot を友だち追加して /start を送ってください」と伝える
    - 相手から start が来たら、その Chat ID をパートナーシート「Telegram Chat ID」欄に貼り付け
+     - 勤務Bot（@SamuraiMotorsInternalBot）宛ての `/start` なら、v7-operations の GAS 実行ログ（`processInternalQueue`）で「未登録の人から」を検索すると `chat=` と `username=` が出る（2026-10-20〜。Bot からの返信はない）
+     - ※ この下の代替案にある「/start で紹介コード等が自動で届く」仕組みは未実装（`findPartnerByTelegramUsername` はあるが呼び出し元なし）
    - `sendPartnerWelcomeDm_('PTR-XXXXXX-XXX')` を実行すると Welcome DM が飛ぶ
 4. **紹介開始**: パートナーが紹介コード `SM-XXX` を知人に共有
 5. **予約時**: お客さまが予約Bot に紹介コードを入力（※ 未実装。当面は紹介履歴シートに手動で記帳）
