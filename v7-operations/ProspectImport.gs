@@ -13,6 +13,7 @@
  *      判定 = 追加 / 重複 / 要確認 / 対象外。要確認の行は、目で見て「追加」か「重複」に書き換える
  *   2. prospectImportRun() を実行 → 判定が「追加」の行だけを店マスターに「未訪問」で登録し、
  *      確認タブの「取込結果」に shop_id を書く。もう一度実行しても二重には入らない（出典で判定）
+ *   3. （2026-10-21）電話が #ERROR! の店があれば repairShopPhoneErrors() を1回実行
  *
  * 【同じ店かどうかの判定（上から順に）】
  *   ① 見込みリストの shop_id が店マスターにある → 重複
@@ -55,8 +56,9 @@ function prospectImportPreview() {
     return [verdict, d.reason, d.near || '', p.no, p.name, p.type, p.tier, p.status, p.lat === null ? '' : p.lat,
             p.lng === null ? '' : p.lng, p.phone, p.facebook, p.address, p.nextAction, p.memo, old ? (old['取込結果'] || '') : ''];
   });
+  // 電話の列は書く前に文字の形式にする（後からだと「+855 …」が数式として入り #ERROR! になる・先頭ゼロも消える）
+  sheet.getRange(2, 11, Math.max(rows.length, 1), 1).setNumberFormat('@');
   if (rows.length) sheet.getRange(2, 1, rows.length, PROSPECT_CHECK_HEADERS.length).setValues(rows);
-  sheet.getRange(2, 11, Math.max(rows.length, 1), 1).setNumberFormat('@'); // 電話の先頭ゼロ
 
   const count = {};
   rows.forEach(function(r) { count[r[0]] = (count[r[0]] || 0) + 1; });
@@ -113,6 +115,68 @@ function prospectImportRun() {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ====== 3. 電話が #ERROR! になった店を直す（2026-10-21・GAS エディタから1回実行） ======
+// 取込のとき「+855 …」が数式（=+855 …）として入り、店マスターの電話が #ERROR! になった店がある。
+// 元の番号を ①店マスターのセルの式 ②確認タブの式（出典の No で引く）③見込みリストの式 の順に探して、文字として書き戻す。
+// 見つからない店は書き換えずにログに出す（電話は空のまま手で入れる）
+function repairShopPhoneErrors() {
+  const shopSheet = getShopSheet_();
+  const headers = getSheetHeaders_(shopSheet);
+  const phoneCol = headers.indexOf('電話') + 1, srcIdx = headers.indexOf('出典');
+  const last = shopSheet.getLastRow();
+  if (phoneCol < 1 || last < 2) { Logger.log('対象なし'); return { fixed: 0, missing: [] }; }
+  const phoneRange = shopSheet.getRange(2, phoneCol, last - 1, 1);
+  const vals = phoneRange.getValues(), fx = phoneRange.getFormulas();
+  const srcs = srcIdx < 0 ? [] : shopSheet.getRange(2, srcIdx + 1, last - 1, 1).getValues();
+
+  const byNo = phoneFormulasByNo_(getSalesLogSs_().getSheetByName(PROSPECT_CHECK_SHEET));
+  let listByNo = null; // 見込みリストは必要になった時だけ開く
+  let fixed = 0;
+  const missing = [];
+  for (let i = 0; i < vals.length; i++) {
+    const bad = fx[i][0] || /^#(ERROR!|N\/A|REF!|VALUE!|NAME\?)$/.test(String(vals[i][0]).trim());
+    if (!bad) continue;
+    let original = fx[i][0] ? fx[i][0].replace(/^=/, '').trim() : '';
+    const m = srcs.length ? String(srcs[i][0]).match(/^見込みリスト No\.(.+)$/) : null;
+    if (!original && m) original = byNo[m[1].trim()] || '';
+    if (!original && m) {
+      if (listByNo === null) listByNo = prospectListPhoneFormulas_();
+      original = listByNo[m[1].trim()] || '';
+    }
+    if (original) {
+      shopSheet.getRange(i + 2, phoneCol).setNumberFormat('@').setValue(original); // 文字の形式にしてから書く（JetroCampaignManager と同じ直し方）
+      fixed++;
+    } else {
+      missing.push('行' + (i + 2) + (m ? '（見込みリスト No.' + m[1] + '）' : ''));
+    }
+  }
+  Logger.log('✅ 電話の #ERROR! を直した: ' + fixed + ' 件' + (missing.length ? ' / 元の番号が見つからない: ' + missing.join(', ') : ''));
+  return { fixed: fixed, missing: missing };
+}
+
+// シートの「No」→ 電話の元の文字（式として入っている時だけ。普通の値は直す必要がないので返さない）
+function phoneFormulasByNo_(sheet) {
+  const out = {};
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  const headers = getSheetHeaders_(sheet).map(function(h) { return h.trim(); });
+  const noCol = headers.indexOf('No'), telCol = headers.indexOf('電話');
+  if (noCol < 0 || telCol < 0) return out;
+  const n = sheet.getLastRow() - 1;
+  const nos = sheet.getRange(2, noCol + 1, n, 1).getValues();
+  const fx = sheet.getRange(2, telCol + 1, n, 1).getFormulas();
+  for (let i = 0; i < n; i++) {
+    if (fx[i][0]) out[String(nos[i][0]).trim()] = fx[i][0].replace(/^=/, '').trim();
+  }
+  return out;
+}
+
+function prospectListPhoneFormulas_() {
+  const id = PropertiesService.getScriptProperties().getProperty('PROSPECT_LIST_SPREADSHEET_ID');
+  if (!id) return {};
+  const ss = SpreadsheetApp.openById(id);
+  return phoneFormulasByNo_(ss.getSheetByName('営業リスト') || ss.getSheets()[0]);
 }
 
 // ====== 判定（テストしやすいよう純粋関数） ======

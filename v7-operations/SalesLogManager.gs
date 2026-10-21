@@ -745,7 +745,8 @@ function findSheetRow_(sheet, columnName, value) {
 function appendSheetRow_(sheet, dict) {
   const headers = getSheetHeaders_(sheet);
   const row = headers.map(function(h) {
-    return dict.hasOwnProperty(h) ? dict[h] : '';
+    if (!dict.hasOwnProperty(h)) return '';
+    return h === '電話' ? safeCellText_(dict[h]) : dict[h]; // 「+855 …」が数式あつかいで #ERROR! になるのを防ぐ
   });
   sheet.appendRow(row);
   return sheet.getLastRow();
@@ -759,7 +760,7 @@ function updateSheetRow_(sheet, rowNumber, updates) {
       Logger.log('⚠️ updateSheetRow_: 列 ' + col + ' 未発見、スキップ');
       return;
     }
-    sheet.getRange(rowNumber, idx + 1).setValue(updates[col]);
+    sheet.getRange(rowNumber, idx + 1).setValue(col === '電話' ? safeCellText_(updates[col]) : updates[col]);
   });
 }
 
