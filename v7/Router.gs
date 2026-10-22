@@ -81,6 +81,11 @@ function doGet(e) {
         result = apiBookingToday();
         break;
 
+      // 2026-10-22: 現場アプリの「どの提携店？」の選択肢（ShopRouting.gs）
+      case 'field_partner_shops':
+        result = apiFieldPartnerShops();
+        break;
+
       // ── 手動特価キャンペーン（CampaignBooking.gs） ──
       case 'manual_campaign_list':
         result = manualCampaignList();

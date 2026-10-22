@@ -670,17 +670,52 @@ function apiJobEnd(body, opts) {
     if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
       try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
     }
-    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    // 現場アプリで提携店を選んだ作業（在庫車・ボイス依頼など・2026-10-22）: その店のグループへ完了と写真を送る。
+    // shop_id は apiJobEndV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
+    var fieldShopId = String(opts.fieldShopId || '');
+    var shopFromField = false;
+    if (fieldShopId && fieldShopId !== shopRef) {
+      var fieldPhase = 'endshop:' + fieldShopId;
+      if (!jobCustSent_(opts, fieldPhase)) {
+        jobMarkCustSent_(opts, fieldPhase);
+        try {
+          if (typeof notifyShopGroupByShopId_ === 'function') {
+            notifyShopGroupByShopId_(fieldShopId,
+              '✅ Job finished (your shop)\n' +
+              '🚗 ' + (body.carModel || body.name || '-') + '\n' +
+              '⏱ ' + duration + ' min\n' +
+              '📷 After photos ↓',
+              photoResult.blobs);
+          }
+        } catch (e) {
+          Logger.log('⚠️ 選んだ提携店への同報失敗: ' + e);
+        }
+      }
+      // 予約なしで「提携店が払う」の時だけ店集金として扱う。予約の決済QRを止めるかは、お客様の店QR（shop_ref）だけで決める
+      if (!shopRef && !bookingId && payTypeShop === 'shop') { shopRef = fieldShopId; shopFromField = true; }
+    }
+    var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
+    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
     if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
-        var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
-        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-          '🏪 提携店経由: ' + shopNameEnd + '\n' +
-          'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, shopFromField
+          ? '🏪 提携店の作業: ' + shopNameEnd + '\n' +
+            '代金はお店からもらう（ABA QR）。お客様へ当社の決済QRは送っていません'
+          : '🏪 提携店経由: ' + shopNameEnd + '\n' +
+            'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 提携店経由の管理通知失敗: ' + e);
+      }
+    } else if (payTypeShop === 'shop') {
+      // 「提携店が払う」なのに店が分からない／予約のお客様が店QR経由でない → 取りこぼし・二重請求にならないよう知らせる
+      try {
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, bookingId
+          ? '⚠️ 現場は「提携店が払う」を選びましたが、このお客様は店のQR経由ではありません。決済QRは通常どおり送ります。お店とお客様の二重請求にならないか確認してください'
+          : '⚠️ 「提携店が払う」の作業ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 店払いの確認通知失敗: ' + e);
       }
     }
 
