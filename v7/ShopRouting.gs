@@ -385,6 +385,11 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
  * @return {{status:string, shops:Array<{id:string, name:string}>}}
  */
 function apiFieldPartnerShops() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('field_partner_shops_v1');
+  if (hit) {
+    try { return { status: 'ok', shops: JSON.parse(hit) }; } catch (ignore) {}
+  }
   var out = [], seen = {};
   var stopped = {};
   readShopLinks_().forEach(function(l) {
@@ -414,20 +419,24 @@ function apiFieldPartnerShops() {
   }
   readShopLinks_().forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
   out.sort(function(a, b) { return a.name.localeCompare(b.name); });
+  try { cache.put('field_partner_shops_v1', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
   return { status: 'ok', shops: out };
 }
 
-/** 現場アプリから来た shop_id を確かめる（店マスターかBot連携にあり、停止でない）。だめなら '' */
+/**
+ * 現場アプリから来た shop_id を確かめる（店マスターかBot連携にあり、停止・サンプルでない）。だめなら ''
+ * 端末から来る値なので、シートが読めない時も通さない（元の値は 作業記録の v2記録(JSON) に残るので後から直せる）
+ */
 function validFieldShopId_(shopId) {
   var id = String(shopId || '').trim();
-  if (!/^[A-Za-z0-9_-]{3,64}$/.test(id)) return '';
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/.test(id) || id.indexOf('SHOP-SAMPLE') === 0) return '';
   try {
     var link = findShopLinkByShopId_(id);
     if (link && String(link.obj['状態']) === '停止') return '';
     if (link) return id;
-    var hit = lookupShopMaster_(id);
-    return (hit.found || hit.error) ? id : '';
+    return lookupShopMaster_(id).found ? id : '';
   } catch (err) {
-    return id;
+    Logger.log('⚠️ validFieldShopId_ 確認できず shop_id=' + id + ': ' + err);
+    return '';
   }
 }

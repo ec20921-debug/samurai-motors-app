@@ -123,9 +123,13 @@ function scoutLinksRows_() {
         if (b.status === '作業完了') { done++; sales += b.amount; }
       });
     });
-    // 店の在庫車など（店が当社に払う）: 店の取り分は無いので SAMURAI 側にだけ足す
+    // 店の在庫車など（店が当社に払う）: 店の取り分は無いので SAMURAI 側にだけ足す。
+    // その店のQRを読んだお客様の作業は、上の予約（手動ジョブの売上計上行）で数えているので足さない
     let fieldSales = 0;
-    (fieldJobs[id] || []).forEach(function(j) { booked++; done++; fieldSales += j.amount; });
+    (fieldJobs[id] || []).forEach(function(j) {
+      if (j.chat && chats.hasOwnProperty(j.chat)) return;
+      booked++; done++; fieldSales += j.amount;
+    });
     const rate = (typeof shopCommissionTerms_ === 'function' && shopById[id]) ? shopCommissionTerms_(shop).rate : 30;
     const shopShare = Math.round(sales * rate) / 100;   // お客さんの予約の分だけ
     const totalSales = Math.round((sales + fieldSales) * 100) / 100;
@@ -172,23 +176,31 @@ function scoutLinksFunnel_(ss) {
 }
 
 /**
- * 作業記録タブ: 現場アプリで提携店を選んだ「予約なし」の完了作業 → shop_id → [{amount}]（2026-10-22）
+ * 作業記録タブ: 現場アプリで提携店を選んだ「予約なし」の完了作業 → shop_id → [{amount, chat}]（2026-10-22）
  * 予約つきの作業は 予約タブ側（QRを読んだお客様の予約）で数えるので、二重に数えないよう除く
+ * v2記録(JSON) は1セルが大きいので、使う列だけ読む
  */
 function scoutLinksFieldJobs_(ss) {
   const out = {};
   const sh = ss.getSheetByName('作業記録');
   if (!sh || sh.getLastRow() < 2) return out;
-  const values = sh.getDataRange().getValues();
-  const head = values.shift().map(String);
-  const si = head.indexOf('提携店ID'), bi = head.indexOf('予約ID'), wi = head.indexOf('作業状態'), ai = head.indexOf('料金(USD)'),
-        pi = head.indexOf('支払区分');
-  if (si < 0 || wi < 0) return out;
-  values.forEach(function(r) {
-    const id = String(r[si] || '').trim();
-    if (!id || (bi >= 0 && String(r[bi] || '').trim()) || String(r[wi] || '') !== '完了') return;
-    if (pi >= 0 && String(r[pi] || '') === 'free') return;   // 無料デモは売上に入れない
-    (out[id] = out[id] || []).push({ amount: ai >= 0 ? (Number(r[ai]) || 0) : 0 });
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const n = sh.getLastRow() - 1;
+  const col = function(name) {
+    const i = head.indexOf(name);
+    return i < 0 ? null : sh.getRange(2, i + 1, n, 1).getValues().map(function(r) { return r[0]; });
+  };
+  const shopCol = col('提携店ID'), stCol = col('作業状態');
+  if (!shopCol || !stCol) return out;
+  const bkCol = col('予約ID'), amtCol = col('料金(USD)'), payCol = col('支払区分'), chatCol = col('顧客チャットID');
+  shopCol.forEach(function(v, k) {
+    const id = String(v || '').trim();
+    if (!id || (bkCol && String(bkCol[k] || '').trim()) || String(stCol[k] || '') !== '完了') return;
+    if (payCol && String(payCol[k] || '') === 'free') return;   // 無料デモは売上に入れない
+    (out[id] = out[id] || []).push({
+      amount: amtCol ? (Number(amtCol[k]) || 0) : 0,
+      chat: chatCol ? String(chatCol[k] || '').trim() : ''
+    });
   });
   return out;
 }

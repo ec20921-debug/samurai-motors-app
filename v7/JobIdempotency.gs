@@ -225,6 +225,10 @@ function apiJobEndV2(body) {
   if (!JOB_CLIENT_ID_RE_.test(cid)) return jobErr_(body, 'INVALID_CLIENT_ID', false);
   if (!JOB_CLIENT_ID_RE_.test(jcid)) return jobErr_(body, 'INVALID_JOB_CLIENT_ID', false);
 
+  // 現場アプリで選んだ提携店（2026-10-22）。確かめられた shop_id だけを opts で apiJobEnd へ渡す
+  // （body の値は信じない。シートを読むのでロックの外で確かめる。元の値は v2記録(JSON) に残る）
+  var fieldShop = (typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
+
   var cache = CacheService.getScriptCache();
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return jobErr_(body, 'BUSY', true);
@@ -262,9 +266,7 @@ function apiJobEndV2(body) {
       body.paymentType = 'unknown';
     }
     if (pt) endUpd['支払区分'] = pt;
-    // 現場アプリで選んだ提携店（2026-10-22）。確かめられた shop_id だけ記録し、apiJobEnd へも渡す
-    var fieldShop = (typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
-    if (fieldShop) { endUpd['提携店ID'] = fieldShop; body.fieldShopId = fieldShop; }
+    if (fieldShop) endUpd['提携店ID'] = fieldShop;
     updateRow(SHEET_NAMES.JOBS, row.rowIndex, endUpd);
     SpreadsheetApp.flush();
     cache.put(key, '1', JOB_DELIVERING_TTL_);
@@ -276,7 +278,8 @@ function apiJobEndV2(body) {
   var lastChanceEnd = jobBumpTries_('end', cid);
   var res;
   try {
-    res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd });
+    res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
+                            fieldShopId: fieldShop });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
