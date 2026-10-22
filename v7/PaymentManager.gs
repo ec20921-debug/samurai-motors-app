@@ -81,6 +81,12 @@ function sendPaymentQR_locked_(bookingId, opts) {
     return { ok: false, reason: 'MANUAL_CAMPAIGN' };
   }
 
+  // 「提携店が払う」の手動ジョブ売上行（ManualSales.gs・管理者メモに「｜店払い:」）は代金をお店からもらうので送らない（2026-10-23）
+  if (String(bkRow.data['管理者メモ'] || '').indexOf('｜店払い:') >= 0 && !opts.ignoreShopRef) {
+    Logger.log('⏭️ sendPaymentQR: 店払いの作業のためスキップ bookingId=' + bookingId);
+    return { ok: false, reason: 'SHOP_PAYS' };
+  }
+
   var customerChatId = String(bkRow.data['チャットID'] || '');
   if (!customerChatId) {
     Logger.log('⚠️ sendPaymentQR: チャットID無し bookingId=' + bookingId);

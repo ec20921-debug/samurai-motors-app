@@ -45,7 +45,7 @@ function manualOptionCodesCsv_(body) {
  *
  * @param {Object} body - job_end / job の受信ペイロード
  * @param {string} sourceAction - 'job_end' | 'job'（ログ用）
- * @param {Object=} opts - { shopId: 提携店払いの店（確かめ済みの shop_id・空なら不明） }
+ * @param {Object=} opts - { shopId: 提携店払いの店（確かめ済みの shop_id・空なら不明）, jobId: 作業記録のジョブID }
  * @return {string|null} 作成した予約ID（スキップ時は null）
  */
 function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
@@ -105,8 +105,14 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
     else if (body.startTime) refDate = new Date(body.startTime);
     if (isNaN(refDate.getTime())) refDate = now;
     var dayKey = Utilities.formatDate(refDate, tz, 'yyyyMMdd');
-    if (shopPays && dayKey < MANUAL_SALES_SHOP_SINCE_) return null;
+    if (shopPays && dayKey < MANUAL_SALES_SHOP_SINCE_) {
+      Logger.log('ℹ️ 手動ジョブ売上: 店払いの導入日より前の作業のため計上しない (' + sourceAction + '・' + dayKey + ')');
+      return null;
+    }
     var dedupeKey = 'MS:' + dayKey + ':' + (plate || carModel || name || '-') + ':' + amount;
+    // 店払い（在庫車）は同じ日に同じ車種・同じ金額が何台も来るので、ジョブIDまで入れて1台ずつ計上する
+    // （実時間の job_end と毎時シンクは同じ作業記録の行なので同じジョブIDになる）
+    if (shopPays && opts.jobId) dedupeKey += ':' + String(opts.jobId);
     // 提携店払いは管理者メモと通知に店名を出す（店が分からない時もそのまま計上し、店未選択と書く）
     var shopLabel = '';
     if (shopPays) {
@@ -277,6 +283,10 @@ function syncMissingManualJobSales() {
       var payTypeCell = idx['支払区分'] !== undefined ? String(r[idx['支払区分']] || '').trim() : '';
       // 2026-10-23: 提携店払いの店（現場アプリで選んだ・確かめ済みの shop_id）
       var shopCell = idx['提携店ID'] !== undefined ? String(r[idx['提携店ID']] || '').trim() : '';
+      // 現場で選んでいない時は、お客様の店QR（shop_ref）から（実時間の job_end と同じ店になる）
+      if (!shopCell && payTypeCell === 'shop' && linkedChat && typeof getValidShopRef_ === 'function') {
+        try { shopCell = getValidShopRef_(linkedChat) || ''; } catch (eShop) { shopCell = ''; }
+      }
 
       var created = recordManualJobSaleIfNeeded_({
         bookingId: '',
@@ -293,7 +303,7 @@ function syncMissingManualJobSales() {
         building: '',
         chatId: linkedChat,
         paymentType: payTypeCell
-      }, 'hourly_sync:' + jobId, { shopId: shopCell });
+      }, 'hourly_sync:' + jobId, { shopId: shopCell, jobId: jobId });
       if (created) count++;
     });
 
@@ -338,7 +348,20 @@ function findBookingMemoContains_(needle) {
   if (!memoCol) return false;
   var memos = sheet.getRange(2, memoCol, lastRow - 1, 1).getValues();
   for (var i = 0; i < memos.length; i++) {
-    if (String(memos[i][0] || '').indexOf(needle) !== -1) return true;
+    if (memoHasKey_(String(memos[i][0] || ''), needle)) return true;
+  }
+  return false;
+}
+
+/**
+ * メモにキーが「そのまま」入っているか（2026-10-23）。キーの直後が続きの文字なら別のキーとみなす
+ * 例: MS:…:Camry:10 は MS:…:Camry:100 や MS:…:Camry:10:JOB-… の中では一致にしない
+ */
+function memoHasKey_(memo, needle) {
+  var i = memo.indexOf(needle);
+  while (i !== -1) {
+    if (!/[0-9A-Za-z.:_-]/.test(memo.charAt(i + needle.length))) return true;
+    i = memo.indexOf(needle, i + 1);
   }
   return false;
 }
