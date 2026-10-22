@@ -16,7 +16,8 @@
 
 const SCOUT_BOARD_PROP = 'SCOUT_BOARD_SPREADSHEET_ID';
 const SCOUT_BOARD_TZ = 'Asia/Phnom_Penh';
-const SCOUT_BOARD_TABS = { today: '📅 今日', shops: '🏪 お店一覧', recent: '📝 最近の記録', weekly: '📈 週ごと' };
+const SCOUT_BOARD_TABS = { today: '📅 今日', shops: '🏪 お店一覧', recent: '📝 最近の記録', weekly: '📈 週ごと',
+                           links: '🔗 提携店QR・グループ連携' };   // links は ScoutBoardShopLinks.gs（2026-10-22）
 const SCOUT_BOARD_RECENT_DAYS = 30;
 const SCOUT_BOARD_WEEKS = 8;
 const SCOUT_BOARD_HEAD_BG = '#fbeec9';
@@ -70,6 +71,8 @@ function scoutBoardRefresh() {
   scoutBoardWriteShops_(board, d);
   scoutBoardWriteRecent_(board, d);
   scoutBoardWriteWeekly_(board, d);
+  // 提携店QR・グループ連携（ScoutBoardShopLinks.gs）。失敗しても他のタブには影響させない
+  try { scoutBoardWriteShopLinks_(board, d); } catch (e) { Logger.log('⚠️ 営業ボード 提携店QRタブ: ' + e); }
 }
 
 // ====== データ（v7 Database を読むだけ） ======
