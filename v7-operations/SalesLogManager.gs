@@ -175,7 +175,10 @@ function salesLogShopDetail(chatId, shopId) {
   try { hearings = salesHearingsForShop_(shopId); } catch (e) { Logger.log('⚠️ salesHearingsForShop_: ' + e); }
   try { notes = salesNotesForShop_(shopId); } catch (e) { Logger.log('⚠️ salesNotesForShop_: ' + e); }
 
-  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings, notes: notes };
+  // 🔗 QRシール・お店のグループ（ShopQrSticker.gs）。取れなくても店の画面は出す
+  const qr = shopQrInfoSafe_(String(shopId), found.obj);
+
+  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings, notes: notes, qr: qr };
 }
 
 /**
