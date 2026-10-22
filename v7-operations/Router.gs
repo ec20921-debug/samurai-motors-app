@@ -346,6 +346,26 @@ function doPost(e) {
         }));
       }
 
+      // ── 車屋提携 QRシール・お店のグループ（ShopQrSticker.gs） ──
+      case 'shop_qr_issue': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(shopQrIssue(chatId, shopId));
+      }
+
+      case 'shop_qr_sticker': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(shopQrStickerLog(chatId, {
+          shopId:   shopId,
+          count:    Number(body.count || 0),
+          memo:     String(body.memo || ''),
+          clientId: String(body.clientId || '')
+        }));
+      }
+
       // ── 車屋提携 コミッション台帳（Phase 4・saleslog-internal.html） ──
       case 'commission_list': {
         const chatId = String(body.chatId || '');
