@@ -11,6 +11,8 @@
  *   【サンプル】行（SHOP-SAMPLE-xxx）は除く
  * - 流入はファネルログの bot_start / ソース shop:<shop_id>（v7 本番 @82・2026-10-21 14:15 以降）。
  *   予約・施工・売上は、その店のQRを読んだお客様（チャットID）の予約すべて（2回目以降も含む）
+ * - 同日 v2: スマホでコピーしやすい列順（店名 → QRのURL → 連携 → 送る文）・シール枚数/最終日（ShopQrSticker.gs が店マスターに書く）・
+ *   あいさつ文は右端・全行を折り返さず1行の高さに揃える。手順は「アプリでQRを出す → 印刷 → 記録 → グループ」の順
  */
 
 const SCOUT_LINKS_TAB_KEY = 'links';
@@ -33,25 +35,35 @@ function scoutBoardWriteShopLinks_(board, d) {
 
   const steps = [
     ['🔗 提携店QR・グループ連携（1時間ごとに自動更新・見るだけ） / Partner shop QR & group link'],
-    ['お店の Telegram グループの作り方（1店ずつ・スマホで） / How to set up the shop group'],
-    ['① Telegram で「新しいグループ」→ メンバーに お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加 / New group → add the shop owner and @' + SCOUT_LINKS_BOT],
-    ['② グループ名は、下の表の「作るグループ名」をコピペ / Use the group name in the table'],
-    ['③ グループに「グループで送る文」（/register 6桁）をコピペして送る → Bot が「✅ Connected!」と返したら完了（この表は1時間以内に ✅ 連携済 に変わる） / Send the /register line → wait for ✅ Connected!'],
-    ['④ 続けて「あいさつ文」を送る（クメール語と英語） / Then send the greeting'],
+    ['QRシールの作り方（お店がOKした時・スマホで） / How to make the QR sticker'],
+    ['① 営業アプリのお店の画面 →「🔗 このお店のQRを出す」→「📋 URLをコピー」（この表の「予約QRのURL」をコピーしてもよい） / In the app: issue QR → copy URL'],
+    ['② ラベル印刷アプリに貼り付けてシールを印刷 → 自分のスマホで1回読んで確認（「QRを読んだ人」が増える） / Paste into the label app → print → scan once to check'],
+    ['③ アプリで「🏷 QRシールを渡した」に枚数を記録（この表の「シール枚数」に出る） / Record the sticker count in the app'],
+    ['お店の Telegram グループの作り方 / How to set up the shop group'],
+    ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
+    ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と返したら完了 → 続けて「あいさつ文」（右端の列）を送る / Send the /register line, then the greeting'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');
   sh.getRange(2, 1).setFontWeight('bold');
+  sh.getRange(6, 1).setFontWeight('bold');
   sh.getRange(steps.length, 1).setFontColor('#b3261e');
 
   const r0 = steps.length + 2;
-  const headers = ['No', '店名 (Shop)', '連携 (Linked)', '作るグループ名 (Group name)', 'グループで送る文 (Send in group)',
-    'あいさつ文 (Greeting)', '予約QRのURL (QR link)', 'QRを読んだ人 (Scanned)', '予約画面を開いた人 (Opened)', '予約 (Bookings)',
+  // スマホで開いた時に「店名 → QRのURL → 連携 → 送る文」が横スクロールなしで見える順（2026-10-22）。
+  // あいさつ文（長い・全店同じ形）は右端へ。1行の高さを揃えるため折り返さない
+  const headers = ['No', '店名 (Shop)', '予約QRのURL (QR link)', '連携 (Linked)', 'グループで送る文 (Send in group)',
+    '作るグループ名 (Group name)', 'シール枚数 (Stickers)', 'シール最終日 (Last sticker)',
+    'QRを読んだ人 (Scanned)', '予約画面を開いた人 (Opened)', '予約 (Bookings)',
     '施工完了 (Done)', '売上 USD (Sales)', '店の取り分 USD (Shop share)', 'SAMURAI USD', '取り分の率 (Rate %)',
-    '実際のグループ名 (Actual group)', '連携日時 (Linked at)', 'shop_id'];
+    '実際のグループ名 (Actual group)', '連携日時 (Linked at)', 'あいさつ文 (Greeting)', 'shop_id'];
   const n = scoutBoardTable_(sh, r0, headers, rows,
-    [40, 200, 90, 230, 140, 360, 330, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 220], [2, 4, 6]);
+    [36, 160, 260, 90, 140, 230, 80, 100, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 360, 220], []);
+  if (rows.length) {
+    sh.getRange(r0 + 1, 1, rows.length, headers.length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    sh.setRowHeightsForced(r0 + 1, rows.length, 24);
+  }
   sh.setFrozenRows(r0);
   sh.setFrozenColumns(2);
   if (rows.length) sh.getRange(r0, 1, n, headers.length).createFilter();
@@ -116,15 +128,17 @@ function scoutLinksRows_() {
     return [
       i + 1,
       name,
-      linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
-      name + ' × SAMURAI MOTORS',
-      linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: v7-operations で issueShopLinkCodesForQrShops を実行）'),
-      (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
       qr,
+      linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
+      linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: アプリのお店の画面で「🔗 このお店のQRを出す」を押す）'),
+      name + ' × SAMURAI MOTORS',
+      Number(shop['QRシール枚数']) || 0,
+      formatSalesLogDateCell_(shop['QRシール最終日']).substring(0, 10),
       chatIds.length, opened, booked, done,
       Math.round(sales * 100) / 100, shopShare, Math.round((sales - shopShare) * 100) / 100, rate,
       linked ? String(link['グループ名'] || '') : '',
       linked ? String(link['紐付け日時'] || '') : '',
+      (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
       id
     ];
   });
