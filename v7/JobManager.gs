@@ -722,8 +722,9 @@ function apiJobEnd(body, opts) {
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
     try {
       // 2026-10-08 D4: 支払区分による可否は recordManualJobSaleIfNeeded_ の入口で判定
+      // 2026-10-23: 提携店払いはその店（現場で選んだ店／お客様の店QR）を売上行に書く
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
-        recordManualJobSaleIfNeeded_(body, 'job_end');
+        recordManualJobSaleIfNeeded_(body, 'job_end', { shopId: shopRef });
       }
     } catch (e) {
       Logger.log('⚠️ 手動ジョブ売上 自動計上失敗(job_end): ' + e);
