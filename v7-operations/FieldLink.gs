@@ -67,6 +67,19 @@ function fieldLinkIssue_(initDataRaw, body) {
   return { ok: true, link: link, staff: { staffId: target.staffId, nameJp: target.nameJp, nameEn: target.nameEn } };
 }
 
+/**
+ * スタッフ全員の現場アプリ専用リンクを実行ログに出す（GAS エディタから実行・管理者だけが使える場所・2026-10-23）
+ * Daisuke「本人用リンクの出し方がよくわからない」→ Telegram の管理者カードを使わず PC だけで作れるように（ScoutBoard.scoutHomeLinks と同じ形）
+ * - リンクは本人だけに送る（他人に渡すとその人として打刻・日報できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除
+ */
+function fieldHomeLinks() {
+  getActiveStaff().forEach(function (s) {
+    var label = s.nameEn || s.nameJp;
+    if (!s.chatId) { Logger.log('— ' + label + '：Chat ID 未登録'); return; }
+    Logger.log('🔗 ' + label + '：' + FIELD_APP_URL_ + '?u=' + encodeURIComponent(s.chatId) + '&k=' + fieldLinkKey_(s.chatId));
+  });
+}
+
 /** 管理者用: 有効なスタッフの一覧（専用リンク発行の画面用・chatId は返さない） */
 function fieldLinkStaffList_() {
   return getActiveStaff().map(function (s) {

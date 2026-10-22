@@ -16,7 +16,12 @@
  * 【対象条件】
  *   - bookingId が空（= 予約経由でない手動ジョブ）
  *   - 料金(amount) > 0（無料 $0 と未入力は対象外）
+ *   - 支払区分が 現金・ABA・提携店払い（未収・無料デモ・不明は対象外）
+ *     提携店払い（店の在庫車・ボイス依頼）は代金があとでお店から届くので「未清算」で計上する（2026-10-23）
  */
+
+// 提携店払いを計上するのは、この日（yyyyMMdd）以降に終わった作業だけ（毎時シンクで過去分を遡って作らない）
+var MANUAL_SALES_SHOP_SINCE_ = '20261023';
 
 /**
  * 手入力ジョブの optionCodes(配列) と旧 glassOption(単一) を CSV に正規化する
@@ -40,15 +45,18 @@ function manualOptionCodesCsv_(body) {
  *
  * @param {Object} body - job_end / job の受信ペイロード
  * @param {string} sourceAction - 'job_end' | 'job'（ログ用）
+ * @param {Object=} opts - { shopId: 提携店払いの店（確かめ済みの shop_id・空なら不明）, jobId: 作業記録のジョブID }
  * @return {string|null} 作成した予約ID（スキップ時は null）
  */
-function recordManualJobSaleIfNeeded_(body, sourceAction) {
+function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
   try {
+    opts = opts || {};
     var bookingId = String(body.bookingId || '');
     if (bookingId) return null;  // 予約経由は既存フローで売上に乗る
-    // 2026-10-08 D4: 現場アプリ v2 の支払区分が現金・ABA 以外（提携店払い・未収・無料デモ）は自動計上しない
+    // 2026-10-08 D4: 現場アプリ v2 の支払区分が 現金・ABA・提携店払い 以外（未収・無料デモ・不明）は自動計上しない
     var payType = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
-    if (payType && payType !== 'cash' && payType !== 'aba') {
+    var shopPays = payType === 'shop';
+    if (payType && payType !== 'cash' && payType !== 'aba' && !shopPays) {
       Logger.log('ℹ️ 手動ジョブ売上: 支払区分=' + payType + ' のため自動計上しない (' + sourceAction + ')');
       return null;
     }
@@ -97,7 +105,20 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
     else if (body.startTime) refDate = new Date(body.startTime);
     if (isNaN(refDate.getTime())) refDate = now;
     var dayKey = Utilities.formatDate(refDate, tz, 'yyyyMMdd');
+    if (shopPays && dayKey < MANUAL_SALES_SHOP_SINCE_) {
+      Logger.log('ℹ️ 手動ジョブ売上: 店払いの導入日より前の作業のため計上しない (' + sourceAction + '・' + dayKey + ')');
+      return null;
+    }
     var dedupeKey = 'MS:' + dayKey + ':' + (plate || carModel || name || '-') + ':' + amount;
+    // 店払い（在庫車）は同じ日に同じ車種・同じ金額が何台も来るので、ジョブIDまで入れて1台ずつ計上する
+    // （実時間の job_end と毎時シンクは同じ作業記録の行なので同じジョブIDになる）
+    if (shopPays && opts.jobId) dedupeKey += ':' + String(opts.jobId);
+    // 提携店払いは管理者メモと通知に店名を出す（店が分からない時もそのまま計上し、店未選択と書く）
+    var shopLabel = '';
+    if (shopPays) {
+      var shopId = String(opts.shopId || '');
+      shopLabel = (shopId && typeof getShopNameById_ === 'function' && getShopNameById_(shopId)) || shopId || '店未選択';
+    }
 
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(15 * 1000)) {
@@ -138,11 +159,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
         '料金(USD)':      amount,
         '進行状態':       '作業完了',
         '予約登録日時':   now,
-        '決済状態':       '清算済み',
+        '決済状態':       shopPays ? '未清算' : '清算済み',   // 店払いはお店から入金があったら手で 清算済み にする
         '請求額(USD)':    amount,
-        '入金確認日時':   now,
+        '入金確認日時':   shopPays ? '' : now,
         '催促回数':       0,
         '管理者メモ':     '客名:' + name + '｜手動ジョブ売上' +
+                         (shopPays ? '｜店払い:' + shopLabel : '') +
                          (plate ? '｜No.' + plate : '') +
                          (carModel ? '｜車:' + carModel : '') +
                          '｜' + dedupeKey,
@@ -158,7 +180,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction) {
         var text = '💰 手動ジョブ売上 記録（自動）\n' +
           '━━━━━━━━━━━━━━━━━\n' +
           '🆔 ' + newBookingId + '\n' +
-          '💵 $' + amount + '（清算済み）\n' +
+          '💵 $' + amount + (shopPays ? '（未清算・お店からもらう: ' + shopLabel + '）' : '（清算済み）') + '\n' +
           '👤 ' + (name || '-') +
           (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '');
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, {});
@@ -259,6 +281,12 @@ function syncMissingManualJobSales() {
         ? String(r[idx['顧客チャットID']] || '').trim() : '';
       // 2026-10-08 D4: v2 の支払区分（列が無い環境・旧アプリの行は空＝従来どおり）
       var payTypeCell = idx['支払区分'] !== undefined ? String(r[idx['支払区分']] || '').trim() : '';
+      // 2026-10-23: 提携店払いの店（現場アプリで選んだ・確かめ済みの shop_id）
+      var shopCell = idx['提携店ID'] !== undefined ? String(r[idx['提携店ID']] || '').trim() : '';
+      // 現場で選んでいない時は、お客様の店QR（shop_ref）から（実時間の job_end と同じ店になる）
+      if (!shopCell && payTypeCell === 'shop' && linkedChat && typeof getValidShopRef_ === 'function') {
+        try { shopCell = getValidShopRef_(linkedChat) || ''; } catch (eShop) { shopCell = ''; }
+      }
 
       var created = recordManualJobSaleIfNeeded_({
         bookingId: '',
@@ -275,7 +303,7 @@ function syncMissingManualJobSales() {
         building: '',
         chatId: linkedChat,
         paymentType: payTypeCell
-      }, 'hourly_sync:' + jobId);
+      }, 'hourly_sync:' + jobId, { shopId: shopCell, jobId: jobId });
       if (created) count++;
     });
 
@@ -320,7 +348,20 @@ function findBookingMemoContains_(needle) {
   if (!memoCol) return false;
   var memos = sheet.getRange(2, memoCol, lastRow - 1, 1).getValues();
   for (var i = 0; i < memos.length; i++) {
-    if (String(memos[i][0] || '').indexOf(needle) !== -1) return true;
+    if (memoHasKey_(String(memos[i][0] || ''), needle)) return true;
+  }
+  return false;
+}
+
+/**
+ * メモにキーが「そのまま」入っているか（2026-10-23）。キーの直後が続きの文字なら別のキーとみなす
+ * 例: MS:…:Camry:10 は MS:…:Camry:100 や MS:…:Camry:10:JOB-… の中では一致にしない
+ */
+function memoHasKey_(memo, needle) {
+  var i = memo.indexOf(needle);
+  while (i !== -1) {
+    if (!/[0-9A-Za-z.:_-]/.test(memo.charAt(i + needle.length))) return true;
+    i = memo.indexOf(needle, i + 1);
   }
   return false;
 }
