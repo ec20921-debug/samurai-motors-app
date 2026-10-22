@@ -48,7 +48,7 @@ function scoutBoardWriteShopLinks_(board, d) {
   const r0 = steps.length + 2;
   const headers = ['No', '店名 (Shop)', '連携 (Linked)', '作るグループ名 (Group name)', 'グループで送る文 (Send in group)',
     'あいさつ文 (Greeting)', '予約QRのURL (QR link)', 'QRを読んだ人 (Scanned)', '予約画面を開いた人 (Opened)', '予約 (Bookings)',
-    '施工完了 (Done)', '売上 USD (Sales)', '店の取り分 USD (Shop share)', 'SAMURAI USD', '取り分の率 (Rate %)',
+    '施工完了 (Done)', '売上 USD（お店の車も含む）(Sales)', '店の取り分 USD (Shop share)', 'SAMURAI USD', '取り分の率 (Rate %)',
     '実際のグループ名 (Actual group)', '連携日時 (Linked at)', 'shop_id'];
   const n = scoutBoardTable_(sh, r0, headers, rows,
     [40, 200, 90, 230, 140, 360, 330, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 220], [2, 4, 6]);
@@ -88,6 +88,7 @@ function scoutLinksRows_() {
 
   const funnel = scoutLinksFunnel_(ss);
   const bookings = scoutLinksBookings_(ss);
+  const fieldJobs = scoutLinksFieldJobs_(ss);   // 現場アプリで店を選んだ作業（予約なし・在庫車やボイス依頼など）
 
   return ids.map(function(id, i) {
     const shop = shopById[id] || {};
@@ -110,8 +111,12 @@ function scoutLinksRows_() {
         if (b.status === '作業完了') { done++; sales += b.amount; }
       });
     });
+    // 店の在庫車など（店が当社に払う）: 店の取り分は無いので SAMURAI 側にだけ足す
+    let fieldSales = 0;
+    (fieldJobs[id] || []).forEach(function(j) { booked++; done++; fieldSales += j.amount; });
     const rate = (typeof shopCommissionTerms_ === 'function' && shopById[id]) ? shopCommissionTerms_(shop).rate : 30;
-    const shopShare = Math.round(sales * rate) / 100;
+    const shopShare = Math.round(sales * rate) / 100;   // お客さんの予約の分だけ
+    const totalSales = Math.round((sales + fieldSales) * 100) / 100;
 
     return [
       i + 1,
@@ -122,7 +127,7 @@ function scoutLinksRows_() {
       (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
       qr,
       chatIds.length, opened, booked, done,
-      Math.round(sales * 100) / 100, shopShare, Math.round((sales - shopShare) * 100) / 100, rate,
+      totalSales, shopShare, Math.round((sales - shopShare + fieldSales) * 100) / 100, rate,
       linked ? String(link['グループ名'] || '') : '',
       linked ? String(link['紐付け日時'] || '') : '',
       id
@@ -148,6 +153,28 @@ function scoutLinksFunnel_(ss) {
     } else if (ev === 'miniapp_opened') {
       out.opened[chat] = true;
     }
+  });
+  return out;
+}
+
+/**
+ * 作業記録タブ: 現場アプリで提携店を選んだ「予約なし」の完了作業 → shop_id → [{amount}]（2026-10-22）
+ * 予約つきの作業は 予約タブ側（QRを読んだお客様の予約）で数えるので、二重に数えないよう除く
+ */
+function scoutLinksFieldJobs_(ss) {
+  const out = {};
+  const sh = ss.getSheetByName('作業記録');
+  if (!sh || sh.getLastRow() < 2) return out;
+  const values = sh.getDataRange().getValues();
+  const head = values.shift().map(String);
+  const si = head.indexOf('提携店ID'), bi = head.indexOf('予約ID'), wi = head.indexOf('作業状態'), ai = head.indexOf('料金(USD)'),
+        pi = head.indexOf('支払区分');
+  if (si < 0 || wi < 0) return out;
+  values.forEach(function(r) {
+    const id = String(r[si] || '').trim();
+    if (!id || (bi >= 0 && String(r[bi] || '').trim()) || String(r[wi] || '') !== '完了') return;
+    if (pi >= 0 && String(r[pi] || '') === 'free') return;   // 無料デモは売上に入れない
+    (out[id] = out[id] || []).push({ amount: ai >= 0 ? (Number(r[ai]) || 0) : 0 });
   });
   return out;
 }

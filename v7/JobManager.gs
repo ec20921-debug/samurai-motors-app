@@ -670,8 +670,26 @@ function apiJobEnd(body, opts) {
     if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
       try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
     }
-    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    // 現場アプリで提携店を選んだ作業（在庫車・ボイス依頼など・2026-10-22）: その店のグループへ完了と写真を送る。
+    // 「提携店が払う」を選んだ時だけ店集金（当社の決済QRを止める）として扱う
+    var fieldShopId = String(body.fieldShopId || '');
+    if (fieldShopId && fieldShopId !== shopRef) {
+      try {
+        if (typeof notifyShopGroupByShopId_ === 'function') {
+          notifyShopGroupByShopId_(fieldShopId,
+            '✅ Job finished (your shop)\n' +
+            '🚗 ' + (body.carModel || body.name || '-') + '\n' +
+            '⏱ ' + duration + ' min\n' +
+            '📷 After photos ↓',
+            photoResult.blobs);
+        }
+      } catch (e) {
+        Logger.log('⚠️ 選んだ提携店への同報失敗: ' + e);
+      }
+      if (!shopRef && payTypeShop === 'shop') shopRef = fieldShopId;
+    }
+    // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
     if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;

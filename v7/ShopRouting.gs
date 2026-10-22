@@ -346,7 +346,18 @@ function getValidShopRef_(chatId) {
  */
 function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
   try {
-    var shopId = getShopRefForCustomer(customerChatId);
+    return notifyShopGroupByShopId_(getShopRefForCustomer(customerChatId), text, blobs);
+  } catch (err) {
+    Logger.log('⚠️ notifyShopGroupJobPhotos エラー: ' + err);
+    return '';
+  }
+}
+
+/**
+ * 指定の店の店舗グループ（連携済のみ）へ本文＋写真を送る。送った shop_id を返す（2026-10-22 現場アプリで店を選んだ作業用に分離）
+ */
+function notifyShopGroupByShopId_(shopId, text, blobs) {
+  try {
     if (!shopId) return '';
     var link = findShopLinkByShopId_(shopId);
     if (!link || String(link.obj['状態']) !== '連携済') return '';
@@ -363,7 +374,60 @@ function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
     }
     return shopId;
   } catch (err) {
-    Logger.log('⚠️ notifyShopGroupJobPhotos エラー: ' + err);
+    Logger.log('⚠️ notifyShopGroupByShopId_ エラー: ' + err);
     return '';
+  }
+}
+
+/**
+ * GET field_partner_shops — 現場アプリの「どの提携店？」の選択肢（2026-10-22）
+ * 店マスターで専用QRを配った店（QRリンク(BookingBot) あり）＋Bot連携にある店。【サンプル】・停止中は除く
+ * @return {{status:string, shops:Array<{id:string, name:string}>}}
+ */
+function apiFieldPartnerShops() {
+  var out = [], seen = {};
+  var stopped = {};
+  readShopLinks_().forEach(function(l) {
+    var id = String(l.obj['shop_id'] || '');
+    if (String(l.obj['状態']) === '停止') { if (!stopped.hasOwnProperty(id)) stopped[id] = true; }
+    else stopped[id] = false;
+  });
+  var add = function(id, name) {
+    id = String(id || '').trim();
+    if (!id || seen[id] || stopped[id] === true || id.indexOf('SHOP-SAMPLE') === 0 || String(name || '').indexOf('【サンプル】') === 0) return;
+    seen[id] = true;
+    out.push({ id: id, name: String(name || id) });
+  };
+  try {
+    var sh = getSpreadsheet().getSheetByName('店マスター');
+    if (sh && sh.getLastRow() >= 2) {
+      var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+      var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), qi = head.indexOf('QRリンク(BookingBot)');
+      if (ci >= 0 && ni >= 0 && qi >= 0) {
+        sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, qi) + 1).getValues().forEach(function(r) {
+          if (/t\.me\/[^?\s]+\?start=shop_/.test(String(r[qi] || ''))) add(r[ci], r[ni]);
+        });
+      }
+    }
+  } catch (err) {
+    Logger.log('⚠️ apiFieldPartnerShops 店マスター: ' + err);
+  }
+  readShopLinks_().forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
+  out.sort(function(a, b) { return a.name.localeCompare(b.name); });
+  return { status: 'ok', shops: out };
+}
+
+/** 現場アプリから来た shop_id を確かめる（店マスターかBot連携にあり、停止でない）。だめなら '' */
+function validFieldShopId_(shopId) {
+  var id = String(shopId || '').trim();
+  if (!/^[A-Za-z0-9_-]{3,64}$/.test(id)) return '';
+  try {
+    var link = findShopLinkByShopId_(id);
+    if (link && String(link.obj['状態']) === '停止') return '';
+    if (link) return id;
+    var hit = lookupShopMaster_(id);
+    return (hit.found || hit.error) ? id : '';
+  } catch (err) {
+    return id;
   }
 }
