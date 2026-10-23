@@ -304,11 +304,12 @@ function buildUnpaidSection_(rows, now) {
       shop: unpaidShopLabel_(r)
     });
   });
-  items.sort(function(a, b) { return (b.hoursSinceQr || 0) - (a.hoursSinceQr || 0); });
+  // 新しい順（2026-10-23: 以前は QR からの経過時間順で、QR を送らない店払いの行が末尾に回り表示から切れていた）
+  items.sort(function(a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : (b.hoursSinceQr || 0) - (a.hoursSinceQr || 0); });
 
   let total = 0;
   items.forEach(function(i) { total += i.amountUsd; });
-  return { count: items.length, amountUsd: round2_(total), items: items.slice(0, 20) };
+  return { count: items.length, amountUsd: round2_(total), items: items.slice(0, 30) };
 }
 
 /** 「提携店が払う」の売上行（v7 ManualSales.gs が管理者メモに「｜店払い:店名」）なら店名。お店から回収する分の見分け用 */

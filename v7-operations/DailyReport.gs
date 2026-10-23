@@ -343,9 +343,10 @@ function buildSalesSection_(todayStr) {
       planMap[plan] = planMap[plan] || { count: 0, amount: 0 };
       planMap[plan].count  += 1;
       planMap[plan].amount += amt;
+      // 決済状況もキャンセルを除いて数える（売上の合計と基準をそろえる・2026-10-23）
+      if (payMap.hasOwnProperty(pay)) payMap[pay] += 1;
+      else payMap['その他'] += 1;
     }
-    if (payMap.hasOwnProperty(pay)) payMap[pay] += 1;
-    else payMap['その他'] += 1;
   });
 
   const lines = [];
