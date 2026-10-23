@@ -240,7 +240,7 @@ function buildChatSales_(v7, ym, todayStr, weekFrom, weekTo) {
   const unpaid = [];
 
   rows.forEach(function(r) {
-    const cancelled = String(r['進行状態'] || '') === 'cancelled';
+    const cancelled = r._prog === 'cancelled';   // _prog は readV7AllBookings_ が日本語の進行状態から作る英語コード
     const rev = rowRevenue_(r);
     const d = r._date;
     if (!cancelled && d) {
@@ -259,12 +259,13 @@ function buildChatSales_(v7, ym, todayStr, weekFrom, weekTo) {
       }
     }
     // 未回収（完了済み・清算済み以外）
-    if (String(r['進行状態']) === 'completed' && String(r['決済状態'] || '').trim() !== '清算済み') {
+    if (r._prog === 'completed' && String(r['決済状態'] || '').trim() !== '清算済み') {
       unpaid.push({
         id: String(r['予約ID'] || ''), date: d,
         customer: customers[String(r['顧客ID'] || '').trim()] || '',
         amountUsd: round2_(Number(r['請求額(USD)']) || rev),
-        payState: String(r['決済状態'] || '未清算')
+        payState: String(r['決済状態'] || '未清算'),
+        shopPays: unpaidShopLabel_(r)   // 空でなければ「お店から回収する分」（店名）
       });
     }
   });
@@ -294,7 +295,7 @@ function buildChatBookings_(v7, todayStr, tz) {
 
   return v7.rows
     .filter(function(r) {
-      return r._date >= todayStr && r._date <= limitStr && String(r['進行状態']) !== 'cancelled';
+      return r._date >= todayStr && r._date <= limitStr && r._prog !== 'cancelled';
     })
     .map(function(r) {
       return {

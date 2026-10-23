@@ -934,7 +934,9 @@ function renderUnpaid(d) {
     return '<div class="unpaid-row">' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:600">' + esc(it.id) + '　<span class="chip ' + payChipClass(it.payState) + '">' + esc(it.payState) + '</span></div>' +
-        '<div class="hrs' + (late ? ' late' : '') + '">' + esc(it.date) + '・' + hrs + (it.reminders ? '・催促' + it.reminders + '回' : '') + '</div>' +
+        '<div class="hrs' + (late ? ' late' : '') + '">' + esc(it.date) + '・' +
+          // 「提携店が払う」の作業は QR ではなくお店から回収する（2026-10-23）
+          (it.shop ? '🏪 お店から回収: ' + esc(it.shop) : hrs + (it.reminders ? '・催促' + it.reminders + '回' : '')) + '</div>' +
       '</div>' +
       '<div style="font-weight:700">' + fmtUsd(it.amountUsd) + '</div></div>';
   }).join('');

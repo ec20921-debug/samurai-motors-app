@@ -134,6 +134,7 @@ function readV7AllBookings_(v7SsId) {
       headers.forEach(function(h, j) { o[h] = row[j]; });
       o._date = normDateStr_(o['予約日'], ssTz);          // 'yyyy-MM-dd'
       o._time = normTimeStr_(o['予約時刻'], ssTz);        // 'HH:mm'
+      o._prog = normBookingProg_(o['進行状態']);          // 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
       return o;
     });
   }
@@ -173,9 +174,19 @@ function normTimeStr_(v, tz) {
   return s.substring(0, 5);
 }
 
+// v7 予約シートの 進行状態 は日本語（v7 Setup.gs BOOKING_STATUS）。画面と集計は英語コードで扱う（2026-10-23）
+// 以前は英語の 'completed' / 'cancelled' と直接比べていたため、未回収が出ず、キャンセルも売上に入っていた
+const BOOKING_PROG_CODES_ = { '予約確定': 'confirmed', '作業中': 'in_progress', '作業完了': 'completed', 'キャンセル': 'cancelled' };
+
+/** 進行状態セル → 英語コード（英語の値はそのまま。DailyReport / Dashboard / ExecChat も使う） */
+function normBookingProg_(v) {
+  const s = String(v || '').trim();
+  return BOOKING_PROG_CODES_.hasOwnProperty(s) ? BOOKING_PROG_CODES_[s] : s;
+}
+
 /** 売上計上対象か（キャンセル除外＝既存ダッシュボード・日報と同基準） */
 function isRevenueRow_(r) {
-  return String(r['進行状態'] || '') !== 'cancelled';
+  return r._prog !== 'cancelled';
 }
 
 /** 行の売上額（USD）。日報の computeV7WeeklyKpi_ と同じく 料金(USD) を使う */
@@ -274,7 +285,7 @@ function buildSalesSection2_(rows, ym, todayStr) {
 function buildUnpaidSection_(rows, now) {
   const items = [];
   rows.forEach(function(r) {
-    if (String(r['進行状態'] || '') !== 'completed') return;
+    if (r._prog !== 'completed') return;
     const pay = String(r['決済状態'] || '').trim();
     if (pay === '清算済み') return;
 
@@ -289,7 +300,8 @@ function buildUnpaidSection_(rows, now) {
       amountUsd: round2_(amount),
       payState: pay || '未清算',
       hoursSinceQr: hoursSinceQr,
-      reminders: Number(r['催促回数']) || 0
+      reminders: Number(r['催促回数']) || 0,
+      shop: unpaidShopLabel_(r)
     });
   });
   items.sort(function(a, b) { return (b.hoursSinceQr || 0) - (a.hoursSinceQr || 0); });
@@ -297,6 +309,12 @@ function buildUnpaidSection_(rows, now) {
   let total = 0;
   items.forEach(function(i) { total += i.amountUsd; });
   return { count: items.length, amountUsd: round2_(total), items: items.slice(0, 20) };
+}
+
+/** 「提携店が払う」の売上行（v7 ManualSales.gs が管理者メモに「｜店払い:店名」）なら店名。お店から回収する分の見分け用 */
+function unpaidShopLabel_(r) {
+  const m = String(r['管理者メモ'] || '').match(/｜店払い:([^｜]+)/);
+  return m ? m[1].trim() : '';
 }
 
 // ============================================================
@@ -312,7 +330,7 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
       customer: customers[String(r['顧客ID'] || '').trim()] || '（未登録）',
       car: String(r['車種名'] || '') || String(r['車種タイプ'] || ''),
       plan: String(r['プラン'] || ''),
-      prog: String(r['進行状態'] || ''),
+      prog: r._prog,
       pay: String(r['決済状態'] || ''),
       priceUsd: round2_(rowRevenue_(r))
     };
@@ -328,7 +346,7 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
   limit.setDate(limit.getDate() + 7);
   const limitStr = Utilities.formatDate(limit, tz, 'yyyy-MM-dd');
   const upcomingFlat = rows.filter(function(r) {
-    return r._date > todayStr && r._date <= limitStr && String(r['進行状態']) !== 'cancelled';
+    return r._date > todayStr && r._date <= limitStr && r._prog !== 'cancelled';
   }).map(toItem).sort(function(a, b) {
     return (a.date + a.time) < (b.date + b.time) ? -1 : 1;
   });
@@ -345,7 +363,7 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
   const counts = { confirmed: 0, in_progress: 0, completed: 0, cancelled: 0 };
   rows.forEach(function(r) {
     if (r._date.substring(0, 7) !== ym) return;
-    const s = String(r['進行状態'] || '');
+    const s = r._prog;
     if (counts.hasOwnProperty(s)) counts[s]++;
   });
 

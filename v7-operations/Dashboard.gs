@@ -764,7 +764,7 @@ function refreshV7SalesCache_(ss) {
               ? Utilities.formatDate(d, ssTz, 'yyyy-MM-dd')
               : String(d).trim().substring(0, 10);
             if (ds !== todayStr) return;
-            const prog = String(r[idxStatus] || '');
+            const prog = normBookingProg_(r[idxStatus]);   // 日本語の進行状態 → 英語コード（ExecDashboard.gs）
             if (prog === 'cancelled') return;
             bookings++;
             const amt = Number(r[idxAmount]) || 0;

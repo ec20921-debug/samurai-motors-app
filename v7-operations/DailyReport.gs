@@ -326,15 +326,17 @@ function buildSalesSection_(todayStr) {
   // 集計
   let total = 0;
   let completedCount = 0;
+  let cancelledCount = 0;
   const planMap = {};       // plan -> {count, amount}
   const payMap  = { '清算済み': 0, 'QR送信済み': 0, '未清算': 0, '要確認': 0, 'その他': 0 };
 
   rows.forEach(function(r) {
     const plan   = String(r['プラン'] || '不明');
     const amt    = Number(r['料金(USD)']) || 0;
-    const prog   = String(r['進行状態'] || '');
+    const prog   = normBookingProg_(r['進行状態']);   // 日本語の進行状態 → 英語コード（ExecDashboard.gs）
     const pay    = String(r['決済状態'] || '未清算');
 
+    if (prog === 'cancelled') cancelledCount++;
     if (prog !== 'cancelled') {
       total += amt;
       if (prog === 'completed') completedCount++;
@@ -349,7 +351,7 @@ function buildSalesSection_(todayStr) {
   const lines = [];
   lines.push('💰 <b>本日の売上</b>');
   lines.push('　合計: <b>$' + total.toFixed(2) + '</b>');
-  lines.push('　ジョブ: ' + rows.length + '件（完了 ' + completedCount + ' / キャンセル ' + countBy_(rows, '進行状態', 'cancelled') + '）');
+  lines.push('　ジョブ: ' + rows.length + '件（完了 ' + completedCount + ' / キャンセル ' + cancelledCount + '）');
 
   // プラン内訳
   const planNames = Object.keys(planMap);
@@ -370,12 +372,6 @@ function buildSalesSection_(todayStr) {
   if (payMap['要確認'] > 0) lines.push('　⚠️ 要確認: ' + payMap['要確認'] + '件');
 
   return lines.join('\n');
-}
-
-function countBy_(rows, col, value) {
-  let n = 0;
-  rows.forEach(function(r) { if (String(r[col]) === value) n++; });
-  return n;
 }
 
 /**
@@ -432,8 +428,7 @@ function computeV7WeeklyKpi_(rows) {
   let count = 0;
   const custSet = {};
   rows.forEach(function(r) {
-    const prog = String(r['進行状態'] || '');
-    if (prog === 'cancelled') return;          // キャンセル除外
+    if (normBookingProg_(r['進行状態']) === 'cancelled') return;   // キャンセル除外
     const amt = Number(r['料金(USD)']) || 0;
     sales += amt;
     count += 1;
