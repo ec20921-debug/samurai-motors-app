@@ -409,48 +409,10 @@ function doPost(e) {
       }
 
       // ── パートナープログラム ──
-      case 'partner_lookup_by_code': {
-        // 予約Bot / booking.html からコード検証のみに使う
-        // ⚠️ 認証なしエンドポイントなので、総当たりでアクティブコード列挙を防ぐため
-        //    コードは「完全一致のみ」返却し、部分一致や類似検索は絶対にしない。
-        //    将来的には v7 側と shared secret で HMAC 署名することを推奨。
-        const code = String(body.code || '');
-        if (!code || code.length < 4) return jsonOut({ ok: false, error: 'MISSING_CODE' });
-        const p = (typeof findPartnerByCode === 'function') ? findPartnerByCode(code) : null;
-        if (!p) return jsonOut({ ok: false, error: 'NOT_FOUND' });
-        if (String(p['ステータス']) !== '承認済み') {
-          return jsonOut({ ok: false, error: 'NOT_ACTIVE', status: String(p['ステータス']) });
-        }
-        return jsonOut({
-          ok: true,
-          partner: {
-            partnerId:     String(p['パートナーID'] || ''),
-            displayName:   String(p['表示名'] || p['氏名'] || ''),
-            referralCode:  String(p['紹介コード'] || ''),
-            commissionRate: Number(p['コミッション率'] || 30)
-          }
-        });
-      }
-
-      case 'partner_record_referral': {
-        // 予約完了時の紹介実績記録（呼び出し側は v7 側想定。当面はデバッグ用）
-        if (typeof recordReferralHistory !== 'function') {
-          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
-        }
-        const id = recordReferralHistory({
-          partnerId:      String(body.partnerId      || ''),
-          partnerName:    String(body.partnerName    || ''),
-          referralCode:   String(body.referralCode   || ''),
-          customerName:   String(body.customerName   || ''),
-          customerChatId: String(body.customerChatId || ''),
-          bookingId:      String(body.bookingId      || ''),
-          serviceDate:    String(body.serviceDate    || ''),
-          revenue:        Number(body.revenue        || 0),
-          commissionRate: Number(body.commissionRate || 30),
-          memo:           String(body.memo           || '')
-        });
-        return jsonOut({ ok: true, referralId: id });
-      }
+      // partner_lookup_by_code（紹介コードの照合。試行回数の制限なし・承認前のコードにはステータスも返していた）と
+      // partner_record_referral（「紹介履歴」に売上・コミッション率・顧客 Chat ID の行を誰でも足せた）は
+      // 2026-10-20 に削除。どちらも呼んでいる画面・GAS は無かった（予約時のコード入力は未実装）。
+      // 作り直す時はスタッフ確認か、呼び出し元との署名を必ず入れる（PartnerManager.gs の関数は残してある）
 
       // ── 経営コックピット（exec-dashboard.html） ──
       case 'exec_dashboard': {
@@ -476,26 +438,9 @@ function doPost(e) {
       }
 
       // ── 撥水モニター施策 ──
-      case 'water_repellent_lookup': {
-        // モニターIDで参照（管理画面・スタッフ確認用）
-        const monitorId = String(body.monitorId || '');
-        if (!monitorId) return jsonOut({ ok: false, error: 'MISSING_MONITOR_ID' });
-        if (typeof getWaterRepellentMonitorById !== 'function') {
-          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
-        }
-        const m = getWaterRepellentMonitorById(monitorId);
-        if (!m) return jsonOut({ ok: false, error: 'NOT_FOUND' });
-        return jsonOut({ ok: true, monitor: m });
-      }
-
-      case 'water_repellent_stats': {
-        // 集計（ダッシュボード用）
-        if (typeof getWaterRepellentStats !== 'function') {
-          return jsonOut({ ok: false, error: 'NOT_IMPLEMENTED' });
-        }
-        return jsonOut({ ok: true, stats: getWaterRepellentStats() });
-      }
-
+      // water_repellent_lookup（モニターID だけで撥水モニターの行を丸ごと返していた: 会社名・経営者/ドライバーの
+      // 氏名と連絡先・ナンバー・備考・アンケート。ID は WRM-YYMMDD-NNN なので総当たりで列挙できる）と
+      // water_repellent_stats（件数の集計）は 2026-10-20 に削除。どちらも呼んでいる画面は無かった
       case 'water_repellent_complete': {
         // 現場スタッフが施工完了マークを入れる用（home-internal.html 拡張時に使用）
         const chatId = String(body.chatId || '');

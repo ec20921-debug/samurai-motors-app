@@ -31,7 +31,7 @@ Google Apps Script + Google Form + 既存の v7-operations スプレッドシー
         ↓
 ⑥ パートナー: 紹介コード・体験コードを受け取り、紹介活動開始
         ↓
-⑦ 予約Bot: 予約時にコード入力 → 紹介履歴シートに記録
+⑦ 予約Bot: 予約時にコード入力 → 紹介履歴シートに記録（※ 未実装。2026-10-20 時点で予約Bot 側のコード入力は無い）
         ↓
 ⑧ 月末: 紹介履歴から支払額を集計 → ABA 送金
 ```
@@ -49,7 +49,7 @@ v7-operations GAS プロジェクトに以下のファイルを貼り付け or �
 | `Config.gs` | `ADMIN_PARTNER_THREAD_ID` `PARTNER_WELCOME_KIT_URL` `PARTNER_TRIAL_VOUCHER_PREFIX` を追加 |
 | `PartnerManager.gs` | **新規ファイル** |
 | `Setup.gs` | `setupPartnerProgram()` `setupPartnerFormTrigger()` を追記 |
-| `Router.gs` | `partner_lookup_by_code` `partner_record_referral` を追加 |
+| `Router.gs` | ~~`partner_lookup_by_code` `partner_record_referral` を追加~~ → 2026-10-20 に削除（認証なしで誰でも呼べ、紹介履歴に任意の行を足せたため。呼び出し元は無かった）。⑦を作る時はスタッフ確認か呼び出し元との署名を入れて作り直す |
 | `TaskManager.gs` | `handleTaskCallback_` にパートナーコールバック振分を追加 |
 
 反映後、一度「保存」してください。
@@ -228,7 +228,7 @@ debugMockPartnerFormSubmit()
      - ※ この下の代替案にある「/start で紹介コード等が自動で届く」仕組みは未実装（`findPartnerByTelegramUsername` はあるが呼び出し元なし）
    - `sendPartnerWelcomeDm_('PTR-XXXXXX-XXX')` を実行すると Welcome DM が飛ぶ
 4. **紹介開始**: パートナーが紹介コード `SM-XXX` を知人に共有
-5. **予約時**: お客さまが予約Bot に紹介コードを入力
+5. **予約時**: お客さまが予約Bot に紹介コードを入力（※ 未実装。当面は紹介履歴シートに手動で記帳）
 6. **月末**: 紹介履歴から集計 → ABA 送金 → 支払ステータス「支払済み」に更新
 
 ### 承認後 Chat ID を取得するフロー

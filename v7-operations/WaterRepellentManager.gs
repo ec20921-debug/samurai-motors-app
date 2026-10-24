@@ -1075,6 +1075,8 @@ function removeWaterRepellentFollowUpTrigger() {
 //  参照用クエリ
 // ============================================================
 
+// ⚠️ 行を丸ごと返す（氏名・連絡先・ナンバー等）。匿名で呼べる doGet/doPost にはつながないこと
+//    （2026-10-20 に Router.gs の water_repellent_lookup を削除。GAS エディタからの確認用に残している）
 function getWaterRepellentMonitorById(monitorId) {
   const row = findRow(SHEET_NAMES.WATER_REPELLENT, 'モニターID', monitorId);
   return row ? row.data : null;
