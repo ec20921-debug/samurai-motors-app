@@ -9,18 +9,18 @@
 Run Kosal ──話す・書く──▶ dots（ChatGPT・Run Kosal 用アカウント）
                               │ 12:00 / 18:00（プノンペン）に日本語のまとめを作る
                               ▼
-                     メール（件名 [SM-DOTS] …・本文に合言葉）
+                     メール（件名が [SM-DOTS] で始まる・本文に合言葉）
                               ▼
                ec20921@gmail.com の Gmail（v7-operations GAS の実行者）
-                              │ 5分ごとに確認（DotsDigestBridge.gs）
+                              │ 5分ごとに確認（DotsDigestBridge.gs・専用トリガー）
                               ▼
                管理グループ「日報」トピックへ投稿（日本語）
 ```
 
 - dots から直接 Telegram へは送らない。dots には Telegram の公式な送り口が無く、ブラウザで人のアカウントを操作させると壊れやすく危ないため、**メール → 既存の勤務 Bot** の形にした。
-- **届かない時は黙らない**: 12:40 / 18:40 を過ぎてもその回のまとめが来なければ、管理グループに「届いていません」と1回だけ出る。
-- **なりすまし対策**: 送信元アドレスが許可リストにあり、本文に合言葉が入っているメールだけ転送する。弾いた時は送信元と件名だけ管理グループに知らせる（本文は出さない）。
-- **停止スイッチ**: Script Properties の `DOTS_BRIDGE_ENABLED` を消すか `false` にすると、次の1分から止まる。
+- **届かない・送れない時は黙らない**: 12:40 / 18:40 を過ぎてもその回のまとめが来なければ「届いていません」と1回だけ出る。Telegram への送信に失敗したら次の回に再試行（3回まで）し、駄目なら知らせる。処理自体が落ちたら1日1回知らせる。
+- **なりすまし対策**: 送信元アドレスが許可リストにあり、本文に合言葉が入っているメールだけ転送する。弾いた時は送信元と件名だけ1回にまとめて知らせる（本文は読まない・出さない）。
+- **停止スイッチ**: Script Properties の `DOTS_BRIDGE_ENABLED` を消すか `false` にすると、次の回（5分以内）から止まる。完全に外す時は `removeDotsBridgeTrigger` を実行。
 
 ## 設定手順（Daisuke・上から順に）
 
@@ -53,13 +53,14 @@ cd "C:/Users/drymp/dev/samurai-motors-app/v7-operations"
 "C:/nodejs-global/clasp.cmd" push --force
 ```
 
-- 時間トリガー（`pollInternalBot`）から動くので、Web アプリの再デプロイは不要
-- GAS エディタで `debugDotsBridgeConfig` を実行 → 4項目が入っていることを確認
+- Web アプリの再デプロイは不要（時間トリガーで動く）
+- GAS エディタで **`setupDotsBridgeTrigger` を1回実行**する。Gmail の権限確認の画面が出たら許可する（これで5分ごとのトリガーが入る。勤務 Bot の1分トリガーとは別）
+- 実行ログに「トリガー: 1本」「合言葉: ○文字」「許可リスト: 1件」が出れば OK（合言葉とアドレスそのものはログに出ない）
 
 ### ⑤ 試験
 
-1. dots に「今すぐテストのまとめを送って」と頼む
-2. 5分以内に管理グループの日報トピックに `🤖 Run Kosal 秘書（dots）…のまとめ` が出れば合格（急ぐ時は GAS で `debugForwardDotsDigestNow`）
+1. dots に「件名を `[SM-DOTS] テスト` にして、今すぐテストのまとめを送って」と頼む（件名に「テスト」が入っていれば、昼・夕方の受信には数えない）
+2. 5分以内に管理グループの日報トピックに `🤖 Run Kosal 秘書（dots）テスト` が出れば合格（急ぐ時は GAS で `debugRunDotsBridgeNow`）
 3. 「🚫 転送しませんでした（送信元が許可リスト外）」と出たら、表示された送信元アドレスを `DOTS_SENDER_ALLOWLIST` に足す
 
 ## dots への指示文（Instructions に貼る・英語）
@@ -88,6 +89,8 @@ You are "Samurai Secretary", the personal secretary of Run Kosal, field staff of
 To: ec20921@gmail.com
 Subject: [SM-DOTS] 昼のまとめ YYYY-MM-DD   (for the 12:00 one)
          [SM-DOTS] 夕方のまとめ YYYY-MM-DD (for the 18:00 one)
+         [SM-DOTS] テスト              (only when someone asks you for a test)
+The subject must START with [SM-DOTS]. Send it as a new email, not as a reply.
 Body:
 KEY: <合言葉>
 【やったこと】 jobs and visits since the last summary (number of cars, service, place, $)
@@ -133,4 +136,5 @@ Rules for the summary:
 - まとめの中身は **Run Kosal の自己申告**。売上・経費の正本は今までどおり予約シート・経費マスター（20:30 の自動日報も別に届く）
 - Run Kosal との会話（英語）は dots が自動で書くもの。**クメール語で返させる場合は、クメール語ゲート（Panha）の扱いを先に決める**（いまは英語で返す設定）
 - 止めたい時: `DOTS_BRIDGE_ENABLED` を `false`。dots 側の定期タスクも Scheduled から一時停止できる
-- コード: `v7-operations/DotsDigestBridge.gs`（入口は `BotPoller.gs` の `pollInternalBot` から毎分）
+- コード: `v7-operations/DotsDigestBridge.gs`（入口は専用の5分トリガー `runDotsBridge`。既存ファイルは変更なし）
+- 有効化した日は、有効化より前に締切（12:40 / 18:40）を過ぎた回の「届いていません」は出さない
