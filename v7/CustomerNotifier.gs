@@ -173,6 +173,12 @@ function send24HoursFeedback() {
   } catch (e) {
     Logger.log('⚠️ syncMissingManualJobSales (相乗り) 失敗: ' + e);
   }
+  // ── 店舗グループあいさつ文の安全網（2026-10-24・相乗り実行）── 最近連携して未送信の店にだけ送る
+  try {
+    if (typeof sendPendingShopGreetings === 'function') sendPendingShopGreetings();
+  } catch (e) {
+    Logger.log('⚠️ sendPendingShopGreetings (相乗り) 失敗: ' + e);
+  }
 }
 
 function send24HoursFeedbackCore_() {

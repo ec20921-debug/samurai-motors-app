@@ -18,6 +18,7 @@
 const SCOUT_LINKS_TAB_KEY = 'links';
 const SCOUT_LINKS_BOT = 'SAMURAI_MOTORS_BOOKING_BOT';
 // グループに最初に送るあいさつ文（{shop} に店名）。クメール語は Panha 校閲（provisional・Run Kosal 確認待ち）
+// 2026-10-24〜 連携時に予約Botが自動送信（v7/ShopGroupGreeting.gs に同じ文を複製）。文言を直すときは両方を直す
 const SCOUT_LINKS_GREETING_KM =
   'នេះជាក្រុមរបស់ {shop} និង SAMURAI MOTORS។\n' +
   'សម្រាប់ភ្ញៀវដែលកក់តាម QR របស់ហាងអ្នក យើងនឹងផ្ញើសារពេលចាប់ផ្តើម និងបញ្ចប់ការលាងសម្អាត ព្រមទាំងរូបថត មុន / ក្រោយ មកក្រុមនេះ។\n' +
@@ -41,7 +42,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['③ アプリで「🏷 QRシールを渡した」に枚数を記録（この表の「シール枚数」に出る） / Record the sticker count in the app'],
     ['お店の Telegram グループの作り方 / How to set up the shop group'],
     ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
-    ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と返したら完了 → 続けて「あいさつ文」（右端の列）を送る / Send the /register line, then the greeting'],
+    ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
