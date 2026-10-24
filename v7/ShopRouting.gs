@@ -140,6 +140,13 @@ function handleShopGroupMessage_(msg) {
     'Orders from your QR code will appear in this group.\n' +
     'このグループに、お店のQR経由のご注文が届くようになりました。');
 
+  // お店向けのあいさつ文（km+en）を続けて自動送信（ShopGroupGreeting.gs・2026-10-24）。失敗しても毎時の安全網が拾う
+  try {
+    if (typeof sendShopGroupGreetingOnce_ === 'function') sendShopGroupGreetingOnce_(shopIdHit, msg.chat.id, shopName);
+  } catch (err) {
+    Logger.log('⚠️ あいさつ文 送信エラー（連携完了）: ' + err);
+  }
+
   // 管理グループにも成功を通知（顧客トピック外・通常投稿）
   try {
     var cfg = getConfig();

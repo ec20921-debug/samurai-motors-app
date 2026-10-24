@@ -58,6 +58,7 @@ v7-operations 側も同様に `clasp push --force`。
    → Bot連携シートに「待機中」の行（既存の shop_id のまま・6桁コード）ができ、管理グループのパートナートピックに **店名とコードの一覧** が届く。何度実行しても二重には作らない（発行済みの店は同じコードを再掲、連携済みの店は ✅ 表示）。【サンプル】行は対象外
    - 店を指定して出すときは `issueShopLinkCodes(['SHOP-…', 'SHOP-…'])`
 3. 店ごとに、お店の人と Telegram グループを作り予約Botを招待 → `/register <コード>` を送る → ✅ で完了
+   - **あいさつ文は Bot が自動で送る（2026-10-24〜）**: 「✅ Connected!」の直後に、営業ボードと同じあいさつ文（クメール語＋英語）を予約Botが1回だけ送る。手で貼らない（二重になる）。送れなかった時は毎時の安全網が、連携から7日以内の店に限って送り直す（v7/ShopGroupGreeting.gs・送信済みの印は Script Properties `shop_greeting_sent_<shop_id>`）。文言を直すときは v7/ShopGroupGreeting.gs と v7-operations/ScoutBoardShopLinks.gs の両方を直す
 
 **一覧はここ（2026-10-22〜）**: 営業ボード「SAMURAI SCOUT 営業ボード」の **「🔗 提携店QR・グループ連携」タブ**（1時間ごとに自動更新・見るだけ）。店ごとに 連携の状態・作るグループ名・グループで送る文（/register）・あいさつ文（クメール語＋英語・Panha 校閲 provisional）・予約QRのURL・流入（QRを読んだ人→予約画面→予約→施工→売上・取り分）・実際のグループ名。作り方の手順もタブの上にある（v7-operations/ScoutBoardShopLinks.gs）
 
