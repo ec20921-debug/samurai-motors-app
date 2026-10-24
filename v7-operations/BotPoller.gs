@@ -18,6 +18,8 @@
 function pollInternalBot() {
   // 日報の 20:30 JST 定時送信チェック（1分トリガー起点・時刻窓外は即 return の軽量処理）
   try { maybeSendDailyReport_(); } catch (e) { Logger.log('❌ maybeSendDailyReport_: ' + e); }
+  // Run Kosal の dots まとめ（12:00 / 18:00 PP）を管理グループへ転送（停止中・5分未満は即 return）
+  try { maybeForwardDotsDigest_(); } catch (e) { Logger.log('❌ maybeForwardDotsDigest_: ' + e); }
 
   const props = PropertiesService.getScriptProperties();
   const offsetKey = STORAGE_KEYS.POLL_OFFSET_PREFIX + BOT_TYPE.INTERNAL;
