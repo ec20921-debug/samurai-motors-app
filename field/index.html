@@ -283,7 +283,7 @@ main.tabbed{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 // ═══════════════════════════════════════════════════════════════
 //  設定
 // ═══════════════════════════════════════════════════════════════
-var APP_VERSION = 'field-20261024-103323';   // stamp_build.py が同期時に書き換える
+var APP_VERSION = 'field-20261025-185506';   // stamp_build.py が同期時に書き換える
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbwV8eVN6KJvfMnQLkNmbOqYsjpvQSJTCqk40kfyMFzRjxFItJ8-4VxOV4U9MojLH4U/exec';
 var OLD_APP_URL = '../job-manager.html';
 // 勤怠・経費・（今後）営業は勤務Bot側の GAS（v7-operations）。日報はこのアプリでは扱わない（2026-10-24 別管理）
@@ -415,8 +415,13 @@ function canPunch() { return !!ME.chatId && ME.state !== 'need_link' && ME.state
 //   iframe は一度だけ作り、タブを切り替えても入力中の画面を保つ
 function scoutAvailable() { return ME.via === 'link' && !!ME.chatId && !!ME.key && ME.state !== 'not_staff' && ME.state !== 'link_bad'; }
 function ensureScoutFrame() {
-  var wrap = $('scoutWrap');
-  if (wrap.firstChild) return;
+  var wrap = $('scoutWrap'), old = wrap.firstChild;
+  if (old) {
+    // 最初に圏外で開いて読み込めなかった時は、タブを開き直したら読み直す（中身が SCOUT でなければ再読み込み）
+    var ok = false; try { ok = !!(old.contentDocument && old.contentDocument.getElementById('viewHome')); } catch (e) {}
+    if (!ok) old.src = old.src;
+    return;
+  }
   var f = document.createElement('iframe');
   f.title = 'SAMURAI SCOUT';
   f.setAttribute('allow', 'geolocation; clipboard-write');
@@ -1218,7 +1223,7 @@ function boot() {
         if (histChanged) Outbox.kvSet('exp_hist', S.expHist);
         // 入力中は描き直さない（文字入力が途切れるため）
         var typing = document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
-        if (S.view === 'home' && !typing) { if (S.tab === 'expense') renderExpense(); else renderHome(); }
+        if (S.view === 'home' && !typing && S.tab !== 'scout') { if (S.tab === 'expense') renderExpense(); else renderHome(); }
         renderHead();
       } });
       loadData(false);
