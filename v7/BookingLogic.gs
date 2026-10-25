@@ -734,7 +734,8 @@ function createBooking(params) {
 
     // ── 1-d. キャンペーン割引(Menu v2 / 2026-05-06: GRAND OPENING -30%) ──
     // 採用: 案a — サービス料金(WASH+GLASS)のみに -X%。出張料は通常価格(透明性)。
-    // 2026-10-15: 流入元の特典（期間内のみ・品目別の割引率）が効く予約は全体キャンペーンを使わない（併用不可）
+    // 2026-10-15: 流入元の特典（品目別の割引率）が効く予約は全体キャンペーンを使わない（併用不可）。期間は SourceCampaign.gs が判定
+    //   （2026-10-25: 「サービス割引は常時」の流入元は期間外もサービス割引(%)）
     const srcDisc = (srcCfg && typeof computeSourceDiscount_ === 'function')
       ? computeSourceDiscount_(srcCfg, params.date,
           (plan ? [{ code: 'WASH', amount: baseAmount }] : []).concat(
@@ -750,7 +751,7 @@ function createBooking(params) {
     }
     const amount = Math.max(0, Math.round((subtotal - discountAmount) * 100) / 100); // 請求総額(WASH+GLASS×(1-%) + Delivery)
     const srcPerkText = !srcCfg ? '' :
-      (srcDisc ? sourcePerkSummaryJa_(srcCfg) + ' -$' + srcDisc.total : '期間外・特典なし');
+      (srcDisc ? sourcePerkSummaryJa_(srcCfg, params.date) + ' -$' + srcDisc.total : '期間外・特典なし');
 
     // ── 2. 空き枠再確認(ロック後に取り直し) ──
     // 2026-10-08: WASH なし(GLASS/HEADLIGHT 単体)の予約も再確認する（メニューシートの所要時間 H/I 列が全行 >0 であること）。

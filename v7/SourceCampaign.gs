@@ -3,13 +3,16 @@
  *
  * 【目的】レジデンス等の専用QR（t.me/<予約Bot>?start=<流入元コード>）から来たお客様を見分け、
  *   - 歓迎メッセージ・予約画面・予約確定を「英語メイン＋日本語」で出す（言語=en-ja の流入元）
- *   - 期間中の予約に流入元の特典（全メニュー X%オフ・品目別の割引率）を自動適用する
+ *   - 流入元の特典（全メニュー X%オフ・品目別の割引率）を予約日で自動適用する（期間限定／「サービス割引は常時」ならX%はいつでも）
  *   - 予約の記録（予約タブ 流入元/特典/部屋番号）・管理グループ通知・現場アプリに流入元を出す
  *
  * 【設定】v7 Database「流入元」タブ（1行 = 1流入元＝1つのQR）。料金・期間・割引率はコードに書かない（CLAUDE.md ルール8）。
  *   列: 流入元コード / 表示名 / チャネル / 有効 / 開始日 / 終了日 / サービス割引(%) / 個別割引 / 場所名 / マップリンク /
- *       緯度 / 経度 / 言語 / チラシURL / 期間中の日曜営業 / shop_id / メモ
+ *       緯度 / 経度 / 言語 / チラシURL / 期間中の日曜営業 / shop_id / メモ / サービス割引は常時
  *   - 期間中の日曜営業=TRUE: 期間内の日曜（定休日）を、この流入元のお客様だけ予約可にする（2026-10-15 Picasso 11/1）
+ *   - サービス割引は常時=TRUE: サービス割引(%) を予約日に関係なくいつでも効かせる。開始日/終了日は
+ *     「期間限定の上乗せ」（個別割引・期間中の日曜営業）だけの期間になる（2026-10-25 Picasso 住民はいつでも20%オフ）。
+ *     列が無い・FALSE なら従来どおり、サービス割引も期間内だけ
  *   - 同じ場所でも掲示物ごとに QR を分ける（例: picasso_tg / picasso_signage / picasso_poster / picasso_flyer）。
  *     表示名は共通（Picasso City Garden）、チャネルで出し分けを比べる。予約タブ「流入元」には コード を記録する
  *     （"picasso" で始まるものをまとめれば Picasso 全体の集計になる）
@@ -74,6 +77,7 @@ function readSourceConfigs_() {
           lang: String(o['言語'] || '').trim().toLowerCase(),
           flyerUrl: String(o['チラシURL'] || '').trim(),
           openSunday: o['期間中の日曜営業'] === true || String(o['期間中の日曜営業']).toUpperCase() === 'TRUE',
+          serviceAlways: o['サービス割引は常時'] === true || String(o['サービス割引は常時']).toUpperCase() === 'TRUE',
           shopId: String(o['shop_id'] || '').trim()
         };
       });
@@ -150,11 +154,25 @@ function sourceOpensClosedDay_(cfg, ymd) {
   return !!(cfg && cfg.active && cfg.openSunday && cfg.start && cfg.end && sourceInPeriod_(cfg, ymd));
 }
 
-/** 品目コード（WASH / GLASS_3 / HEADLIGHT_MAGIC 等）の割引率(%) */
-function sourcePctFor_(cfg, code) {
+/**
+ * 品目コード（WASH / GLASS_3 / HEADLIGHT_MAGIC 等）の、予約日 ymd での割引率(%)。
+ * 個別割引は期間内だけ。サービス割引(%) は期間内、または「サービス割引は常時」なら期間外も
+ */
+function sourcePctFor_(cfg, code, ymd) {
+  var inPeriod = sourceInPeriod_(cfg, ymd);
   var c = String(code || '').toUpperCase();
-  if (cfg.itemPct && Object.prototype.hasOwnProperty.call(cfg.itemPct, c)) return cfg.itemPct[c];
-  return cfg.servicePct || 0;
+  if (inPeriod && cfg.itemPct && Object.prototype.hasOwnProperty.call(cfg.itemPct, c)) return cfg.itemPct[c];
+  return (inPeriod || cfg.serviceAlways) ? (cfg.servicePct || 0) : 0;
+}
+
+/** 今日（カンボジア時間・yyyy-MM-dd） */
+function sourceToday_() {
+  return Utilities.formatDate(new Date(), BOOKING_TZ, 'yyyy-MM-dd');
+}
+
+/** 期間限定の特典（個別割引など）がまだ終わっていないか（今日 <= 終了日。終了日が空欄なら終わらない） */
+function sourceLimitedLive_(cfg) {
+  return !!cfg && (!cfg.end || sourceToday_() <= cfg.end);
 }
 
 /** 割引設定がある流入元か（予約画面・歓迎文で特典を見せるか） */
@@ -277,13 +295,20 @@ function sendSourceWelcome_(msg, cfg) {
   lines.push('🏢 FOR ' + place.toUpperCase() + ' RESIDENTS');
   lines.push(place + ' にお住まいの皆さまへ');
 
-  if (sourceHasPerk_(cfg)) {
+  var perk = sourcePerkTexts_(cfg);
+  if (perk.mainEn || perk.extraEn) {
     lines.push('');
-    lines.push('🎁 ' + sourcePerkLineEn_(cfg));
-    lines.push('   ' + sourcePerkLineJa_(cfg));
-    if (cfg.start || cfg.end) {
-      lines.push('📅 ' + sourcePeriodEn_(cfg));
-      lines.push('   ' + sourcePeriodJa_(cfg));
+    if (perk.mainEn) {
+      lines.push('🎁 ' + perk.mainEn);
+      lines.push('   ' + perk.mainJa);
+    }
+    if (perk.periodEn) {
+      lines.push('📅 ' + perk.periodEn);
+      lines.push('   ' + perk.periodJa);
+    }
+    if (perk.extraEn) {
+      lines.push('⭐ ' + perk.extraEn);
+      lines.push('   ' + perk.extraJa);
     }
     lines.push('   Discounts cannot be combined. / 割引の併用はできません。');
   }
@@ -329,40 +354,89 @@ function sourceItemName_(code) {
   return optionDisplayName_(opt);
 }
 
+function sourceItemsLineEn_(cfg) {
+  return Object.keys(cfg.itemPct || {}).map(function(code) {
+    return sourceItemName_(code) + ' ' + cfg.itemPct[code] + '% OFF';
+  }).join(' · ');
+}
+
+function sourceItemsLineJa_(cfg) {
+  return Object.keys(cfg.itemPct || {}).map(function(code) {
+    var pct = cfg.itemPct[code];
+    var nm = sourceItemName_(code).replace(/ \(headlight\)$/, '');
+    if (String(code).toUpperCase().indexOf('HEADLIGHT') === 0) nm = 'ヘッドライト ' + nm.replace(/^SAMURAI HEADLIGHT /, '');
+    return nm + (pct === 50 ? 'は半額' : 'は' + pct + '%オフ');
+  }).join('／');
+}
+
 function sourcePerkLineEn_(cfg) {
   var parts = [];
   if (cfg.servicePct > 0) parts.push(cfg.servicePct + '% OFF ALL SERVICES');
-  Object.keys(cfg.itemPct || {}).forEach(function(code) {
-    parts.push(sourceItemName_(code) + ' ' + cfg.itemPct[code] + '% OFF');
-  });
+  var items = sourceItemsLineEn_(cfg);
+  if (items) parts.push(items);
   return parts.join(' · ');
 }
 
 function sourcePerkLineJa_(cfg) {
   var parts = [];
   if (cfg.servicePct > 0) parts.push('全メニュー' + cfg.servicePct + '%オフ');
-  Object.keys(cfg.itemPct || {}).forEach(function(code) {
-    var pct = cfg.itemPct[code];
-    var nm = sourceItemName_(code).replace(/ \(headlight\)$/, '');
-    if (String(code).toUpperCase().indexOf('HEADLIGHT') === 0) nm = 'ヘッドライト ' + nm.replace(/^SAMURAI HEADLIGHT /, '');
-    parts.push(nm + (pct === 50 ? 'は半額' : 'は' + pct + '%オフ'));
-  });
+  var items = sourceItemsLineJa_(cfg);
+  if (items) parts.push(items);
   return parts.join('／');
 }
 
-/** 予約タブ「特典」列・管理通知用の短い要約（日本語） */
-function sourcePerkSummaryJa_(cfg) {
+/**
+ * 特典の案内文（歓迎メッセージ・予約画面の帯で共用）
+ *   main   : いつも出す特典。「サービス割引は常時」なら「20% OFF ALL SERVICES · ALWAYS」、そうでなければ個別割引込みの1行
+ *   period : main の期間（常時なら空）
+ *   extra  : 常時の流入元で、期間限定の個別割引がまだ終わっていないときの1行（期間込み）。終了日を過ぎたら空
+ */
+function sourcePerkTexts_(cfg) {
+  var out = { mainEn: '', mainJa: '', periodEn: '', periodJa: '', extraEn: '', extraJa: '' };
+  if (!sourceHasPerk_(cfg)) return out;
+  if (!cfg.serviceAlways) {
+    out.mainEn = sourcePerkLineEn_(cfg);
+    out.mainJa = sourcePerkLineJa_(cfg);
+    if (cfg.start || cfg.end) {
+      out.periodEn = sourcePeriodEn_(cfg);
+      out.periodJa = sourcePeriodJa_(cfg);
+    }
+    return out;
+  }
+  if (cfg.servicePct > 0) {
+    out.mainEn = cfg.servicePct + '% OFF ALL SERVICES · ALWAYS';
+    out.mainJa = '全メニュー いつでも' + cfg.servicePct + '%オフ';
+  }
+  if (Object.keys(cfg.itemPct || {}).length && sourceLimitedLive_(cfg)) {
+    var hasPeriod = !!(cfg.start || cfg.end);
+    out.extraEn = sourceItemsLineEn_(cfg) + (hasPeriod ? ' for bookings ' + sourcePeriodRangeEn_(cfg) : '');
+    out.extraJa = sourceItemsLineJa_(cfg) + (hasPeriod ? '（' + sourcePeriodJa_(cfg) + 'のご予約）' : '');
+  }
+  return out;
+}
+
+/** 予約タブ「特典」列・管理通知用の短い要約（日本語）。ymd を渡すと、その予約日に効く特典だけ */
+function sourcePerkSummaryJa_(cfg, ymd) {
+  if (ymd && cfg.serviceAlways && !sourceInPeriod_(cfg, ymd)) {
+    return cfg.servicePct > 0 ? '全メニュー' + cfg.servicePct + '%オフ（常時）' : '特典なし';
+  }
   return sourcePerkLineJa_(cfg) || '特典なし';
 }
 
-function sourcePeriodEn_(cfg) {
+/** "OCT 26 – NOV 1, 2026" / "UNTIL NOV 1, 2026" / "FROM OCT 26" */
+function sourcePeriodRangeEn_(cfg) {
   var mon = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
   function f(ymd) { var p = ymd.split('-'); return mon[Number(p[1]) - 1] + ' ' + Number(p[2]); }
+  if (cfg.start && cfg.end) return f(cfg.start) + ' – ' + f(cfg.end) + ', ' + cfg.end.substring(0, 4);
+  return cfg.end ? 'UNTIL ' + f(cfg.end) + ', ' + cfg.end.substring(0, 4) : 'FROM ' + f(cfg.start);
+}
+
+function sourcePeriodEn_(cfg) {
   if (cfg.start && cfg.end) {
     var days = Math.round((Date.parse(cfg.end) - Date.parse(cfg.start)) / 86400000) + 1;
-    return f(cfg.start) + ' – ' + f(cfg.end) + ', ' + cfg.end.substring(0, 4) + (days > 0 && days <= 31 ? ' · ' + days + ' DAYS ONLY' : '');
+    return sourcePeriodRangeEn_(cfg) + (days > 0 && days <= 31 ? ' · ' + days + ' DAYS ONLY' : '');
   }
-  return cfg.end ? 'UNTIL ' + f(cfg.end) + ', ' + cfg.end.substring(0, 4) : 'FROM ' + f(cfg.start);
+  return sourcePeriodRangeEn_(cfg);
 }
 
 function sourcePeriodJa_(cfg) {
@@ -401,6 +475,7 @@ function sourceUsd_(n) {
 
 function sourceInitPayload_(cfg) {
   if (!cfg || !cfg.active) return null;
+  var perk = sourcePerkTexts_(cfg);
   return {
     code: cfg.code,
     label: cfg.label,
@@ -409,28 +484,33 @@ function sourceInitPayload_(cfg) {
     end: cfg.end,
     servicePct: cfg.servicePct,
     itemPct: cfg.itemPct,
+    serviceAlways: !!cfg.serviceAlways,     // 2026-10-25: サービス割引(%) は期間外も
+    limitedLive: sourceLimitedLive_(cfg),   // 日付を選ぶ前のメニュー価格に個別割引を出すか（終了日を過ぎたら出さない）
     placeName: cfg.placeName,
     openSunday: !!(cfg.openSunday && cfg.start && cfg.end),
-    perkEn: sourceHasPerk_(cfg) ? sourcePerkLineEn_(cfg) : '',
-    perkJa: sourceHasPerk_(cfg) ? sourcePerkLineJa_(cfg) : '',
-    periodEn: (cfg.start || cfg.end) ? sourcePeriodEn_(cfg) : '',
-    periodJa: (cfg.start || cfg.end) ? sourcePeriodJa_(cfg) : ''
+    perkEn: perk.mainEn,
+    perkJa: perk.mainJa,
+    periodEn: perk.periodEn,
+    periodJa: perk.periodJa,
+    extraEn: perk.extraEn,
+    extraJa: perk.extraJa
   };
 }
 
 // ====== 予約作成（createBooking） ======
 
 /**
- * 流入元の特典を計算する。期間外・割引設定なしは null（通常の料金ルールへ）
+ * 流入元の特典を計算する。その予約日に効く割引が無ければ null（通常の料金ルールへ）
+ *   期間内: 個別割引 → なければ サービス割引(%)。期間外: 「サービス割引は常時」なら サービス割引(%) だけ
  * @param {Array<{code:string, amount:number}>} lines - 品目ごとの金額（出張料は含めない）
  * @return {{total:number, detail:Array}|null}
  */
 function computeSourceDiscount_(cfg, ymd, lines) {
-  if (!cfg || !cfg.active || !sourceHasPerk_(cfg) || !sourceInPeriod_(cfg, ymd)) return null;
+  if (!cfg || !cfg.active || !sourceHasPerk_(cfg) || !ymd) return null;
   var total = 0;
   var detail = [];
   (lines || []).forEach(function(l) {
-    var pct = sourcePctFor_(cfg, l.code);
+    var pct = sourcePctFor_(cfg, l.code, ymd);
     var amt = Number(l.amount) || 0;
     if (pct > 0 && amt > 0) {
       var d = Math.round(amt * pct) / 100;
