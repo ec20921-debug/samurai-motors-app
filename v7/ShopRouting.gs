@@ -410,15 +410,16 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
 /**
  * GET field_partner_shops — 現場アプリの「どの提携店？」の選択肢（2026-10-22）
  * 店マスターで専用QRを配った店（QRリンク(BookingBot) あり）＋Bot連携にある店。【サンプル】・停止中は除く
- * @return {{status:string, shops:Array<{id:string, name:string}>}}
+ * 2026-10-25: 店ごとの率（店マスター「紹介料率(%)」・空欄=30）を rate で返す。現場アプリが 当社の受け取り＝定価×(100−rate)% を自動で入れる
+ * @return {{status:string, shops:Array<{id:string, name:string, rate:number}>}}
  */
 function apiFieldPartnerShops() {
   var cache = CacheService.getScriptCache();
-  var hit = cache.get('field_partner_shops_v1');
+  var hit = cache.get('field_partner_shops_v2');
   if (hit) {
     try { return { status: 'ok', shops: JSON.parse(hit) }; } catch (ignore) {}
   }
-  var out = [], seen = {};
+  var out = [], seen = {}, rates = {};
   var stopped = {};
   readShopLinks_().forEach(function(l) {
     var id = String(l.obj['shop_id'] || '');
@@ -429,15 +430,22 @@ function apiFieldPartnerShops() {
     id = String(id || '').trim();
     if (!id || seen[id] || stopped[id] === true || id.indexOf('SHOP-SAMPLE') === 0 || String(name || '').indexOf('【サンプル】') === 0) return;
     seen[id] = true;
-    out.push({ id: id, name: String(name || id) });
+    out.push({ id: id, name: String(name || id),
+               rate: rates.hasOwnProperty(id) ? rates[id] : (typeof FIELD_SHOP_RATE_DEFAULT_ !== 'undefined' ? FIELD_SHOP_RATE_DEFAULT_ : 30) });
   };
   try {
     var sh = getSpreadsheet().getSheetByName('店マスター');
     if (sh && sh.getLastRow() >= 2) {
       var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
-      var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), qi = head.indexOf('QRリンク(BookingBot)');
+      var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), qi = head.indexOf('QRリンク(BookingBot)'), ri = head.indexOf('紹介料率(%)');
       if (ci >= 0 && ni >= 0 && qi >= 0) {
-        sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, qi) + 1).getValues().forEach(function(r) {
+        var vals = sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, qi, ri) + 1).getValues();
+        // 先に全店の率を拾う（Bot連携だけにある店にも使う）
+        if (ri >= 0) vals.forEach(function(r) {
+          var id = String(r[ci] || '').trim();
+          if (id && typeof fieldParseRate_ === 'function') rates[id] = fieldParseRate_(r[ri]);
+        });
+        vals.forEach(function(r) {
           if (/t\.me\/[^?\s]+\?start=shop_/.test(String(r[qi] || ''))) add(r[ci], r[ni]);
         });
       }
@@ -447,7 +455,7 @@ function apiFieldPartnerShops() {
   }
   readShopLinks_().forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
   out.sort(function(a, b) { return a.name.localeCompare(b.name); });
-  try { cache.put('field_partner_shops_v1', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
+  try { cache.put('field_partner_shops_v2', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
   return { status: 'ok', shops: out };
 }
 

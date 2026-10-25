@@ -29,7 +29,7 @@ var JOBS_V2_COLS_ = [
   '送信日時(端末)',
   'スタッフチャットID',    // Telegram 署名で確認できた送り主（確認できない時は空）
   '施工時間(分)',
-  '支払区分',              // cash / aba / shop / free / later（売上の自動計上判定に使う）
+  '支払区分',              // aba / shopref / shop / free / later（＋旧 cash）。売上の自動計上判定に使う（FieldPayment.gs）
   '開始配信日時',
   '終了配信日時',
   'v2記録(JSON)',
@@ -108,7 +108,7 @@ function jobSafeText_(v, maxLen) {
 
 function jobPayType_(body) {
   var pt = String((body.v2 && body.v2.payment_type) || '');
-  return /^(cash|aba|shop|free|later)$/.test(pt) ? pt : '';
+  return /^(cash|aba|shop|shopref|free|later)$/.test(pt) ? pt : '';   // shopref = 提携店の紹介客（2026-10-25）
 }
 
 var JOB_MAX_DELIVERY_TRIES_ = 3;   // これを超えたら「配信済み＋要確認」で先へ進める

@@ -577,7 +577,11 @@ function apiJobEnd(body, opts) {
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     // 有償の手動ジョブ（予約なし・料金>0）のみ合計表示＋支払いご案内（無償は送らない・2026-08-28 A案）
-    var manualPaidEnd = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
+    // 2026-10-25: 支払区分（FieldPayment.gs）。提携店の仕事はお客様が店に払うので、当社の取り分（合計）は見せない
+    var ptEnd = (typeof fieldPayType_ === 'function') ? fieldPayType_(body) : String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    var ptEndShop = (typeof fieldPayIsShop_ === 'function') ? fieldPayIsShop_(ptEnd) : ptEnd === 'shop';
+    var fieldShopNameEnd = opts.fieldShopId ? ((typeof getShopNameById_ === 'function' && getShopNameById_(String(opts.fieldShopId))) || String(opts.fieldShopId)) : '';
+    var manualPaidEnd = (!bookingId && Number(body.amount) > 0 && !ptEndShop) ? Number(body.amount) : 0;
     if (customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'end'))) {
       if (typeof jobMarkCustSent_ === 'function') jobMarkCustSent_(opts, 'end');   // v2: 再送で顧客に重複させない
       try {
@@ -619,6 +623,7 @@ function apiJobEnd(body, opts) {
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
+        (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body) : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
 
@@ -692,8 +697,8 @@ function apiJobEnd(body, opts) {
           Logger.log('⚠️ 選んだ提携店への同報失敗: ' + e);
         }
       }
-      // 予約なしで「提携店が払う」の時だけ店集金として扱う。予約の決済QRを止めるかは、お客様の店QR（shop_ref）だけで決める
-      if (!shopRef && !bookingId && payTypeShop === 'shop') { shopRef = fieldShopId; shopFromField = true; }
+      // 予約なしで提携店の仕事（店の車 shop・紹介客 shopref）の時は店集金として扱う
+      if (!shopRef && !bookingId && ptEndShop) { shopRef = fieldShopId; shopFromField = true; }
     }
     var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
     // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
@@ -701,19 +706,19 @@ function apiJobEnd(body, opts) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, shopFromField
-          ? '🏪 提携店の作業: ' + shopNameEnd + '\n' +
-            '代金はお店からもらう（ABA QR）。お客様へ当社の決済QRは送っていません'
+          ? '🏪 提携店の作業（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）: ' + shopNameEnd + '\n' +
+            '当社分 $' + (Number(body.amount) || 0) + ' はお店からその場で QR で受け取り済み（現場の記録）。お客様へ当社の決済QRは送っていません'
           : '🏪 提携店経由: ' + shopNameEnd + '\n' +
-            'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
+            'お客様は店に定価を支払い → 当社分は店から QR で受け取る。お客様へ当社の決済QRは送っていません', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 提携店経由の管理通知失敗: ' + e);
       }
-    } else if (payTypeShop === 'shop') {
+    } else if (ptEndShop) {
       // 「提携店が払う」なのに店が分からない／予約のお客様が店QR経由でない → 取りこぼし・二重請求にならないよう知らせる
       try {
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, bookingId
-          ? '⚠️ 現場は「提携店が払う」を選びましたが、このお客様は店のQR経由ではありません。決済QRは通常どおり送ります。お店とお客様の二重請求にならないか確認してください'
-          : '⚠️ 「提携店が払う」の作業ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
+          ? '⚠️ 現場は提携店の仕事（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）を選びましたが、このお客様は店のQR経由ではありません。現場で受け取り済みとして予約を清算済みにしました。お店とお客様の二重請求にならないか確認してください'
+          : '⚠️ 提携店の仕事ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 店払いの確認通知失敗: ' + e);
       }
@@ -725,7 +730,7 @@ function apiJobEnd(body, opts) {
       // 2026-10-23: 提携店払いはその店を売上行に書く（現場で選んだ店を優先＝作業記録の 提携店ID・毎時シンクと揃える）
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
         recordManualJobSaleIfNeeded_(body, 'job_end', {
-          shopId: (payTypeShop === 'shop' && !bookingId && fieldShopId) ? fieldShopId : shopRef,
+          shopId: (ptEndShop && !bookingId && fieldShopId) ? fieldShopId : shopRef,
           jobId: opts.jobId || ''
         });
       }
@@ -737,7 +742,12 @@ function apiJobEnd(body, opts) {
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
     // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
-    if (bookingId && shopRef) {
+    if (bookingId && typeof fieldPaidOnSite_ === 'function' && fieldPaidOnSite_(ptEnd)) {
+      // 2026-10-25 Daisuke: 予約客がその場で払った時（ABA QR・店・無料）は決済QRと催促を送らない
+      var paidShopName = fieldShopNameEnd || (shopRef && typeof getShopNameById_ === 'function' ? getShopNameById_(shopRef) : '');
+      if (typeof markBookingPaidOnSite_ === 'function') markBookingPaidOnSite_(bkRow, body, ptEnd, paidShopName);
+      Logger.log('ℹ️ 予約 ' + bookingId + ' は現場で受け取り済み（' + ptEnd + '）のため決済QR送信をスキップ');
+    } else if (bookingId && shopRef) {
       Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
     } else if (bookingId && typeof sendPaymentQR === 'function') {
       try {
