@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAMURAI MOTORS — SOP ការកត់ត្រាការងារ និងការទូទាត់ (作業の記録と支払い)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SAMURAI MOTORS — SOP 作業の記録と支払い（現場アプリ v2）
+   現場スタッフ用 : クメール語メイン + 日本語（小さく）
+   ボタン名・クメール語の文はアプリの表示と同じ（field/index.html T_KM）
+   ============================================================ */
+:root{
+  --ink:#15181d;
+  --ink2:#3c4250;
+  --sub:#79808d;
+  --red:#b03028;          /* 注意 */
+  --green:#1e7a46;        /* OK */
+  --blue:#1d4ed8;         /* アプリの「次へ」 */
+  --gold:#b8924f;         /* ブランド金・提携店 */
+  --goldbg:#f7f0e2;
+  --card:#f6f5f2;
+  --line:#dcdad4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;
+  background:#d9d7d2;color:var(--ink);line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+.jp{font-family:'Noto Sans JP',sans-serif;color:var(--sub);font-size:.74em;letter-spacing:.02em;line-height:1.55}
+.en{font-family:'Jost',sans-serif}
+b.ui{font-weight:700;white-space:nowrap}
+
+/* ---------- page（A4 1枚 = 1 .sheet） ---------- */
+@page{size:A4;margin:0}
+.sheet{
+  width:210mm;height:297mm;margin:14px auto;background:#fff;
+  box-shadow:0 10px 30px -16px rgba(0,0,0,.5);
+  position:relative;overflow:hidden;
+}
+.sheet-body{padding:4mm 11mm 0}
+.foot{position:absolute;bottom:4mm;left:11mm;right:11mm;display:flex;justify-content:space-between;
+  font-family:'Jost',sans-serif;font-size:9.5px;color:#a3a9b1;letter-spacing:.18em;text-transform:uppercase}
+@media print{
+  body{background:#fff}
+  .sheet{margin:0;box-shadow:none;page-break-after:always;break-after:page}
+  .sheet:last-child{page-break-after:auto;break-after:auto}
+}
+
+/* ---------- 上の帯 ---------- */
+.band{background:#000;color:#fff;display:flex;align-items:center;gap:12px;padding:8px 11mm;border-bottom:3px solid var(--gold)}
+.band img{height:46px;width:auto;display:block;border-radius:4px}
+.band .t{flex:1;min-width:0}
+.band .t .km{font-size:18px;font-weight:800;line-height:1.5}
+.band .t .jp{color:#9aa3b2;font-size:11px}
+.band .doc{text-align:right;font-family:'Jost',sans-serif;line-height:1.25;border-left:1px solid #2a2e36;padding-left:12px}
+.band .doc .no{font-size:26px;font-weight:600;color:var(--gold);letter-spacing:.04em}
+.band .doc .meta{font-size:9.5px;color:#8c95a3;letter-spacing:.14em}
+
+/* ---------- 見出し ---------- */
+h2.sec{display:flex;align-items:baseline;gap:9px;font-size:18px;font-weight:800;line-height:1.5;margin:3mm 0 1px}
+h2.sec .n{font-family:'Jost',sans-serif;font-weight:600;color:#fff;background:var(--ink);border-radius:6px;font-size:14px;padding:0 8px;line-height:1.6}
+h2.sec .jp{font-size:12px;font-weight:500}
+.secline{height:3px;background:linear-gradient(90deg,var(--gold) 0 56px,var(--line) 56px 100%);margin:4px 0 7px}
+
+/* ---------- 帯（ルール） ---------- */
+.rule{border-radius:10px;padding:6px 14px;display:flex;gap:12px;align-items:center;color:#fff}
+.rule .mk{font-size:28px;line-height:1;flex:none}
+.rule .km{font-size:15.5px;font-weight:700;line-height:1.6}
+.rule .jp{display:block;color:inherit;opacity:.82;font-size:11px;margin-top:1px}
+.rule.dark{background:linear-gradient(135deg,#1c2028,#0d0f13);border-left:6px solid var(--gold)}
+.rule.red{background:linear-gradient(135deg,#b03028,#8e231d)}
+
+/* ---------- 1ページ目: 作業の手順（4×2） ---------- */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:9px 7px}
+.st{border:1.5px solid var(--line);border-radius:11px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+.st .hd{display:flex;align-items:center;gap:7px;padding:5px 8px 4px;background:var(--card);border-bottom:1.5px solid var(--line);min-height:41px}
+.st .num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;font-family:'Jost',sans-serif;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center}
+.st .ttl{font-size:12.6px;font-weight:800;line-height:1.45}
+.st .ttl .jp{display:block;font-weight:500;font-size:9.6px;line-height:1.3}
+.st .pic{background:#f1f3f6;border-bottom:1.5px solid var(--line)}
+.st .pic img{width:100%;display:block;aspect-ratio:1170/1460;object-fit:cover;object-position:top}
+.st .tx{padding:4px 8px 6px;font-size:11.4px;line-height:1.66;flex:1}
+.st .tx p{margin-bottom:2px}
+.st .tx .jp{display:block;font-size:9.4px;margin-top:1px}
+.st.shop{border-color:#dcc595}
+.st.shop .hd{background:var(--goldbg);border-color:#dcc595}
+.st.tip{background:#eef6f0;border-color:#b9d9c4}
+.st.tip .hd{background:#dff0e4;border-color:#b9d9c4}
+.st.tip .num{background:var(--green)}
+.shopnote{margin-top:3px;background:var(--goldbg);border:1px solid #e3d2ac;border-radius:7px;padding:3px 7px;font-size:10.8px;line-height:1.6}
+.shopnote .jp{font-size:9.2px}
+.tip-big{font-size:30px;text-align:center;margin:8px 0 2px}
+.toastbox{background:#1f2328;color:#fff;border-radius:9px;padding:6px 9px;font-size:11px;line-height:1.6;margin:5px 0 6px}
+
+/* 終わる前のチェック */
+.check{margin-top:7px;border:2px solid var(--green);border-radius:11px;padding:6px 12px;display:flex;align-items:center;gap:12px}
+.check .lbl{flex:none;font-size:14px;font-weight:800;color:var(--green);line-height:1.4}
+.check .lbl .jp{display:block;font-weight:500;color:var(--green);opacity:.8}
+.check ul{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;flex:1}
+.check li{font-size:12.4px;font-weight:600;line-height:1.5}
+.check li::before{content:'☐';font-size:15px;color:var(--green);margin-right:4px}
+.check li .jp{font-weight:400;margin-left:2px}
+
+/* ---------- 2ページ目: 支払いの表 ---------- */
+table.pay{width:100%;border-collapse:separate;border-spacing:0;border:1.5px solid var(--line);border-radius:11px;overflow:hidden}
+table.pay th{background:var(--ink);color:#fff;font-size:12px;font-weight:700;text-align:left;padding:4px 9px;line-height:1.4}
+table.pay th .jp{color:#aab2bf;font-size:9.5px;font-weight:400;margin-left:6px}
+table.pay td{padding:4px 9px;border-top:1.5px solid var(--line);vertical-align:middle;font-size:12.2px;line-height:1.65}
+table.pay td .jp{display:block;font-size:9.6px}
+table.pay td.btn{width:33%}
+table.pay td.after{width:34%;border-left:1.5px solid var(--line)}
+.pbtn{display:flex;align-items:center;gap:8px;border:2px solid #cfd5de;border-radius:10px;padding:3px 9px;background:#fff;font-weight:700;font-size:12.4px;line-height:1.5}
+.pbtn .ic{font-size:20px;flex:none}
+.pbtn.g{border-color:#7fb894;background:#e8f4ec}
+.pbtn.gold{border-color:#cdae6f;background:var(--goldbg)}
+tr.shoprow td{background:#fffcf5}
+.warn{display:inline-block;margin-top:1px;background:#fbe9e7;color:var(--red);border-radius:6px;padding:1px 7px;font-weight:700;font-size:11px}
+.warn .jp{display:inline;color:var(--red);opacity:.85;margin-left:4px}
+.auto{display:inline-block;background:var(--green);color:#fff;border-radius:5px;font-size:9.5px;font-weight:700;padding:0 6px;margin-right:4px;font-family:'Jost',sans-serif;letter-spacing:.06em}
+
+/* ---------- 2ページ目: 提携店の仕事 ---------- */
+.shopbox{margin-top:7px;border:2px solid #d8bd85;border-radius:13px;overflow:hidden}
+.shopbox .hd{background:var(--goldbg);border-bottom:2px solid #e3d2ac;padding:5px 12px;font-size:15px;font-weight:800;line-height:1.5}
+.shopbox .hd .jp{font-size:11px;font-weight:500;margin-left:6px}
+.shopbox .bd{display:grid;grid-template-columns:46mm 1fr;gap:10px;padding:7px 11px 8px}
+.shopbox .shot img{width:100%;display:block;border:1.5px solid var(--line);border-radius:10px}
+.flow{list-style:none;counter-reset:f}
+.flow li{counter-increment:f;position:relative;padding-left:27px;margin-bottom:3px;font-size:12px;line-height:1.6}
+.flow li::before{content:counter(f);position:absolute;left:0;top:2px;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#fff;font-family:'Jost',sans-serif;font-weight:600;font-size:12px;display:flex;align-items:center;justify-content:center}
+.flow li .jp{display:block;font-size:9.6px}
+.flow li.auto-li::before{background:var(--green)}
+
+/* 計算の例 */
+.calc{margin:4px 0 4px;border:1.5px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff}
+.calc .cap{font-size:11px;font-weight:700;color:var(--ink2);display:flex;justify-content:space-between;align-items:baseline}
+.calc .cap .en{font-weight:500;letter-spacing:.06em;color:var(--sub);font-size:10.5px}
+.bar{display:flex;height:30px;border-radius:7px;overflow:hidden;margin:5px 0 4px;font-weight:700;color:#fff;font-size:12px}
+.bar .us{flex:70;background:var(--green);display:flex;align-items:center;justify-content:center;gap:6px}
+.bar .sh{flex:30;background:var(--gold);display:flex;align-items:center;justify-content:center;gap:4px}
+.bar .big{font-family:'Jost',sans-serif;font-size:18px;font-weight:600}
+.calc .total{display:flex;justify-content:space-between;font-size:11px;color:var(--ink2)}
+.calc .total .jp{font-size:9.4px}
+.calc .appline{margin-top:4px;background:#f1f3f6;border-radius:6px;padding:2px 8px;font-size:11px;color:var(--ink2)}
+.calc .appline .jp{font-size:9.2px;margin-left:4px}
+
+.notes{display:grid;gap:6px;margin-top:7px}
+.note{border-radius:8px;padding:4px 8px;font-size:11px;line-height:1.6;background:var(--card);border:1px solid var(--line)}
+.note .jp{display:block;font-size:9.2px}
+
+/* Telegram に届く請求（見本） */
+.tg{margin-top:5px}
+.tg .lbl{font-size:11px;font-weight:700;line-height:1.5;color:var(--ink2);margin-bottom:2px}
+.tg .lbl .jp{font-weight:400;font-size:9.2px;margin-left:5px}
+.bubble{background:#eef3f8;border:1px solid #d5dee9;border-radius:4px 12px 12px 12px;padding:5px 9px;font-size:10px;line-height:1.5;color:#22262c}
+.bubble .qr{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:2px dashed #9aa6b5;border-radius:6px;font-family:'Jost',sans-serif;font-size:11px;font-weight:600;color:#7a8696;float:right;margin:0 0 4px 8px;background:#fff}
+.bubble .ln{color:#a7b0bc;letter-spacing:-1px;overflow:hidden;white-space:nowrap;height:9px;line-height:9px;font-size:8px}
+.bubble b{font-weight:700}
+
+/* 日本側メモ（日本語のみ） */
+.jpmemo{margin-top:7px;border:1px dashed #b9bec6;border-radius:9px;padding:4px 11px;font-family:'Noto Sans JP',sans-serif;font-size:9.2px;line-height:1.6;color:#5b6168}
+.jpmemo b{color:#2d3238}
+.jpmemo ul{margin-left:15px}
+</style>
+</head>
+<body>
+
+<!-- ======================= 1ページ目: 作業の流れ ======================= -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t">
+      <div class="km">ការកត់ត្រាការងារ និងការទូទាត់ប្រាក់ ក្នុងកម្មវិធី «Samurai»</div>
+      <div class="jp">作業の記録と支払い 手順書（SOP）— 現場アプリ「Samurai」</div>
+    </div>
+    <div class="doc"><div class="no">SOP</div><div class="meta">JOB-PAY · v1 · 2026.10</div></div>
+  </div>
+
+  <div class="sheet-body">
+    <div class="rule dark">
+      <div class="mk">📱</div>
+      <div class="km">កត់ត្រាការងារទាំងអស់ក្នុងកម្មវិធី «Samurai»។
+        <span class="jp">すべての作業を「Samurai」アプリで記録します（予約あり・予約なし・提携店の車も同じ）</span></div>
+    </div>
+
+    <h2 class="sec"><span class="n">1</span>លំដាប់ការងារ<span class="jp">作業の流れ</span></h2>
+    <div class="secline"></div>
+
+    <div class="steps">
+      <!-- 1 -->
+      <div class="st">
+        <div class="hd"><div class="num">1</div><div class="ttl">បើកការងារ<span class="jp">仕事を開く</span></div></div>
+        <div class="pic"><img src="./assets/s1_home.jpg" alt=""></div>
+        <div class="tx">
+          <p>បើមានការកក់៖ ក្នុង <b class="ui">«ថ្ងៃនេះ»</b> ចុចលើការកក់នោះ។</p>
+          <p>បើគ្មានការកក់៖ ចុចប៊ូតុង <b class="ui">+ «ការងារថ្មី (គ្មានការកក់)»</b>។</p>
+          <span class="jp">予約あり：「今日」の予約を押す／予約なし：＋「新しい仕事（予約なし）」</span>
+        </div>
+      </div>
+      <!-- 2 -->
+      <div class="st shop">
+        <div class="hd"><div class="num">2</div><div class="ttl">«ពិនិត្យមុនធ្វើការ»<span class="jp">作業前のチェック</span></div></div>
+        <div class="pic"><img src="./assets/s2_check.jpg" alt=""></div>
+        <div class="tx">
+          <p>ចុច <b class="ui">«ធម្មតា»</b> ឬ <b class="ui">«ខូច»</b>។ គ្មានស្នាម៖ ចុច <b class="ui">«គ្មានស្នាម»</b>។</p>
+          <span class="jp">「普通」か「壊れている」を押す。傷がなければ「傷なし」</span>
+          <div class="shopnote">🤝 បើជារថយន្តរបស់ហាង ឬភ្ញៀវដែលហាងបានណែនាំមក សូមជ្រើសរើសហាងត្រង់ <b class="ui">«ហាងដៃគូណា?»</b>។
+            <span class="jp">お店の車・お店の紹介のお客さんは「どの提携店？」でお店を選ぶ</span></div>
+        </div>
+      </div>
+      <!-- 3 -->
+      <div class="st">
+        <div class="hd"><div class="num">3</div><div class="ttl">«រូបថតមុនលាង»<span class="jp">作業前の写真</span></div></div>
+        <div class="pic"><img src="./assets/s3_before.jpg" alt=""></div>
+        <div class="tx">
+          <p>ថតរូបតាមលំដាប់ រួចចុច <b class="ui">▶ «ចាប់ផ្ដើម»</b>។</p>
+          <span class="jp">表示の順番どおりに撮って ▶「開始」</span>
+        </div>
+      </div>
+      <!-- 4 -->
+      <div class="st">
+        <div class="hd"><div class="num">4</div><div class="ttl">ធ្វើសេវាកម្ម<span class="jp">作業する</span></div></div>
+        <div class="pic"><img src="./assets/s4_work.jpg" alt=""></div>
+        <div class="tx">
+          <p>ធ្វើសេវាកម្មរួច ចុច <b class="ui">■ «រួចរាល់»</b>។</p>
+          <span class="jp">時間は自動で計ります。作業が終わったら ■「完了」</span>
+        </div>
+      </div>
+      <!-- 5 -->
+      <div class="st">
+        <div class="hd"><div class="num">5</div><div class="ttl">«រូបថតក្រោយលាង»<span class="jp">作業後の写真</span></div></div>
+        <div class="pic"><img src="./assets/s5_after.jpg" alt=""></div>
+        <div class="tx">
+          <p>ថតរូបតាមលំដាប់ រួចចុច <b class="ui">«បន្ទាប់»</b>។</p>
+          <span class="jp">順番どおりに撮って「次へ」</span>
+        </div>
+      </div>
+      <!-- 6 -->
+      <div class="st">
+        <div class="hd"><div class="num">6</div><div class="ttl">«ការទូទាត់»<span class="jp">支払い</span></div></div>
+        <div class="pic"><img src="./assets/s6_pay.jpg" alt=""></div>
+        <div class="tx">
+          <p>ជ្រើសរើសប៊ូតុងមួយ (មើលទំព័រទី 2)។</p>
+          <span class="jp">ボタンを1つ選ぶ（2ページ目を見る）</span>
+        </div>
+      </div>
+      <!-- 7 -->
+      <div class="st">
+        <div class="hd"><div class="num">7</div><div class="ttl">«រក្សាទុក»<span class="jp">保存</span></div></div>
+        <div class="pic"><img src="./assets/s7_done.jpg" alt=""></div>
+        <div class="tx">
+          <p>ចុច <b class="ui">«រក្សាទុក»</b> ហើយចប់។</p>
+          <span class="jp">「保存」を押して終わり。「送信済み」が出れば OK</span>
+        </div>
+      </div>
+      <!-- 8: ネットが無い時 -->
+      <div class="st tip">
+        <div class="hd"><div class="num">✓</div><div class="ttl">គ្មានអ៊ីនធឺណិត<span class="jp">ネットが無い時</span></div></div>
+        <div class="tx">
+          <div class="tip-big">📶✕ → 👍</div>
+          <p><b>គ្មានអ៊ីនធឺណិតក៏មិនអីទេ។</b></p>
+          <span class="jp">ネットが無くても大丈夫</span>
+          <div class="toastbox">បានរក្សាទុកក្នុងទូរស័ព្ទ។ នឹងផ្ញើពេលមានអ៊ីនធឺណិត</div>
+          <span class="jp">スマホに保存され、ネットにつながった時に自動で送られます</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="check">
+      <div class="lbl">មុនចប់ សូមពិនិត្យ<span class="jp">終わる前に確認</span></div>
+      <ul>
+        <li>«រូបថតមុនលាង»<span class="jp">前の写真</span></li>
+        <li>«រូបថតក្រោយលាង»<span class="jp">後の写真</span></li>
+        <li>«ការទូទាត់»<span class="jp">支払い</span></li>
+        <li>«ហាងដៃគូណា?»<span class="jp">提携店の仕事の時</span></li>
+        <li>«បានផ្ញើ»<span class="jp">送信済み</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Samurai Motors · Field SOP</span><span>1 / 2</span></div>
+</section>
+
+<!-- ======================= 2ページ目: 支払い ======================= -->
+<section class="sheet">
+  <div class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t">
+      <div class="km">ការទូទាត់ និងការងាររបស់ហាងដៃគូ</div>
+      <div class="jp">支払いの選び方と、提携店の仕事（お店の車・お店の紹介のお客さん）</div>
+    </div>
+    <div class="doc"><div class="no">SOP</div><div class="meta">JOB-PAY · v1 · 2026.10</div></div>
+  </div>
+
+  <div class="sheet-body">
+    <div class="rule red">
+      <div class="mk">⚠️</div>
+      <div class="km">ទទួលលុយតាម QR តែប៉ុណ្ណោះ។ មិនទទួលសាច់ប្រាក់ទេ។
+        <span class="jp">お金は QR だけで受け取ります。現金は受け取りません。</span></div>
+    </div>
+
+    <h2 class="sec"><span class="n">2</span>«ការទូទាត់» ជ្រើសរើសប៊ូតុងមួយ<span class="jp">支払い：ボタンを1つ選ぶ</span></h2>
+    <div class="secline"></div>
+
+    <table class="pay">
+      <thead>
+        <tr>
+          <th>ប៊ូតុង<span class="jp">ボタン</span></th>
+          <th>ពេលណា?<span class="jp">いつ使う？</span></th>
+          <th>បន្ទាប់ពី «រក្សាទុក»<span class="jp">保存のあと（自動）</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="btn"><div class="pbtn g"><span class="ic">📱</span>ទទួលលុយតាម ABA QR</div></td>
+          <td>ភ្ញៀវបានបង់ប្រាក់តាម QR
+            <span class="jp">お客さんが QR で払った</span>
+            <span class="warn">ចុចតែពេលភ្ញៀវបង់រួច<span class="jp">払い終わった時だけ</span></span></td>
+          <td class="after">✓ ចប់។<span class="jp">記録して終わり（予約のお客さんにも支払い QR・催促は送られません）</span></td>
+        </tr>
+        <tr class="shoprow">
+          <td class="btn"><div class="pbtn gold"><span class="ic">🤝</span>ភ្ញៀវដែលហាងបានណែនាំមក</div></td>
+          <td>ហាងដៃគូបានណែនាំភ្ញៀវនេះមក
+            <span class="jp">提携店が紹介したお客さん</span></td>
+          <td class="after" rowspan="2"><span class="auto">AUTO</span>សារស្នើសុំទូទាត់ប្រាក់ (QR) នឹងទៅដល់ក្រុម Telegram របស់ហាងដោយស្វ័យប្រវត្តិ។
+            <span class="jp">お店の Telegram グループに請求（QR 付き）が自動で届く。お店が当社に払う</span></td>
+        </tr>
+        <tr class="shoprow">
+          <td class="btn"><div class="pbtn gold"><span class="ic">🏪</span>រថយន្តរបស់ហាង (ហាងបង់)</div></td>
+          <td>រថយន្តរបស់ហាងដៃគូ
+            <span class="jp">提携店の車（在庫車など）</span></td>
+        </tr>
+        <tr>
+          <td class="btn"><div class="pbtn"><span class="ic">🎁</span>ឥតគិតថ្លៃ (សាកល្បង)</div></td>
+          <td>លាងសាកល្បង (ឥតគិតថ្លៃ)
+            <span class="jp">無料のお試し（デモ）</span></td>
+          <td class="after">0$<span class="jp">0$ で記録</span></td>
+        </tr>
+        <tr>
+          <td class="btn"><div class="pbtn"><span class="ic">⏳</span>មិនទាន់បង់</div></td>
+          <td>ភ្ញៀវមិនទាន់បានបង់ប្រាក់
+            <span class="jp">お客さんがまだ払っていない</span></td>
+          <td class="after">ក្រុមជប៉ុននឹងតាមដាន។<span class="jp">日本側が追いかけます（Bot につながっているお客さんには支払い QR が自動で届く）</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="shopbox">
+      <div class="hd">🤝 ការងាររបស់ហាងដៃគូ<span class="jp">提携店の仕事（🤝 紹介のお客さん・🏪 お店の車）</span></div>
+      <div class="bd">
+        <div class="shot"><img src="./assets/p2_pay_shop.jpg" alt="">
+          <div class="notes">
+            <div class="note">✏️ បើទឹកប្រាក់មិនត្រូវ អាចកែបាន។<span class="jp">金額が違う時は、直せる</span></div>
+            <div class="note">📊 % អាចខុសគ្នាតាមហាងនីមួយៗ។ បើ % មិនត្រូវ សូមទាក់ទង Daisuke។<span class="jp">% はお店ごとに違うことがある。おかしい時は Daisuke に連絡</span></div>
+          </div>
+        </div>
+        <div>
+          <ol class="flow">
+            <li>សូមជ្រើសរើសហាងត្រង់ <b class="ui">«ហាងដៃគូណា?»</b>។
+              <span class="jp">「どの提携店？」でお店を選ぶ（作業前のチェックで選んでいれば、もう入っています）</span></li>
+            <li class="auto-li">ពេលជ្រើសរើសហាងរួច ទឹកប្រាក់នឹងបំពេញឱ្យដោយស្វ័យប្រវត្តិ។
+              <span class="jp">お店を選ぶと、金額が自動で入る</span></li>
+            <li>នោះជាទឹកប្រាក់ដែលយើងទទួល បន្ទាប់ពីកាត់លុយដែលហាងទទួលបានចេញ។
+              <span class="jp">その金額は、お店の取り分を引いた「当社の受け取り」</span></li>
+          </ol>
+
+          <div class="calc">
+            <div class="cap"><span>ឧទាហរណ៍ <span class="jp">例</span></span><span class="en">HEADLIGHT MAGIC · SUV</span></div>
+            <div class="bar">
+              <div class="us">យើងទទួល <span class="big">21$</span></div>
+              <div class="sh">ហាង <span class="big">9$</span></div>
+            </div>
+            <div class="total"><span>តម្លៃសេវា 30$ <span class="jp">定価</span></span><span>70% : 30% <span class="jp">当社 : お店</span></span></div>
+            <div class="appline">តម្លៃសេវា 30$ → យើងទទួល 21$ (ហាងទទួលបាន 30%)<span class="jp">← アプリの表示</span></div>
+          </div>
+
+          <ol class="flow" start="4" style="counter-reset:f 3">
+            <li class="auto-li">សារស្នើសុំទូទាត់ប្រាក់ (QR) នឹងទៅដល់ក្រុម Telegram របស់ហាងដោយស្វ័យប្រវត្តិ។
+              <span class="jp">保存すると、お店のグループに請求が自動で届く</span></li>
+            <li>សូមឱ្យអ្នកនៅហាងបង់ប្រាក់នៅនឹងកន្លែង។
+              <span class="jp">お店の人に、その場で払ってもらう</span></li>
+          </ol>
+
+          <div class="tg">
+            <div class="lbl">💬 ក្រុម Telegram របស់ហាង<span class="jp">お店のグループに届く請求（見本）</span></div>
+            <div class="bubble">
+              <div class="qr">QR</div>
+              <b>🧾 ការស្នើសុំទូទាត់ប្រាក់ / Payment request</b><br>
+              💵 តម្លៃសេវា / Service price: 30$<br>
+              🤝 កម្រៃជើងសារ របស់ហាង (30%): 9$<br>
+              <b>💰 ទឹកប្រាក់ត្រូវបង់ / Amount to pay: 21$</b><br>
+              📱 សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់ឱ្យ Samurai Motors។
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="jpmemo">
+      <b>日本側メモ</b>
+      <ul>
+        <li>お店ごとの % は v7 Database「店マスター」の <b>紹介料率(%)</b>（空欄＝30%）。現場アプリに自動で反映。紹介のお客さん・お店の車とも同じ率</li>
+        <li>売上は <b>当社分（例 21$）</b> を「清算済み」で記録。請求が送れない時（グループ未連携など）は管理グループに理由が出る → 手で請求</li>
+        <li>予約のお客さんがその場で払った時（ABA QR・お店・無料）は、決済 QR と 24h 催促は自動で止まる</li>
+        <li>店 QR 経由のお客さんなのに現場が「ABA QR」「無料」を選ぶと、管理グループに二重請求の確認が出る</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Samurai Motors · Field SOP</span><span>2 / 2</span></div>
+</section>
+
+</body>
+</html>
