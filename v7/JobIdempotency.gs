@@ -33,7 +33,8 @@ var JOBS_V2_COLS_ = [
   '開始配信日時',
   '終了配信日時',
   'v2記録(JSON)',
-  '提携店ID'               // 現場アプリで選んだ提携店（2026-10-22・空＝選んでいない）
+  '提携店ID',              // 現場アプリで選んだ提携店（2026-10-22・空＝選んでいない）。作業終了で選んだ店だけ（開始で選んだ店は v2記録(JSON) の start.shop_id）
+  '店への請求'             // 提携店グループへの請求の状態（ShopInvoice.gs・2026-10-25）: 送信中 / 送信済 / 未送信(理由) ＋日時
 ];
 var JOB_DELIVERING_TTL_ = 180;          // 配信中の印（秒）
 var JOB_V2_JSON_MAX_ = 40000;           // セル上限 50,000 文字に余裕を持たせる
@@ -45,7 +46,7 @@ var JOB_CLIENT_ID_RE_ = /^[A-Za-z0-9-]{8,64}$/;
  */
 function ensureJobsV2Columns_() {
   var cache = CacheService.getScriptCache();
-  if (cache.get('jobs_v2_cols_ok_v2')) return;
+  if (cache.get('jobs_v2_cols_ok_v3')) return;   // 列を足したら版を上げる（v3: 店への請求）
   var sheet = getSheet(SHEET_NAMES.JOBS);
   var headers = getHeaderMap(SHEET_NAMES.JOBS);
   var missing = JOBS_V2_COLS_.filter(function(c) { return !headers[c]; });
@@ -61,7 +62,7 @@ function ensureJobsV2Columns_() {
     var still = JOBS_V2_COLS_.filter(function(c) { return !after[c]; });
     if (still.length > 0) throw new Error('JOBS_V2_COLUMNS_MISSING: ' + still.join(','));
   }
-  cache.put('jobs_v2_cols_ok_v2', '1', 21600);
+  cache.put('jobs_v2_cols_ok_v3', '1', 21600);
 }
 
 function jobEcho_(res, body) {
@@ -150,8 +151,9 @@ function apiJobStartV2(body) {
   if (!cid) return apiJobStart(body);
   if (!JOB_CLIENT_ID_RE_.test(cid)) return jobErr_(body, 'INVALID_CLIENT_ID', false);
 
-  // 作業開始で選んだ提携店（2026-10-25・予約なしの作業）。確かめた shop_id だけを記録し、Before をその店のグループへ送る
-  var fieldShop = (typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
+  // 作業開始で選んだ提携店（2026-10-25・予約なしの作業だけ）。確かめた shop_id だけで Before をその店のグループへ送る
+  // 予約のお客様の車の写真を店へ出さないよう、予約つきはサーバー側でも受け付けない。値は v2記録(JSON) の start に残る
+  var fieldShop = (!body.bookingId && typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
 
   var cache = CacheService.getScriptCache();
   var lock = LockService.getScriptLock();
@@ -181,8 +183,7 @@ function apiJobStartV2(body) {
         '受信日時':           new Date(),
         '送信日時(端末)':     jobDate_(body.sent_at, ''),
         'スタッフチャットID': jobStaffChatId_(body),
-        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null }),
-        '提携店ID':           fieldShop
+        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null })
       });
       SpreadsheetApp.flush();
       row = findRow(SHEET_NAMES.JOBS, 'client_id', cid);
@@ -286,7 +287,7 @@ function apiJobEndV2(body) {
   var startShop = '';
   try {
     var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start || {};
-    if (startV2.shop_id && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
+    if (startV2.shop_id && !body.bookingId && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
   } catch (eStart) {
     Logger.log('⚠️ apiJobEndV2: 作業開始の店を読めず ' + eStart);
   }
