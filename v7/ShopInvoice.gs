@@ -23,7 +23,7 @@ var SHOP_INVOICE_KM_ = {
   price:      'តម្លៃសេវា',
   commission: 'កម្រៃជើងសារ របស់ហាង',
   due:        'ទឹកប្រាក់ត្រូវបង់',
-  scan:       'សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់។',
+  scan:       'សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់ឱ្យ Samurai Motors។',   // 支払先を明示（QR は個人名義のため・Daisuke 2026-10-25）
   screenshot: 'បន្ទាប់ពីបង់រួច សូមផ្ញើរូបថតអេក្រង់នៃការបង់ប្រាក់ មកក្នុងក្រុមនេះ។'
 };
 var SHOP_INVOICE_LINE_ = '━━━━━━━━━━━━━━━━━';
@@ -68,7 +68,7 @@ function buildShopInvoiceText_(p) {
   lines.push('💰 ' + km.due + ' / Amount to pay: ' + shopInvoiceUsd_(p.due));
   lines.push(L);
   lines.push('📱 ' + km.scan);
-  lines.push('📱 Please scan the QR above to pay.');
+  lines.push('📱 Please scan the QR above to pay Samurai Motors.');
   lines.push('📸 ' + km.screenshot);
   lines.push('📸 After paying, please send a screenshot of the payment to this group.');
   return lines.join('\n');
