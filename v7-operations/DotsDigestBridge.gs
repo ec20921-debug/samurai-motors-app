@@ -1,30 +1,34 @@
 /**
- * DotsDigestBridge.gs — Run Kosal の秘書 dots（ChatGPT）のまとめを管理グループへ転送
+ * DotsDigestBridge.gs — Run Kosal の秘書 dots（ChatGPT「ドッちゃん」）のメールを管理グループへ
  *
- * 【責務】（2026-10-24 Daisuke 指示「日報を dots に集約する」）
- *   Run Kosal は ChatGPT の dots（常駐エージェント）に日報・相談を話しかける。
- *   dots は 1日2回（プノンペン 12:00 / 18:00）、日本語のまとめをメールで送る。
- *   本モジュールはそのメールを Gmail から拾い、管理グループの日報トピックへ投稿する。
+ * 【責務】（2026-10-24 Daisuke 指示「日報を dots に集約する」→ 2026-10-25 改訂「日報を毎日 GSS に記録・報連相の代わり」）
+ *   Run Kosal はドッちゃんとクメール語で話す。ドッちゃんは日本語のメールを送る（送信元は Run Kosal の ChatGPT の Gmail）。
+ *     - 日報（1日1通）  件名 [SM-DOTS] 日報 YYYY-MM-DD
+ *         → 勤務用 GSS「日報」タブに1行（DotsDailyReport.gs）→ 管理グループに「記録しました」と中身
+ *     - 報連相（その都度）件名 [SM-DOTS] 報告 / 連絡 / 相談 / 緊急 ＋ 件名
+ *         → 管理グループへそのまま（GSS には書かない。その日の日報にまとめて入る）
+ *     - テスト          件名 [SM-DOTS] テスト（「テスト 日報」なら GSS への記録まで試す）
  *
- *   dots → メール（件名が [SM-DOTS] で始まる・本文に合言葉）→ 本 GAS の実行者の Gmail
+ *   ドッちゃん → メール（件名が [SM-DOTS] で始まる・本文に合言葉）→ 本 GAS の実行者の Gmail
  *        → runDotsBridge（専用の5分トリガー。pollInternalBot とは切り離す）
  *        → 管理グループ（DOTS_DIGEST_THREAD_ID、未設定なら日報トピック）
  *
  * 【Script Properties】（値はコードに書かない）
  *   DOTS_BRIDGE_ENABLED    'true' のときだけ動く（停止スイッチ。消すか 'false' で即停止）
- *   DOTS_SHARED_TOKEN      合言葉。本文に含まれないメールは転送しない（なりすまし対策）
+ *   DOTS_SHARED_TOKEN      合言葉。本文に含まれないメールは転送しない（なりすまし対策。issueDotsSharedToken で作れる）
  *   DOTS_SENDER_ALLOWLIST  送信元メールアドレス（カンマ区切り）。外れたものは転送しない
  *   DOTS_DIGEST_THREAD_ID  投稿先トピック（任意。未設定なら ADMIN_DAILY_REPORT_THREAD_ID）
  *
  * 【届かない・送れないときは黙らない】
- *   - 12:40 / 18:40（プノンペン）を過ぎてもその回のまとめが無ければ、1回だけ知らせる
- *   - Telegram への送信に失敗したら次の回で再試行（最大3回）。それでも駄目なら知らせる
+ *   - 出勤した日に 20:00（プノンペン）を過ぎても日報が無ければ、1回だけ知らせる
+ *   - GSS への記録・Telegram への送信に失敗したら次の回で再試行（最大3回）。それでも駄目なら知らせる
  *   - 処理そのものが落ちたら1日1回知らせ、例外を投げ直して Google の失敗メールも出す
  *   - 弾いたメール（合言葉なし・送信元が許可外）は送信元と件名だけ、1回にまとめて知らせる
  *
  * 【ロック】
  *   勤怠・経費と共通のスクリプトロックは、処理済み ID の予約と状態の更新の瞬間だけ握る。
- *   Gmail 検索・Telegram 送信はロックの外（勤怠・経費を「混雑中」にしない）。
+ *   Gmail 検索・GSS 書き込み・Telegram 送信はロックの外（勤怠・経費を「混雑中」にしない）。
+ *   同じメールを2つの実行が同時に扱うことは、処理済み ID の予約で防ぐ。
  */
 
 const DOTS_SUBJECT_TAG = '[SM-DOTS]';
@@ -36,10 +40,18 @@ const DOTS_TG_CHUNK = 3500;   // Telegram の上限 4096 字に余裕を持た�
 const DOTS_MAX_BODY = 10500;  // これを超えた分は省略（全文はメールで見る）
 const DOTS_MAX_RETRY = 3;
 const DOTS_SEEN_KEEP = 200;   // メッセージ ID 約16字 × 200 ≒ 4KB（1プロパティ 9KB 以内）
-const DOTS_SLOTS = [
-  { key: 'noon',    label: '昼',   subjectRe: /昼/,   due: '12:00', dueJst: '14:00', earliest: '11:00', alertAt: '12:40' },
-  { key: 'evening', label: '夕方', subjectRe: /夕方/, due: '18:00', dueJst: '20:00', earliest: '17:00', alertAt: '18:40' }
+const DOTS_REPORT_ALERT_AT = '20:00';   // 出勤した日、この時刻（プノンペン）までに日報が無ければ知らせる
+const DOTS_REPORT_ALERT_JST = '22:00';
+// 件名の [SM-DOTS] の後ろで、いちばん前に出てくる語で種類を決める。日報だけ GSS に記録する
+const DOTS_KINDS = [
+  { key: 'report',  word: '日報', icon: '📝', label: '日報' },
+  { key: 'urgent',  word: '緊急', icon: '🚨', label: '緊急', ask: '👉 すぐに確認してください' },
+  { key: 'consult', word: '相談', icon: '🙋', label: '相談', ask: '👉 日本側の返事が必要です' },
+  { key: 'contact', word: '連絡', icon: '📨', label: '連絡' },
+  { key: 'notice',  word: '報告', icon: '📢', label: '報告' }
 ];
+const DOTS_KIND_OTHER = { key: 'other', word: '', icon: '💬', label: 'お知らせ' };
+const DOTS_KIND_TEST = { key: 'test', word: '', icon: '🧪', label: '接続テスト' };
 const DOTS_PROP = {
   ENABLED:       'DOTS_BRIDGE_ENABLED',
   TOKEN:         'DOTS_SHARED_TOKEN',
@@ -71,13 +83,13 @@ function runDotsBridge() {
   }
   // 転送が走れなかった回に「届いていない」と言うと誤報になるので、走れた時だけ確認する
   if (forwardRan) {
-    try { checkMissingDotsDigest_(props); } catch (e) { Logger.log('❌ checkMissingDotsDigest_: ' + e); }
+    try { checkMissingDotsReport_(props); } catch (e) { Logger.log('❌ checkMissingDotsReport_: ' + e); }
   }
   if (forwardError) throw forwardError; // Google の失敗メールも出す
 }
 
 /**
- * 未転送の dots メールを拾って管理グループへ投稿する。
+ * 未転送のドッちゃんのメールを拾い、日報は GSS に記録してから管理グループへ投稿する。
  * @return {boolean} 設定が揃って検索まで実行できたら true
  */
 function forwardDotsDigests_(props) {
@@ -93,7 +105,8 @@ function forwardDotsDigests_(props) {
   const base = 'subject:"' + DOTS_SUBJECT_TAG + '" newer_than:2d -in:trash';
 
   // ① 許可リストの送信元だけを読む（弾いたメールで検索窓が埋まらないように）
-  GmailApp.search(base + ' ' + fromAllowed, 0, 10).forEach(function(thread) {
+  //    報連相は1日に何通も来るので、処理済みのスレッドも含めて新しい順に20件見る（処理済みかは ID で判定）
+  GmailApp.search(base + ' ' + fromAllowed, 0, 20).forEach(function(thread) {
     let forwarded = false;
     let rejected = false;
     thread.getMessages().forEach(function(msg) {
@@ -110,24 +123,36 @@ function forwardDotsDigests_(props) {
         notifyDotsRejected_(cfg, props, [{ sender: sender, subject: subject }], '合言葉なし');
         return;
       }
-      const r = postDotsDigest_(cfg, props, msg.getDate(), subject, cleanDotsBody_(body, token));
-      if (r.sent === 0) {
-        const n = bumpDotsRetry_(props, id);
-        if (n < DOTS_MAX_RETRY) {
-          releaseDotsId_(props, id); // 1通も出ていないので二重投稿の恐れは無い → 次の回で再試行
-          Logger.log('⚠️ dots 送信失敗 ' + n + '/' + DOTS_MAX_RETRY + ' — 次回再試行 id=' + id);
-          return;
+      const kind = detectDotsKind_(subject);
+      const clean = cleanDotsBody_(body, token);
+
+      // 日報は先に GSS へ。失敗したら次の回にやり直す（同じメールの再試行は同じ行を上書きするので二重にならない）
+      let rec = null;
+      if (kind.key === 'report') {
+        try {
+          rec = recordDotsDailyReport_(msg, subject, clean, kind.test);
+        } catch (e) {
+          Logger.log('❌ dots 日報の GSS 記録失敗 id=' + id + ': ' + e);
+          if (retryDotsLater_(props, id)) return;
+          // 3回駄目 → 中身だけ先に管理グループへ出す（届いてはいるので未着の警告は出さない）
+          rec = { error: String(e), reportDate: resolveDotsReportDate_(subject, msg.getDate()) };
         }
-        sendDotsToAdmin_(cfg, props, '❌ dots のまとめを管理グループへ送れませんでした（' + DOTS_MAX_RETRY +
-          '回失敗）。全文は Gmail の件名「' + subject.substring(0, 80) + '」を見てください。');
+      }
+
+      const r = postDotsMessage_(cfg, props, msg.getDate(), subject, kind, clean, rec);
+      if (r.sent === 0) {
+        if (retryDotsLater_(props, id)) return; // 1通も出ていないので二重投稿の恐れは無い
+        sendDotsToAdmin_(cfg, props, '❌ ドッちゃんのメールを管理グループへ送れませんでした（' + DOTS_MAX_RETRY +
+          '回失敗）。全文は Gmail の件名「' + subject.substring(0, 80) + '」を見てください。' +
+          (rec && rec.reportId ? '\n（GSS「日報」への記録は済んでいます: ' + rec.reportId + '）' : ''));
         return;
       }
       if (r.sent < r.total) {
-        sendDotsToAdmin_(cfg, props, '⚠️ dots のまとめが途中までしか送れませんでした（' + r.sent + '/' + r.total +
+        sendDotsToAdmin_(cfg, props, '⚠️ ドッちゃんのメールが途中までしか送れませんでした（' + r.sent + '/' + r.total +
           '通）。続きは Gmail の件名「' + subject.substring(0, 80) + '」を見てください。');
       }
       forwarded = true;
-      markDotsSlotReceived_(props, msg.getDate(), subject);
+      if (kind.key === 'report' && !kind.test && rec && rec.reportDate) markDotsReportReceived_(props, rec.reportDate);
     });
     if (forwarded) thread.addLabel(getOrCreateDotsLabel_(DOTS_LABEL_DONE));
     if (rejected) thread.addLabel(getOrCreateDotsLabel_(DOTS_LABEL_REJECTED));
@@ -155,36 +180,36 @@ function forwardDotsDigests_(props) {
 }
 
 /**
- * 12:40 / 18:40 を過ぎてもその回のまとめが無ければ1回だけ知らせる。
- * 有効化した時刻より前に締切を過ぎた回は知らせない（有効化当日の誤報防止）。
+ * 出勤した日に 20:00 を過ぎても日報が無ければ1回だけ知らせる。
+ * 有効化した時刻が締切より後（同じ日）なら、その日は知らせない（有効化当日の誤報防止）。
  */
-function checkMissingDotsDigest_(props) {
+function checkMissingDotsReport_(props) {
   const now = new Date();
-  const hm = Utilities.formatDate(now, OPS_TZ, 'HH:mm');
+  if (Utilities.formatDate(now, OPS_TZ, 'HH:mm') < DOTS_REPORT_ALERT_AT) return;
+  const today = Utilities.formatDate(now, OPS_TZ, 'yyyy-MM-dd');
   const enabledSince = parseInt(props.getProperty(DOTS_PROP.ENABLED_SINCE) || '0', 10);
-  const sinceSameDay = enabledSince > 0 &&
-    Utilities.formatDate(new Date(enabledSince), OPS_TZ, 'yyyy-MM-dd') === Utilities.formatDate(now, OPS_TZ, 'yyyy-MM-dd');
-  const sinceHm = sinceSameDay ? Utilities.formatDate(new Date(enabledSince), OPS_TZ, 'HH:mm') : '00:00';
+  if (enabledSince > 0 &&
+      Utilities.formatDate(new Date(enabledSince), OPS_TZ, 'yyyy-MM-dd') === today &&
+      Utilities.formatDate(new Date(enabledSince), OPS_TZ, 'HH:mm') >= DOTS_REPORT_ALERT_AT) return;
+  // 20:00 以降は5分ごとに呼ばれるので、済んでいる日はロックを取らずに抜ける
+  const seen = loadDotsJson_(props, DOTS_PROP.DAY_STATE, {});
+  if (seen.date === today && ((seen.received || {}).report || (seen.alerted || {}).report)) return;
 
-  const due = [];
+  let due = false;
   updateDotsDayState_(props, function(state) {
-    DOTS_SLOTS.forEach(function(slot) {
-      if (hm < slot.alertAt || sinceHm >= slot.alertAt) return;
-      if (state.received[slot.key] || state.alerted[slot.key]) return;
-      state.alerted[slot.key] = true; // 送信前にマーク（多重通知防止）
-      due.push(slot);
-    });
+    if (state.received.report || state.alerted.report) return;
+    state.alerted.report = true; // 送信前にマーク（多重通知防止。休みの日の確認も1日1回で済む）
+    due = true;
   });
-  if (due.length === 0) return;
+  if (!due || !isDotsStaffOnDutyToday_()) return;
 
-  const cfg = getConfig();
-  due.forEach(function(slot) {
-    sendDotsToAdmin_(cfg, props,
-      '⚠️ dots の' + slot.label + 'のまとめが届いていません（' + slot.due + ' 予定・日本 ' + slot.dueJst + '）\n' +
-      '・Run Kosal の dots の「Scheduled」に定期タスクが残っているか\n' +
-      '・Gmail で迷惑メールに入っていないか（件名 ' + DOTS_SUBJECT_TAG + '）\n' +
-      'を確認してください。');
-  });
+  sendDotsToAdmin_(getConfig(), props,
+    '⚠️ 今日（' + formatDotsDay_(today) + '）の Run Kosal の日報が、ドッちゃんからまだ届いていません（出勤あり・' +
+    DOTS_REPORT_ALERT_AT + ' 時点・日本 ' + DOTS_REPORT_ALERT_JST + '）\n' +
+    '・Run Kosal がドッちゃんに「日報を送って」と言ったか\n' +
+    '・ドッちゃんの送信が承認待ち（Needs approval）で止まっていないか\n' +
+    '・Gmail で迷惑メールに入っていないか（件名 ' + DOTS_SUBJECT_TAG + '）\n' +
+    'を確認してください。');
 }
 
 // ============================================================
@@ -192,13 +217,8 @@ function checkMissingDotsDigest_(props) {
 // ============================================================
 
 /** @return {{sent:number,total:number}} */
-function postDotsDigest_(cfg, props, date, subject, body) {
-  const pp = Utilities.formatDate(date, OPS_TZ, 'yyyy-MM-dd HH:mm');
-  const jst = Utilities.formatDate(date, 'Asia/Tokyo', 'HH:mm');
-  const slot = detectDotsSlot_(subject, date);
-  const isTest = /テスト|test/i.test(subject);
-  const header = '🤖 Run Kosal 秘書（dots）' + (isTest ? 'テスト' : slot.label + 'のまとめ') + '\n' +
-    pp + ' プノンペン受信（日本 ' + jst + '）\n━━━━━━━━━━━━━━━━━━\n';
+function postDotsMessage_(cfg, props, date, subject, kind, body, rec) {
+  const header = buildDotsHeader_(date, subject, kind, rec) + '\n━━━━━━━━━━━━━━━━━━\n';
   const notes = [];
   if (/[ក-៿]/.test(body)) {
     notes.push('⚠️ クメール語の原文を含みます（未校閲・社内参考のみ。外へ出す時は Panha を通す）');
@@ -216,8 +236,30 @@ function postDotsDigest_(cfg, props, date, subject, body) {
     if (!sendDotsToAdmin_(cfg, props, msg)) break;
     sent++;
   }
-  Logger.log('📤 dots まとめ転送 ' + pp + ' sent=' + sent + '/' + chunks.length);
+  Logger.log('📤 dots 転送 ' + kind.key + (kind.test ? '(test)' : '') + ' sent=' + sent + '/' + chunks.length);
   return { sent: sent, total: chunks.length };
+}
+
+/** 種類ごとの見出し（日報は GSS の記録結果つき） */
+function buildDotsHeader_(date, subject, kind, rec) {
+  const when = Utilities.formatDate(date, OPS_TZ, 'M/d HH:mm') + ' プノンペン受信（日本 ' +
+    Utilities.formatDate(date, 'Asia/Tokyo', 'HH:mm') + '）';
+  const lines = [(kind.test && kind.key !== 'test' ? '🧪 テスト ' : '') + kind.icon + ' ' + kind.label + ' — Run Kosal（ドッちゃん経由）' +
+    (rec && rec.reportDate ? ' ' + formatDotsDay_(rec.reportDate) : '')];
+  if (kind.key === 'report') {
+    if (rec && rec.reportId) {
+      lines.push('✅ GSS「日報」に' + (rec.updated ? '上書きしました（同じ日の2通目以降）' : '記録しました') + '（' + rec.reportId + '）');
+      if (kind.test) lines.push('（試験の行です。確認したら「日報」タブから消してください）');
+    } else {
+      lines.push('⚠️ GSS「日報」への記録に' + DOTS_MAX_RETRY + '回失敗しました。中身だけ先に送ります（「日報」タブへの記入をお願いします）');
+    }
+  } else {
+    const title = dotsSubjectTitle_(subject, kind);
+    if (title) lines.push('「' + title + '」');
+    if (kind.ask) lines.push(kind.ask);
+  }
+  lines.push(when);
+  return lines.join('\n');
 }
 
 function notifyDotsRejected_(cfg, props, items, reason) {
@@ -226,7 +268,7 @@ function notifyDotsRejected_(cfg, props, items, reason) {
   });
   if (items.length > 3) shown.push('・ほか ' + (items.length - 3) + ' 通');
   sendDotsToAdmin_(cfg, props,
-    '🚫 dots のまとめとして転送しなかったメールがあります（' + reason + '）\n' + shown.join('\n') + '\n' +
+    '🚫 ドッちゃんのメールとして扱わなかったメールがあります（' + reason + '）\n' + shown.join('\n') + '\n' +
     '本物なら Script Properties の ' + DOTS_PROP.ALLOWLIST + ' / ' + DOTS_PROP.TOKEN + ' を確認してください。');
 }
 
@@ -235,7 +277,7 @@ function notifyDotsErrorOncePerDay_(props, err) {
   if (props.getProperty(DOTS_PROP.ERROR_DAY) === today) return;
   props.setProperty(DOTS_PROP.ERROR_DAY, today);
   try {
-    sendDotsToAdmin_(getConfig(), props, '❌ dots 転送の処理でエラーが出ています（本日1回だけ通知）\n' +
+    sendDotsToAdmin_(getConfig(), props, '❌ ドッちゃんのメール転送でエラーが出ています（本日1回だけ通知）\n' +
       String(err).substring(0, 300) + '\nGAS の実行ログを確認してください。');
   } catch (e) {
     Logger.log('❌ dots エラー通知も失敗: ' + e);
@@ -289,6 +331,18 @@ function releaseDotsId_(props, id) {
   });
 }
 
+/**
+ * まだ再試行できるなら予約を外して true（次の回でやり直す）。上限に達したら false。
+ * 記録失敗・送信失敗で回数は共通（1通につき最大3回）
+ */
+function retryDotsLater_(props, id) {
+  const n = bumpDotsRetry_(props, id);
+  if (n >= DOTS_MAX_RETRY) return false;
+  releaseDotsId_(props, id);
+  Logger.log('⚠️ dots 失敗 ' + n + '/' + DOTS_MAX_RETRY + ' — 次回再試行 id=' + id);
+  return true;
+}
+
 function bumpDotsRetry_(props, id) {
   const r = withDotsLock_(function() {
     const map = loadDotsJson_(props, DOTS_PROP.RETRY, {});
@@ -314,18 +368,10 @@ function updateDotsDayState_(props, mutate) {
   });
 }
 
-/**
- * その回を「受信済み」にする。件名で回を決め（時刻は予備）、
- * テスト・前日分・締切1時間より前に来たものは数えない（朝の試験で昼の警告が消えないように）。
- */
-function markDotsSlotReceived_(props, date, subject) {
-  if (/テスト|test/i.test(subject)) return;
-  const day = Utilities.formatDate(date, OPS_TZ, 'yyyy-MM-dd');
-  const hm = Utilities.formatDate(date, OPS_TZ, 'HH:mm');
-  const slot = detectDotsSlot_(subject, date);
-  if (hm < slot.earliest) return;
+/** 今日の分の日報が届いたら「受信済み」にする（前日分・テストは数えない） */
+function markDotsReportReceived_(props, reportDate) {
   updateDotsDayState_(props, function(state) {
-    if (state.date === day) state.received[slot.key] = true;
+    if (state.date === reportDate) state.received.report = true;
   });
 }
 
@@ -357,11 +403,37 @@ function extractDotsEmail_(from) {
   return (m ? m[1] : s).trim().toLowerCase();
 }
 
-function detectDotsSlot_(subject, date) {
-  for (let i = 0; i < DOTS_SLOTS.length; i++) {
-    if (DOTS_SLOTS[i].subjectRe.test(subject || '')) return DOTS_SLOTS[i];
-  }
-  return Utilities.formatDate(date, OPS_TZ, 'HH:mm') < '15:00' ? DOTS_SLOTS[0] : DOTS_SLOTS[1];
+/**
+ * 件名から種類を決める。[SM-DOTS] の後ろでいちばん前に出てくる語（日報・緊急・相談・連絡・報告）で判定。
+ * 「テスト」「test」が入っていれば test=true。語が無ければテストは接続テスト、それ以外はお知らせ。
+ */
+function detectDotsKind_(subject) {
+  const rest = String(subject || '').replace(DOTS_SUBJECT_RE, '');
+  const isTest = /テスト|\btest\b/i.test(rest);
+  let best = null;
+  let bestAt = -1;
+  DOTS_KINDS.forEach(function(k) {
+    const at = rest.indexOf(k.word);
+    if (at !== -1 && (bestAt === -1 || at < bestAt)) { best = k; bestAt = at; }
+  });
+  const kind = best || (isTest ? DOTS_KIND_TEST : DOTS_KIND_OTHER);
+  return Object.assign({}, kind, { test: isTest });
+}
+
+/** 件名から [SM-DOTS]・種類の語・テストを除いた残り（報連相の見出しに出す） */
+function dotsSubjectTitle_(subject, kind) {
+  let s = String(subject || '').replace(DOTS_SUBJECT_RE, '');
+  if (kind.word) s = s.replace(kind.word, '');
+  s = s.replace(/テスト|\btest\b/ig, '').replace(/^[\s:：・｜|\-—]+/, '').trim();
+  return s.substring(0, 80);
+}
+
+/** 'yyyy-MM-dd' → 'M/d（曜）' */
+function formatDotsDay_(ds) {
+  const m = String(ds || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return String(ds || '');
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number(m[2]) + '/' + Number(m[3]) + '（' + '日月火水木金土'.charAt(d.getDay()) + '）';
 }
 
 /** 合言葉と「KEY:」を消し、返信の引用部分から先を落とす */
@@ -409,9 +481,11 @@ function getOrCreateDotsLabel_(name) {
 
 /**
  * 5分トリガーを登録する（1回だけ実行）。Gmail の権限確認もここで出る。
- * 先に Script Properties 4項目を入れてから実行する。
+ * 合言葉がまだ無ければ作ってログに出す（issueDotsSharedToken）。許可リストは先に Script Properties へ入れておく。
+ * 動き出すのは DOTS_BRIDGE_ENABLED を 'true' にしてから。
  */
 function setupDotsBridgeTrigger() {
+  issueDotsSharedToken();
   removeDotsBridgeTrigger();
   GmailApp.getUserLabelByName(DOTS_LABEL_DONE); // Gmail の権限確認を出すための呼び出し
   ScriptApp.newTrigger(DOTS_TRIGGER_FN).timeBased().everyMinutes(5).create();
@@ -426,16 +500,35 @@ function removeDotsBridgeTrigger() {
   });
 }
 
+/**
+ * 合言葉を作って Script Properties に入れる（まだ無い時だけ）。
+ * 作った合言葉はこの実行ログに1回だけ出るので、ドッちゃんへの指示文の <KEY> に貼る（GitHub・Vault・チャットには書かない）。
+ * 作り直す時は DOTS_SHARED_TOKEN を消してから再実行し、ドッちゃんにも新しい合言葉を伝える。
+ */
+function issueDotsSharedToken() {
+  const p = PropertiesService.getScriptProperties();
+  if (p.getProperty(DOTS_PROP.TOKEN)) {
+    Logger.log('ℹ️ 合言葉は設定済みです（作り直す時は DOTS_SHARED_TOKEN を消してから再実行）');
+    return;
+  }
+  const token = 'SM' + Utilities.getUuid().replace(/-/g, '').substring(0, 22);
+  p.setProperty(DOTS_PROP.TOKEN, token);
+  Logger.log('✅ 合言葉を作りました。ドッちゃんへの指示文の <KEY> にこれを貼ってください: ' + token);
+}
+
 /** 設定の確認（合言葉・アドレスそのものはログに出さない） */
 function debugDotsBridgeConfig() {
   const p = PropertiesService.getScriptProperties();
   const token = p.getProperty(DOTS_PROP.TOKEN) || '';
   const allow = parseDotsAllowlist_(p.getProperty(DOTS_PROP.ALLOWLIST));
   const triggers = ScriptApp.getProjectTriggers().filter(function(t) { return t.getHandlerFunction() === DOTS_TRIGGER_FN; });
+  let staff = null;
+  try { staff = resolveDotsStaff_(); } catch (e) { Logger.log('⚠️ スタッフ解決失敗: ' + e); }
   Logger.log('DOTS_BRIDGE_ENABLED   : ' + (p.getProperty(DOTS_PROP.ENABLED) || '(未設定=停止)'));
   Logger.log('DOTS_SHARED_TOKEN     : ' + (token ? token.length + '文字' + (token.length < 20 ? ' ⚠️ 20文字以上にしてください' : '') : '未設定'));
   Logger.log('DOTS_SENDER_ALLOWLIST : ' + allow.length + '件');
   Logger.log('DOTS_DIGEST_THREAD_ID : ' + (p.getProperty(DOTS_PROP.THREAD_ID) || '(未設定=日報トピック)'));
+  Logger.log('日報の作成者名        : ' + (staff ? staff.nameJp + '（スタッフマスター）' : '⚠️ 解決できず（RON_CHAT_ID を確認）'));
   Logger.log('トリガー              : ' + triggers.length + '本');
   Logger.log('day_state             : ' + (p.getProperty(DOTS_PROP.DAY_STATE) || '{}'));
 }
