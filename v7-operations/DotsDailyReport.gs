@@ -106,6 +106,37 @@ function findDotsReportRow_(reportDate, name) {
   return null;
 }
 
+/**
+ * 出勤した日に 20:00 を過ぎても「日報」タブに今日の日報が無ければ1回知らせる（アプリの日報も数える）。
+ * 日報メールが届いた日（形式違いも含む）・その日 20:00 より後に動き出した（有効化・再開した）日は知らせない（誤報防止）。
+ * 出勤の打刻が無い日も知らせない（休みの日の誤報防止）。
+ */
+function checkMissingDotsReport_(props) {
+  const now = new Date();
+  if (Utilities.formatDate(now, OPS_TZ, 'HH:mm') < DOTS_REPORT_ALERT_AT) return;
+  const day = loadDotsDayState_(props);
+  if (day.checked.report || day.seen) return; // 今日はもう確認済み・日報メールは届いている（ロックを取らずに抜ける）
+  const today = Utilities.formatDate(now, OPS_TZ, 'yyyy-MM-dd');
+  const since = new Date(Number(props.getProperty(DOTS_STATE_PROP.ACTIVE_SINCE) || 0));
+  const lateStart = Utilities.formatDate(since, OPS_TZ, 'yyyy-MM-dd') === today &&
+    Utilities.formatDate(since, OPS_TZ, 'HH:mm') >= DOTS_REPORT_ALERT_AT;
+
+  let alert = false;
+  if (!lateStart && isDotsStaffOnDutyToday_()) alert = !hasDotsStaffReportFor_(today);
+  if (alert) {
+    const ok = sendDotsToAdmin_(getConfig(), props,
+      '⚠️ 今日（' + formatDotsDay_(today) + '）の Run Kosal の日報が「日報」タブにまだありません（出勤あり・' +
+      DOTS_REPORT_ALERT_AT + ' 時点・日本 ' + DOTS_REPORT_ALERT_JST + '。現場アプリ・ドッちゃんのどちらからも）\n' +
+      '・Run Kosal がドッちゃんに「日報を送って」と言ったか\n' +
+      '・ドッちゃんの送信が承認待ち（Needs approval）で止まっていないか\n' +
+      '・このトピックに「お知らせ」として届いていないか（件名の書き方違い）\n' +
+      '・Gmail で迷惑メールに入っていないか（件名 ' + DOTS_SUBJECT_TAG + '）\n' +
+      'を確認してください。');
+    if (!ok) return; // 送れなければ確認済みにしない（次の回にもう一度）
+  }
+  updateDotsDayState_(props, function(state) { state.checked.report = true; });
+}
+
 /** その日の Run Kosal の日報が「日報」タブにあるか（現場アプリの行も、ドッちゃんの行も数える） */
 function hasDotsStaffReportFor_(day) {
   const name = dotsStaffName_(resolveDotsStaff_());

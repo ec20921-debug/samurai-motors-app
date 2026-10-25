@@ -5,7 +5,7 @@
  *   dots_seen_message_ids  処理を終えたメッセージ ID（新しい方から200件）
  *   dots_processing        処理中の ID → 予約した時刻。15分たっても終わらなければ、前の実行が落ちたとみなして取り直す
  *   dots_retry_counts      ID → 失敗回数（1通につき最大3回）
- *   dots_day_state         当日の {date, checked, rejects}（未着の確認が済んだか・拒否の通知を何通出したか）
+ *   dots_day_state         当日の {date, checked, seen, rejects}（未着の確認が済んだか・日報メールが届いたか・拒否の通知を何通出したか）
  *   dots_cursor_ms         Gmail を探し始める時刻（まだ終わっていないメールがあれば、その時刻より前に戻す）
  *   dots_active_since_ms   止まっていた状態から動き出した時刻（その日の未着警告の誤報防止）
  *   dots_last_run_ms       最後に動いた時刻
@@ -137,6 +137,13 @@ function loadDotsDayState_(props) {
   const s = loadDotsJson_(props, DOTS_STATE_PROP.DAY_STATE, {});
   const today = Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
   return (s.date === today && s.checked) ? s : { date: today, checked: {}, rejects: 0 };
+}
+
+/** 今日の分の日報メールが届いた印（形式違い・上書きしなかった物も含む。未着の警告を出さないため） */
+function markDotsReportSeen_(props, reportDate) {
+  updateDotsDayState_(props, function(state) {
+    if (state.date === reportDate) state.seen = true;
+  });
 }
 
 /**
