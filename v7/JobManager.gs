@@ -733,7 +733,7 @@ function apiJobEnd(body, opts) {
       try {
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
           '⚠️ 店QR経由のお客様（' + ((typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef) + '）ですが、現場は「' +
-          (ptEnd === 'free' ? '無料' : 'ABA QR で受け取った') + '」を選びました。お客様から直接受け取っています。お店との二重請求にならないか確認してください', adminShopOpts);
+          (ptEnd === 'free' ? '無料' : 'ABA QR で受け取った') + '」を選びました。' + (ptEnd === 'free' ? '無料にしています。' : 'お客様から直接受け取っています。') + 'お店との二重請求にならないか確認してください', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 店QR客の直接受け取りの管理通知失敗: ' + e);
       }
@@ -772,7 +772,8 @@ function apiJobEnd(body, opts) {
     }
 
     // この作業の提携店（売上行と請求で同じ店を使う）: 予約なしで提携店の仕事なら現場で選んだ店、それ以外はお客様の店QR
-    var saleShopId = (ptEndShop && !bookingId && fieldShopId) ? fieldShopId : shopRef;
+    // 予約ありでも現場で店を選んだ店の仕事なら、その店に請求する（2026-10-25 検証の指摘）
+    var saleShopId = (ptEndShop && fieldShopId) ? fieldShopId : shopRef;
 
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
     var manualSaleId = null;

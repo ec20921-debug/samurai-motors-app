@@ -66,7 +66,8 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
     if (!(amount > 0)) return null;  // 無料・未入力は計上しない
     if (typeof FIELD_AMOUNT_MAX_ !== 'undefined' && amount > FIELD_AMOUNT_MAX_) {   // 打ち間違い（2026-10-25）
       Logger.log('⚠️ 手動ジョブ売上: 金額が大きすぎるため自動計上しない $' + amount + ' (' + sourceAction + ')');
-      try { sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '⚠️ 手動ジョブ売上: 金額 $' + amount + ' が大きすぎるため自動計上していません。金額を確かめて手で記録してください（' + sourceAction + '）', {}); } catch (eW) {}
+      // 毎時シンクは同じ作業を何度も見直すので、知らせるのは作業終了の時だけ
+      if (String(sourceAction).indexOf('hourly_sync') !== 0) try { sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '⚠️ 手動ジョブ売上: 金額 $' + amount + ' が大きすぎるため自動計上していません。金額を確かめて手で記録してください（' + sourceAction + '）', {}); } catch (eW) {}
       return null;
     }
 

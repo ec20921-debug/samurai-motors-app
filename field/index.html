@@ -644,7 +644,7 @@ function applyShopAmount(c) {
     c.amount = c.list; c.list = 0; c.rate = null;
   } else if (!c.amount) c.amount = listPriceOf(c);
 }
-function canSavePay(c) { return !!c.pay && !(isShopPay(c.pay) && !c.shop) && (c.pay === 'free' || Number(c.amount) > 0); }   // 無料以外は金額が要る
+function canSavePay(c) { return !!c.pay && c.pay !== 'cash' && !(isShopPay(c.pay) && !c.shop) && (c.pay === 'free' || (Number(c.amount) > 0 && Number(c.amount) <= 2000)); }   // 無料以外は金額が要る
 function queueEnd(c) {
   var shots = shotsFor(c.job, 'after'), photos = [], slots = [];
   shots.forEach(function (s) { if (c.photos[s.id]) { photos.push(c.photos[s.id]); slots.push(s.id.replace('after_', '')); } });
@@ -1257,6 +1257,7 @@ function boot() {
       S.local = (r[4] || []).filter(function (l) { return l.date >= ppDate(-1); });
       if (r[3] && r[3].job) {
         S.cur = r[3];
+        if (S.cur.pay === 'cash') S.cur.pay = '';   // 旧い下書きの現金（2026-10-25 で廃止）は選び直してもらう
         if (S.cur.step !== 'done') { S.view = 'job'; setTimeout(function () { toast('↺ ' + t('draft_restored'), 'ok'); }, 300); }
         else S.cur = null;
       }

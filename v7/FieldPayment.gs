@@ -44,7 +44,7 @@ function fieldPaidOnSite_(pt) { return fieldHas_(FIELD_PAY_ON_SITE_, pt); }
  * （"30"・"30%"・30 → 30、シートの%書式の数値 0.3 → 30。空欄・読めない値は既定の 30）
  */
 function fieldParseRate_(v) {
-  if (v === '' || v === null || v === undefined) return FIELD_SHOP_RATE_DEFAULT_;
+  if (v === null || v === undefined || String(v).replace('%', '').trim() === '') return FIELD_SHOP_RATE_DEFAULT_;   // 空白だけも既定
   var n = Number(String(v).replace('%', '').trim());
   if (!isFinite(n)) return FIELD_SHOP_RATE_DEFAULT_;
   if (n > 0 && n < 1 && typeof v === 'number') n = n * 100;
