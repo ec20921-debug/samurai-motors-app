@@ -622,7 +622,8 @@ function queueStart(c) {
   p.amount = c.job.bookingId ? (c.job.amount || '') : '';
   p.startTime = c.startAt; p.beforePhotos = photos;
   p.v2 = { checks: c.checks, no_damage: !c.dmg.length && !!c.noDamage, photo_slots: slots,
-           damage: c.dmg.map(function (d, i) { return { x: d.x, y: d.y, memo: d.memo || '', photo: d.img ? 'D' + (i + 1) : '' }; }) };
+           damage: c.dmg.map(function (d, i) { return { x: d.x, y: d.y, memo: d.memo || '', photo: d.img ? 'D' + (i + 1) : '' }; }),
+           shop_id: (c.shopAtStart && !c.job.bookingId) ? (c.shop || '') : '' };   // 始める前に選んだ店（2026-10-25）
   return Outbox.enqueue('job_start', p);
 }
 function queueEnd(c) {
@@ -983,6 +984,18 @@ function jobHead() {
     '<div style="grid-column:1/-1"><small>📍</small><b>' + esc(placeText(j.place)) + '</b></div></div></div></div>';
 }
 
+// 始める前の「どの提携店？」（予約なしの作業・2026-10-25）。文言は支払い画面と同じ校閲済みの3つ
+function startShopCard(c) {
+  var shops = S.shops || [], cur = c.shopAtStart ? (c.shop || '') : '';
+  var known = !cur || shops.some(function (sp) { return sp.id === cur; });
+  return '<div class="card"><div class="band">🏪 ' + t('shop_pick') + '</div><div class="body">' +
+    '<select id="shopSelStart" style="width:100%;font-size:18px;padding:12px;border-radius:12px;border:2px solid #d0d5dd;background:#fff">' +
+    '<option value="">' + esc(t('shop_none')) + '</option>' +
+    (known ? '' : '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>') +
+    shops.map(function (sp) { return '<option value="' + esc(sp.id) + '"' + (cur === sp.id ? ' selected' : '') + '>' + esc(sp.name) + '</option>'; }).join('') +
+    '</select><div class="note">' + t('shop_need') + '</div></div></div>';
+}
+
 function renderJob() {
   var c = S.cur, j = c.job, html = '';
   if (timerId) { clearInterval(timerId); timerId = null; }
@@ -1005,6 +1018,8 @@ function renderJob() {
         return '<div class="dmg"><span class="no">' + (i + 1) + '</span><span class="ph">' + (d.img ? '<img src="' + d.img + '" alt="">' : '📷') + '<input type="file" accept="image/*" capture="environment" data-dmgph="' + i + '"></span><input class="memo" data-dmgmemo="' + i + '" value="' + esc(d.memo) + '" placeholder="' + esc(t('note')) + '"><button type="button" class="x" data-dmgdel="' + i + '">✕</button></div>';
       }).join('') + '</div>' : '') +
       (c.dmg.length ? '' : '<button type="button" class="btn sm ' + (c.noDamage ? 'green' : 'ghost') + '" id="dmgNone">✓ ' + t('damage_none') + '</button>') + '</div></div>';
+    // 予約なしの作業（店の車など）は始める前に店を選べる。選ぶと Before もその店のグループへ届く（2026-10-25）
+    if (!j.bookingId) html += startShopCard(c);
   }
 
   else if (c.step === 'before' || c.step === 'after') {
@@ -1096,6 +1111,12 @@ function bindJob() {
   document.querySelectorAll('[data-pay]').forEach(function (b) { b.onclick = function () { c.pay = b.getAttribute('data-pay'); if (c.pay !== 'free' && !c.amount) c.amount = priceOf(c.job); saveDraft(); renderJob(); }; });
   document.querySelectorAll('[data-src]').forEach(function (b) { b.onclick = function () { c.src = b.getAttribute('data-src'); saveDraft(); renderJob(); }; });
   var ss = $('shopSel'); if (ss) ss.onchange = function () { c.shop = ss.value || ''; saveDraft(); renderJob(); };
+  var ssStart = $('shopSelStart'); if (ssStart) ssStart.onchange = function () {
+    var id = ssStart.value || '', sp = (S.shops || []).filter(function (x) { return x.id === id; })[0];
+    c.shop = id; c.shopAtStart = !!id;
+    if (sp && sp.rate !== undefined) c.rate = sp.rate; else delete c.rate;   // 支払い画面の自動金額と同じ c.shop / c.rate
+    saveDraft(); renderJob();
+  };
   var am = $('amt'); if (am) am.oninput = function () { c.amount = parseFloat(am.value) || 0; saveDraft(); };
 
   if (c.step === 'work') {

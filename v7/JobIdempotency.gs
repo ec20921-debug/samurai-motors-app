@@ -150,6 +150,9 @@ function apiJobStartV2(body) {
   if (!cid) return apiJobStart(body);
   if (!JOB_CLIENT_ID_RE_.test(cid)) return jobErr_(body, 'INVALID_CLIENT_ID', false);
 
+  // 作業開始で選んだ提携店（2026-10-25・予約なしの作業）。確かめた shop_id だけを記録し、Before をその店のグループへ送る
+  var fieldShop = (typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
+
   var cache = CacheService.getScriptCache();
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return jobErr_(body, 'BUSY', true);
@@ -178,7 +181,8 @@ function apiJobStartV2(body) {
         '受信日時':           new Date(),
         '送信日時(端末)':     jobDate_(body.sent_at, ''),
         'スタッフチャットID': jobStaffChatId_(body),
-        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null })
+        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null }),
+        '提携店ID':           fieldShop
       });
       SpreadsheetApp.flush();
       row = findRow(SHEET_NAMES.JOBS, 'client_id', cid);
@@ -197,7 +201,8 @@ function apiJobStartV2(body) {
   var res;
   try {
     res = apiJobStart(body, { rowIndex: row.rowIndex, jobId: jobId, cid: cid,
-                              skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance });
+                              skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance,
+                              fieldShopId: fieldShop });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
@@ -276,10 +281,19 @@ function apiJobEndV2(body) {
 
   // ── ロックの外: 写真保存・行更新・3方向配信・売上計上・QR（既存処理を行指定で実行） ──
   var lastChanceEnd = jobBumpTries_('end', cid);
+  // 作業開始で選んだ店（2026-10-25）。After の同報先にだけ使う。作業終了の再送で上書きされる「提携店ID」列ではなく
+  // v2記録(JSON) の start.shop_id を確かめ直して使う
+  var startShop = '';
+  try {
+    var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start || {};
+    if (startV2.shop_id && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
+  } catch (eStart) {
+    Logger.log('⚠️ apiJobEndV2: 作業開始の店を読めず ' + eStart);
+  }
   var res;
   try {
     res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
-                            fieldShopId: fieldShop });
+                            fieldShopId: fieldShop, startShopId: startShop });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
