@@ -17,6 +17,9 @@
 var SHOP_LINK_SHEET_NAME = 'Bot連携';
 var SHOP_LINK_CACHE_KEY = 'shop_link_rows_v1';
 var SHOP_LINK_CACHE_SEC = 60;
+// 予約Botのユーザー名（公開情報。店のQRリンク t.me/<これ>?start=shop_... と同じ）。管理通知の連携手順に使う
+// v7-operations 側は Script Property SHOP_BOOKING_BOT_USERNAME（既定は同じ文字列）。Bot 名を変えるときは両方を直す
+var SHOP_LINK_BOT_USERNAME = 'SAMURAI_MOTORS_BOOKING_BOT';
 
 // ====== シート読み書き ======
 
@@ -236,11 +239,29 @@ function handleShopStart_(msg, text) {
     var linked = !!(link && String(link.obj['状態']) === '連携済');
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
       '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
-      (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）'));
+      (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）' +
+        shopLinkGuideText_(link, welcomeShopName || shopId)));
   } catch (err) {
     Logger.log('⚠️ 管理通知失敗（QR流入）: ' + err);
   }
   return true;
+}
+
+/**
+ * 未連携の店の管理通知に添える「グループのつなぎ方」（2026-10-24 Daisuke「手順とコード等を毎回わかりやすく」）。
+ * グループ名は営業アプリ（v7-operations/ShopQrSticker.gs）と同じ「店名 × SAMURAI MOTORS」。
+ * Bot を先に入れる: Bot は自分が入る前のメッセージを読めない（2026-10-25 EV ហ្ការ៉ាស で /register が空振り）
+ */
+function shopLinkGuideText_(link, shopName) {
+  var code = (link && String(link.obj['状態']) === '待機中') ? String(link.obj['ワンタイムコード'] || '').trim() : '';
+  if (!code) {
+    return '\n\n🔗 連携コードがまだありません → 営業アプリのお店の画面「🔗 このお店のQRを出す」で発行すると、コードが出ます';
+  }
+  return '\n\n🔗 グループのつなぎ方\n' +
+    '① グループ名: ' + shopName + ' × SAMURAI MOTORS\n' +
+    '② 先に予約Bot @' + SHOP_LINK_BOT_USERNAME + ' を入れ、お店の人・Run Kosal さんも入れる\n' +
+    '③ グループでこの1行を送る: /register ' + code + '\n' +
+    '→ Bot が「✅ Connected!」とあいさつ文を自動で送れば完了';
 }
 
 function findShopLinkByShopId_(shopId) {
