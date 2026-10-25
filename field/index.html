@@ -644,7 +644,7 @@ function applyShopAmount(c) {
     c.amount = c.list; c.list = 0; c.rate = null;
   } else if (!c.amount) c.amount = listPriceOf(c);
 }
-function canSavePay(c) { return !!c.pay && !(isShopPay(c.pay) && !c.shop); }
+function canSavePay(c) { return !!c.pay && !(isShopPay(c.pay) && !c.shop) && (c.pay === 'free' || Number(c.amount) > 0); }   // 無料以外は金額が要る
 function queueEnd(c) {
   var shots = shotsFor(c.job, 'after'), photos = [], slots = [];
   shots.forEach(function (s) { if (c.photos[s.id]) { photos.push(c.photos[s.id]); slots.push(s.id.replace('after_', '')); } });
@@ -1145,7 +1145,7 @@ function bindJob() {
     if (sp && sp.rate !== undefined) c.rate = sp.rate; else delete c.rate;   // 支払い画面の自動金額と同じ c.shop / c.rate
     saveDraft(); renderJob();
   };
-  var am = $('amt'); if (am) am.oninput = function () { c.amount = parseFloat(am.value) || 0; saveDraft(); };
+  var am = $('amt'); if (am) am.oninput = function () { c.amount = parseFloat(am.value) || 0; saveDraft(); renderBar(); };
 
   if (c.step === 'work') {
     timerId = setInterval(function () {

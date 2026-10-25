@@ -250,6 +250,8 @@ function apiJobEndV2(body) {
       return jobErr_(body, 'START_NOT_FOUND', true);
     }
     jobId = String(row.data['ジョブID'] || '');
+    // 予約IDは作業開始で記録した行の値を使う（作業終了の本文の値で別の予約を清算済みにさせない・2026-10-25）
+    if (row.data['予約ID'] !== undefined) body.bookingId = String(row.data['予約ID'] || '').replace(/^'/, '');
     var prevEnd = String(row.data['完了イベントID'] || '');
     if (prevEnd && prevEnd !== cid) {
       Logger.log('⚠️ END_CONFLICT job=' + jobId + ' prev=' + prevEnd + ' new=' + cid);

@@ -641,8 +641,8 @@ function apiJobEnd(body, opts) {
         (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
-        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
-        (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body) : '') +
+        (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +
+        (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body, opts.fieldShopId || '') : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
 
@@ -728,7 +728,16 @@ function apiJobEnd(body, opts) {
     }
     var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
     // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
-    if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
+    var directOnShopRef = !!(shopRef && bookingId && (ptEnd === 'aba' || ptEnd === 'free' || ptEnd === 'cash'));
+    if (directOnShopRef) {
+      try {
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+          '⚠️ 店QR経由のお客様（' + ((typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef) + '）ですが、現場は「' +
+          (ptEnd === 'free' ? '無料' : 'ABA QR で受け取った') + '」を選びました。お客様から直接受け取っています。お店との二重請求にならないか確認してください', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 店QR客の直接受け取りの管理通知失敗: ' + e);
+      }
+    } else if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, shopFromField
@@ -743,7 +752,7 @@ function apiJobEnd(body, opts) {
       // 「提携店が払う」なのに店が分からない／予約のお客様が店QR経由でない → 取りこぼし・二重請求にならないよう知らせる
       try {
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, bookingId
-          ? '⚠️ 現場は提携店の仕事（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）を選びましたが、このお客様は店のQR経由ではありません。現場で受け取り済みとして予約を清算済みにしました。お店とお客様の二重請求にならないか確認してください'
+          ? '⚠️ 現場は提携店の仕事（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）を選びましたが、このお客様は店のQR経由ではありません。現場の記録（お店から受け取る）に合わせて予約を清算済みにします。お店とお客様の二重請求にならないか確認してください'
           : '⚠️ 提携店の仕事ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 店払いの確認通知失敗: ' + e);
@@ -795,11 +804,22 @@ function apiJobEnd(body, opts) {
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
     // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
-    if (bookingId && typeof fieldPaidOnSite_ === 'function' && fieldPaidOnSite_(ptEnd)) {
-      // 2026-10-25 Daisuke: 予約客がその場で払った時（ABA QR・店・無料）は決済QRと催促を送らない
+    var paidOnSiteDone = false;
+    if (bookingId && typeof fieldPaidOnSite_ === 'function' && fieldPaidOnSite_(ptEnd) && typeof markBookingPaidOnSite_ === 'function') {
+      // 2026-10-25 Daisuke: 予約客がその場で払った時（ABA QR・店・無料）は予約を清算済みにして決済QRと催促を送らない
       var paidShopName = fieldShopNameEnd || (shopRef && typeof getShopNameById_ === 'function' ? getShopNameById_(shopRef) : '');
-      if (typeof markBookingPaidOnSite_ === 'function') markBookingPaidOnSite_(bkRow, body, ptEnd, paidShopName);
-      Logger.log('ℹ️ 予約 ' + bookingId + ' は現場で受け取り済み（' + ptEnd + '）のため決済QR送信をスキップ');
+      paidOnSiteDone = markBookingPaidOnSite_(bkRow, body, ptEnd, paidShopName, String(opts.fieldShopId || '') || saleShopId);
+      if (paidOnSiteDone) {
+        Logger.log('ℹ️ 予約 ' + bookingId + ' は現場で受け取り済み（' + ptEnd + '）のため決済QR送信をスキップ');
+      } else {
+        try {
+          sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, '⚠️ 予約 ' + bookingId + ' は現場で「受け取り済み」を選びましたが、金額（$' + (body.amount === undefined ? '-' : body.amount) +
+            '）が使えないため清算済みにしていません。決済QRは通常どおりの扱いです。金額を確認してください', adminShopOpts);
+        } catch (e) { Logger.log('⚠️ その場払いの確認通知失敗: ' + e); }
+      }
+    }
+    if (paidOnSiteDone) {
+      // 何もしない（上で清算済み）
     } else if (bookingId && shopRef) {
       Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
     } else if (bookingId && typeof sendPaymentQR === 'function') {

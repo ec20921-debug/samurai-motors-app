@@ -18,7 +18,8 @@
  *   - 料金(amount) > 0（無料 $0 と未入力は対象外）
  *   - 支払区分が ABA・提携店（紹介客 shopref／店の車 shop）・旧現金（未収・無料デモ・不明は対象外）
  *     2026-10-25 Daisuke 決定: 提携店の仕事も当社分をその場で QR で受け取るので「清算済み」で計上し、
- *     売上は当社の取り分だけ（現場アプリが 定価×(100−店の紹介料率)% を入れる）。定価は 割引前金額、差は 割引額 に残す
+ *     売上は当社の取り分だけ（現場アプリが 定価×(100−店の紹介料率)% を入れる）。店の取り分は割引額に入れず、
+ *     管理者メモに 定価・率 を残す（割引額は ABA で定価より安くした時＝本当の割引だけ）
  */
 
 // 提携店払いを計上するのは、この日（yyyyMMdd）以降に終わった作業だけ（毎時シンクで過去分を遡って作らない）
@@ -63,6 +64,11 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
     }
     var amount = Number(body.amount);
     if (!(amount > 0)) return null;  // 無料・未入力は計上しない
+    if (typeof FIELD_AMOUNT_MAX_ !== 'undefined' && amount > FIELD_AMOUNT_MAX_) {   // 打ち間違い（2026-10-25）
+      Logger.log('⚠️ 手動ジョブ売上: 金額が大きすぎるため自動計上しない $' + amount + ' (' + sourceAction + ')');
+      try { sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '⚠️ 手動ジョブ売上: 金額 $' + amount + ' が大きすぎるため自動計上していません。金額を確かめて手で記録してください（' + sourceAction + '）', {}); } catch (eW) {}
+      return null;
+    }
 
     var ss = getSpreadsheet();
     var tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
@@ -120,11 +126,16 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
       var shopId = String(opts.shopId || '');
       shopLabel = (shopId && typeof getShopNameById_ === 'function' && getShopNameById_(shopId)) || shopId || '店未選択';
     }
-    // 2026-10-25: 現場アプリが送った定価（無い・取り分以下の時は取り分と同じ＝割引なし）と店の率
+    // 2026-10-25: 現場アプリが送った定価（無い・取り分以下の時は取り分と同じ）と店の率（店マスターの値を優先）
     var listPrice = (typeof fieldListPrice_ === 'function') ? fieldListPrice_(body) : 0;
     if (!(listPrice > amount)) listPrice = amount;
-    var shopRate = (body.v2 && body.v2.shop_rate !== undefined && body.v2.shop_rate !== '') ? String(body.v2.shop_rate) : '';
+    var shopRate = '';
+    if (shopPays && typeof fieldShopSplit_ === 'function') {
+      var sp = fieldShopSplit_(body, opts.shopId);
+      if (sp.rate !== null) shopRate = String(sp.rate);
+    }
     var shopKind = payType === 'shopref' ? '紹介:' : '店払い:';
+    var realDiscount = !shopPays && listPrice > amount;   // ABA 等で定価より安くした時だけ割引として残す
 
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(15 * 1000)) {
@@ -170,12 +181,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '入金確認日時':   now,
         '催促回数':       0,
         '管理者メモ':     '客名:' + name + '｜手動ジョブ売上' +
-                         (shopPays ? '｜' + shopKind + shopLabel + (shopRate ? '（お店' + shopRate + '%）' : '') : '') +
+                         (shopPays ? '｜' + shopKind + shopLabel + (listPrice > amount ? '（定価$' + listPrice + (shopRate ? '・お店' + shopRate + '%' : '') + '）' : '') : '') +
                          (plate ? '｜No.' + plate : '') +
                          (carModel ? '｜車:' + carModel : '') +
                          '｜' + dedupeKey,
-        '割引前金額(USD)': listPrice,
-        '割引額(USD)':    Math.round((listPrice - amount) * 100) / 100,
+        '割引前金額(USD)': realDiscount ? listPrice : amount,
+        '割引額(USD)':    realDiscount ? Math.round((listPrice - amount) * 100) / 100 : 0,
         // 手動登録フォームで建物名が入っていれば出張、無ければ店舗と推定
         'サービスタイプ': (String(body.building || '').trim() ? '出張' : '店舗')
       });
@@ -290,6 +301,9 @@ function syncMissingManualJobSales() {
         ? String(r[idx['顧客チャットID']] || '').trim() : '';
       // 2026-10-08 D4: v2 の支払区分（列が無い環境・旧アプリの行は空＝従来どおり）
       var payTypeCell = idx['支払区分'] !== undefined ? String(r[idx['支払区分']] || '').trim() : '';
+      var v2End = syncV2EndOf_(idx['v2記録(JSON)'] !== undefined ? r[idx['v2記録(JSON)']] : '');
+      // 列が空でも v2記録(JSON) に支払区分があれば使う（決まった値だけ・2026-10-25）
+      if (!payTypeCell && v2End.payment_type && typeof fieldPayType_ === 'function') payTypeCell = fieldPayType_({ v2: v2End });
       // 2026-10-23: 提携店払いの店（現場アプリで選んだ・確かめ済みの shop_id）
       var shopCell = idx['提携店ID'] !== undefined ? String(r[idx['提携店ID']] || '').trim() : '';
       // 現場で選んでいない時は、お客様の店QR（shop_ref）から（実時間の job_end と同じ店になる）
@@ -312,7 +326,7 @@ function syncMissingManualJobSales() {
         building: '',
         chatId: linkedChat,
         paymentType: payTypeCell,
-        v2: syncV2EndOf_(idx['v2記録(JSON)'] !== undefined ? r[idx['v2記録(JSON)']] : '')   // 定価・店の率（2026-10-25）
+        v2: v2End   // 定価・店の率（2026-10-25）
       }, 'hourly_sync:' + jobId, { shopId: shopCell, jobId: jobId });
       if (created) count++;
     });
