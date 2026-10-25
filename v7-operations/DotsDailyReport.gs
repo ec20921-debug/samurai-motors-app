@@ -1,5 +1,5 @@
 /**
- * DotsDailyReport.gs — ドッちゃん（dots）の日報メールを勤務用 GSS「日報」タブへ1日1行で記録
+ * DotsDailyReport.gs — ドッちゃん（dots）の日報メールを勤務用 GSS「日報」タブへ記録
  *
  * 【責務】（2026-10-25 Daisuke 指示「日報を毎日 GSS に自動で記録」）
  *   DotsDigestBridge.gs が受け取った日報メール（件名 [SM-DOTS] 日報 YYYY-MM-DD）の本文を、
@@ -10,13 +10,18 @@
  *   - 行は分ける: 作成者 Chat ID を空にし、状態を「dots 記録」にする
  *     （submitDailyReport は Chat ID × 対象日で上書きするため、同じ Chat ID だとアプリ提出で消える）
  *   - 作成者名はスタッフマスターの氏名(JP)（管理ダッシュボードの「日報 ✅」が作成者名 × 対象日で数えるため）
- *   - 同じ対象日の dots 日報が2通来たら同じ行を上書きする（状態「dots 記録（更新）」）
+ *
+ * 【上書きの歯止め】同じ対象日の dots 行がある時
+ *   - 同じメールの再試行 → 同じ行に書き直す（状態はそのまま）
+ *   - 新しいメール（記録済みより後に届き、12時間以内）→ 上書き（状態「dots 記録（更新）」）
+ *   - 記録済みより古いメール・12時間より後のメール → 上書きしない（件名の日付の書き間違いで前日の行を潰さない）
  */
 
 const DOTS_REPORT_STATUS = 'dots 記録';
 const DOTS_REPORT_STATUS_TEST = 'dots 試験（確認後に消してよい）';
-const DOTS_REPORT_TEST_NAME = 'テスト（dots）'; // 管理ダッシュボードの数に入らないよう、スタッフ名と別にする
+const DOTS_REPORT_TEST_NAME = 'テスト（dots）'; // スタッフ別の「日報 ✅」に入らないよう、スタッフ名と別にする
 const DOTS_REPORT_CELL_MAX = 45000;             // 1セル 50,000 字の上限に余裕を持たせる
+const DOTS_REPORT_REWRITE_MS = 12 * 60 * 60 * 1000;
 // 見出し → 列（上から順に判定）。どれにも当たらない見出しは「所感・気づき」へ
 const DOTS_REPORT_SECTIONS = [
   { col: '本日の作業内容', re: /やったこと|完了した作業|本日の作業|今日の作業|作業内容/ },
@@ -26,18 +31,18 @@ const DOTS_REPORT_SECTIONS = [
 const DOTS_REPORT_NOTES_COL = '所感・気づき';
 
 /**
- * 日報メール1通を「日報」タブに書く（新規 or 同じ対象日の dots 行を上書き）。
- * 失敗したら例外（呼び出し側が次の回に再試行する）。
- * @return {{reportId:string, reportDate:string, updated:boolean}}
+ * 日報メール1通を「日報」タブに書く。失敗したら例外（呼び出し側が次の回に再試行する）。
+ * @return {{status:string, reportId:string, reportDate:string}}
+ *   status: created 新しく記録／updated 上書き／older・otherDay 上書きしなかった／noHeadings 形式違いで書かなかった
  */
 function recordDotsDailyReport_(msg, subject, body, isTest) {
   const reportDate = resolveDotsReportDate_(subject, msg.getDate());
-  const staff = isTest ? null : resolveDotsStaff_();
-  const name = isTest ? DOTS_REPORT_TEST_NAME : (staff ? staff.nameJp : 'Run Kosal');
-  const status = isTest ? DOTS_REPORT_STATUS_TEST : DOTS_REPORT_STATUS;
-  const link = dotsGmailLink_(msg.getId());
   const parsed = parseDotsReport_(body);
+  if (parsed.headings === 0) return { status: 'noHeadings', reportId: '', reportDate: reportDate };
 
+  const staff = isTest ? null : resolveDotsStaff_();
+  const name = isTest ? DOTS_REPORT_TEST_NAME : dotsStaffName_(staff);
+  const link = dotsGmailLink_(msg.getId());
   const values = {
     '提出日時':       msg.getDate(),
     '対象日':         reportDate,
@@ -53,24 +58,29 @@ function recordDotsDailyReport_(msg, subject, body, isTest) {
   const found = findDotsReportRow_(reportDate, name);
   if (!found) {
     values['日報ID'] = generateDateSeqId('DR', SHEET_NAMES.DAILY_REPORTS, '日報ID');
-    values['状態'] = status;
+    values['状態'] = isTest ? DOTS_REPORT_STATUS_TEST : DOTS_REPORT_STATUS;
     appendRow(SHEET_NAMES.DAILY_REPORTS, values);
     Logger.log('📝 dots 日報 記録 ' + values['日報ID'] + ' 対象日=' + reportDate);
-    return { reportId: values['日報ID'], reportDate: reportDate, updated: false };
+    return { status: 'created', reportId: values['日報ID'], reportDate: reportDate };
   }
 
-  // 同じメールの再試行（Telegram 送信に失敗した後など）なら状態はそのまま。別のメールなら「更新」
+  const prevId = String(found.data['日報ID'] || '');
   const prevStatus = String(found.data['状態'] || '');
   const sameMail = String(found.data['関連リンク'] || '') === link;
-  values['日報ID'] = String(found.data['日報ID'] || '') || generateDateSeqId('DR', SHEET_NAMES.DAILY_REPORTS, '日報ID');
-  values['状態'] = sameMail ? prevStatus : (isTest ? status : status + '（更新）');
-  const headers = getHeaders(SHEET_NAMES.DAILY_REPORTS);
-  const row = headers.map(function(h) {
-    return values.hasOwnProperty(h) ? values[h] : found.data[h];
-  });
-  getSheet(SHEET_NAMES.DAILY_REPORTS).getRange(found.row, 1, 1, headers.length).setValues([row]);
+  if (!sameMail) {
+    const prev = found.data['提出日時'];
+    const prevAt = prev && typeof prev.getTime === 'function' ? prev.getTime() : 0; // Date のセル（文字列なら比べない）
+    const at = msg.getDate().getTime();
+    if (prevAt && at < prevAt) return { status: 'older', reportId: prevId, reportDate: reportDate };
+    if (prevAt && at - prevAt > DOTS_REPORT_REWRITE_MS) return { status: 'otherDay', reportId: prevId, reportDate: reportDate };
+  }
+  // 同じメールの再試行（Telegram 送信に失敗した後など）なら状態はそのまま
+  values['日報ID'] = prevId || generateDateSeqId('DR', SHEET_NAMES.DAILY_REPORTS, '日報ID');
+  values['状態'] = sameMail ? prevStatus : (isTest ? DOTS_REPORT_STATUS_TEST : DOTS_REPORT_STATUS + '（更新）');
+  updateRow(SHEET_NAMES.DAILY_REPORTS, found.row, values); // 書くのは日報の列だけ（足された列・数式は触らない）
   Logger.log('📝 dots 日報 上書き ' + values['日報ID'] + ' 対象日=' + reportDate + (sameMail ? '（再試行）' : ''));
-  return { reportId: values['日報ID'], reportDate: reportDate, updated: sameMail ? /更新/.test(prevStatus) : true };
+  const updated = sameMail ? /更新/.test(prevStatus) : true;
+  return { status: updated ? 'updated' : 'created', reportId: values['日報ID'], reportDate: reportDate };
 }
 
 /** 同じ対象日・同じ作成者名の dots 行（状態が「dots」で始まる行）を探す */
@@ -91,10 +101,22 @@ function findDotsReportRow_(reportDate, name) {
   return null;
 }
 
+/** その日の Run Kosal の日報が「日報」タブにあるか（現場アプリの行も、ドッちゃんの行も数える） */
+function hasDotsStaffReportFor_(day) {
+  const name = dotsStaffName_(resolveDotsStaff_());
+  const all = readAllValues_(SHEET_NAMES.DAILY_REPORTS);
+  if (!all) return false;
+  const iDate = all.headers.indexOf('対象日'), iName = all.headers.indexOf('作成者名');
+  if (iDate < 0 || iName < 0) return false;
+  return all.values.some(function(v) {
+    return String(v[iName]) === name && formatDateCell_(v[iDate]) === day;
+  });
+}
+
 /**
  * 本文を見出し【…】で区切り、列ごとにまとめる（見出しは残す）。
- * 見出しが1つも無ければ全文を「本日の作業内容」へ。見出しより前の行も「本日の作業内容」の先頭へ。
- * @return {{work:string, notes:string, tomorrow:string}}
+ * 見出しより前の行は「本日の作業内容」の先頭へ。
+ * @return {{work:string, notes:string, tomorrow:string, headings:number}}
  */
 function parseDotsReport_(text) {
   const cols = {};
@@ -103,9 +125,11 @@ function parseDotsReport_(text) {
   cols['明日の予定'] = [];
   const preamble = [];
   let current = null;
+  let headings = 0;
   String(text || '').split('\n').forEach(function(line) {
     const m = line.match(/^\s*【([^】]{1,30})】\s*(.*)$/);
     if (m) {
+      headings++;
       current = ['【' + m[1] + '】'];
       if (m[2]) current.push(m[2]);
       cols[dotsSectionColumn_(m[1])].push(current);
@@ -121,7 +145,8 @@ function parseDotsReport_(text) {
   return {
     work: [head, work].filter(Boolean).join('\n\n'),
     notes: join(cols[DOTS_REPORT_NOTES_COL]),
-    tomorrow: join(cols['明日の予定'])
+    tomorrow: join(cols['明日の予定']),
+    headings: headings
   };
 }
 
@@ -157,6 +182,11 @@ function resolveDotsStaff_() {
   }
   const field = getActiveStaff().filter(function(s) { return s.role === 'field'; });
   return field.length === 1 ? field[0] : null;
+}
+
+/** 「日報」タブの作成者名（スタッフマスターの氏名。決められなければ本名） */
+function dotsStaffName_(staff) {
+  return staff && staff.nameJp ? staff.nameJp : 'Run Kosal';
 }
 
 /** 今日 Run Kosal が出勤しているか（分からない時は true = 警告を出す側に倒す） */
