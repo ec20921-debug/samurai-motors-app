@@ -18,6 +18,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 |---|---|
 | 基盤 | Config / Router / TelegramAPI / SheetHelpers / QueueManager / BotPoller / InternalBotDispatcher（勤務Bot の update 入口はここ1か所） |
 | 勤怠・日報・タスク | AttendanceManager / DailyReport / TaskManager |
+| 秘書 dots（ドッちゃん） | DotsDigestBridge（メール受け取り・管理グループ通知）/ DotsState（状態・ロック）/ DotsDailyReport（「日報」タブ）/ DotsReportItems（「日報明細」タブ）— 手順: docs/DOTS_SECRETARY_SETUP.md |
 | 経費 | ExpenseManager / ExpenseSync / RoutineExpense |
 | 経営・レポート | Dashboard / ExecDashboard / ExecChat / ReportManager |
 | 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager / SalesLogManager（車屋提携 営業ログ・書込先は v7 Database「営業ログ」タブ） |

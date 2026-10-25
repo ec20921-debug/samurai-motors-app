@@ -3,7 +3,8 @@
  *
  * 【責務】（2026-10-25 Daisuke 指示「日報を毎日 GSS に自動で記録」）
  *   DotsDigestBridge.gs が受け取った日報メール（件名 [SM-DOTS] 日報 YYYY-MM-DD）の本文を、
- *   見出し【…】ごとに既存の列（本日の作業内容 / 所感・気づき / 明日の予定）へ振り分けて書く。
+ *   見出し【…】ごとに既存の列（本日の作業内容 / 所感・気づき / 明日の予定）へ振り分けて1日1行で書き、
+ *   1件ずつの明細は「日報明細」タブへ（DotsReportItems.gs）。
  *
  * 【現場アプリの日報との関係】
  *   - 同じタブ・同じ列（ReportManager.gs の DAILY_REPORT_HEADERS_）。新しいタブは作らない
@@ -22,18 +23,15 @@ const DOTS_REPORT_STATUS_TEST = 'dots 試験（確認後に消してよい）';
 const DOTS_REPORT_TEST_NAME = 'テスト（dots）'; // スタッフ別の「日報 ✅」に入らないよう、スタッフ名と別にする
 const DOTS_REPORT_CELL_MAX = 45000;             // 1セル 50,000 字の上限に余裕を持たせる
 const DOTS_REPORT_REWRITE_MS = 12 * 60 * 60 * 1000;
-// 見出し → 列（上から順に判定）。どれにも当たらない見出しは「所感・気づき」へ
-const DOTS_REPORT_SECTIONS = [
-  { col: '本日の作業内容', re: /やったこと|完了した作業|本日の作業|今日の作業|作業内容/ },
-  { col: '本日の作業内容', re: /お金|金額|支払|入金/ },
-  { col: '明日の予定',     re: /明日|このあと|今後の予定/ }
-];
+// 区分（DotsReportItems.gs の見出し判定）→「日報」タブの列。ほかの区分は「所感・気づき」へ
+const DOTS_REPORT_WORK_CATS = ['作業', 'お店とのやりとり', 'お金'];
 const DOTS_REPORT_NOTES_COL = '所感・気づき';
 
 /**
  * 日報メール1通を「日報」タブに書く。失敗したら例外（呼び出し側が次の回に再試行する）。
  * @return {{status:string, reportId:string, reportDate:string}}
  *   status: created 新しく記録／updated 上書き／older・otherDay 上書きしなかった／noHeadings 形式違いで書かなかった
+ *   created・updated の時は items（明細）・itemCount・preamble も返す（管理グループへの通知に使う）
  */
 function recordDotsDailyReport_(msg, subject, body, isTest) {
   const reportDate = resolveDotsReportDate_(subject, msg.getDate());
@@ -55,13 +53,20 @@ function recordDotsDailyReport_(msg, subject, body, isTest) {
     '関連リンク':     link
   };
 
+  const items = buildDotsItems_(parsed.sections);
+  const done = function(status, reportId) {
+    // 明細（1件1行）も入れ替える。失敗したら例外 → 次の回に「日報」タブの行ごとやり直す（同じ行・同じ明細 ID になる）
+    const n = writeDotsReportItems_(reportId, reportDate, items, link, isTest);
+    return { status: status, reportId: reportId, reportDate: reportDate, items: items, itemCount: n, preamble: parsed.preamble };
+  };
+
   const found = findDotsReportRow_(reportDate, name);
   if (!found) {
     values['日報ID'] = generateDateSeqId('DR', SHEET_NAMES.DAILY_REPORTS, '日報ID');
     values['状態'] = isTest ? DOTS_REPORT_STATUS_TEST : DOTS_REPORT_STATUS;
     appendRow(SHEET_NAMES.DAILY_REPORTS, values);
     Logger.log('📝 dots 日報 記録 ' + values['日報ID'] + ' 対象日=' + reportDate);
-    return { status: 'created', reportId: values['日報ID'], reportDate: reportDate };
+    return done('created', values['日報ID']);
   }
 
   const prevId = String(found.data['日報ID'] || '');
@@ -80,7 +85,7 @@ function recordDotsDailyReport_(msg, subject, body, isTest) {
   updateRow(SHEET_NAMES.DAILY_REPORTS, found.row, values); // 書くのは日報の列だけ（足された列・数式は触らない）
   Logger.log('📝 dots 日報 上書き ' + values['日報ID'] + ' 対象日=' + reportDate + (sameMail ? '（再試行）' : ''));
   const updated = sameMail ? /更新/.test(prevStatus) : true;
-  return { status: updated ? 'updated' : 'created', reportId: values['日報ID'], reportDate: reportDate };
+  return done(updated ? 'updated' : 'created', values['日報ID']);
 }
 
 /** 同じ対象日・同じ作成者名の dots 行（状態が「dots」で始まる行）を探す */
@@ -114,9 +119,9 @@ function hasDotsStaffReportFor_(day) {
 }
 
 /**
- * 本文を見出し【…】で区切り、列ごとにまとめる（見出しは残す）。
- * 見出しより前の行は「本日の作業内容」の先頭へ。
- * @return {{work:string, notes:string, tomorrow:string, headings:number}}
+ * 本文を見出し【…】で区切り、「日報」タブの列ごとにまとめる（見出しは残す）。
+ * 見出しより前の行（「（Run Kosal 未確認）」など）は preamble として「本日の作業内容」の先頭へ。
+ * @return {{work:string, notes:string, tomorrow:string, headings:number, preamble:string, sections:Array<{title:string, lines:string[]}>}}
  */
 function parseDotsReport_(text) {
   const cols = {};
@@ -124,21 +129,20 @@ function parseDotsReport_(text) {
   cols[DOTS_REPORT_NOTES_COL] = [];
   cols['明日の予定'] = [];
   const preamble = [];
+  const sections = [];
   let current = null;
-  let headings = 0;
   String(text || '').split('\n').forEach(function(line) {
     const m = line.match(/^\s*【([^】]{1,30})】\s*(.*)$/);
     if (m) {
-      headings++;
-      current = ['【' + m[1] + '】'];
-      if (m[2]) current.push(m[2]);
+      current = { title: m[1], lines: m[2] ? [m[2]] : [] };
+      sections.push(current);
       cols[dotsSectionColumn_(m[1])].push(current);
       return;
     }
-    (current || preamble).push(line);
+    (current ? current.lines : preamble).push(line);
   });
-  const join = function(blocks) {
-    return blocks.map(function(b) { return b.join('\n').trim(); }).filter(Boolean).join('\n\n');
+  const join = function(secs) {
+    return secs.map(function(s) { return ('【' + s.title + '】\n' + s.lines.join('\n')).trim(); }).join('\n\n');
   };
   const head = preamble.join('\n').trim();
   const work = join(cols['本日の作業内容']);
@@ -146,15 +150,16 @@ function parseDotsReport_(text) {
     work: [head, work].filter(Boolean).join('\n\n'),
     notes: join(cols[DOTS_REPORT_NOTES_COL]),
     tomorrow: join(cols['明日の予定']),
-    headings: headings
+    headings: sections.length,
+    preamble: head,
+    sections: sections
   };
 }
 
 function dotsSectionColumn_(title) {
-  for (let i = 0; i < DOTS_REPORT_SECTIONS.length; i++) {
-    if (DOTS_REPORT_SECTIONS[i].re.test(title)) return DOTS_REPORT_SECTIONS[i].col;
-  }
-  return DOTS_REPORT_NOTES_COL;
+  const cat = dotsSectionCategory_(title).cat;
+  if (cat === '明日の予定') return '明日の予定';
+  return DOTS_REPORT_WORK_CATS.indexOf(cat) !== -1 ? '本日の作業内容' : DOTS_REPORT_NOTES_COL;
 }
 
 /**

@@ -187,15 +187,18 @@ function processDotsMessage_(cfg, props, msg, subject, sender, token) {
   const kind = detectDotsKind_(subject);
   const clean = maskDotsText_(cleanDotsBody_(body, token), token);
 
-  // 日報は先に GSS へ。失敗したら次の回にやり直す（同じメールの再試行は同じ行を上書きするので二重にならない）
+  // 先に GSS へ（日報 →「日報」タブ＋「日報明細」、報連相 →「日報明細」に1行）。テストの報連相は書かない。
+  // 失敗したら次の回にやり直す（同じメールの再試行は同じ行・同じ明細を書き直すので二重にならない）
   let rec = null;
-  if (kind.key === 'report') {
+  if (kind.key === 'report' || !kind.test) {
     try {
-      rec = recordDotsDailyReport_(msg, subject, clean, kind.test);
+      rec = kind.key === 'report'
+        ? recordDotsDailyReport_(msg, subject, clean, kind.test)
+        : { status: 'logged', itemId: recordDotsHourensou_(msg, kind, clean) };
     } catch (e) {
-      Logger.log('❌ dots 日報の GSS 記録失敗 id=' + id + ': ' + e);
+      Logger.log('❌ dots GSS 記録失敗 id=' + id + ': ' + e);
       if (retryDotsLater_(props, id)) return 'retry';
-      rec = { status: 'failed', reportDate: resolveDotsReportDate_(subject, msg.getDate()) }; // 中身だけ先に出す
+      rec = { status: 'failed', reportDate: kind.key === 'report' ? resolveDotsReportDate_(subject, msg.getDate()) : '' }; // 中身だけ先に出す
     }
   }
 
@@ -262,7 +265,11 @@ function postDotsMessage_(cfg, props, date, subject, token, kind, body, rec) {
   if (/[ក-៿]/.test(body)) {
     notes.push('⚠️ クメール語の原文を含みます（未校閲・社内参考のみ。外へ出す時は Panha を通す）');
   }
+  // 日報は明細を区分ごとに並べて見やすくする（明細が作れなかった時は本文のまま）
   let text = body || '（本文なし）';
+  if (rec && rec.items && rec.items.length > 0) {
+    text = [rec.preamble, renderDotsItems_(rec.items)].filter(Boolean).join('\n\n');
+  }
   if (text.length > DOTS_MAX_BODY) {
     text = safeDotsCut_(text, DOTS_MAX_BODY);
     notes.push('✂️ 長すぎるため後半を省略しました。全文は Gmail（件名 ' + DOTS_SUBJECT_TAG + '）で確認してください');
@@ -288,6 +295,8 @@ function buildDotsHeader_(date, subject, token, kind, rec) {
     (rec && rec.reportDate ? ' ' + formatDotsDay_(rec.reportDate) : '')];
   if (kind.key === 'report') {
     lines.push(describeDotsRecord_(rec));
+    const asks = rec && rec.items ? rec.items.filter(function(it) { return it.decision; }).length : 0;
+    if (asks > 0) lines.push('★ 日本側の判断が必要: ' + asks + '件（「日報明細」の対応状況を「済」にすると消し込めます）');
     if (rec && rec.reportDate && rec.reportDate !== recvDay) {
       lines.push('📅 件名の日付 ' + formatDotsDay_(rec.reportDate) + '／受信 ' + formatDotsDay_(recvDay) + '（日付が合っているか確認してください）');
     }
@@ -296,6 +305,8 @@ function buildDotsHeader_(date, subject, token, kind, rec) {
     const title = safeDotsSubject_(kind.title, token);
     if (title) lines.push('「' + title + '」');
     if (kind.ask) lines.push(kind.ask);
+    if (rec && rec.itemId) lines.push('📒 日報明細に記録（' + rec.itemId + '）');
+    else if (rec && rec.status === 'failed') lines.push('⚠️ 日報明細への記録に' + DOTS_MAX_RETRY + '回失敗しました（必要なら手で記入）');
   }
   lines.push(when);
   return lines.join('\n');
@@ -304,8 +315,9 @@ function buildDotsHeader_(date, subject, token, kind, rec) {
 /** GSS への記録結果の1行 */
 function describeDotsRecord_(rec) {
   const st = rec ? rec.status : 'failed';
-  if (st === 'created') return '✅ GSS「日報」に記録しました（' + rec.reportId + '）';
-  if (st === 'updated') return '✅ GSS「日報」を上書きしました（同じ日の2通目以降・' + rec.reportId + '）';
+  const n = rec && rec.itemCount ? '・明細 ' + rec.itemCount + '件' : '';
+  if (st === 'created') return '✅ GSS に記録しました（日報 ' + rec.reportId + n + '）';
+  if (st === 'updated') return '✅ GSS を上書きしました（同じ日の2通目以降・日報 ' + rec.reportId + n + '）';
   if (st === 'older') return '⚠️ この日の日報はもっと新しいものが記録済みなので、上書きしていません（' + rec.reportId + '）';
   if (st === 'otherDay') return '⚠️ この日の日報は別の日に記録済みなので、上書きしていません（' + rec.reportId + '）。直すなら「日報」タブを手で';
   if (st === 'noHeadings') return '⚠️ 見出し【…】が無いので GSS には記録していません（形式違い）。必要なら「日報」タブへ手で';
