@@ -52,8 +52,8 @@ function fieldPayAdminLine_(pt, shopName, body) {
   var split = (list > 0 && rate !== undefined && rate !== '') ? '（定価 $' + list + '・お店 ' + rate + '%）' : '';
   switch (pt) {
     case 'aba':     return '💳 支払い: ABA QR で受け取り済み\n';
-    case 'shopref': return '💳 支払い: 提携店の紹介のお客さん・当社分をお店から QR で受け取り済み' + split + (shopName ? '\n🏪 ' + shopName : '') + '\n';
-    case 'shop':    return '💳 支払い: 提携店の車・お店から QR で受け取り済み' + split + (shopName ? '\n🏪 ' + shopName : '') + '\n';
+    case 'shopref': return '💳 支払い: 提携店の紹介のお客さん・当社分はお店がその場で QR で払う（店グループへ請求）' + split + (shopName ? '\n🏪 ' + shopName : '') + '\n';
+    case 'shop':    return '💳 支払い: 提携店の車・お店がその場で QR で払う（店グループへ請求）' + split + (shopName ? '\n🏪 ' + shopName : '') + '\n';
     case 'free':    return '💳 支払い: 無料（デモ）\n';
     case 'later':   return '💳 支払い: ⏳ 未収（あとで払う）\n';
     case 'cash':    return '💳 支払い: 現金（旧）\n';

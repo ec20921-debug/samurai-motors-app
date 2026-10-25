@@ -733,7 +733,7 @@ function apiJobEnd(body, opts) {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, shopFromField
           ? '🏪 提携店の作業（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）: ' + shopNameEnd + '\n' +
-            '当社分 $' + (Number(body.amount) || 0) + ' はお店からその場で QR で受け取り済み（現場の記録）。お客様へ当社の決済QRは送っていません'
+            '当社分 $' + (Number(body.amount) || 0) + ' はお店のグループへの請求（ABA QR）でその場で払ってもらう。売上は清算済みで計上。お客様へ当社の決済QRは送っていません'
           : '🏪 提携店経由: ' + shopNameEnd + '\n' +
             'お客様は店に定価を支払い → 当社分は店から QR で受け取る。お客様へ当社の決済QRは送っていません', adminShopOpts);
       } catch (e) {
