@@ -72,6 +72,12 @@ function sendPaymentQR_locked_(bookingId, opts) {
     return { ok: false, reason: 'ALREADY_SENT' };
   }
 
+  // 現場でその場で受け取った等ですでに清算済みの予約には送らない（2026-10-25・再送・まとめ送信の経路も含めて入口で止める）
+  if (String(bkRow.data['決済状態'] || '') === '清算済み' && !opts.forceSettled) {
+    Logger.log('⏭️ sendPaymentQR: 清算済みのためスキップ bookingId=' + bookingId);
+    return { ok: false, reason: 'ALREADY_SETTLED' };
+  }
+
   // 手動特価キャンペーンの予約は自動 QR を通さない（手動 QR オペ）
   // 引き継ぎ書 §3「自動QRに通さない」原則を守る防衛ガード。
   // 判定関数は CampaignBooking.gs にあり、未デプロイ時はガードなしで通常動作。
@@ -82,7 +88,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
   }
 
   // 「提携店が払う」の手動ジョブ売上行（ManualSales.gs・管理者メモに「｜店払い:」）は代金をお店からもらうので送らない（2026-10-23）
-  if (String(bkRow.data['管理者メモ'] || '').indexOf('｜店払い:') >= 0 && !opts.ignoreShopRef) {
+  if (/｜(店払い|紹介):/.test(String(bkRow.data['管理者メモ'] || '')) && !opts.ignoreShopRef) {   // 2026-10-25: 紹介客（紹介:）も
     Logger.log('⏭️ sendPaymentQR: 店払いの作業のためスキップ bookingId=' + bookingId);
     return { ok: false, reason: 'SHOP_PAYS' };
   }
@@ -243,6 +249,12 @@ function retryPaymentQR(bookingId, ignoreShopRef) {
     return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRefRetry };
   }
 
+  // 清算済み（現場で受け取り済み等）は状態を「未清算」に戻して送らない（2026-10-25）。どうしても送る時は 第3引数 true
+  if (String(bkRow.data['決済状態'] || '') === '清算済み' && arguments[2] !== true) {
+    Logger.log('⏭️ retryPaymentQR: 清算済みのため何もしない。どうしても送る時は retryPaymentQR("' + bookingId + '", ' + (ignoreShopRef === true) + ', true)');
+    return { ok: false, reason: 'ALREADY_SETTLED' };
+  }
+
   // QR送信日時を強制クリア（二重送信ガードを解除）
   try {
     updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
@@ -255,7 +267,7 @@ function retryPaymentQR(bookingId, ignoreShopRef) {
   }
 
   // 再送
-  var res = sendPaymentQR(bookingId, { ignoreShopRef: ignoreShopRef === true });
+  var res = sendPaymentQR(bookingId, { ignoreShopRef: ignoreShopRef === true, forceSettled: arguments[2] === true });
   Logger.log('📤 sendPaymentQR 再送結果: ' + JSON.stringify(res));
   return res;
 }

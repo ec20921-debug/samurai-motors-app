@@ -383,6 +383,7 @@ function apiJobStart(body, opts) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
+        (opts.fieldShopId ? '🏪 提携店: ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(opts.fieldShopId)) || opts.fieldShopId) + '\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
         '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
         '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
@@ -409,9 +410,10 @@ function apiJobStart(body, opts) {
     }
 
     // ── 6. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
+    var startShopSent = '';
     try {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
-        notifyShopGroupJobPhotos(customerChatId,
+        startShopSent = notifyShopGroupJobPhotos(customerChatId,
           '▶️ Job started (customer from your QR)\n' +
           '👤 ' + (body.name || '-') + '\n' +
           '🚗 ' + (body.carModel || '-') + '\n' +
@@ -420,6 +422,23 @@ function apiJobStart(body, opts) {
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
+    }
+    // 現場アプリで作業開始の前に選んだ店（店の車など・2026-10-25）: その店のグループへ開始と Before 写真を送る
+    // shop_id は apiJobStartV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
+    var startFieldShop = String(opts.fieldShopId || '');
+    if (startFieldShop && startFieldShop !== startShopSent) {
+      try {
+        if (!jobCustSent_(opts, 'startshop:' + startFieldShop) && typeof notifyShopGroupByShopId_ === 'function') {
+          jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
+          notifyShopGroupByShopId_(startFieldShop,
+            '▶️ Job started (your shop)\n' +
+            '🚗 ' + ([body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '-') + '\n' +
+            '📷 Before photos ↓',
+            photoResult.blobs);
+        }
+      } catch (e) {
+        Logger.log('⚠️ 選んだ提携店への同報失敗(start): ' + e);
+      }
     }
 
     // v2: 管理通知が届かない／写真を1枚も保存できない場合は「配信済み」にしない（送り直しで再配信）
@@ -577,7 +596,11 @@ function apiJobEnd(body, opts) {
 
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     // 有償の手動ジョブ（予約なし・料金>0）のみ合計表示＋支払いご案内（無償は送らない・2026-08-28 A案）
-    var manualPaidEnd = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
+    // 2026-10-25: 支払区分（FieldPayment.gs）。提携店の仕事はお客様が店に払うので、当社の取り分（合計）は見せない
+    var ptEnd = (typeof fieldPayType_ === 'function') ? fieldPayType_(body) : String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
+    var ptEndShop = (typeof fieldPayIsShop_ === 'function') ? fieldPayIsShop_(ptEnd) : ptEnd === 'shop';
+    var fieldShopNameEnd = opts.fieldShopId ? ((typeof getShopNameById_ === 'function' && getShopNameById_(String(opts.fieldShopId))) || String(opts.fieldShopId)) : '';
+    var manualPaidEnd = (!bookingId && Number(body.amount) > 0 && !ptEndShop) ? Number(body.amount) : 0;
     if (customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'end'))) {
       if (typeof jobMarkCustSent_ === 'function') jobMarkCustSent_(opts, 'end');   // v2: 再送で顧客に重複させない
       try {
@@ -618,7 +641,8 @@ function apiJobEnd(body, opts) {
         (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
-        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
+        (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +
+        (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body, opts.fieldShopId || '') : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
         '📷 After ' + photoResult.urls.length + '枚';
 
@@ -674,58 +698,91 @@ function apiJobEnd(body, opts) {
     // 現場アプリで提携店を選んだ作業（在庫車・ボイス依頼など・2026-10-22）: その店のグループへ完了と写真を送る。
     // shop_id は apiJobEndV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
     var fieldShopId = String(opts.fieldShopId || '');
+    // 作業開始の前に選んだ店（2026-10-25・apiJobEndV2 が確かめた値）。終了で店を選ばなくても、その店へ After を送る（売上・請求には使わない）
+    var startShopId = String(opts.startShopId || '');
+    var photoShopId = fieldShopId || startShopId;
     var shopFromField = false;
-    if (fieldShopId && fieldShopId !== shopRef) {
-      var fieldPhase = 'endshop:' + fieldShopId;
-      if (!jobCustSent_(opts, fieldPhase)) {
-        jobMarkCustSent_(opts, fieldPhase);
-        try {
-          if (typeof notifyShopGroupByShopId_ === 'function') {
-            notifyShopGroupByShopId_(fieldShopId,
-              '✅ Job finished (your shop)\n' +
-              '🚗 ' + (body.carModel || body.name || '-') + '\n' +
-              '⏱ ' + duration + ' min\n' +
-              '📷 After photos ↓',
-              photoResult.blobs);
+    if (photoShopId && photoShopId !== shopRef) {
+      var fieldPhase = 'endshop:' + photoShopId;
+      try {
+        if (!jobCustSent_(opts, fieldPhase) && typeof notifyShopGroupByShopId_ === 'function') {
+          jobMarkCustSent_(opts, fieldPhase);
+          var finishText = '✅ Job finished (your shop)\n' +
+            '🚗 ' + (body.carModel || body.name || '-') + '\n' +
+            '⏱ ' + duration + ' min\n';
+          // 作業開始で Before を送っていない店（終了で初めて選んだ店）には、Before も送る（After とは別のアルバム）
+          var beforeBlobs = (photoShopId !== startShopId && opts.rowData && typeof driveUrlsToBlobs_ === 'function')
+            ? driveUrlsToBlobs_(String(opts.rowData['Before写真URL'] || '').split('\n').filter(String)) : [];
+          if (beforeBlobs.length > 0) {
+            notifyShopGroupByShopId_(photoShopId, finishText + '📷 Before photos ↓', beforeBlobs);
+            notifyShopGroupByShopId_(photoShopId, '📷 After photos ↓', photoResult.blobs);
+          } else {
+            notifyShopGroupByShopId_(photoShopId, finishText + '📷 After photos ↓', photoResult.blobs);
           }
-        } catch (e) {
-          Logger.log('⚠️ 選んだ提携店への同報失敗: ' + e);
         }
+      } catch (e) {
+        Logger.log('⚠️ 選んだ提携店への同報失敗: ' + e);
       }
-      // 予約なしで「提携店が払う」の時だけ店集金として扱う。予約の決済QRを止めるかは、お客様の店QR（shop_ref）だけで決める
-      if (!shopRef && !bookingId && payTypeShop === 'shop') { shopRef = fieldShopId; shopFromField = true; }
+      // 予約なしで提携店の仕事（店の車 shop・紹介客 shopref）の時は店集金として扱う（終了で選んだ店だけ）
+      if (!shopRef && !bookingId && ptEndShop && fieldShopId) { shopRef = fieldShopId; shopFromField = true; }
     }
     var adminShopOpts = threadId ? { message_thread_id: threadId } : {};
     // 予約なしの手動ジョブで現場が現金・ABA を明示した時は当社集金（ご案内も送っている）ので「提携店経由」と出さない
-    if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
+    var directOnShopRef = !!(shopRef && bookingId && (ptEnd === 'aba' || ptEnd === 'free' || ptEnd === 'cash'));
+    if (directOnShopRef) {
+      try {
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+          '⚠️ 店QR経由のお客様（' + ((typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef) + '）ですが、現場は「' +
+          (ptEnd === 'free' ? '無料' : 'ABA QR で受け取った') + '」を選びました。' + (ptEnd === 'free' ? '無料にしています。' : 'お客様から直接受け取っています。') + 'お店との二重請求にならないか確認してください', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 店QR客の直接受け取りの管理通知失敗: ' + e);
+      }
+    } else if (shopRef && (bookingId || (payTypeShop !== 'cash' && payTypeShop !== 'aba'))) {
       try {
         var shopNameEnd = (typeof getShopNameById_ === 'function' && getShopNameById_(shopRef)) || shopRef;
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, shopFromField
-          ? '🏪 提携店の作業: ' + shopNameEnd + '\n' +
-            '代金はお店からもらう（ABA QR）。お客様へ当社の決済QRは送っていません'
+          ? '🏪 提携店の作業（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）: ' + shopNameEnd + '\n' +
+            '当社分 $' + (Number(body.amount) || 0) + ' はお店のグループへの請求（ABA QR）でその場で払ってもらう。売上は清算済みで計上。お客様へ当社の決済QRは送っていません'
           : '🏪 提携店経由: ' + shopNameEnd + '\n' +
-            'お客様は店に定価を支払い → 当社分は店から回収（ABA QR）。お客様へ当社の決済QRは送っていません', adminShopOpts);
+            'お客様は店に定価を支払い → 当社分は店から QR で受け取る。お客様へ当社の決済QRは送っていません', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 提携店経由の管理通知失敗: ' + e);
       }
-    } else if (payTypeShop === 'shop') {
+    } else if (ptEndShop) {
       // 「提携店が払う」なのに店が分からない／予約のお客様が店QR経由でない → 取りこぼし・二重請求にならないよう知らせる
       try {
         sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, bookingId
-          ? '⚠️ 現場は「提携店が払う」を選びましたが、このお客様は店のQR経由ではありません。決済QRは通常どおり送ります。お店とお客様の二重請求にならないか確認してください'
-          : '⚠️ 「提携店が払う」の作業ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
+          ? '⚠️ 現場は提携店の仕事（' + (payTypeShop === 'shopref' ? '紹介のお客さん' : 'お店の車') + '）を選びましたが、このお客様は店のQR経由ではありません。現場の記録（お店から受け取る）に合わせて予約を清算済みにします。お店とお客様の二重請求にならないか確認してください'
+          : '⚠️ 提携店の仕事ですが、どのお店か選ばれていません。お店を確認して記録してください', adminShopOpts);
       } catch (e) {
         Logger.log('⚠️ 店払いの確認通知失敗: ' + e);
       }
     }
 
+    // 開始と終了で別の店を選んだ: 開始の店には Before だけが届いている（完了は届かない）ので知らせる（2026-10-25）
+    if (fieldShopId && startShopId && fieldShopId !== startShopId) {
+      try {
+        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+          '⚠️ 作業開始と終了で別の提携店が選ばれました: 開始 ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(startShopId)) || startShopId) +
+          ' → 終了 ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(fieldShopId)) || fieldShopId) +
+          '。開始の店のグループには Before だけが届いています。必要ならお店に連絡してください', adminShopOpts);
+      } catch (e) {
+        Logger.log('⚠️ 店の変更の管理通知失敗: ' + e);
+      }
+    }
+
+    // この作業の提携店（売上行と請求で同じ店を使う）: 予約なしで提携店の仕事なら現場で選んだ店、それ以外はお客様の店QR
+    // 予約ありでも現場で店を選んだ店の仕事なら、その店に請求する（2026-10-25 検証の指摘）
+    var saleShopId = (ptEndShop && fieldShopId) ? fieldShopId : shopRef;
+
     // ── 5.7. 手動ジョブ（予約なし・有償）は売上を予約シートへ自動計上（2026-08-24） ──
+    var manualSaleId = null;
     try {
       // 2026-10-08 D4: 支払区分による可否は recordManualJobSaleIfNeeded_ の入口で判定
       // 2026-10-23: 提携店払いはその店を売上行に書く（現場で選んだ店を優先＝作業記録の 提携店ID・毎時シンクと揃える）
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
-        recordManualJobSaleIfNeeded_(body, 'job_end', {
-          shopId: (payTypeShop === 'shop' && !bookingId && fieldShopId) ? fieldShopId : shopRef,
+        manualSaleId = recordManualJobSaleIfNeeded_(body, 'job_end', {
+          shopId: saleShopId,
           jobId: opts.jobId || ''
         });
       }
@@ -733,11 +790,38 @@ function apiJobEnd(body, opts) {
       Logger.log('⚠️ 手動ジョブ売上 自動計上失敗(job_end): ' + e);
     }
 
+    // ── 5.8. 提携店の仕事（店の車・紹介のお客さん）は、その店のグループへ当社分の請求＋ABA QR（2026-10-25 ShopInvoice.gs） ──
+    // 店は売上行と同じ saleShopId。送れない時（店が分からない・未連携・定価なし等）は ShopInvoice.gs が管理グループへ理由を出す
+    if (ptEndShop && typeof sendShopInvoiceForJob_ === 'function') {
+      sendShopInvoiceForJob_(body, opts, {
+        shopId:    saleShopId,
+        pt:        ptEnd,
+        refId:     bookingId || manualSaleId || opts.jobId || '',
+        adminOpts: adminShopOpts
+      });
+    }
+
     // ── 6. 決済QRを連続送信（Phase 5） ──
     // CLAUDE.md: 完了通知 → After写真 → QR画像 を連続送信
     // 提携店経由の顧客は「お客様→店に全額支払い」ルールのため当社の決済QRは送らない
     // （二重請求防止・2026-08-10 Daisuke裁可の精算フロー）
-    if (bookingId && shopRef) {
+    var paidOnSiteDone = false;
+    if (bookingId && typeof fieldPaidOnSite_ === 'function' && fieldPaidOnSite_(ptEnd) && typeof markBookingPaidOnSite_ === 'function') {
+      // 2026-10-25 Daisuke: 予約客がその場で払った時（ABA QR・店・無料）は予約を清算済みにして決済QRと催促を送らない
+      var paidShopName = fieldShopNameEnd || (shopRef && typeof getShopNameById_ === 'function' ? getShopNameById_(shopRef) : '');
+      paidOnSiteDone = markBookingPaidOnSite_(bkRow, body, ptEnd, paidShopName, String(opts.fieldShopId || '') || saleShopId);
+      if (paidOnSiteDone) {
+        Logger.log('ℹ️ 予約 ' + bookingId + ' は現場で受け取り済み（' + ptEnd + '）のため決済QR送信をスキップ');
+      } else {
+        try {
+          sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, '⚠️ 予約 ' + bookingId + ' は現場で「受け取り済み」を選びましたが、金額（$' + (body.amount === undefined ? '-' : body.amount) +
+            '）が使えないため清算済みにしていません。決済QRは通常どおりの扱いです。金額を確認してください', adminShopOpts);
+        } catch (e) { Logger.log('⚠️ その場払いの確認通知失敗: ' + e); }
+      }
+    }
+    if (paidOnSiteDone) {
+      // 何もしない（上で清算済み）
+    } else if (bookingId && shopRef) {
       Logger.log('ℹ️ 店経由精算(shop=' + shopRef + ')のため決済QR送信をスキップ');
     } else if (bookingId && typeof sendPaymentQR === 'function') {
       try {
@@ -1055,6 +1139,12 @@ function sendPhotoAlbum(botType, chatId, blobs, caption, opts) {
 
   for (var offset = 0; offset < blobs.length; offset += maxBatch) {
     var batch = blobs.slice(offset, offset + maxBatch);
+    // 端数がちょうど1枚（11・21枚…）だと sendMediaGroup が失敗して黙って欠けるので、その1枚は sendPhoto で送る（2026-10-25）
+    if (batch.length === 1) {
+      lastRes = sendPhotoBlob(botType, chatId, batch[0], '', opts);
+      if (lastRes && lastRes.ok) anySuccess = true;
+      continue;
+    }
     var payload = { chat_id: String(chatId) };
     if (opts && opts.message_thread_id) {
       payload.message_thread_id = String(opts.message_thread_id);

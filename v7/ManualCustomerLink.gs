@@ -453,23 +453,25 @@ function driveUrlsToBlobs_(urls) {
  *
  * 【A案・ご案内型（2026-08-28 Daisuke 裁可）】
  *   - 台帳の決済状態は一切触らない（現金・ABA の手動売上は「清算済み」で自動計上、
- *     受領確認は現場の Run Kosal が行う。提携店払いは「未清算」で計上・2026-10-23）
+ *     受領確認は現場の Run Kosal が行う。2026-10-25〜 提携店の仕事も現場でその場で受け取り「清算済み」で計上）
  *   - スクショ返送依頼はしない（sendPaymentQR の追跡フローとは別物）
  *   - 無償ジョブ（amount<=0）には送らない（呼び出し側で分岐＋本関数でも防衛）
  *
- * 【2026-10-20】提携店のお客様（店に支払う）には送らない。判定の優先順:
- *   現場アプリの支払区分 shop / free → 送らない ／ cash / aba（現場が明示）→ 送る ／ それ以外（空・later）→ 店QR経由なら送らない
+ * 【2026-10-25】支払いは QR だけ。判定の優先順:
+ *   現場アプリの支払区分 aba / shopref / shop / free（＋旧 cash）＝その場で受け取り済み → 送らない ／
+ *   それ以外（空＝旧アプリ・later＝未収）→ 店QR経由のお客様なら送らない、それ以外は送る
  *
  * @param {string} chatId
  * @param {number} amount - USD
- * @param {string} [payType] - 現場アプリの支払区分（cash / aba / shop / free / later）
+ * @param {string} [payType] - 現場アプリの支払区分（aba / shopref / shop / free / later ＋旧 cash）
  * @return {boolean} ご案内を送ったか
  */
 function sendManualPaymentInfo_(chatId, amount, payType) {
   if (!(Number(amount) > 0)) return false; // 防衛: 無償にはQRを送らない
   var pt = String(payType || '');
-  if (pt === 'shop' || pt === 'free') return false;
-  if (pt !== 'cash' && pt !== 'aba' && typeof getValidShopRef_ === 'function' && getValidShopRef_(chatId)) {
+  // 2026-10-25: 現場でその場で受け取った（ABA QR・店・無料・旧現金）なら案内は送らない（FieldPayment.gs）
+  if (typeof fieldPaidOnSite_ === 'function' ? fieldPaidOnSite_(pt) : (pt === 'shop' || pt === 'free')) return false;
+  if (typeof getValidShopRef_ === 'function' && getValidShopRef_(chatId)) {
     Logger.log('⏭️ 支払いご案内: 提携店経由のためスキップ chat=' + chatId);
     return false;
   }
@@ -480,8 +482,9 @@ function sendManualPaymentInfo_(chatId, amount, payType) {
     '💵 សរុប / Total: ' + Number(amount) + '$\n' +
     (qr && qr.bank ? '🏦 ' + qr.bank + '\n' : '') +
     '━━━━━━━━━━━━━━━━━\n' +
-    '📱 សូមស្កេន QR ដើម្បីបង់ប្រាក់ ឬ បង់ជាសាច់ប្រាក់ក៏បានដែរ\n' +
-    '📱 Scan QR to pay, or pay by cash — both OK';
+    // 2026-10-25 支払いは QR だけ（現金の一文を外した。Panha 確認済み）
+    '📱 សូមស្កេន QR ដើម្បីបង់ប្រាក់\n' +
+    '📱 Please scan the QR to pay';
   if (qr && qr.imageUrl && typeof sendQRImage === 'function') {
     sendQRImage(chatId, qr.imageUrl, caption);
   } else {

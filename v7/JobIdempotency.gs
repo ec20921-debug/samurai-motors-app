@@ -29,11 +29,12 @@ var JOBS_V2_COLS_ = [
   '送信日時(端末)',
   'スタッフチャットID',    // Telegram 署名で確認できた送り主（確認できない時は空）
   '施工時間(分)',
-  '支払区分',              // cash / aba / shop / free / later（売上の自動計上判定に使う）
+  '支払区分',              // aba / shopref / shop / free / later（＋旧 cash）。売上の自動計上判定に使う（FieldPayment.gs）
   '開始配信日時',
   '終了配信日時',
   'v2記録(JSON)',
-  '提携店ID'               // 現場アプリで選んだ提携店（2026-10-22・空＝選んでいない）
+  '提携店ID',              // 現場アプリで選んだ提携店（2026-10-22・空＝選んでいない）。作業終了で選んだ店だけ（開始で選んだ店は v2記録(JSON) の start.shop_id）
+  '店への請求'             // 提携店グループへの請求の状態（ShopInvoice.gs・2026-10-25）: 送信中 / 送信済 / 未送信(理由) ＋日時
 ];
 var JOB_DELIVERING_TTL_ = 180;          // 配信中の印（秒）
 var JOB_V2_JSON_MAX_ = 40000;           // セル上限 50,000 文字に余裕を持たせる
@@ -45,7 +46,7 @@ var JOB_CLIENT_ID_RE_ = /^[A-Za-z0-9-]{8,64}$/;
  */
 function ensureJobsV2Columns_() {
   var cache = CacheService.getScriptCache();
-  if (cache.get('jobs_v2_cols_ok_v2')) return;
+  if (cache.get('jobs_v2_cols_ok_v3')) return;   // 列を足したら版を上げる（v3: 店への請求）
   var sheet = getSheet(SHEET_NAMES.JOBS);
   var headers = getHeaderMap(SHEET_NAMES.JOBS);
   var missing = JOBS_V2_COLS_.filter(function(c) { return !headers[c]; });
@@ -61,7 +62,7 @@ function ensureJobsV2Columns_() {
     var still = JOBS_V2_COLS_.filter(function(c) { return !after[c]; });
     if (still.length > 0) throw new Error('JOBS_V2_COLUMNS_MISSING: ' + still.join(','));
   }
-  cache.put('jobs_v2_cols_ok_v2', '1', 21600);
+  cache.put('jobs_v2_cols_ok_v3', '1', 21600);
 }
 
 function jobEcho_(res, body) {
@@ -108,7 +109,7 @@ function jobSafeText_(v, maxLen) {
 
 function jobPayType_(body) {
   var pt = String((body.v2 && body.v2.payment_type) || '');
-  return /^(cash|aba|shop|free|later)$/.test(pt) ? pt : '';
+  return /^(cash|aba|shop|shopref|free|later)$/.test(pt) ? pt : '';   // shopref = 提携店の紹介客（2026-10-25）
 }
 
 var JOB_MAX_DELIVERY_TRIES_ = 3;   // これを超えたら「配信済み＋要確認」で先へ進める
@@ -149,6 +150,10 @@ function apiJobStartV2(body) {
   var cid = String(body.client_id || '');
   if (!cid) return apiJobStart(body);
   if (!JOB_CLIENT_ID_RE_.test(cid)) return jobErr_(body, 'INVALID_CLIENT_ID', false);
+
+  // 作業開始で選んだ提携店（2026-10-25・予約なしの作業だけ）。確かめた shop_id だけで Before をその店のグループへ送る
+  // 予約のお客様の車の写真を店へ出さないよう、予約つきはサーバー側でも受け付けない。値は v2記録(JSON) の start に残る
+  var fieldShop = (!body.bookingId && typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
 
   var cache = CacheService.getScriptCache();
   var lock = LockService.getScriptLock();
@@ -197,7 +202,8 @@ function apiJobStartV2(body) {
   var res;
   try {
     res = apiJobStart(body, { rowIndex: row.rowIndex, jobId: jobId, cid: cid,
-                              skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance });
+                              skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance,
+                              fieldShopId: fieldShop });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
@@ -244,6 +250,8 @@ function apiJobEndV2(body) {
       return jobErr_(body, 'START_NOT_FOUND', true);
     }
     jobId = String(row.data['ジョブID'] || '');
+    // 予約IDは作業開始で記録した行の値を使う（作業終了の本文の値で別の予約を清算済みにさせない・2026-10-25）
+    if (row.data['予約ID'] !== undefined) body.bookingId = String(row.data['予約ID'] || '').replace(/^'/, '');
     var prevEnd = String(row.data['完了イベントID'] || '');
     if (prevEnd && prevEnd !== cid) {
       Logger.log('⚠️ END_CONFLICT job=' + jobId + ' prev=' + prevEnd + ' new=' + cid);
@@ -276,10 +284,19 @@ function apiJobEndV2(body) {
 
   // ── ロックの外: 写真保存・行更新・3方向配信・売上計上・QR（既存処理を行指定で実行） ──
   var lastChanceEnd = jobBumpTries_('end', cid);
+  // 作業開始で選んだ店（2026-10-25）。After の同報先にだけ使う。作業終了の再送で上書きされる「提携店ID」列ではなく
+  // v2記録(JSON) の start.shop_id を確かめ直して使う
+  var startShop = '';
+  try {
+    var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start || {};
+    if (startV2.shop_id && !body.bookingId && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
+  } catch (eStart) {
+    Logger.log('⚠️ apiJobEndV2: 作業開始の店を読めず ' + eStart);
+  }
   var res;
   try {
     res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
-                            fieldShopId: fieldShop });
+                            fieldShopId: fieldShop, startShopId: startShop });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
