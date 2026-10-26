@@ -6,7 +6,7 @@
  *   を、流入元タブ「shop_id」の店舗グループ（Bot連携=連携済）へ英語で送る。部屋番号と車種も載せる。
  *   Daisuke「ピカソがつくってくれたTelegramグループに通知が各種されるようにしたい」（2026-10-26。月次のまとめは送らない）
  *
- * 【送る予約】予約確定の時点で ①流入元が英語メイン（言語=en-ja）②その提携先グループが連携済み のもの＝
+ * 【送る予約】予約確定の時点で ①流入元が英日（en-ja）②その提携先グループが連携済み のもの＝
  *   予約確定文に「管理側にも共有されます」を出した予約だけ（SourceCampaign.gs buildSourceCustomerConfirm_）。
  *   その予約の印を Script Properties `srcgrp_<予約ID>`（JSON: shopId・表示名・部屋番号・車種・日時）に残し、作業の通知はこの印がある予約だけ。
  *   印は作業完了の通知が届いたら消し、届かないまま30日たったもの（キャンセル等）は次の予約の時に消す。
@@ -242,9 +242,9 @@ function buildSourceGroupGreeting_(shopName) {
     'Thank you for working with us!';
 }
 
-/** お客様向けの一言（英語＋クメール語・歓迎文と予約確定文に入れる。2026-10-26 までは英語＋日本語） */
+/** お客様向けの一言（英語＋日本語・歓迎文と予約確定文に入れる） */
 function sourceGroupShareNotice_(cfg) {
   var place = cfg.placeName || cfg.label;
   return '📢 Your booking details (date, time, unit number, car) and Before/After photos are also shared with ' + place + ' management.\n' +
-    '   ' + sourceKm_('share', { place: place });
+    '   ご予約の内容（日時・部屋番号・車種）と作業前後の写真は、' + place + ' の管理側にも共有されます。';
 }

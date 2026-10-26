@@ -1106,7 +1106,7 @@ function notifyBookingCreated(info) {
     'តាម Telegram។ សូមបង់ប្រាក់តាម QR Code នោះ។\n' +
     '━━━━━━━━━━━━━━━━\n' +
     'Thank you! / សូមអរគុណ!';
-  // 2026-10-15: 英語メインの流入元（Picasso 等）は専用の確定文（駐車場所のお願いも同梱）。2026-10-26〜 英語＋クメール語（SourceCampaignKm.gs）
+  // 2026-10-15: 英語メインの流入元（Picasso 等）は英語＋日本語の確定文（駐車場所のお願いも同梱）
   // （info.source は有効な流入元のときだけ入る＝ resolveBookingSource_ が無効な紐付けを返さない）
   const enjaSource = !!(info.source && info.source.lang === 'en-ja' && typeof buildSourceCustomerConfirm_ === 'function');
   if (enjaSource) customerText = buildSourceCustomerConfirm_(info);

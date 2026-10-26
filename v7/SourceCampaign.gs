@@ -2,8 +2,7 @@
  * SourceCampaign.gs — 流入元（専用QR）キャンペーン（2026-10-15 Picasso City Garden）
  *
  * 【目的】レジデンス等の専用QR（t.me/<予約Bot>?start=<流入元コード>）から来たお客様を見分け、
- *   - 言語=en-ja の流入元は英語メイン: 予約画面は「英語＋日本語」、歓迎メッセージ・予約確定（Bot の文面）は「英語＋クメール語」
- *     （2026-10-26 Daisuke「お客さんへの通知は英語とクメール語で統一」。クメール語の文面は SourceCampaignKm.gs）
+ *   - 歓迎メッセージ・予約画面・予約確定を「英語メイン＋日本語」で出す（言語=en-ja の流入元）
  *   - 流入元の特典（全メニュー X%オフ・品目別の割引率）を予約日で自動適用する（期間限定／「サービス割引は常時」ならX%はいつでも）
  *   - 予約の記録（予約タブ 流入元/特典/部屋番号）・管理グループ通知・現場アプリに流入元を出す
  *
@@ -330,7 +329,7 @@ function handleSourceStart_(msg, text) {
   return true;
 }
 
-/** 英語メイン＋クメール語の歓迎（言語=en-ja の流入元。2026-10-26 までは英語＋日本語） */
+/** 英語メイン＋日本語の歓迎（言語=en-ja の流入元） */
 function sendSourceWelcome_(msg, cfg) {
   ensureBookingMenuButton_(msg.chat.id);   // 最優先でボタン（?src= 付き）
 
@@ -348,52 +347,52 @@ function sendSourceWelcome_(msg, cfg) {
   var place = cfg.placeName || cfg.label;
   var lines = [];
   lines.push((name ? 'Hello ' + name + '! 👋 ' : 'Hello! 👋 ') + 'Welcome to SAMURAI MOTORS.');
-  lines.push(sourceKm_('welcome'));
+  lines.push('SAMURAI MOTORS へようこそ。日本品質の出張カーケアです。');
   lines.push('');
   lines.push('🏢 FOR ' + place.toUpperCase() + ' RESIDENTS');
-  lines.push(sourceKm_('residents', { place: place }));
+  lines.push(place + ' にお住まいの皆さまへ');
 
   var perk = sourcePerkTexts_(cfg);
   if (perk.mainEn || perk.extraEn) {
     lines.push('');
     if (perk.mainEn) {
       lines.push('🎁 ' + perk.mainEn);
-      lines.push('   ' + perk.mainKm);
+      lines.push('   ' + perk.mainJa);
     }
     if (perk.periodEn) {
       lines.push('📅 ' + perk.periodEn);
-      lines.push('   ' + perk.periodKm);
+      lines.push('   ' + perk.periodJa);
     }
     if (perk.extraEn) {
       lines.push('⭐ ' + perk.extraEn);
-      lines.push('   ' + perk.extraKm);
+      lines.push('   ' + perk.extraJa);
     }
-    lines.push('   Discounts cannot be combined. / ' + sourceKm_('noCombine'));
+    lines.push('   Discounts cannot be combined. / 割引の併用はできません。');
   }
 
   lines.push('');
   lines.push('🚗 PARK AS USUAL. — we come to your car.');
-  lines.push('   ' + sourceKm_('park'));
+  lines.push('   車は、いつもの場所に停めたままで。');
   lines.push('🔑 NO KEY HANDOVER NEEDED — no need to be there.');
-  lines.push('   ' + sourceKm_('noKey'));
+  lines.push('   鍵の受け渡しも、立ち会いも不要です。');
   lines.push('📷 BEFORE / AFTER PHOTOS ON TELEGRAM');
-  lines.push('   ' + sourceKm_('photos'));
+  lines.push('   仕上がりは写真でお届けします。');
   // 提携先グループに予約・写真が届く流入元は、そのことを先に伝える（SourceGroupNotify.gs・2026-10-26）
   if (typeof sourceGroupLinked_ === 'function' && sourceGroupLinked_(cfg)) lines.push(sourceGroupShareNotice_(cfg));
-  lines.push('💳 Pay by ABA QR after the service. / ' + sourceKm_('pay'));
-  lines.push('⏰ ' + sourceHoursEn_() + ' / ' + sourceHoursKm_());
+  lines.push('💳 Pay by ABA QR after the service. / お支払いは施工後に ABA の QR で。');
+  lines.push('⏰ ' + sourceHoursEn_() + ' / ' + sourceHoursJa_());
 
   lines.push('');
-  lines.push('👇 How to book / ' + sourceKm_('howToBook'));
+  lines.push('👇 How to book / ご予約');
   lines.push('① 🚗 Tap the "Booking" button (bottom left) — choose a service and time, and enter your unit number.');
-  lines.push('   ' + sourceKm_('step1'));
+  lines.push('   左下の「Booking」ボタンから、メニュー・日時・部屋番号を入力してください。');
   lines.push('② 💬 Or just send us a message here — voice messages OK 🎤');
-  lines.push('   ' + sourceKm_('step2'));
+  lines.push('   このチャットへのメッセージでも受け付けます。日本語でもどうぞ。');
 
   var fee = sourceDispatchFee_(cfg);
   lines.push('');
   lines.push('Prices in USD per car.' + (fee > 0 ? ' Delivery fee ' + fee + '$ per booking.' : ''));
-  lines.push(sourceKm_('pricesUsd') + (fee > 0 ? ' ' + sourceKm_('feePerBooking', { fee: fee }) : ''));
+  lines.push('料金は1台あたり（米ドル）。' + (fee > 0 ? '出張料は1件 ' + fee + '$ です。' : ''));
   lines.push('');
   lines.push('📘 Facebook: ' + SAMURAI_FB_PAGE_URL);
 
@@ -450,32 +449,27 @@ function sourcePerkLineJa_(cfg) {
  *   main   : いつも出す特典。「サービス割引は常時」なら「20% OFF ALL SERVICES · ALWAYS」、そうでなければ個別割引込みの1行
  *   period : main の期間（常時なら空）
  *   extra  : 常時の流入元で、期間限定の個別割引がまだ終わっていないときの1行（期間込み）。終了日を過ぎたら空
- *   *Ja は予約画面の帯（booking.html）、*Km は Bot の歓迎文（2026-10-26〜 英語＋クメール語）で使う
  */
 function sourcePerkTexts_(cfg) {
-  var out = { mainEn: '', mainJa: '', mainKm: '', periodEn: '', periodJa: '', periodKm: '', extraEn: '', extraJa: '', extraKm: '' };
+  var out = { mainEn: '', mainJa: '', periodEn: '', periodJa: '', extraEn: '', extraJa: '' };
   if (!sourceHasPerk_(cfg)) return out;
   if (!cfg.serviceAlways) {
     out.mainEn = sourcePerkLineEn_(cfg);
     out.mainJa = sourcePerkLineJa_(cfg);
-    out.mainKm = sourcePerkLineKm_(cfg);
     if (cfg.start || cfg.end) {
       out.periodEn = sourcePeriodEn_(cfg);
       out.periodJa = sourcePeriodJa_(cfg);
-      out.periodKm = sourcePeriodKm_(cfg);
     }
     return out;
   }
   if (cfg.servicePct > 0) {
     out.mainEn = cfg.servicePct + '% OFF ALL SERVICES · ALWAYS';
     out.mainJa = '全メニュー いつでも' + cfg.servicePct + '%オフ';
-    out.mainKm = sourceKm_('allPctAlways', { pct: cfg.servicePct });
   }
   if (Object.keys(cfg.itemPct || {}).length && sourceLimitedLive_(cfg)) {
     var hasPeriod = !!(cfg.start || cfg.end);
     out.extraEn = sourceItemsLineEn_(cfg) + (hasPeriod ? ' for bookings ' + sourcePeriodRangeEn_(cfg) : '');
     out.extraJa = sourceItemsLineJa_(cfg) + (hasPeriod ? '（' + sourcePeriodJa_(cfg) + 'のご予約）' : '');
-    out.extraKm = hasPeriod ? sourceKm_('forBookings', { items: sourceItemsLineKm_(cfg), range: sourcePeriodKm_(cfg) }) : sourceItemsLineKm_(cfg);
   }
   return out;
 }
@@ -520,6 +514,11 @@ function sourceHoursEn_() {
   var c = getBookingConfig();
   function f(h) { h = Number(h); return (h % 12 === 0 ? 12 : h % 12) + (h < 12 || h === 24 ? 'AM' : 'PM'); }
   return 'OPEN ' + f(c.businessHourStart) + ' – ' + f(c.businessHourEnd);
+}
+
+function sourceHoursJa_() {
+  var c = getBookingConfig();
+  return Number(c.businessHourStart) + ':00〜' + Number(c.businessHourEnd) + ':00';
 }
 
 /** この流入元のお客様の出張料（セダン）。「出張料なし」の流入元は 0 */
@@ -622,7 +621,7 @@ function sourceLocationString_(cfg) {
 
 // ====== 通知文 ======
 
-/** 予約確定（顧客向け・英語メイン＋クメール語。2026-10-26 までは英語＋日本語）。notifyBookingCreated から呼ぶ */
+/** 予約確定（顧客向け・英語メイン＋日本語）。notifyBookingCreated から呼ぶ */
 function buildSourceCustomerConfirm_(info) {
   var src = info.source || {};
   var disc = info.srcDiscount || null;
@@ -634,7 +633,7 @@ function buildSourceCustomerConfirm_(info) {
     return d ? sourceUsd_(amount) + ' → ' + sourceUsd_(amount - d.discount) + ' (-' + d.pct + '%)' : sourceUsd_(amount);
   }
 
-  var t = '✅ Booking confirmed! / ' + sourceKm_('confirmed') + '\n' +
+  var t = '✅ Booking confirmed! / ご予約を承りました\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📋 ' + info.bookingId + '\n' +
     '🏢 ' + (src.placeName || src.label || '') + (info.unitNo ? ' · Unit ' + info.unitNo : '') + '\n' +
@@ -647,26 +646,26 @@ function buildSourceCustomerConfirm_(info) {
     t += icon + ' ' + optionDisplayName_(l.opt).replace(/^SAMURAI /, '') + ': ' + priceText(l.opt.code, l.amount) + '\n';
   });
   if (disc && disc.total > 0) {
-    t += '🎁 ' + (src.label || '') + ' residents\' discount / ' + sourceKm_('residentsDiscount') + ': -' + sourceUsd_(disc.total) + '\n';
+    t += '🎁 ' + (src.label || '') + ' residents\' discount / 住民特典: -' + sourceUsd_(disc.total) + '\n';
   }
-  if (Number(info.dispatchFee) > 0) t += '🚚 Delivery fee / ' + sourceKm_('deliveryFee') + ': ' + sourceUsd_(info.dispatchFee) + '\n';
+  if (Number(info.dispatchFee) > 0) t += '🚚 Delivery fee / 出張料: ' + sourceUsd_(info.dispatchFee) + '\n';
   // 提携先グループに予約・写真が届く流入元は、そのことも伝える（SourceGroupNotify.gs・2026-10-26）
   var srcFull = src.code ? getSourceConfig_(src.code) : null;
   var shareLine = (srcFull && typeof sourceGroupLinked_ === 'function' && sourceGroupLinked_(srcFull))
     ? sourceGroupShareNotice_(srcFull) + '\n' : '';
-  t += '💵 Total / ' + sourceKm_('total') + ': ' + sourceUsd_(info.amount) + '\n' +
+  t += '💵 Total / お支払い合計: ' + sourceUsd_(info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
-    '📋 What happens next / ' + sourceKm_('next') + '\n' +
-    '⏰ 1h before: a reminder on Telegram / ' + sourceKm_('remind') + '\n' +
-    '🚗 Park as usual — no key needed / ' + sourceKm_('parkNoKey') + '\n' +
-    '📷 Before / after photos on Telegram / ' + sourceKm_('photosShort') + '\n' +
+    '📋 What happens next / このあとの流れ\n' +
+    '⏰ 1h before: a reminder on Telegram / 1時間前にお知らせします\n' +
+    '🚗 Park as usual — no key needed / いつもどおり駐車、鍵は不要です\n' +
+    '📷 Before / after photos on Telegram / 施工前後の写真をお送りします\n' +
     shareLine +
-    '💳 After the service: pay by ABA QR / ' + sourceKm_('payAfter') + '\n' +
+    '💳 After the service: pay by ABA QR / 施工後に ABA の QR でお支払い\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📍 Please also send us a photo of the front of your car at its parking spot, and the floor number.\n' +
-    '   ' + sourceKm_('sendPhoto') + '\n' +
+    '   駐車位置での車の正面写真と、駐車している階をお送りください。\n' +
     '\n' +
-    'Thank you! / ' + sourceKm_('thanks');
+    'Thank you! / ありがとうございます！';
   return t;
 }
 
