@@ -900,6 +900,7 @@ function createBookingLocked_(params, after) {
     // 画面の ?src= だけで来た（/start を経ていない）場合も、以後の案内のために紐付けを残す
     if (srcCfg && !getSourceRefForCustomer(params.chatId)) setSourceRefForCustomer_(String(params.chatId), srcCfg.code);
     if (srcCfg) warnIfSourceColumnsMissing_();
+    if (referralShopId && typeof warnIfReferralColumnMissing_ === 'function') warnIfReferralColumnMissing_();
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
     // 2026-05-20 fix: GLASS 単体予約時 plan が null になるため、null ガードを追加

@@ -29,6 +29,7 @@ var PARTNER_KIND_LKG_KEY = 'shop_partner_kinds_lkg_v1';
 var PARTNER_KIND_LKG_SEC = 6 * 60 * 60;
 var __partnerKindMemo_ = null;
 var __partnerKindFresh_ = false;   // この実行で読み直し済み（無い shop_id のたびにシートを読み直さない）
+var __partnerKindReadFailed_ = false;   // この実行の読み直しが失敗し、最後に読めた内容で動いている
 
 // お客様向けの一言（歓迎文。英語は下の individualWelcomeReferralLine_）。
 // クメール語は Panha 校閲（2026-10-26・provisional・Run Kosal 確認待ち: ប្រាប់…អំពី の自然さ／សេវា＝選んだメニュー／ប្រភេទរថយន្ត／否定の括弧）
@@ -59,10 +60,12 @@ function readPartnerKinds_(fresh) {
       var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
       var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), ki = head.indexOf(PARTNER_KIND_COL), ri = head.indexOf('紹介料率(%)');
       if (ci < 0) throw new Error('店マスターに shop_id 列がありません');
+      // 列が無い・見出しが違う時に「全員が車屋」と決めつけない（決済QR・写真の向きが逆になる）→ 分からない扱い
+      if (ki < 0) throw new Error('店マスターに「' + PARTNER_KIND_COL + '」列がありません');
       sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri) + 1).getValues().forEach(function(r) {
         var id = String(r[ci] || '').trim();
         if (!id) return;
-        var indiv = ki >= 0 && String(r[ki] || '').trim() === INDIVIDUAL_PARTNER_KIND;
+        var indiv = String(r[ki] || '').trim() === INDIVIDUAL_PARTNER_KIND;
         map[id] = indiv ? {
           name: (ni >= 0 ? String(r[ni] || '').trim() : '') || id,
           rate: (ri >= 0 && typeof fieldParseRate_ === 'function') ? fieldParseRate_(r[ri]) : 30
@@ -74,9 +77,11 @@ function readPartnerKinds_(fresh) {
       cache.put(PARTNER_KIND_CACHE_KEY, json, PARTNER_KIND_CACHE_SEC);
       cache.put(PARTNER_KIND_LKG_KEY, json, PARTNER_KIND_LKG_SEC);
     } catch (ignore) {}
+    __partnerKindReadFailed_ = false;
     return (__partnerKindMemo_ = map);
   } catch (err) {
     Logger.log('⚠️ 提携種別の読み取り失敗: ' + err);
+    __partnerKindReadFailed_ = true;
     try {
       var lkg = cache.get(PARTNER_KIND_LKG_KEY);
       if (lkg) return (__partnerKindMemo_ = JSON.parse(lkg));
@@ -87,7 +92,8 @@ function readPartnerKinds_(fresh) {
 
 /**
  * 個人提携か: true / false / null（店マスターを読めず分からない）
- * キャッシュに無い shop_id（キャッシュの後に登録された店）は1回だけ読み直す
+ * キャッシュに無い shop_id（キャッシュの後に登録された店）は1回だけ読み直す。
+ * 読み直しに失敗して最後に読めた内容にも無い時は null（登録直後の店を「車屋」と決めつけない）
  */
 function individualPartnerState_(shopId) {
   var id = String(shopId || '').trim();
@@ -96,7 +102,8 @@ function individualPartnerState_(shopId) {
   var map = readPartnerKinds_();
   if (map && !has(map) && !__partnerKindFresh_) map = readPartnerKinds_(true);
   if (!map) return null;
-  return !!(has(map) && map[id]);
+  if (!has(map)) return __partnerKindReadFailed_ ? null : false;
+  return !!map[id];
 }
 
 /** 個人提携と確かに分かる時だけ true（読めない時は false） */
@@ -108,6 +115,51 @@ function isIndividualPartnerShop_(shopId) {
 function individualPartnerInfo_(shopId) {
   if (!isIndividualPartnerShop_(shopId)) return null;
   return readPartnerKinds_()[String(shopId).trim()] || null;
+}
+
+/** そのお客様の紹介元が個人提携なら shop_id、そうでなければ ''（手動ジョブの売上行に紹介元を残す・ManualSales.gs） */
+function individualReferralFor_(chatId) {
+  try {
+    var ref = (chatId && typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(chatId) : '';
+    return (ref && isIndividualPartnerShop_(ref)) ? ref : '';
+  } catch (err) {
+    Logger.log('⚠️ individualReferralFor_: ' + err);
+    return '';
+  }
+}
+
+// ====== 管理グループへの知らせ（1時間・6時間に1回） ======
+
+function warnOncePer_(key, sec, text) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (cache.get(key)) return;
+    cache.put(key, '1', sec);
+    sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, text);
+  } catch (err) {
+    Logger.log('⚠️ warnOncePer_(' + key + '): ' + err);
+  }
+}
+
+/** 店マスターが読めず個人提携か分からないため止めた（決済QR・提携先グループへの写真など） */
+function warnPartnerKindUnknown_(what) {
+  warnOncePer_('warn_partner_kind_unknown', 60 * 60,
+    '⚠️ 店マスターの「' + PARTNER_KIND_COL + '」が読めず、個人提携か判定できません（' + what + '）。\n' +
+    '安全のため、提携店QRのお客様への当社の決済QRと、提携先グループへの写真・あいさつ文を止めています。\n' +
+    '店マスターを直したあと、止めた決済QRは retryPaymentQR("<予約ID>") で送れます（1時間に1回だけ知らせます）');
+}
+
+/** 予約タブに「紹介元shop_id」列が無い（紹介元が予約に残らず、個人提携の紹介料が集計されない） */
+function warnIfReferralColumnMissing_() {
+  try {
+    if (getHeaderMap(SHEET_NAMES.BOOKINGS)['紹介元shop_id']) return;
+  } catch (err) {
+    Logger.log('⚠️ warnIfReferralColumnMissing_: ' + err);
+    return;
+  }
+  warnOncePer_('warn_referral_col_missing', 6 * 60 * 60,
+    '⚠️ 予約タブに「紹介元shop_id」列がありません。提携先の紹介元が予約に記録されず、個人提携の紹介料が集計されません。\n' +
+    '予約タブの末尾に「紹介元shop_id」列を追加してください（6時間に1回だけ知らせます）');
 }
 
 // ====== 紹介者のグループへの通知（予約が入った時だけ） ======
@@ -194,7 +246,7 @@ function individualWelcomeReferralLine_(name) {
   var fill = function() { return name; };   // 名前に $& 等が入っても特殊展開しない
   return '🤝 Referred by ' + name + ' — thank you!\n' +
     (INDIVIDUAL_WELCOME_KM ? INDIVIDUAL_WELCOME_KM.replace(/\{name\}/g, fill) + '\n' : '') +
-    '📅 When you book, we\'ll also let ' + name + ' know the date, time, menu and car model (no name, plate number or photos).\n\n';
+    '📅 When you book, we\'ll also let ' + name + ' know the date, time, menu and car type (no name, plate number or photos).\n\n';
 }
 
 /** 管理グループの新規予約通知に足す1行 */

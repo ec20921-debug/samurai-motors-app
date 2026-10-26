@@ -189,7 +189,9 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '割引前金額(USD)': realDiscount ? listPrice : amount,
         '割引額(USD)':    realDiscount ? Math.round((listPrice - amount) * 100) / 100 : 0,
         // 手動登録フォームで建物名が入っていれば出張、無ければ店舗と推定
-        'サービスタイプ': (String(body.building || '').trim() ? '出張' : '店舗')
+        'サービスタイプ': (String(body.building || '').trim() ? '出張' : '店舗'),
+        // 2026-10-26: 個人提携の紹介のお客様（QR連携済み）は紹介元を残す（紹介料の月次集計・v7-operations/IndividualPartnerOps.gs）
+        '紹介元shop_id':  (!shopPays && linkedChatId && typeof individualReferralFor_ === 'function') ? individualReferralFor_(linkedChatId) : ''
       });
 
       // 管理者通知（best-effort）

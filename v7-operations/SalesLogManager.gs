@@ -613,6 +613,8 @@ function getShopSheet_() {
       ensureColumnAfter_(sheet, '電話', 'Facebook'),
       // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
       ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS),
+      // 提携の種別（個人提携 等・IndividualPartnerOps.gs・2026-10-26）。v7 は列が無いと個人提携か判定できず止める側に倒す
+      ensureColumnsAtEnd_(sheet, [INDIVIDUAL_PARTNER_KIND_COL]),
       ensureColumnsAtEnd_(sheet, SALESLOG_SHOP_EXTRA_HEADERS)
     ].every(Boolean);
   };

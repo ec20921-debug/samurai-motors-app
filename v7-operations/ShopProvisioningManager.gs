@@ -270,18 +270,52 @@ function notifyShopProvisioned_(shopId, shopName, qrUrl, otc, brandBot) {
  * を送信する。毎月1日のトリガーで実行（支払いは毎月10日・ABA）。
  */
 function sendShopMonthlyReports() {
+  sendShopMonthlyReportsCore_({});
+}
+
+/**
+ * 個人提携のグループにだけ前月分の月次レポートを送る（2026-10-26 IndividualPartnerOps.gs）。
+ * 紹介料の記帳に失敗した月の手での送り直し用（車屋のグループには二重に送らない）。
+ * 先に syncIndividualPartnerCommissionsNow() で記帳できることを確かめてから実行する
+ */
+function sendIndividualPartnerReportsNow() {
+  sendShopMonthlyReportsCore_({ individualOnly: true });
+}
+
+/** @param {{individualOnly?: boolean}} opt */
+function sendShopMonthlyReportsCore_(opt) {
+  opt = opt || {};
   var tz = 'Asia/Phnom_Penh';
   var now = new Date();
   var firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   var lastMonthEnd = new Date(firstOfThisMonth.getTime() - 1);
   var ymLabel = Utilities.formatDate(lastMonthEnd, tz, 'yyyy-MM');
 
-  // 個人提携の紹介料を台帳へ記帳（作業完了・清算済みの予約から・IndividualPartnerOps.gs・2026-10-26）。
-  // 精算・レポートより先に。失敗したら個人提携へのレポートは止める（数字が欠けたまま送らない）
-  var indivPartners = {};
-  var indivSyncOk = true;
+  // 個人提携の判定（IndividualPartnerOps.gs・2026-10-26）。判定できない時は、個人提携のグループに
+  // 車屋用の英語レポートを送ってしまわないよう全店の送信を止める（流入元タブが読めない時と同じ）
+  var indivPartners = null;
   try {
     indivPartners = individualPartnersById_();
+  } catch (err) {
+    Logger.log('⚠️ 個人提携の判定失敗: ' + err);
+  }
+  if (!indivPartners) {
+    try {
+      var cfgInd = getConfig();
+      var optsInd = { disable_web_page_preview: true };
+      if (cfgInd.adminPartnerThreadId) optsInd.message_thread_id = Number(cfgInd.adminPartnerThreadId);
+      sendMessage(BOT_TYPE.INTERNAL, cfgInd.adminGroupId,
+        '⚠️ 提携店 月次レポート（' + ymLabel + '）を送っていません: 店マスターの「' + INDIVIDUAL_PARTNER_KIND_COL + '」列を読めず、個人提携か判定できませんでした。\n' +
+        '個人提携のグループに車屋用のレポートを送らないため、全店の送信を止めています。店マスターを直してから sendShopMonthlyReports() を手で実行してください', optsInd);
+    } catch (err) {
+      Logger.log('⚠️ 月次レポート停止の管理通知失敗: ' + err);
+    }
+    return;
+  }
+  // 個人提携の紹介料を台帳へ記帳（作業完了・清算済みの予約から）。精算・レポートより先に。
+  // 失敗したら個人提携へのレポートは止める（数字が欠けたまま送らない）
+  var indivSyncOk = true;
+  try {
     syncIndividualPartnerCommissions_();
   } catch (err) {
     indivSyncOk = false;
@@ -343,7 +377,7 @@ function sendShopMonthlyReports() {
   });
 
   var props = getShopProvProps_();
-  var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果', ''];
+  var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果' + (opt.individualOnly ? '（個人提携だけ送り直し）' : ''), ''];
   if (skippedSrc.length) adminLines.push('⏭ 送らない（流入元の提携先）: ' + skippedSrc.join(' / '));
   // 個人提携: 前月より前の月の未払いも支払い予定に含める（月をまたいで清算済みになった予約など）
   var indivOwed = {};
@@ -368,10 +402,12 @@ function sendShopMonthlyReports() {
     var yourPct = rate === null ? 'mixed' : rate + '%';
     var ourPct = rate === null ? 'mixed' : (Math.round((100 - rate) * 100) / 100) + '%';
 
+    // 個人提携だけの送り直し（sendIndividualPartnerReportsNow）では車屋に送らない
+    if (opt.individualOnly && !indivPartners[shopId]) return;
     // 個人提携（IndividualPartnerOps.gs）: 日本語＋英語のレポート。記帳に失敗した月は送らない（管理グループに知らせる）
     if (indivPartners[shopId]) {
       if (!indivSyncOk) {
-        adminLines.push('⚠️ ' + shopName + '（個人提携）: 紹介料の記帳・集計に失敗したため送っていません → syncIndividualPartnerCommissionsNow() のあと sendShopMonthlyReports() を手で実行');
+        adminLines.push('⚠️ ' + shopName + '（個人提携）: 紹介料の記帳・集計に失敗したため送っていません → 原因を直し、syncIndividualPartnerCommissionsNow() のあと sendIndividualPartnerReportsNow() を手で実行（車屋には二重に送らない）');
         return;
       }
       var owedAll = indivOwed[shopId] || 0;

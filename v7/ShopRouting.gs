@@ -140,6 +140,8 @@ function handleShopGroupMessage_(msg) {
   // 流入元（レジデンス等）の提携先は「住民のご予約」。判定できない時は中立の文（SourceGroupNotify.gs・2026-10-26）
   var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopIdHit) : false;
   // 個人提携は「ご紹介の方のご予約」（日本語＋英語・IndividualPartner.gs・2026-10-26）。分からない時は中立の文
+  // 連携とあいさつ文は取り消せないので、5分キャッシュを使わず店マスターを読み直してから判定する
+  if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
   if (indivPartner === null) srcPartner = null;
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName) :
@@ -365,25 +367,54 @@ function getShopNameById_(shopId) {
  * 個人提携のお客様は当社に直接払う（IndividualPartner.gs）。個人提携か分からない時は店扱い（止める側）
  */
 function getValidShopRef_(chatId) {
-  var shopId = getReferralPartnerRef_(chatId);
+  return shopCollectsRef_(getReferralPartnerRef_(chatId));
+}
+
+/**
+ * 予約の決済で「店に支払う」か（2026-10-26）。予約の「紹介元shop_id」（予約した時の紹介元）があればそれで判定する。
+ * 予約のあとで別の提携先のQRを読んでも、店集金⇄当社集金を取り違えない（取り違えると二重請求・取りこぼしになる）。
+ * 紹介元が記録されていない予約（この列より前・紹介なし）は従来どおり今の紐付け（getValidShopRef_）で判定
+ * @param {Object} bkData - 予約タブの行（findRow(...).data）
+ */
+function getValidShopRefForBooking_(bkData, chatId) {
+  var ref = bkData ? String(bkData['紹介元shop_id'] || '').trim() : '';
+  if (!ref) return getValidShopRef_(chatId);
+  return shopCollectsRef_(validPartnerShopId_(ref));
+}
+
+/**
+ * 紹介元の shop_id のうち「店に支払う」もの（個人提携でないもの）。個人提携か分からない時は店扱い（止める側）。例外は外へ出さない
+ */
+function shopCollectsRef_(shopId) {
   if (!shopId) return '';
-  if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) return '';
+  try {
+    if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) return '';
+  } catch (err) {
+    Logger.log('⚠️ 個人提携の判定エラー（店扱い）: ' + err);
+  }
   return shopId;
 }
 
 /**
  * 店QRで紐付いた提携先（個人提携を含む）。該当すれば shop_id、しなければ ''。
  * shop_ref があり、その店が店マスターにあり、Bot連携で停止になっていない時だけ（2026-10-20）。
- * キャンペーンの対象外・予約の「紹介元shop_id」に使う（決済の判定は getValidShopRef_）。
- * 読み取りエラーで分からない時は shop_id を返す（当社QRを送ると取り消せない・二重請求になるため止める側に倒す）。例外は外へ出さない
+ * キャンペーン・一斉配信の対象外・予約の「紹介元shop_id」に使う（決済の判定は getValidShopRef_）。
  */
 function getReferralPartnerRef_(chatId) {
-  var shopId = getShopRefForCustomer(chatId);
+  return validPartnerShopId_(getShopRefForCustomer(chatId));
+}
+
+/**
+ * shop_id が有効な提携先か（店マスターにあり、Bot連携で停止になっていない）。有効なら shop_id、そうでなければ ''。
+ * 読み取りエラーで分からない時は shop_id を返す（当社QRを送ると取り消せない・二重請求になるため止める側に倒す）。例外は外へ出さない
+ */
+function validPartnerShopId_(shopId) {
+  shopId = String(shopId || '').trim();
   if (!shopId) return '';
   try {
     var hit = lookupShopMaster_(shopId);
     if (hit.error) {
-      Logger.log('⚠️ getReferralPartnerRef_: 店マスターを読めないため店扱い（shop=' + shopId + '）');
+      Logger.log('⚠️ validPartnerShopId_: 店マスターを読めないため店扱い（shop=' + shopId + '）');
       return shopId;
     }
     if (!hit.found) return '';
@@ -391,7 +422,7 @@ function getReferralPartnerRef_(chatId) {
     if (link && String(link.obj['状態']) === '停止') return '';
     return shopId;
   } catch (err) {
-    Logger.log('⚠️ getReferralPartnerRef_ 判定エラー（店扱い）: ' + err);
+    Logger.log('⚠️ validPartnerShopId_ 判定エラー（店扱い）: ' + err);
     return shopId;
   }
 }
@@ -421,7 +452,12 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
   try {
     if (!shopId) return '';
     // 個人提携のグループには作業の通知・写真を送らない（予約の通知だけ・IndividualPartner.gs・2026-10-26）。分からない時も送らない
-    if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) !== false) return '';
+    var indivState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
+    if (indivState === null) {
+      Logger.log('⚠️ 提携種別が分からないため提携先グループへ送らない: ' + shopId);
+      if (typeof warnPartnerKindUnknown_ === 'function') warnPartnerKindUnknown_('提携先グループへの作業の通知・写真');
+    }
+    if (indivState !== false) return '';
     var link = findShopLinkByShopId_(shopId);
     if (!link || String(link.obj['状態']) !== '連携済') return '';
     var groupChatId = String(link.obj['グループchat_id'] || '');

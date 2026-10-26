@@ -703,7 +703,12 @@ function apiJobEnd(body, opts) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
     }
     // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
-    if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
+    // 2026-10-26: 予約に紹介元（予約した時の店QR）が記録されていれば、それで判定する（個人提携は当社集金。
+    //   予約のあとで別の提携先のQRを読んでも、店集金⇄当社集金を取り違えない・IndividualPartner.gs）
+    var bkReferral = bkRow ? String(bkRow.data['紹介元shop_id'] || '').trim() : '';
+    if (bkReferral && typeof getValidShopRefForBooking_ === 'function') {
+      try { shopRef = getValidShopRefForBooking_(bkRow.data, customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗(予約の紹介元): ' + e); }
+    } else if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
       try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
     }
     // 流入元（レジデンス等）の提携先グループへ完了と After 写真（「共有されます」を伝えた予約だけ・提携店 QR のお客様でないときだけ・2026-10-26 SourceGroupNotify.gs）

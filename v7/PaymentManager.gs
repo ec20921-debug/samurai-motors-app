@@ -102,9 +102,15 @@ function sendPaymentQR_locked_(bookingId, opts) {
 
   // 提携店QR経由の顧客は店に全額支払い（2026-08-10 裁可）。当社のQRを送ると二重請求になるため送らない。
   // 店舗グループ未連携の店でも同じ（2026-10-20: 以前は連携済の店だけ止めていた）。正常系なので Admin 通知なし
-  var shopRef = (typeof getValidShopRef_ === 'function') ? getValidShopRef_(customerChatId) : '';
+  // 2026-10-26: 予約の紹介元（予約した時の店QR）を優先。個人提携のお客様は当社に払うので送る（IndividualPartner.gs）
+  var shopRef = (typeof getValidShopRefForBooking_ === 'function') ? getValidShopRefForBooking_(bkRow.data, customerChatId)
+              : ((typeof getValidShopRef_ === 'function') ? getValidShopRef_(customerChatId) : '');
   if (shopRef && !opts.ignoreShopRef) {
     Logger.log('⏭️ sendPaymentQR: 提携店経由（shop=' + shopRef + '）のためスキップ bookingId=' + bookingId);
+    // 個人提携か判定できずに止めた時だけは正常系ではないので知らせる（直したあと retryPaymentQR で送る）
+    if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopRef) === null && typeof warnPartnerKindUnknown_ === 'function') {
+      warnPartnerKindUnknown_('予約 ' + bookingId + ' の決済QR');
+    }
     return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRef };
   }
 
@@ -243,7 +249,9 @@ function retryPaymentQR(bookingId, ignoreShopRef) {
   }
 
   // 提携店経由（店集金）の予約は、送らないのに状態だけ「未清算」に戻さないよう先に止める（2026-10-20）
-  var shopRefRetry = (typeof getValidShopRef_ === 'function') ? getValidShopRef_(String(bkRow.data['チャットID'] || '')) : '';
+  // 2026-10-26: 予約の紹介元を優先（sendPaymentQR と同じ判定・個人提携は当社集金）
+  var shopRefRetry = (typeof getValidShopRefForBooking_ === 'function') ? getValidShopRefForBooking_(bkRow.data, String(bkRow.data['チャットID'] || ''))
+                   : ((typeof getValidShopRef_ === 'function') ? getValidShopRef_(String(bkRow.data['チャットID'] || '')) : '');
   if (shopRefRetry && ignoreShopRef !== true) {
     Logger.log('⏭️ retryPaymentQR: 提携店経由（shop=' + shopRefRetry + '）のため何もしない。当社で集金する時は retryPaymentQR("' + bookingId + '", true)');
     return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRefRetry };

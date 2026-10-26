@@ -9,6 +9,10 @@
  *      支払い予定には、前月より前の月の未払い分（月をまたいで清算済みになった予約など）も含める
  *   3. 紹介料は 10日までに ABA で支払い → 台帳の支払ステータスを「支払済み」にする（パートナー精算タブも自動で進む）
  *   - 紹介者本人の利用も対象（本人が自分の紹介QRを1回読めば、以後の予約に紹介元が付く）
+ *   - 月をまたいで清算済みになった予約（10/31 の作業を 11/2 に清算など）は、施工日の月の件数・売上には入らず、
+ *     次の月報の支払い予定に「前月より前の分」として入る
+ *   - 判定・記帳できない時は黙って0件にしない: 店マスター「提携種別」列が無い → 全店の月報を止める／
+ *     予約タブ「紹介元shop_id」列が無い・記帳に失敗 → 個人提携の月報だけ止める（直したら sendIndividualPartnerReportsNow）
  *
  * 【個人提携の目印】店マスター「提携種別」=「個人提携」（v7/IndividualPartner.gs と同じ）
  * 決定ログ: Vault/01_Personal/Decisions/2026-10-26-motors-individual-partner-type.md
@@ -17,14 +21,20 @@
 const INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7/IndividualPartner.gs と同じ値（別 GAS プロジェクトのため複製）
 const INDIVIDUAL_PARTNER_KIND_COL = '提携種別';
 const INDIVIDUAL_LEDGER_BOOKING_COL = '予約ID';   // コミッション台帳の末尾に足す（自動記帳の重複防止）
+const INDIVIDUAL_BOOKING_REF_COL = '紹介元shop_id';   // v7 Database「予約」タブ（v7 が予約・手動ジョブ売上の時に書く）
 const INDIVIDUAL_AUTO_RECORDER = '自動（個人提携）';
 
 /**
- * 店マスターの個人提携 → { shop_id: { name, terms } }（terms = CommissionManager.shopCommissionTerms_）
+ * 店マスターの個人提携 → { shop_id: { name, terms } }（terms = CommissionManager.shopCommissionTerms_）。
+ * 「提携種別」列が無い時は例外（「個人提携は無い」と決めつけない＝呼び元で月次レポートを止める）
  */
 function individualPartnersById_() {
+  const sheet = getShopSheet_();
+  if (getSheetHeaders_(sheet).map(function(h) { return String(h).trim(); }).indexOf(INDIVIDUAL_PARTNER_KIND_COL) < 0) {
+    throw new Error('店マスターに「' + INDIVIDUAL_PARTNER_KIND_COL + '」列がありません');
+  }
   const out = {};
-  readSheetObjects_(getShopSheet_()).forEach(function(r) {
+  readSheetObjects_(sheet).forEach(function(r) {
     const id = String(r.obj['shop_id'] || '').trim();
     if (!id || String(r.obj[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() !== INDIVIDUAL_PARTNER_KIND) return;
     out[id] = { name: String(r.obj['店名'] || '').trim() || id, terms: shopCommissionTerms_(r.obj) };
@@ -41,8 +51,12 @@ function individualPartnersById_() {
 function syncIndividualPartnerCommissions_() {
   const partners = individualPartnersById_();
   if (!Object.keys(partners).length) return 0;
+  // 予約タブ・「紹介元shop_id」列が無い時は黙って0件にしない（「ご利用なし」の月報を送ってしまう）→ 例外で月報を止める
   const bkSheet = getSalesLogSs_().getSheetByName('予約');
-  if (!bkSheet) return 0;
+  if (!bkSheet) throw new Error('v7 Database に「予約」タブがありません');
+  if (getSheetHeaders_(bkSheet).map(function(h) { return String(h).trim(); }).indexOf(INDIVIDUAL_BOOKING_REF_COL) < 0) {
+    throw new Error('予約タブに「' + INDIVIDUAL_BOOKING_REF_COL + '」列がありません（紹介元が記録されないため紹介料を数えられない）');
+  }
   const ledger = getCommissionSheet_();
   if (!ensureColumnsAtEnd_(ledger, [INDIVIDUAL_LEDGER_BOOKING_COL])) {
     throw new Error('コミッション台帳に「' + INDIVIDUAL_LEDGER_BOOKING_COL + '」列を足せませんでした（重複防止ができないため記帳しない）');
@@ -60,7 +74,7 @@ function syncIndividualPartnerCommissions_() {
     let added = 0;
     readSheetObjects_(bkSheet).forEach(function(r) {
       const o = r.obj;
-      const p = partners[String(o['紹介元shop_id'] || '').trim()];
+      const p = partners[String(o[INDIVIDUAL_BOOKING_REF_COL] || '').trim()];
       const bookingId = String(o['予約ID'] || '').trim();
       if (!p || !bookingId || done[bookingId]) return;
       if (String(o['進行状態'] || '') !== '作業完了' || String(o['決済状態'] || '') !== '清算済み') return;
@@ -78,7 +92,7 @@ function syncIndividualPartnerCommissions_() {
       appendSheetRow_(ledger, {
         'commission_id':       generateDateTimeId('CM') + '-' + Utilities.getUuid().slice(0, 8),
         '記録日時':            nowStr,
-        'shop_id':             String(o['紹介元shop_id']).trim(),
+        'shop_id':             String(o[INDIVIDUAL_BOOKING_REF_COL]).trim(),
         '店名':                p.name,
         '施工日':              serviceDate,
         '施工内容':            [o['プラン'], o['オプション']].map(function(v) { return String(v || '').trim(); }).filter(String).join(' + '),
@@ -128,8 +142,10 @@ function individualOwedUpTo_(ymLabel, partners) {
     const shopId = String(o['shop_id'] || '').trim();
     if (!partners[shopId]) return;
     if (String(o['集金者'] || '') !== '当社' || String(o['支払ステータス'] || '') !== '未払い') return;
-    const ym = formatSalesLogDateCell_(o['施工日']).substring(0, 7).replace('/', '-');
-    if (!ym || ym > ymLabel) return;
+    // 月の判定は aggregateCommissionsByShop_ と同じ（日付セルはプノンペン時刻で yyyy-MM）
+    const d = o['施工日'];
+    const ym = (d instanceof Date) ? Utilities.formatDate(d, 'Asia/Phnom_Penh', 'yyyy-MM') : String(d || '').slice(0, 7).replace('/', '-');
+    if (!/^\d{4}-\d{2}$/.test(ym) || ym > ymLabel) return;
     out[shopId] = Math.round(((out[shopId] || 0) + (Number(o['コミッション額(USD)']) || 0)) * 100) / 100;
   });
   return out;
