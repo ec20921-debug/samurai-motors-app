@@ -8,8 +8,10 @@
  *
  * 【設定】v7 Database「流入元」タブ（1行 = 1流入元＝1つのQR）。料金・期間・割引率はコードに書かない（CLAUDE.md ルール8）。
  *   列: 流入元コード / 表示名 / チャネル / 有効 / 開始日 / 終了日 / サービス割引(%) / 個別割引 / 場所名 / マップリンク /
- *       緯度 / 経度 / 言語 / チラシURL / 期間中の日曜営業 / shop_id / メモ / サービス割引は常時
+ *       緯度 / 経度 / 言語 / チラシURL / 期間中の日曜営業 / shop_id / メモ / サービス割引は常時 / 出張料なし
  *   - 期間中の日曜営業=TRUE: 期間内の日曜（定休日）を、この流入元のお客様だけ予約可にする（2026-10-15 Picasso 11/1）
+ *   - 出張料なし=TRUE: この流入元のお客様の予約には出張料を足さない（予約画面・確定文・歓迎文とも。2026-10-26 Picasso 住民。
+ *     列が無い・FALSE なら従来どおり料金設定シートの出張料）
  *   - サービス割引は常時=TRUE: サービス割引(%) を予約日に関係なくいつでも効かせる。開始日/終了日は
  *     「期間限定の上乗せ」（個別割引・期間中の日曜営業）だけの期間になる（2026-10-25 Picasso 住民はいつでも20%オフ）。
  *     列が無い・FALSE なら従来どおり、サービス割引も期間内だけ
@@ -93,6 +95,7 @@ function readSourceConfigs_() {
           flyerUrl: String(o['チラシURL'] || '').trim(),
           openSunday: o['期間中の日曜営業'] === true || String(o['期間中の日曜営業']).toUpperCase() === 'TRUE',
           serviceAlways: o['サービス割引は常時'] === true || String(o['サービス割引は常時']).toUpperCase() === 'TRUE',
+          noDispatchFee: o['出張料なし'] === true || String(o['出張料なし']).toUpperCase() === 'TRUE',
           shopId: String(o['shop_id'] || '').trim()
         };
       });
@@ -386,7 +389,7 @@ function sendSourceWelcome_(msg, cfg) {
   lines.push('② 💬 Or just send us a message here — voice messages OK 🎤');
   lines.push('   このチャットへのメッセージでも受け付けます。日本語でもどうぞ。');
 
-  var fee = sourceDispatchFee_();
+  var fee = sourceDispatchFee_(cfg);
   lines.push('');
   lines.push('Prices in USD per car.' + (fee > 0 ? ' Delivery fee ' + fee + '$ per booking.' : ''));
   lines.push('料金は1台あたり（米ドル）。' + (fee > 0 ? '出張料は1件 ' + fee + '$ です。' : ''));
@@ -518,8 +521,16 @@ function sourceHoursJa_() {
   return Number(c.businessHourStart) + ':00〜' + Number(c.businessHourEnd) + ':00';
 }
 
-function sourceDispatchFee_() {
+/** この流入元のお客様の出張料（セダン）。「出張料なし」の流入元は 0 */
+function sourceDispatchFee_(cfg) {
+  if (cfg && cfg.noDispatchFee) return 0;
   try { return Number(getDispatchFee().sedan) || 0; } catch (e) { return 0; }
+}
+
+/** 予約画面に渡す出張料 { sedan, suv }。有効で「出張料なし」の流入元は 0（2026-10-26） */
+function sourceDispatchFeeTable_(cfg) {
+  var fees = getDispatchFee();
+  return (cfg && cfg.active && cfg.noDispatchFee) ? { sedan: 0, suv: 0 } : fees;
 }
 
 /** USD 表記（数字の後ろに $・小数は必要な桁だけ: 9.6$） */
@@ -541,6 +552,7 @@ function sourceInitPayload_(cfg) {
     servicePct: cfg.servicePct,
     itemPct: cfg.itemPct,
     serviceAlways: !!cfg.serviceAlways,     // 2026-10-25: サービス割引(%) は期間外も
+    noDispatchFee: !!cfg.noDispatchFee,     // 2026-10-26: 出張料を足さない（予約画面の出張料は apiBookingInit が 0 で渡す）
     limitedLive: sourceLimitedLive_(cfg),   // 日付を選ぶ前のメニュー価格に個別割引を出すか（終了日を過ぎたら出さない）
     placeName: cfg.placeName,
     openSunday: !!(cfg.openSunday && cfg.start && cfg.end),

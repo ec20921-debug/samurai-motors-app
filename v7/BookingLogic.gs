@@ -739,7 +739,9 @@ function createBookingLocked_(params, after) {
     const baseAmount = plan ? getBasePriceFor(plan, vehicleType) : 0;
     const glassAmount = getOptionPriceFor(glassOpt, vehicleType); // 互換(ファネルログ等)
     // 店舗作業は出張料ゼロ、出張作業のみ料金設定シートの「出張料」を加算
-    const dispatchFeeAmount = (serviceType === '店舗') ? 0 : getDispatchFeeFor(vehicleType);
+    // 2026-10-26: 流入元タブで「出張料なし」の流入元（Picasso 住民）は出張料ゼロ
+    const srcNoFee = !!(srcCfg && srcCfg.active && srcCfg.noDispatchFee);
+    const dispatchFeeAmount = (serviceType === '店舗' || srcNoFee) ? 0 : getDispatchFeeFor(vehicleType);
     const serviceSubtotal = baseAmount + optionAmount;           // 割引対象(WASH+GLASS+HEADLIGHT)
     const subtotal = serviceSubtotal + dispatchFeeAmount;        // 表示上の合計(出張料含む、割引前)
 

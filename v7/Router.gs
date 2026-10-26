@@ -221,7 +221,7 @@ function apiBookingInit(params) {
 
   const plans = getActivePlans();
   const options = (typeof getActiveOptions === 'function') ? getActiveOptions() : [];
-  const dispatchFee = getDispatchFee();
+  let dispatchFee = getDispatchFee();
   // Menu v2 (2026-05-06): キャンペーン情報をミニアプリに返す
   let campaign = null;
   try {
@@ -243,7 +243,10 @@ function apiBookingInit(params) {
   let source = null;
   try {
     if (typeof resolveBookingSource_ === 'function') {
-      source = sourceInitPayload_(resolveBookingSource_(chatId, params.src));
+      const srcCfg = resolveBookingSource_(chatId, params.src);
+      source = sourceInitPayload_(srcCfg);
+      // 2026-10-26: 「出張料なし」の流入元（Picasso 住民）は予約画面の出張料も 0（createBooking と同じ判定）
+      if (typeof sourceDispatchFeeTable_ === 'function') dispatchFee = sourceDispatchFeeTable_(srcCfg);
     }
   } catch (e) {
     Logger.log('⚠️ apiBookingInit: source 取得エラー(無視可): ' + e);
