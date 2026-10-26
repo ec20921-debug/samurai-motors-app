@@ -240,7 +240,7 @@ function buildChatSales_(v7, ym, todayStr, weekFrom, weekTo) {
   const unpaid = [];
 
   rows.forEach(function(r) {
-    const cancelled = String(r['進行状態'] || '') === 'cancelled';
+    const cancelled = isCancelledStatus_(r['進行状態']);
     const rev = rowRevenue_(r);
     const d = r._date;
     if (!cancelled && d) {
@@ -294,7 +294,7 @@ function buildChatBookings_(v7, todayStr, tz) {
 
   return v7.rows
     .filter(function(r) {
-      return r._date >= todayStr && r._date <= limitStr && String(r['進行状態']) !== 'cancelled';
+      return r._date >= todayStr && r._date <= limitStr && !isCancelledStatus_(r['進行状態']);
     })
     .map(function(r) {
       return {

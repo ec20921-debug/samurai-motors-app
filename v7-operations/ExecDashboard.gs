@@ -173,9 +173,19 @@ function normTimeStr_(v, tz) {
   return s.substring(0, 5);
 }
 
+/**
+ * 予約の進行状態がキャンセルか。
+ * 予約シートの値は「キャンセル」（v7 Setup の入力規則）。以前の 'cancelled' 判定だけでは外れていなかった（2026-10-26）。
+ * 経営ダッシュボード・経営チャット・日報・売上キャッシュで共通に使う
+ */
+function isCancelledStatus_(s) {
+  const v = String(s || '').trim();
+  return v === 'キャンセル' || v === 'cancelled';
+}
+
 /** 売上計上対象か（キャンセル除外＝既存ダッシュボード・日報と同基準） */
 function isRevenueRow_(r) {
-  return String(r['進行状態'] || '') !== 'cancelled';
+  return !isCancelledStatus_(r['進行状態']);
 }
 
 /** 行の売上額（USD）。日報の computeV7WeeklyKpi_ と同じく 料金(USD) を使う */
@@ -328,7 +338,7 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
   limit.setDate(limit.getDate() + 7);
   const limitStr = Utilities.formatDate(limit, tz, 'yyyy-MM-dd');
   const upcomingFlat = rows.filter(function(r) {
-    return r._date > todayStr && r._date <= limitStr && String(r['進行状態']) !== 'cancelled';
+    return r._date > todayStr && r._date <= limitStr && !isCancelledStatus_(r['進行状態']);
   }).map(toItem).sort(function(a, b) {
     return (a.date + a.time) < (b.date + b.time) ? -1 : 1;
   });
@@ -346,7 +356,8 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
   rows.forEach(function(r) {
     if (r._date.substring(0, 7) !== ym) return;
     const s = String(r['進行状態'] || '');
-    if (counts.hasOwnProperty(s)) counts[s]++;
+    if (isCancelledStatus_(s)) counts.cancelled++;
+    else if (counts.hasOwnProperty(s)) counts[s]++;
   });
 
   return { today: today, upcoming: upcoming, monthCounts: counts };

@@ -335,7 +335,7 @@ function buildSalesSection_(todayStr) {
     const prog   = String(r['進行状態'] || '');
     const pay    = String(r['決済状態'] || '未清算');
 
-    if (prog !== 'cancelled') {
+    if (!isCancelledStatus_(prog)) {
       total += amt;
       if (prog === 'completed') completedCount++;
       planMap[plan] = planMap[plan] || { count: 0, amount: 0 };
@@ -349,7 +349,7 @@ function buildSalesSection_(todayStr) {
   const lines = [];
   lines.push('💰 <b>本日の売上</b>');
   lines.push('　合計: <b>$' + total.toFixed(2) + '</b>');
-  lines.push('　ジョブ: ' + rows.length + '件（完了 ' + completedCount + ' / キャンセル ' + countBy_(rows, '進行状態', 'cancelled') + '）');
+  lines.push('　ジョブ: ' + rows.length + '件（完了 ' + completedCount + ' / キャンセル ' + rows.filter(function(r) { return isCancelledStatus_(r['進行状態']); }).length + '）');
 
   // プラン内訳
   const planNames = Object.keys(planMap);
@@ -370,12 +370,6 @@ function buildSalesSection_(todayStr) {
   if (payMap['要確認'] > 0) lines.push('　⚠️ 要確認: ' + payMap['要確認'] + '件');
 
   return lines.join('\n');
-}
-
-function countBy_(rows, col, value) {
-  let n = 0;
-  rows.forEach(function(r) { if (String(r[col]) === value) n++; });
-  return n;
 }
 
 /**
@@ -433,7 +427,7 @@ function computeV7WeeklyKpi_(rows) {
   const custSet = {};
   rows.forEach(function(r) {
     const prog = String(r['進行状態'] || '');
-    if (prog === 'cancelled') return;          // キャンセル除外
+    if (isCancelledStatus_(prog)) return;      // キャンセル除外
     const amt = Number(r['料金(USD)']) || 0;
     sales += amt;
     count += 1;

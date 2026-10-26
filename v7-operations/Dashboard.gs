@@ -765,7 +765,7 @@ function refreshV7SalesCache_(ss) {
               : String(d).trim().substring(0, 10);
             if (ds !== todayStr) return;
             const prog = String(r[idxStatus] || '');
-            if (prog === 'cancelled') return;
+            if (isCancelledStatus_(prog)) return;
             bookings++;
             const amt = Number(r[idxAmount]) || 0;
             sales += amt;
