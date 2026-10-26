@@ -259,7 +259,7 @@ function buildChatSales_(v7, ym, todayStr, weekFrom, weekTo) {
       }
     }
     // 未回収（完了済み・清算済み以外）
-    if (String(r['進行状態']) === 'completed' && String(r['決済状態'] || '').trim() !== '清算済み') {
+    if (isCompletedStatus_(r['進行状態']) && String(r['決済状態'] || '').trim() !== '清算済み') {
       unpaid.push({
         id: String(r['予約ID'] || ''), date: d,
         customer: customers[String(r['顧客ID'] || '').trim()] || '',

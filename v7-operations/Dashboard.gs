@@ -769,7 +769,7 @@ function refreshV7SalesCache_(ss) {
             bookings++;
             const amt = Number(r[idxAmount]) || 0;
             sales += amt;
-            if (prog === 'completed') completed++;
+            if (isCompletedStatus_(prog)) completed++;
             if (String(r[idxPayment] || '') === '清算済み') paid += amt;
           });
           values[2][1] = sales;
