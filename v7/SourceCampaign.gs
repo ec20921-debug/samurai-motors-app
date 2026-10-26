@@ -35,6 +35,12 @@ var SOURCE_CACHE_KEY = 'source_cfg_v1';
 var SOURCE_CACHE_SEC = 60;
 var SOURCE_REF_PREFIX = 'src_ref_';
 var __sourceCfgMemo_ = null;
+// 2026-10-26（SourceGroupNotify.gs）: 提携先かどうかの判定に使う。読めない時は「最後に読めた内容」（6時間）を使い、
+// それも無い時だけ判定できない扱い（sourceConfigsReadable_ = false）。失敗・列欠落の結果は Cache に残さない
+var SOURCE_CACHE_LKG_KEY = 'source_cfg_lkg_v1';
+var SOURCE_CACHE_LKG_SEC = 6 * 60 * 60;
+var __sourceCfgFailed_ = false;        // この実行で読めず、最後に読めた内容も無い
+var __sourceShopIdColMissing_ = false; // タブはあるが shop_id 列が無い（提携先の判定ができない）
 
 // ====== 設定の読み込み ======
 
@@ -52,10 +58,19 @@ function readSourceConfigs_() {
   try {
     var ss = getSpreadsheet();
     var sheet = ss.getSheetByName(SOURCE_SHEET_NAME);
+    // 前は流入元があったのにタブが見つからない（名前の変更・削除）時は失敗扱い → 下の catch で最後に読めた内容を使う
+    if (!sheet) {
+      var prev = cache.get(SOURCE_CACHE_LKG_KEY);
+      if (prev && prev !== '{}') {
+        warnSourceConfigUnreadable_('v7 Database「' + SOURCE_SHEET_NAME + '」タブが見つかりません（最後に読めた内容で動いています）');
+        throw new Error('「' + SOURCE_SHEET_NAME + '」タブが見つかりません');
+      }
+    }
     if (sheet && sheet.getLastRow() >= 2) {
       var tz = ss.getSpreadsheetTimeZone() || BOOKING_TZ;
       var values = sheet.getDataRange().getValues();
       var headers = values.shift().map(function(h) { return String(h).trim(); });
+      if (headers.indexOf('shop_id') < 0) __sourceShopIdColMissing_ = true;   // 割引などは従来どおり読む
       values.forEach(function(r) {
         var o = {};
         headers.forEach(function(h, i) { o[h] = r[i]; });
@@ -83,11 +98,50 @@ function readSourceConfigs_() {
       });
     }
   } catch (err) {
-    Logger.log('⚠️ readSourceConfigs_ 失敗（流入元機能を無効扱い）: ' + err);
+    Logger.log('⚠️ readSourceConfigs_ 失敗: ' + err);
+    var lkg = null;
+    try { lkg = cache.get(SOURCE_CACHE_LKG_KEY); } catch (ignore) {}
+    try { out = lkg ? JSON.parse(lkg) : {}; } catch (e) { out = {}; lkg = null; }
+    if (lkg) {
+      Logger.log('ℹ️ 流入元: 最後に読めた内容（6時間以内）を使う');
+    } else {
+      __sourceCfgFailed_ = true;   // 流入元機能を無効扱い＋提携先の判定ができない
+      warnSourceConfigUnreadable_('v7 Database「流入元」タブを読めません（' + err + '）');
+    }
+    __sourceCfgMemo_ = out;
+    return out;   // 失敗の結果は Cache に残さない（60秒間「流入元なし」と誤判定し続けないため）
   }
-  try { cache.put(SOURCE_CACHE_KEY, JSON.stringify(out), SOURCE_CACHE_SEC); } catch (ignore) {}
+  if (__sourceShopIdColMissing_) {
+    warnSourceConfigUnreadable_('v7 Database「流入元」タブに shop_id 列がありません');
+  } else {
+    try {
+      var json = JSON.stringify(out);
+      cache.put(SOURCE_CACHE_KEY, json, SOURCE_CACHE_SEC);
+      // 空の結果では「最後に読めた内容」を上書きしない
+      if (Object.keys(out).length) cache.put(SOURCE_CACHE_LKG_KEY, json, SOURCE_CACHE_LKG_SEC);
+    } catch (ignore) {}
+  }
   __sourceCfgMemo_ = out;
   return out;
+}
+
+/** この実行で、レジデンス等の提携先かどうかを判定できるか（readSourceConfigs_ のあとに呼ぶ） */
+function sourceConfigsReadable_() {
+  return !__sourceCfgFailed_ && !__sourceShopIdColMissing_;
+}
+
+/** 流入元タブで提携先を判定できない時の管理グループへの知らせ（6時間に1回まで） */
+function warnSourceConfigUnreadable_(reason) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (cache.get('source_cfg_warned_v1')) return;
+    cache.put('source_cfg_warned_v1', '1', 6 * 60 * 60);
+    sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
+      '⚠️ ' + reason + '\n' +
+      'レジデンス等の提携先か判定できないため、現場アプリの店の選択・店グループへの請求・提携先へのあいさつ文を止めています。タブを直してください');
+  } catch (err) {
+    Logger.log('⚠️ warnSourceConfigUnreadable_: ' + err);
+  }
 }
 
 function sourceYmd_(v, tz) {
@@ -320,6 +374,8 @@ function sendSourceWelcome_(msg, cfg) {
   lines.push('   鍵の受け渡しも、立ち会いも不要です。');
   lines.push('📷 BEFORE / AFTER PHOTOS ON TELEGRAM');
   lines.push('   仕上がりは写真でお届けします。');
+  // 提携先グループに予約・写真が届く流入元は、そのことを先に伝える（SourceGroupNotify.gs・2026-10-26）
+  if (typeof sourceGroupLinked_ === 'function' && sourceGroupLinked_(cfg)) lines.push(sourceGroupShareNotice_(cfg));
   lines.push('💳 Pay by ABA QR after the service. / お支払いは施工後に ABA の QR で。');
   lines.push('⏰ ' + sourceHoursEn_() + ' / ' + sourceHoursJa_());
 
@@ -581,12 +637,17 @@ function buildSourceCustomerConfirm_(info) {
     t += '🎁 ' + (src.label || '') + ' residents\' discount / 住民特典: -' + sourceUsd_(disc.total) + '\n';
   }
   if (Number(info.dispatchFee) > 0) t += '🚚 Delivery fee / 出張料: ' + sourceUsd_(info.dispatchFee) + '\n';
+  // 提携先グループに予約・写真が届く流入元は、そのことも伝える（SourceGroupNotify.gs・2026-10-26）
+  var srcFull = src.code ? getSourceConfig_(src.code) : null;
+  var shareLine = (srcFull && typeof sourceGroupLinked_ === 'function' && sourceGroupLinked_(srcFull))
+    ? sourceGroupShareNotice_(srcFull) + '\n' : '';
   t += '💵 Total / お支払い合計: ' + sourceUsd_(info.amount) + '\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📋 What happens next / このあとの流れ\n' +
     '⏰ 1h before: a reminder on Telegram / 1時間前にお知らせします\n' +
     '🚗 Park as usual — no key needed / いつもどおり駐車、鍵は不要です\n' +
     '📷 Before / after photos on Telegram / 施工前後の写真をお送りします\n' +
+    shareLine +
     '💳 After the service: pay by ABA QR / 施工後に ABA の QR でお支払い\n' +
     '━━━━━━━━━━━━━━━━\n' +
     '📍 Please also send us a photo of the front of your car at its parking spot, and the floor number.\n' +

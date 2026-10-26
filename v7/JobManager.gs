@@ -423,10 +423,22 @@ function apiJobStart(body, opts) {
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
     }
+    // 流入元（レジデンス等）の提携先グループへ開始と Before 写真（2026-10-26 SourceGroupNotify.gs）
+    // 「共有されます」を伝えた予約だけ。提携店 QR のお客様（グループ未連携の店も含む＝終了側の shopRef と同じ判定）には送らない
+    var startSrcSent = '';
+    var startIsShopCust = !!startShopSent;
+    if (!startIsShopCust && customerChatId && typeof getValidShopRef_ === 'function') {
+      try { startIsShopCust = !!getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗(start): ' + e); }
+    }
+    if (bookingId && !startIsShopCust && typeof notifySourceGroupJob_ === 'function') {
+      startSrcSent = notifySourceGroupJob_('start', {
+        bookingId: bookingId, carModel: body.carModel, blobs: photoResult.blobs, opts: opts
+      });
+    }
     // 現場アプリで作業開始の前に選んだ店（店の車など・2026-10-25）: その店のグループへ開始と Before 写真を送る
     // shop_id は apiJobStartV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
     var startFieldShop = String(opts.fieldShopId || '');
-    if (startFieldShop && startFieldShop !== startShopSent) {
+    if (startFieldShop && startFieldShop !== startShopSent && startFieldShop !== startSrcSent) {
       try {
         if (!jobCustSent_(opts, 'startshop:' + startFieldShop) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
@@ -694,6 +706,14 @@ function apiJobEnd(body, opts) {
     if (!shopRef && customerChatId && typeof getValidShopRef_ === 'function') {
       try { shopRef = getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗: ' + e); }
     }
+    // 流入元（レジデンス等）の提携先グループへ完了と After 写真（「共有されます」を伝えた予約だけ・提携店 QR のお客様でないときだけ・2026-10-26 SourceGroupNotify.gs）
+    // 通知だけ。shopRef（店集金の判定）には入れない
+    var endSrcSent = '';
+    if (bookingId && !shopRef && typeof notifySourceGroupJob_ === 'function') {
+      endSrcSent = notifySourceGroupJob_('end', {
+        bookingId: bookingId, carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts
+      });
+    }
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');
     // 現場アプリで提携店を選んだ作業（在庫車・ボイス依頼など・2026-10-22）: その店のグループへ完了と写真を送る。
     // shop_id は apiJobEndV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
@@ -705,7 +725,8 @@ function apiJobEnd(body, opts) {
     if (photoShopId && photoShopId !== shopRef) {
       var fieldPhase = 'endshop:' + photoShopId;
       try {
-        if (!jobCustSent_(opts, fieldPhase) && typeof notifyShopGroupByShopId_ === 'function') {
+        // 流入元の通知で同じグループへ送った時は送らない（下の店集金の判定は止めない）
+        if (photoShopId !== endSrcSent && !jobCustSent_(opts, fieldPhase) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, fieldPhase);
           var finishText = '✅ Job finished (your shop)\n' +
             '🚗 ' + (body.carModel || body.name || '-') + '\n' +

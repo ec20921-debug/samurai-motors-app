@@ -86,7 +86,7 @@ function buildShopInvoiceText_(p) {
  * @param {Object} body - job_end の本文（amount・carModel・plate・name・v2.list_price / v2.shop_rate）
  * @param {Object} opts - apiJobEnd の opts（rowIndex・rowData … 作業記録の行）
  * @param {Object} p - { shopId, pt, refId, adminOpts }
- * @return {string} sent / skip_zero / duplicate / unknown / no_row / no_shop / no_list_price / over_list / not_linked / no_qr / send_failed / error
+ * @return {string} sent / skip_zero / duplicate / unknown / no_row / no_shop / source_partner / source_unknown / no_list_price / over_list / not_linked / no_qr / send_failed / error
  */
 function sendShopInvoiceForJob_(body, opts, p) {
   p = p || {};
@@ -121,6 +121,10 @@ function sendShopInvoiceForJob_(body, opts, p) {
 /** 条件を確かめて送る（sendShopInvoiceForJob_ の中身）。結果コードを返す */
 function shopInvoiceSend_(body, opts, p, shopId, due) {
   if (!shopId) return 'no_shop';
+  // 流入元（レジデンス等）の提携先には請求を送らない。判定できない時も送らない（SourceGroupNotify.gs・2026-10-26）
+  var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopId) : false;
+  if (srcPartner === true) return 'source_partner';
+  if (srcPartner === null) return 'source_unknown';
   var listPrice = (typeof fieldListPrice_ === 'function') ? fieldListPrice_(body) : 0;
   if (!(listPrice > 0)) return 'no_list_price';
   if (due > listPrice) return 'over_list';
@@ -193,6 +197,12 @@ function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts) {
         break;
       case 'no_qr':
         msg = '⚠️ 請求を送れていません: QRコードシートに有効な QR がありません（有効=TRUE を1行）。' + manual;
+        break;
+      case 'source_partner':
+        msg = '⚠️ 請求を送っていません: ' + name + ' はレジデンス等の提携先のため、グループへ請求しません（お客様は当社に払う）。お客様への請求を確かめてください';
+        break;
+      case 'source_unknown':
+        msg = '⚠️ 請求を送れていません: 流入元タブが読めず、' + name + ' がレジデンス等の提携先か確かめられません。' + manual;
         break;
       default:
         msg = '⚠️ 請求の送信に失敗しました: ' + name + ' $' + due + '。お店のグループへ手で QR を送ってください';

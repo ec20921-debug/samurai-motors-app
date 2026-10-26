@@ -33,9 +33,12 @@ var SHOP_GREETING_PROP_PREFIX = 'shop_greeting_sent_';
 var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
- * あいさつ文の本文（km → 空行 → en）
+ * あいさつ文の本文（km → 空行 → en）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）
  */
-function buildShopGroupGreeting_(shopName) {
+function buildShopGroupGreeting_(shopName, shopId) {
+  if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {
+    return buildSourceGroupGreeting_(shopName);
+  }
   var name = String(shopName || '').trim() || 'your shop';
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
   var fill = function() { return name; };
@@ -51,6 +54,11 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   var props = PropertiesService.getScriptProperties();
   var key = SHOP_GREETING_PROP_PREFIX + shopId;
   if (props.getProperty(key)) return true;
+  // 流入元タブが読めず、レジデンス等の提携先か判定できない時は送らない（車屋用の文を一度送ると戻せない。毎時の安全網が再試行）
+  if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(shopId) === null) {
+    Logger.log('⚠️ あいさつ文 保留（流入元タブを読めない）: ' + shopId);
+    return false;
+  }
 
   // 即時送信と毎時の安全網が重なっても二重に送らないよう「確認→送信→印」をロックで囲む。取れなければ次回の安全網に任せる
   var lock = LockService.getScriptLock();
@@ -60,7 +68,7 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   }
   try {
     if (props.getProperty(key)) return true;
-    var res = sendMessage(BOT_TYPE.BOOKING, groupChatId, buildShopGroupGreeting_(shopName));
+    var res = sendMessage(BOT_TYPE.BOOKING, groupChatId, buildShopGroupGreeting_(shopName, shopId));
     if (!(res && res.ok)) {
       Logger.log('⚠️ あいさつ文 送信失敗: ' + shopId + ' ' + JSON.stringify(res));
       return false;

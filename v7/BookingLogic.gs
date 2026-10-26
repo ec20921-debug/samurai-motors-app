@@ -647,6 +647,17 @@ function findAvailableSlots(dateStr, planLetter, miniappVt, optionCodes, opts) {
  * @return {Object} {status:'ok', bookingId, endTime, amount} or {status:'error', message, slots?}
  */
 function createBooking(params) {
+  // 流入元の提携先グループへの「予約が入った」は、予約のロックを外してから送る（2026-10-26 SourceGroupNotify.gs）
+  const after = {};
+  const res = createBookingLocked_(params, after);
+  if (after.sourceGroup && res && res.status === 'ok' && typeof notifySourceGroupBooking_ === 'function') {
+    notifySourceGroupBooking_(after.sourceGroup.cfg, after.sourceGroup.info);
+  }
+  return res;
+}
+
+/** createBooking の本体（ScriptLock の中）。after にはロックの外で送る通知を入れる */
+function createBookingLocked_(params, after) {
   const lock = LockService.getScriptLock();
   const acquired = lock.tryLock(15 * 1000);
   if (!acquired) {
@@ -906,12 +917,22 @@ function createBooking(params) {
       mapsUrl: loc.mapsUrl || locationStr,
       serviceType: serviceType,                      // '店舗' or '出張' (2026-05-20)
       // 2026-10-15: 専用QR（流入元）
-      source: srcCfg ? { label: srcCfg.label, display: sourceDisplay_(srcCfg), lang: srcCfg.lang, placeName: srcCfg.placeName } : null,
+      source: srcCfg ? { code: srcCfg.code, label: srcCfg.label, display: sourceDisplay_(srcCfg), lang: srcCfg.lang, placeName: srcCfg.placeName } : null,
       srcDiscount: srcDisc,
       srcPerkText: srcPerkText,
       unitNo: unitNo,
       carModel: carModel
     });
+
+    // ── 9. 流入元（レジデンス等）の提携先グループへ「予約が入った」（2026-10-26 SourceGroupNotify.gs） ──
+    // 予約確定文に「管理側にも共有されます」を出した予約だけ（同じ時点で判定）。送るのはロックの外（createBooking）
+    if (after && srcCfg && typeof sourceGroupSharesBooking_ === 'function' && sourceGroupSharesBooking_(srcCfg)) {
+      after.sourceGroup = { cfg: srcCfg, info: {
+        bookingId: bookingId, plan: plan, options: optionLines, vehicleType: vehicleType, carModel: carModel,
+        date: params.date, startTime: params.startTime, endTime: endTimeStr, unitNo: unitNo
+      } };
+      markSourceGroupBooking_(srcCfg, after.sourceGroup.info);   // 作業の通知に使う印は、ここ（ロック内）で付ける
+    }
 
     return {
       status: 'ok',

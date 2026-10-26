@@ -293,6 +293,30 @@ function sendShopMonthlyReports() {
   var linkedShops = linkRows.filter(function(r) {
     return String(r[idx['状態']]) === '連携済' && String(r[idx['グループchat_id']]) !== '';
   });
+  // 流入元（レジデンス等）の提携先には送らない（グループには予約・作業の通知だけ・Daisuke 2026-10-26）
+  // 流入元タブが読めない時は、提携先に金額を送ってしまわないよう全店の送信を止めて管理グループへ知らせる
+  var srcPartners = sourcePartnerShopIds_();
+  if (!srcPartners) {
+    try {
+      var cfgStop = getConfig();
+      var optsStop = { disable_web_page_preview: true };
+      if (cfgStop.adminPartnerThreadId) optsStop.message_thread_id = Number(cfgStop.adminPartnerThreadId);
+      sendMessage(BOT_TYPE.INTERNAL, cfgStop.adminGroupId,
+        '⚠️ 提携店 月次レポート（' + ymLabel + '）を送っていません: v7 Database「流入元」タブ（shop_id 列）を読めませんでした。\n' +
+        'レジデンス等の提携先に金額入りのレポートを送らないため、全店の送信を止めています。タブを直してから sendShopMonthlyReports() を手で実行してください', optsStop);
+    } catch (err) {
+      Logger.log('⚠️ 月次レポート停止の管理通知失敗: ' + err);
+    }
+    return;
+  }
+  var skippedSrc = [];
+  linkedShops = linkedShops.filter(function(r) {
+    var sid = String(r[idx['shop_id']]);
+    if (!srcPartners[sid]) return true;
+    skippedSrc.push(String(r[idx['店名']] || sid));
+    return false;
+  });
+  if (skippedSrc.length) Logger.log('⏭ 月次レポートを送らない（流入元の提携先）: ' + skippedSrc.join(' / '));
   if (!linkedShops.length) { Logger.log('ℹ️ 連携済み店舗なし。レポート送信スキップ'); return; }
 
   // コミッション台帳から前月分を shop_id 別に集計
@@ -308,6 +332,7 @@ function sendShopMonthlyReports() {
 
   var props = getShopProvProps_();
   var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果', ''];
+  if (skippedSrc.length) adminLines.push('⏭ 送らない（流入元の提携先）: ' + skippedSrc.join(' / '));
 
   linkedShops.forEach(function(r) {
     var shopId = String(r[idx['shop_id']]);
@@ -365,6 +390,30 @@ function sendShopMonthlyReports() {
     sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, adminLines.join('\n'), opts);
   } catch (err) {
     Logger.log('⚠️ 管理サマリー送信失敗: ' + err);
+  }
+}
+
+/**
+ * 流入元（レジデンス等）の提携先の shop_id を { shop_id: true } で返す（v7 Database「流入元」タブの shop_id 列・2026-10-26）。
+ * タブ・shop_id 列が無い、または読めない時は null（呼び元は送信を止める）。行が無いだけなら {}
+ */
+function sourcePartnerShopIds_() {
+  try {
+    var sheet = getSalesLogSs_().getSheetByName('流入元');
+    if (!sheet) return null;
+    if (sheet.getLastRow() < 2) return {};
+    var values = sheet.getDataRange().getValues();
+    var col = values.shift().map(function(h) { return String(h).trim(); }).indexOf('shop_id');
+    if (col < 0) return null;
+    var out = {};
+    values.forEach(function(r) {
+      var sid = String(r[col] || '').trim();
+      if (sid) out[sid] = true;
+    });
+    return out;
+  } catch (err) {
+    Logger.log('⚠️ 流入元タブの読み取り失敗: ' + err);
+    return null;
   }
 }
 

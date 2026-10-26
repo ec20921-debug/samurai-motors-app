@@ -137,11 +137,19 @@ function handleShopGroupMessage_(msg) {
     try { lock.releaseLock(); } catch (ignore) {}
   }
 
+  // 流入元（レジデンス等）の提携先は「住民のご予約」。判定できない時は中立の文（SourceGroupNotify.gs・2026-10-26）
+  var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopIdHit) : false;
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
     '✅ Connected! / 連携完了！\n' +
-    'Shop: ' + shopName + '\n\n' +
-    'Orders from your QR code will appear in this group.\n' +
-    'このグループに、お店のQR経由のご注文が届くようになりました。');
+    (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +
+    (srcPartner === true
+      ? 'Bookings from your residents will appear in this group.\n' +
+        'このグループに、住民の皆さまのご予約が届くようになりました。'
+      : srcPartner === null
+        ? 'Updates from SAMURAI MOTORS will appear in this group.\n' +
+          'このグループに、SAMURAI MOTORS からのお知らせが届くようになりました。'
+        : 'Orders from your QR code will appear in this group.\n' +
+          'このグループに、お店のQR経由のご注文が届くようになりました。'));
 
   // お店向けのあいさつ文（km+en）を続けて自動送信（ShopGroupGreeting.gs・2026-10-24）。失敗しても毎時の安全網が拾う
   try {
@@ -184,13 +192,16 @@ function handleShopStart_(msg, text) {
   var link = null;
   try { link = findShopLinkByShopId_(shopId); } catch (err) { Logger.log('⚠️ Bot連携の読み取り失敗: ' + err); }
   var stopped = !!(link && String(link.obj['状態']) === '停止');
+  // 流入元（レジデンス等）の提携先の shop_id の店QRは店扱いにしない（お客様は当社に払う・SourceGroupNotify.gs・2026-10-26）
+  var srcPartnerQr = (typeof isSourcePartnerShop_ === 'function') && isSourcePartnerShop_(shopId);
   var welcomeShopName = (link && link.obj['店名']) ? String(link.obj['店名']) : (master.found ? (master.name || shopId) : '');
-  if ((!master.found && !master.error) || stopped) {
+  if ((!master.found && !master.error) || stopped || srcPartnerQr) {
     sendWelcomeMessage(msg);
     ensureCustomerTopic(msg);
     try {
       sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
-        '⚠️ 店QRのリンクから来たが、店として扱わなかった（' + (stopped ? '停止中の店' : '店マスターに無い shop_id') + '）\n' +
+        '⚠️ 店QRのリンクから来たが、店として扱わなかった（' +
+        (srcPartnerQr ? 'レジデンス等の提携先。専用QRは流入元のものを使う' : (stopped ? '停止中の店' : '店マスターに無い shop_id')) + '）\n' +
         'shop_id: ' + shopId + '\n顧客 chat_id: ' + msg.chat.id + '\n→ 通常のお客様として案内（決済QRも通常どおり）');
     } catch (err) {
       Logger.log('⚠️ 管理通知失敗（不明な店QR）: ' + err);
@@ -429,6 +440,8 @@ function apiFieldPartnerShops() {
   var add = function(id, name) {
     id = String(id || '').trim();
     if (!id || seen[id] || stopped[id] === true || id.indexOf('SHOP-SAMPLE') === 0 || String(name || '').indexOf('【サンプル】') === 0) return;
+    // 流入元（レジデンス等）の提携先は店集金・請求の相手ではないので出さない（SourceGroupNotify.gs・2026-10-26）
+    if (typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(id)) return;
     seen[id] = true;
     out.push({ id: id, name: String(name || id),
                rate: rates.hasOwnProperty(id) ? rates[id] : (typeof FIELD_SHOP_RATE_DEFAULT_ !== 'undefined' ? FIELD_SHOP_RATE_DEFAULT_ : 30) });
@@ -466,6 +479,8 @@ function apiFieldPartnerShops() {
 function validFieldShopId_(shopId) {
   var id = String(shopId || '').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/.test(id) || id.indexOf('SHOP-SAMPLE') === 0) return '';
+  // 流入元（レジデンス等）の提携先は通さない。流入元タブが読めず判定できない時も通さない（SourceGroupNotify.gs・2026-10-26）
+  if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(id) !== false) return '';
   try {
     var link = findShopLinkByShopId_(id);
     if (link && String(link.obj['状態']) === '停止') return '';
