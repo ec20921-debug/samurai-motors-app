@@ -13,6 +13,8 @@
  *   予約・施工・売上は、その店のQRを読んだお客様（チャットID）の予約すべて（2回目以降も含む）
  * - 同日 v2: スマホでコピーしやすい列順（店名 → QRのURL → 連携 → 送る文）・シール枚数/最終日（ShopQrSticker.gs が店マスターに書く）・
  *   あいさつ文は右端・全行を折り返さず1行の高さに揃える。手順は「アプリでQRを出す → 印刷 → 記録 → グループ」の順
+ * - 2026-10-26: Daisuke「何語で通知かも各グループ毎にわかるように」→「グループへの通知の言語」「お客様への通知の言語」の2列。
+ *   あいさつ文の列も、レジデンス等の提携先（流入元タブに shop_id がある店）は実際に送る英語の文にした（v7 ShopGroupGreeting.gs と同じ選び方）
  */
 
 const SCOUT_LINKS_TAB_KEY = 'links';
@@ -29,6 +31,24 @@ const SCOUT_LINKS_GREETING_EN =
   'For customers who book through your shop\'s QR, you\'ll see start and finish updates and Before/After photos here.\n' +
   'At the start of each month, we\'ll also send a monthly report with the number of jobs and the amounts.\n' +
   'Thank you for working with us. We look forward to a great partnership!';
+// レジデンス等の提携先（流入元の shop_id）のあいさつ文（英語のみ）。v7/SourceGroupNotify.gs buildSourceGroupGreeting_ と同じ文。直すときは両方を直す
+const SCOUT_LINKS_GREETING_SOURCE_EN =
+  'This is the group for {shop} × SAMURAI MOTORS.\n' +
+  'When a resident books with us, you\'ll see the booking here (date, time, unit number and car), ' +
+  'and on the day, start and finish updates with Before/After photos.\n' +
+  'Thank you for working with us!';
+
+// 「何語で届くか」（2026-10-26 時点の v7 の文面に合わせる。文面の言語を変えたらここも直す）
+//   グループ: 車屋＝作業の開始・完了・写真・月次レポートは英語、連携直後のあいさつ文だけクメール語＋英語（ShopRouting / JobManager / ShopGroupGreeting / ShopProvisioningManager）
+//             レジデンス等＝予約・作業の開始・完了・写真・あいさつ文とも英語（SourceGroupNotify）
+//             個人提携＝予約・あいさつ文・月次レポートとも日本語＋英語（IndividualPartner / IndividualPartnerOps）
+//   お客様: どの QR から来ても Bot の通知は英語＋クメール語（SourceCampaignKm.gs）。レジデンス等の予約画面だけ英語＋日本語（booking.html）
+const SCOUT_LINKS_LANG = {
+  shop:       { group: '英語（あいさつ文だけ クメール語＋英語）', customer: '英語＋クメール語' },
+  source:     { group: '英語',                                customer: '英語＋クメール語（予約画面は英語＋日本語）' },
+  individual: { group: '日本語＋英語',                          customer: '英語＋クメール語' },
+  unknown:    { group: '（判定できず: 流入元タブを読めません）',    customer: '英語＋クメール語' }
+};
 
 function scoutBoardWriteShopLinks_(board, d) {
   const sh = scoutBoardSheet_(board, SCOUT_LINKS_TAB_KEY);
@@ -43,24 +63,26 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['お店の Telegram グループの作り方 / How to set up the shop group'],
     ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
-    ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside']
+    ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
+    ['🌐 通知の言語は「グループへの通知の言語」「お客様への通知の言語」の列。お客様への Bot の通知は、どの QR から来ても 英語＋クメール語 / Language columns: group and customers']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');
   sh.getRange(2, 1).setFontWeight('bold');
   sh.getRange(6, 1).setFontWeight('bold');
-  sh.getRange(steps.length, 1).setFontColor('#b3261e');
+  sh.getRange(steps.length - 1, 1).setFontColor('#b3261e');
 
   const r0 = steps.length + 2;
   // スマホで開いた時に「店名 → QRのURL → 連携 → 送る文」が横スクロールなしで見える順（2026-10-22）。
   // あいさつ文（長い・全店同じ形）は右端へ。1行の高さを揃えるため折り返さない
   const headers = ['No', '店名 (Shop)', '予約QRのURL (QR link)', '連携 (Linked)', 'グループで送る文 (Send in group)',
+    'グループへの通知の言語 (Group language)', 'お客様への通知の言語 (Customer language)',
     '作るグループ名 (Group name)', 'シール枚数 (Stickers)', 'シール最終日 (Last sticker)',
     'QRを読んだ人 (Scanned)', '予約画面を開いた人 (Opened)', '予約 (Bookings)',
     '施工完了 (Done)', '売上 USD（お店の車も含む）(Sales)', '店の取り分 USD (Shop share)', 'SAMURAI USD', '取り分の率 (Rate %)',
     '実際のグループ名 (Actual group)', '連携日時 (Linked at)', 'あいさつ文 (Greeting)', 'shop_id'];
   const n = scoutBoardTable_(sh, r0, headers, rows,
-    [36, 160, 260, 90, 140, 230, 80, 100, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 360, 220], []);
+    [36, 160, 260, 90, 140, 240, 260, 230, 80, 100, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 360, 220], []);
   if (rows.length) {
     sh.getRange(r0 + 1, 1, rows.length, headers.length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
     sh.setRowHeightsForced(r0 + 1, rows.length, 24);
@@ -99,6 +121,8 @@ function scoutLinksRows_() {
     if (ids.indexOf(id) < 0 && !isSample(id, (linkById[id].obj || {})['店名'])) ids.push(id);
   });
 
+  // レジデンス等の提携先（流入元タブの shop_id）。読めない時は null（言語は「判定できず」・あいさつ文は車屋の文のまま）
+  const srcShopIds = (typeof sourcePartnerShopIds_ === 'function') ? sourcePartnerShopIds_() : null;
   const funnel = scoutLinksFunnel_(ss);
   const bookings = scoutLinksBookings_(ss);
   const fieldJobs = scoutLinksFieldJobs_(ss);   // 現場アプリで店を選んだ作業（予約なし・在庫車やボイス依頼など）
@@ -134,6 +158,11 @@ function scoutLinksRows_() {
     const rate = (typeof shopCommissionTerms_ === 'function' && shopById[id]) ? shopCommissionTerms_(shop).rate : 30;
     const shopShare = Math.round(sales * rate) / 100;   // お客さんの予約の分だけ
     const totalSales = Math.round((sales + fieldSales) * 100) / 100;
+    // 提携の種類（v7 ShopGroupGreeting.buildShopGroupGreeting_ と同じ順: レジデンス等 → 個人提携 → 車屋）
+    const kind = (srcShopIds && srcShopIds[id]) ? 'source'
+      : String(shop[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() === INDIVIDUAL_PARTNER_KIND ? 'individual'
+      : srcShopIds ? 'shop' : 'unknown';
+    const fill = function() { return name; };   // 店名に $& 等が入っても特殊展開しない
 
     return [
       i + 1,
@@ -141,6 +170,8 @@ function scoutLinksRows_() {
       qr,
       linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
       linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: アプリのお店の画面で「🔗 このお店のQRを出す」を押す）'),
+      SCOUT_LINKS_LANG[kind].group,
+      SCOUT_LINKS_LANG[kind].customer,
       name + ' × SAMURAI MOTORS',
       Number(shop['QRシール枚数']) || 0,
       formatSalesLogDateCell_(shop['QRシール最終日']).substring(0, 10),
@@ -148,10 +179,12 @@ function scoutLinksRows_() {
       totalSales, shopShare, Math.round((sales - shopShare + fieldSales) * 100) / 100, rate,
       linked ? String(link['グループ名'] || '') : '',
       linked ? String(link['紐付け日時'] || '') : '',
-      // 個人提携は日本語＋英語の専用文（IndividualPartnerOps.gs・2026-10-26）
-      String(shop[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() === INDIVIDUAL_PARTNER_KIND
+      // レジデンス等は英語の専用文（SourceGroupNotify.gs）、個人提携は日本語＋英語の専用文（IndividualPartnerOps.gs・2026-10-26）
+      kind === 'source'
+        ? SCOUT_LINKS_GREETING_SOURCE_EN.replace(/\{shop\}/g, fill)
+        : kind === 'individual'
         ? individualGroupGreetingText_(name, rate)
-        : (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
+        : (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, fill) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, fill),
       id
     ];
   });
