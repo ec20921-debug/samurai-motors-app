@@ -372,8 +372,10 @@ function sendShopMonthlyReportsCore_(opt) {
   var agg = aggregateCommissionsByShop_(ymLabel);
   // 施工ゼロの店の率表示用（店マスターの現在の条件）
   var termsByShop = {};
+  var langsByShop = {};   // 店マスター「グループへの通知の言語」（PartnerLangOps.gs・2026-10-26）
   readSheetObjects_(getShopSheet_()).forEach(function(sr) {
     termsByShop[String(sr.obj['shop_id'])] = shopCommissionTerms_(sr.obj);
+    langsByShop[String(sr.obj['shop_id'])] = shopGroupLangsOps_(sr.obj);
   });
 
   var props = getShopProvProps_();
@@ -418,34 +420,11 @@ function sendShopMonthlyReportsCore_(opt) {
       return;
     }
 
-    // 店舗向け（英語。クメール語版は Panha 校閲後に差し替え可）
-    var shopLines = [
-      '📊 SAMURAI MOTORS — Monthly Report (' + ymLabel + ')',
-      '',
-      'Shop: ' + shopName,
-      'Jobs: ' + a.count,
-      'Total sales: ' + a.sales.toFixed(2) + '$',
-      'Your commission (' + yourPct + '): ' + a.commission.toFixed(2) + '$',
-      'Samurai Motors share (' + ourPct + '): ' + a.ourShare.toFixed(2) + '$'
-    ];
-    if (a.owedToShop > 0) {
-      // 当社集金の案件: 紹介料は当社から店へ翌月10日に支払う
-      shopLines.push('');
-      shopLines.push('💵 We will pay your commission ' + a.owedToShop.toFixed(2) + '$ by the 10th (ABA).');
-    }
-    if (a.outstanding > 0) {
-      shopLines.push('');
-      shopLines.push('⏳ Not yet settled: ' + a.outstanding.toFixed(2) + '$');
-      shopLines.push('Our staff will collect on the next visit (cash or ABA). Thank you!');
-    } else if (a.count > 0) {
-      shopLines.push('');
-      shopLines.push('✅ All settled. Thank you for working with us!');
-    } else {
-      shopLines.push('');
-      shopLines.push('No jobs last month. Let\'s make this month better together!');
-    }
-
-    var ok = sendViaBookingBot_(props.bookingBotToken, groupChatId, shopLines.join('\n'));
+    // 店舗向け。店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLangOps.gs・2026-10-26。それまでは英語のみ）
+    var shopLangs = langsByShop[shopId] || PARTNER_LANG_SHOP_DEFAULT.slice();
+    var ok = sendViaBookingBot_(props.bookingBotToken, groupChatId, buildShopMonthlyReportText_(shopLangs, {
+      shopName: shopName, ymLabel: ymLabel, a: a, yourPct: yourPct, ourPct: ourPct
+    }));
     adminLines.push((ok ? '✅ ' : '❌ ') + shopName + ': ' + a.count + '台 / 売上' + a.sales.toFixed(2) +
       '$ / 店取分(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 未回収' + a.outstanding.toFixed(2) + '$' +
       (a.owedToShop > 0 ? ' / 当社→店 未払い' + a.owedToShop.toFixed(2) + '$' : ''));

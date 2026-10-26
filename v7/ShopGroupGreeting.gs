@@ -12,7 +12,8 @@
  *
  * 【送信済みの印】Script Properties `shop_greeting_sent_<shop_id>`（失うと二重送信になるため Cache ではなく永続側）
  *
- * 【文言】v7-operations/ScoutBoardShopLinks.gs の SCOUT_LINKS_GREETING_KM / _EN と同じ文（営業ボードと同じ形: km → 空行 → en）。
+ * 【文言】v7-operations/ScoutBoardShopLinks.gs の SCOUT_LINKS_GREETING_KM / _EN / _JA と同じ文（営業ボードと同じ形: 言語ごとに空行で区切る）。
+ *   2026-10-26〜 店マスター「グループへの通知の言語」の順に並べる（標準 クメール語 → 英語 → 日本語・PartnerLang.gs）。
  *   別 GAS プロジェクトで共有できないため複製している。文言を直すときは両方を直すこと。
  *   クメール語は Panha 校閲（provisional・Run Kosal 確認待ち）
  */
@@ -28,12 +29,19 @@ var SHOP_GREETING_EN =
   'At the start of each month, we\'ll also send a monthly report with the number of jobs and the amounts.\n' +
   'Thank you for working with us. We look forward to a great partnership!';
 
+// 2026-10-26 新設（日本語）
+var SHOP_GREETING_JA =
+  '{shop} × SAMURAI MOTORS のグループです。\n' +
+  'お店の QR からご予約いただいたお客様について、作業の開始と完了、作業前後の写真をこのグループでお知らせします。\n' +
+  '毎月はじめに、件数と金額をまとめた月次レポートもお送りします。\n' +
+  'ご協力ありがとうございます。これからもよろしくお願いします！';
+
 var SHOP_GREETING_PROP_PREFIX = 'shop_greeting_sent_';
 // 安全網で拾う範囲（これより前に連携した店には送らない。City Golf 等の既存グループに今さら送らないため）
 var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
- * あいさつ文の本文（km → 空行 → en）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
+ * あいさつ文の本文（店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切る）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
  * 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
@@ -46,7 +54,8 @@ function buildShopGroupGreeting_(shopName, shopId) {
   var name = String(shopName || '').trim() || 'your shop';
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
   var fill = function() { return name; };
-  return SHOP_GREETING_KM.replace(/\{shop\}/g, fill) + '\n\n' + SHOP_GREETING_EN.replace(/\{shop\}/g, fill);
+  var texts = { km: SHOP_GREETING_KM, en: SHOP_GREETING_EN, ja: SHOP_GREETING_JA };
+  return langLines_(shopGroupLangs_(shopId), texts).map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n');
 }
 
 /**

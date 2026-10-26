@@ -160,6 +160,18 @@
 
 ---
 
+## 🌐 提携先のグループへの通知の言語（2026-10-26〜）
+
+> 車屋のグループ宛の通知は、店マスター「グループへの通知の言語」列の順に出す（空欄＝クメール語 → 英語 → 日本語）。仕組み = v7/PartnerLang.gs ＋ v7-operations/PartnerLangOps.gs（同じ決まりを複製）
+
+- [ ] **文面を足す・変える**: v7 の `SHOP_GROUP_TEXT`（連携完了・来店・作業の開始/完了・写真）/ `SHOP_GREETING_KM/EN/JA`（ShopGroupGreeting.gs）/ `SHOP_INVOICE_KM_/EN_/JA_`（ShopInvoice.gs）と、v7-operations の `SHOP_REPORT_TEXT`（月次レポート）/ `SCOUT_LINKS_GREETING_*`（営業ボード）。**3言語そろえる**（欠けた言語は黙って飛ばされる）。クメール語は Panha
+- [ ] **あいさつ文は2か所**（v7 ShopGroupGreeting.gs と v7-operations ScoutBoardShopLinks.gs）。片方だけ直さない
+- [ ] **請求は QR 画像の説明文（Telegram の上限 1024字）**。3言語で長くなる文を足したら字数を確かめる（2026-10-26 時点で最長 約790字）
+- [ ] 言語の読み方（parsePartnerLangs_）・標準（クメール語＋英語＋日本語）・列名は v7 と v7-operations で同じにする
+- [ ] レジデンス等（SourceGroupNotify.gs・英語）と個人提携（IndividualPartner.gs / IndividualPartnerOps.gs・日本語＋英語）のグループは固定。設定で変えたくなったら、その文面にも3言語を用意してから
+
+---
+
 ## 🕐 営業時間 / 定休日 / 祝日変更
 
 > ⚠️ booking.html と GAS の両方に祝日リストがあるため、**同期必須**

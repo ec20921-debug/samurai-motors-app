@@ -413,12 +413,10 @@ function apiJobStart(body, opts) {
     var startShopSent = '';
     try {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
-        startShopSent = notifyShopGroupJobPhotos(customerChatId,
-          '▶️ Job started (customer from your QR)\n' +
-          '👤 ' + (body.name || '-') + '\n' +
-          '🚗 ' + (body.carModel || '-') + '\n' +
-          '📷 Before photos ↓',
-          photoResult.blobs);
+        // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
+        startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
+          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', name: body.name || '', car: body.carModel || '', photos: 'before' });
+        }, photoResult.blobs);
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
@@ -443,9 +441,8 @@ function apiJobStart(body, opts) {
         if (!jobCustSent_(opts, 'startshop:' + startFieldShop) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
           notifyShopGroupByShopId_(startFieldShop,
-            '▶️ Job started (your shop)\n' +
-            '🚗 ' + ([body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '-') + '\n' +
-            '📷 Before photos ↓',
+            shopGroupJobText_(shopGroupLangs_(startFieldShop), { phase: 'start', who: 'shop',
+              car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before' }),
             photoResult.blobs);
         }
       } catch (e) {
@@ -692,12 +689,9 @@ function apiJobEnd(body, opts) {
     var shopRef = '';
     try {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
-        shopRef = notifyShopGroupJobPhotos(customerChatId,
-          '✅ Job finished (customer from your QR)\n' +
-          '👤 ' + (body.name || '-') + '\n' +
-          '⏱ ' + duration + ' min\n' +
-          '📷 After photos ↓',
-          photoResult.blobs);
+        shopRef = notifyShopGroupJobPhotos(customerChatId, function(sid) {
+          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'end', who: 'qr', name: body.name || '', duration: duration, photos: 'after' });
+        }, photoResult.blobs);
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
@@ -733,17 +727,16 @@ function apiJobEnd(body, opts) {
         // 流入元の通知で同じグループへ送った時は送らない（下の店集金の判定は止めない）
         if (photoShopId !== endSrcSent && !jobCustSent_(opts, fieldPhase) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, fieldPhase);
-          var finishText = '✅ Job finished (your shop)\n' +
-            '🚗 ' + (body.carModel || body.name || '-') + '\n' +
-            '⏱ ' + duration + ' min\n';
+          var finishLangs = shopGroupLangs_(photoShopId);   // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
+          var finishText = shopGroupJobText_(finishLangs, { phase: 'end', who: 'shop', car: body.carModel || body.name || '', duration: duration }) + '\n';
           // 作業開始で Before を送っていない店（終了で初めて選んだ店）には、Before も送る（After とは別のアルバム）
           var beforeBlobs = (photoShopId !== startShopId && opts.rowData && typeof driveUrlsToBlobs_ === 'function')
             ? driveUrlsToBlobs_(String(opts.rowData['Before写真URL'] || '').split('\n').filter(String)) : [];
           if (beforeBlobs.length > 0) {
-            notifyShopGroupByShopId_(photoShopId, finishText + '📷 Before photos ↓', beforeBlobs);
-            notifyShopGroupByShopId_(photoShopId, '📷 After photos ↓', photoResult.blobs);
+            notifyShopGroupByShopId_(photoShopId, finishText + shopGroupPhotosLine_(finishLangs, 'before'), beforeBlobs);
+            notifyShopGroupByShopId_(photoShopId, shopGroupPhotosLine_(finishLangs, 'after'), photoResult.blobs);
           } else {
-            notifyShopGroupByShopId_(photoShopId, finishText + '📷 After photos ↓', photoResult.blobs);
+            notifyShopGroupByShopId_(photoShopId, finishText + shopGroupPhotosLine_(finishLangs, 'after'), photoResult.blobs);
           }
         }
       } catch (e) {

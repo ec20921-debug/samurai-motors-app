@@ -144,7 +144,10 @@ function handleShopGroupMessage_(msg) {
   if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
   if (indivPartner === null) srcPartner = null;
+  // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）
+  var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit) : null;
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName) :
+    shopLangsHit ? shopGroupConnectedText_(shopLangsHit, shopName) :
     '✅ Connected! / 連携完了！\n' +
     (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +
     (srcPartner === true
@@ -243,10 +246,12 @@ function handleShopStart_(msg, text) {
   // 個人提携のグループには予約が入った時だけ送る（お客様の名前は出さない）。個人提携か分からない時も送らない
   if (indivState === false && link && String(link.obj['状態']) === '連携済' && String(link.obj['グループchat_id'])) {
     try {
+      // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
+      var qrLangs = shopGroupLangs_(shopId);
       sendMessage(BOT_TYPE.BOOKING, String(link.obj['グループchat_id']),
-        '🔔 New customer from your QR! / お店のQRからお客様が来ました！\n' +
-        'Name: ' + custName + '\n' +
-        'They just opened our booking bot. We will follow up!');
+        '🔔 ' + langJoin_(qrLangs, SHOP_GROUP_TEXT.newCustomer) + '\n' +
+        langJoin_(qrLangs, SHOP_GROUP_TEXT.name) + ': ' + custName + '\n' +
+        langLines_(qrLangs, SHOP_GROUP_TEXT.followUp).join('\n'));
     } catch (err) {
       Logger.log('⚠️ 店舗グループ来店通知失敗: ' + err);
     }
@@ -447,6 +452,7 @@ function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
 
 /**
  * 指定の店の店舗グループ（連携済のみ）へ本文＋写真を送る。送った shop_id を返す（2026-10-22 現場アプリで店を選んだ作業用に分離）
+ * text は文字列、または shop_id を受けて本文を返す関数（店ごとの通知の言語で組み立てる時・PartnerLang.gs・2026-10-26）
  */
 function notifyShopGroupByShopId_(shopId, text, blobs) {
   try {
@@ -463,7 +469,7 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
     var groupChatId = String(link.obj['グループchat_id'] || '');
     if (!groupChatId) return '';
 
-    sendMessage(BOT_TYPE.BOOKING, groupChatId, text);
+    sendMessage(BOT_TYPE.BOOKING, groupChatId, typeof text === 'function' ? text(shopId) : text);
     if (blobs && blobs.length > 0 && typeof sendPhotoAlbum === 'function') {
       try {
         sendPhotoAlbum(BOT_TYPE.BOOKING, groupChatId, blobs, '', {});

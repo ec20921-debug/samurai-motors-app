@@ -14,13 +14,15 @@
  * - 同日 v2: スマホでコピーしやすい列順（店名 → QRのURL → 連携 → 送る文）・シール枚数/最終日（ShopQrSticker.gs が店マスターに書く）・
  *   あいさつ文は右端・全行を折り返さず1行の高さに揃える。手順は「アプリでQRを出す → 印刷 → 記録 → グループ」の順
  * - 2026-10-26: Daisuke「何語で通知かも各グループ毎にわかるように」→「グループへの通知の言語」「お客様への通知の言語」の2列。
- *   あいさつ文の列も、レジデンス等の提携先（流入元タブに shop_id がある店）は実際に送る英語の文にした（v7 ShopGroupGreeting.gs と同じ選び方）
+ *   車屋のグループの言語は店マスター「グループへの通知の言語」の設定（空欄＝標準 クメール語＋英語＋日本語・PartnerLangOps.gs）。
+ *   あいさつ文の列も実際に送る文にした（車屋＝設定の言語の順・レジデンス等＝英語・個人提携＝日本語＋英語。v7 ShopGroupGreeting.gs と同じ選び方）
  */
 
 const SCOUT_LINKS_TAB_KEY = 'links';
 const SCOUT_LINKS_BOT = 'SAMURAI_MOTORS_BOOKING_BOT';
 // グループに最初に送るあいさつ文（{shop} に店名）。クメール語は Panha 校閲（provisional・Run Kosal 確認待ち）
 // 2026-10-24〜 連携時に予約Botが自動送信（v7/ShopGroupGreeting.gs に同じ文を複製）。文言を直すときは両方を直す
+// 2026-10-26〜 店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切って並べる（日本語は同日新設）
 const SCOUT_LINKS_GREETING_KM =
   'នេះជាក្រុមរបស់ {shop} និង SAMURAI MOTORS។\n' +
   'សម្រាប់ភ្ញៀវដែលកក់តាម QR របស់ហាងអ្នក យើងនឹងផ្ញើសារពេលចាប់ផ្តើម និងបញ្ចប់ការលាងសម្អាត ព្រមទាំងរូបថត មុន / ក្រោយ មកក្រុមនេះ។\n' +
@@ -31,6 +33,11 @@ const SCOUT_LINKS_GREETING_EN =
   'For customers who book through your shop\'s QR, you\'ll see start and finish updates and Before/After photos here.\n' +
   'At the start of each month, we\'ll also send a monthly report with the number of jobs and the amounts.\n' +
   'Thank you for working with us. We look forward to a great partnership!';
+const SCOUT_LINKS_GREETING_JA =
+  '{shop} × SAMURAI MOTORS のグループです。\n' +
+  'お店の QR からご予約いただいたお客様について、作業の開始と完了、作業前後の写真をこのグループでお知らせします。\n' +
+  '毎月はじめに、件数と金額をまとめた月次レポートもお送りします。\n' +
+  'ご協力ありがとうございます。これからもよろしくお願いします！';
 // レジデンス等の提携先（流入元の shop_id）のあいさつ文（英語のみ）。v7/SourceGroupNotify.gs buildSourceGroupGreeting_ と同じ文。直すときは両方を直す
 const SCOUT_LINKS_GREETING_SOURCE_EN =
   'This is the group for {shop} × SAMURAI MOTORS.\n' +
@@ -39,16 +46,24 @@ const SCOUT_LINKS_GREETING_SOURCE_EN =
   'Thank you for working with us!';
 
 // 「何語で届くか」（2026-10-26 時点の v7 の文面に合わせる。文面の言語を変えたらここも直す）
-//   グループ: 車屋＝作業の開始・完了・写真・月次レポートは英語、連携直後のあいさつ文だけクメール語＋英語（ShopRouting / JobManager / ShopGroupGreeting / ShopProvisioningManager）
-//             レジデンス等＝予約・作業の開始・完了・写真・あいさつ文とも英語（SourceGroupNotify）
-//             個人提携＝予約・あいさつ文・月次レポートとも日本語＋英語（IndividualPartner / IndividualPartnerOps）
-//   お客様: どの QR から来ても Bot の通知は英語＋クメール語（SourceCampaignKm.gs）。レジデンス等の予約画面だけ英語＋日本語（booking.html）
-const SCOUT_LINKS_LANG = {
-  shop:       { group: '英語（あいさつ文だけ クメール語＋英語）', customer: '英語＋クメール語' },
-  source:     { group: '英語',                                customer: '英語＋クメール語（予約画面は英語＋日本語）' },
-  individual: { group: '日本語＋英語',                          customer: '英語＋クメール語' },
-  unknown:    { group: '（判定できず: 流入元タブを読めません）',    customer: '英語＋クメール語' }
+//   グループ: 車屋＝店マスター「グループへの通知の言語」の設定（連携完了・QRからの来店・あいさつ文・作業の開始/完了と写真・請求・月次レポート）
+//             レジデンス等＝英語で固定（SourceGroupNotify）／個人提携＝日本語＋英語で固定（IndividualPartner / IndividualPartnerOps）
+//   お客様: 車屋・個人提携の QR から来たお客様＝クメール語＋英語。レジデンス等（流入元タブの言語 en-ja）＝
+//           あいさつ・予約確定・予約画面は英語＋日本語、作業の知らせ・リマインドなどはクメール語＋英語
+const SCOUT_LINKS_LANG_FIXED = {
+  source:     { group: '英語（固定）',        customer: '英語＋日本語（あいさつ・予約確定・予約画面）／ほかはクメール語＋英語' },
+  individual: { group: '日本語＋英語（固定）', customer: 'クメール語＋英語' },
+  unknown:    { group: '（判定できず: 流入元タブを読めません）', customer: '（判定できず）' }
 };
+const SCOUT_LINKS_SHOP_CUSTOMER_LANG = 'クメール語＋英語';
+
+/** 車屋のグループの言語の表示（店マスターの設定・空欄は「（標準）」・読めない値はそのことも出す） */
+function scoutLinksShopLangLabel_(shop) {
+  const raw = String(shop[PARTNER_GROUP_LANG_COL] || '').trim();
+  const label = partnerLangsLabel_(shopGroupLangsOps_(shop));
+  if (!raw) return label + '（標準）';
+  return parsePartnerLangs_(raw) ? label : label + '（「' + raw + '」を読めないので標準）';
+}
 
 function scoutBoardWriteShopLinks_(board, d) {
   const sh = scoutBoardSheet_(board, SCOUT_LINKS_TAB_KEY);
@@ -64,7 +79,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
-    ['🌐 通知の言語は「グループへの通知の言語」「お客様への通知の言語」の列。お客様への Bot の通知は、どの QR から来ても 英語＋クメール語 / Language columns: group and customers']
+    ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語）。レジデンス等・個人提携は固定 / Group language per shop: 店マスター']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');
@@ -170,8 +185,8 @@ function scoutLinksRows_() {
       qr,
       linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
       linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: アプリのお店の画面で「🔗 このお店のQRを出す」を押す）'),
-      SCOUT_LINKS_LANG[kind].group,
-      SCOUT_LINKS_LANG[kind].customer,
+      kind === 'shop' ? scoutLinksShopLangLabel_(shop) : SCOUT_LINKS_LANG_FIXED[kind].group,
+      kind === 'shop' ? SCOUT_LINKS_SHOP_CUSTOMER_LANG : SCOUT_LINKS_LANG_FIXED[kind].customer,
       name + ' × SAMURAI MOTORS',
       Number(shop['QRシール枚数']) || 0,
       formatSalesLogDateCell_(shop['QRシール最終日']).substring(0, 10),
@@ -184,7 +199,8 @@ function scoutLinksRows_() {
         ? SCOUT_LINKS_GREETING_SOURCE_EN.replace(/\{shop\}/g, fill)
         : kind === 'individual'
         ? individualGroupGreetingText_(name, rate)
-        : (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, fill) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, fill),
+        : langLinesOps_(shopGroupLangsOps_(shop), { km: SCOUT_LINKS_GREETING_KM, en: SCOUT_LINKS_GREETING_EN, ja: SCOUT_LINKS_GREETING_JA })
+          .map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n'),
       id
     ];
   });

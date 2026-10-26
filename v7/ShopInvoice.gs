@@ -13,7 +13,8 @@
  * 【送らない時】金額 0 以下（無料）は何もしない。定価が無い・金額が定価を超える・店が分からない・
  *   店のグループが未連携・QR が無い・送れない時は、管理グループに理由を出す（請求は手で）
  * 【重複】作業記録「店への請求」列で判定（送る前に「送信中」）。作業終了の再送では送り直さない
- * 【文言】クメール語は Panha 校閲済み（2026-10-25）。英語は既存の店舗グループ通知に合わせた短文
+ * 【文言】クメール語は Panha 校閲済み（2026-10-25）。英語は既存の店舗グループ通知に合わせた短文。
+ *   2026-10-26〜 店マスター「グループへの通知の言語」の順に出す（標準 クメール語 → 英語 → 日本語・PartnerLang.gs）。日本語は同日新設
  */
 
 // Panha 校閲 2026-10-25（44/50・native_check_required: Run Kosal 確認待ち）。
@@ -25,6 +26,22 @@ var SHOP_INVOICE_KM_ = {
   due:        'ទឹកប្រាក់ត្រូវបង់',
   scan:       'សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់ឱ្យ Samurai Motors។',   // 支払先を明示（QR は個人名義のため・Daisuke 2026-10-25）
   screenshot: 'បន្ទាប់ពីបង់រួច សូមផ្ញើរូបថតអេក្រង់នៃការបង់ប្រាក់ មកក្នុងក្រុមនេះ។'
+};
+var SHOP_INVOICE_EN_ = {
+  title:      'Payment request',
+  price:      'Service price',
+  commission: 'Your commission',
+  due:        'Amount to pay',
+  scan:       'Please scan the QR above to pay Samurai Motors.',
+  screenshot: 'After paying, please send a screenshot of the payment to this group.'
+};
+var SHOP_INVOICE_JA_ = {
+  title:      'お支払いのお願い',
+  price:      'サービス料金',
+  commission: 'お店の紹介料',
+  due:        'お支払い金額',
+  scan:       '上の QR を読み取って、Samurai Motors へお支払いください。',
+  screenshot: 'お支払い後、お支払い画面のスクリーンショットをこのグループに送ってください。'
 };
 var SHOP_INVOICE_LINE_ = '━━━━━━━━━━━━━━━━━';
 var SHOP_INVOICE_COL_ = '店への請求';   // 作業記録の列（JobIdempotency.gs JOBS_V2_COLS_）
@@ -45,11 +62,16 @@ function shopInvoiceServices_(body) {
 
 /**
  * 請求の本文（QR 画像のキャプション。Telegram では画像の下に出る）
- * @param {Object} p - { pt, refId, carModel, plate, services, customerName, listPrice, rate, due }
+ * @param {Object} p - { pt, refId, carModel, plate, services, customerName, listPrice, rate, due, langs }
+ *   langs = 出す言語の順（省略時は従来どおり クメール語 → 英語）
  */
 function buildShopInvoiceText_(p) {
-  var km = SHOP_INVOICE_KM_, L = SHOP_INVOICE_LINE_;
-  var lines = ['🧾 ' + km.title + ' / Payment request', L];
+  var langs = p.langs || ['km', 'en'], L = SHOP_INVOICE_LINE_;
+  var t = function(key, suffix) {   // { km, en, ja } の key の文（suffix は各言語の後ろに付ける）
+    return { km: SHOP_INVOICE_KM_[key] + (suffix || ''), en: SHOP_INVOICE_EN_[key] + (suffix || ''), ja: SHOP_INVOICE_JA_[key] + (suffix || '') };
+  };
+  var each = function(emoji, key) { return langLines_(langs, t(key)).map(function(x) { return emoji + ' ' + x; }); };
+  var lines = ['🧾 ' + langJoin_(langs, t('title')), L];
   if (p.refId) lines.push('🆔 ' + p.refId);
   var car = [p.carModel, p.plate].map(function(s) { return String(s || '').trim(); }).filter(String).join(' / ');
   if (car) lines.push('🚗 ' + car);
@@ -60,17 +82,14 @@ function buildShopInvoiceText_(p) {
     var shareCents = Math.round(Number(p.listPrice) * 100) - Math.round(Number(p.due) * 100);
     if (shareCents > 0) {
       var pct = (Number(p.rate) > 0 && Math.round(Number(p.listPrice) * Number(p.rate)) === shareCents) ? ' (' + Number(p.rate) + '%)' : '';
-      lines.push('💵 ' + km.price + ' / Service price: ' + shopInvoiceUsd_(p.listPrice));
-      lines.push('🤝 ' + km.commission + pct + ' / Your commission' + pct + ': ' + shopInvoiceUsd_(shareCents / 100));
+      lines.push('💵 ' + langJoin_(langs, t('price')) + ': ' + shopInvoiceUsd_(p.listPrice));
+      lines.push('🤝 ' + langJoin_(langs, t('commission', pct)) + ': ' + shopInvoiceUsd_(shareCents / 100));
     }
   }
   lines.push(L);
-  lines.push('💰 ' + km.due + ' / Amount to pay: ' + shopInvoiceUsd_(p.due));
+  lines.push('💰 ' + langJoin_(langs, t('due')) + ': ' + shopInvoiceUsd_(p.due));
   lines.push(L);
-  lines.push('📱 ' + km.scan);
-  lines.push('📱 Please scan the QR above to pay Samurai Motors.');
-  lines.push('📸 ' + km.screenshot);
-  lines.push('📸 After paying, please send a screenshot of the payment to this group.');
+  lines = lines.concat(each('📱', 'scan'), each('📸', 'screenshot'));
   return lines.join('\n');
 }
 
@@ -147,7 +166,8 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
     customerName: shopInvoiceCut_(body.name),
     listPrice:    listPrice,
     rate:         body.v2 && body.v2.shop_rate,
-    due:          due
+    due:          due,
+    langs:        shopGroupLangs_(shopId)   // 店マスター「グループへの通知の言語」（PartnerLang.gs・2026-10-26）
   });
   var res = sendQRImage(groupChatId, qr.imageUrl, text);
   return (res && res.ok) ? 'sent' : 'send_failed';
