@@ -202,7 +202,8 @@ function apiBookingInit(params) {
   if (!chatId) return { status: 'error', message: 'chatId required' };
 
   // ファネル計測: ミニアプリ起動を記録(失敗しても無視)
-  if (typeof logFunnelEvent === 'function') {
+  // 2026-10-26: 予約画面が流入元を確かめ直す取り直し（recheck=1）は起動ではないので数えない
+  if (typeof logFunnelEvent === 'function' && !params.recheck) {
     logFunnelEvent(chatId, 'miniapp_opened', 'booking.html', '', { params: params });
   }
 
