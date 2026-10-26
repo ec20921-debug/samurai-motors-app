@@ -755,7 +755,15 @@ function createBookingLocked_(params, after) {
             optionLines.map(function(l) { return { code: l.opt.code, amount: l.amount }; })))
       : null;
     const cfg = getBookingConfig();
-    const camp = srcDisc ? { active: false, percent: 0 } : (cfg.campaign || { active: false, percent: 0 });
+    // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩。お客様は店に定価を払う）。
+    //   流入元（src）とは同時に付かない（最後に読んだQRが優先）。判定は決済QRと同じ getValidShopRef_
+    const campCfg = cfg.campaign || { active: false, percent: 0 };
+    const shopNoCamp = !srcDisc && typeof getValidShopRef_ === 'function' && !!getValidShopRef_(params.chatId);
+    // 画面ではキャンペーン価格を見せていたのに、ここで外れる（QR → START の直後に開いた等）→ 予約は作らず、画面に取り直してもらう
+    if (shopNoCamp && params.campaignShown === true && campCfg.active && campCfg.percent > 0) {
+      return { status: 'error', code: 'PRICE_CHANGED', message: 'Prices have been updated. Please check your selection again.' };
+    }
+    const camp = (srcDisc || shopNoCamp) ? { active: false, percent: 0 } : campCfg;
     let discountAmount = 0;
     if (srcDisc) {
       discountAmount = srcDisc.total;

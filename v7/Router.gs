@@ -240,6 +240,18 @@ function apiBookingInit(params) {
     Logger.log('⚠️ apiBookingInit: campaign 取得エラー(無視可): ' + e);
   }
 
+  // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩）。
+  //   これまでは歓迎文でバナーを隠すだけで、予約画面と予約作成には全体キャンペーンが効いていた（createBooking と同じ判定）
+  let shop = false;
+  try {
+    if (typeof getValidShopRef_ === 'function' && getValidShopRef_(chatId)) {
+      shop = true;
+      campaign = null;
+    }
+  } catch (e) {
+    Logger.log('⚠️ apiBookingInit: 提携店の判定エラー(無視可): ' + e);
+  }
+
   // 2026-10-15: 専用QR（流入元）の情報。顧客の紐付けを優先し、なければ画面の ?src= を使う（SourceCampaign.gs）
   let source = null;
   try {
@@ -260,7 +272,8 @@ function apiBookingInit(params) {
     options: options,
     dispatchFee: dispatchFee,
     campaign: campaign,
-    source: source
+    source: source,
+    shop: shop        // 提携店QR経由（予約画面が取り直しを止める目印。店名などは渡さない）
   };
 }
 
