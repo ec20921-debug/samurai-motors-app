@@ -110,7 +110,7 @@ function previewCampaign() {
       return;
     }
 
-    const msg = buildDraftPreviewText_(draft, total) +
+    const msg = buildDraftPreviewText_(draft, total, recipients.excludedShop) +
       '\n\n※ これはプレビューです。送信は「④ 一斉送信を実行」から。';
     ui.alert('📢 キャンペーン プレビュー（下書き）', msg, ui.ButtonSet.OK);
   } catch (err) {
@@ -122,10 +122,11 @@ function previewCampaign() {
  * draft オブジェクトからプレビュー本文を組み立てる（下書き・予約行で共通利用）
  *
  * @param {Object} draft - {audience,textKm,textEn,imageUrl,voiceUrl,videoUrl}
- * @param {number} total - 送信先人数（配信対象=☑ の数）
+ * @param {number} total - 送信先人数（配信対象=☑ の数・提携店QR経由を除いた後）
+ * @param {number} [excludedShop] - 外した提携店QR経由のお客様の数（2026-10-26）
  * @return {string}
  */
-function buildDraftPreviewText_(draft, total) {
+function buildDraftPreviewText_(draft, total, excludedShop) {
   let langDesc;
   if (draft.audience === CAMPAIGN_LANG_KM_ONLY)      langDesc = 'クメール語のみ';
   else if (draft.audience === CAMPAIGN_LANG_EN_ONLY) langDesc = '英語のみ';
@@ -150,7 +151,8 @@ function buildDraftPreviewText_(draft, total) {
   return assetWarn +
     (draft.noteJp ? '📝 内容(日本語): ' + draft.noteJp + '\n\n' : '') +
     '🎯 送信先\n' +
-    '  合計: ' + total + '名（配信対象=☑ の全員）\n' +
+    '  合計: ' + total + '名（配信対象=☑ の全員' +
+      (excludedShop > 0 ? '。提携店QR経由の ' + excludedShop + '名は除く' : '') + '）\n' +
     '  送信言語: ' + langDesc + '\n' +
     '\n' +
     '📎 添付\n' +
@@ -218,7 +220,8 @@ function sendCampaign() {
     (draft.voiceUrl ? '\n🎤 ボイス添付あり' : '');
   const confirm = ui.alert(
     '⚠️ 最終確認：本当に送信しますか？',
-    recipients.length + ' 名 にメッセージを送信します。' + attachNote + '\n\n' +
+    recipients.length + ' 名 にメッセージを送信します。' +
+      (recipients.excludedShop > 0 ? '\n（提携店QR経由の ' + recipients.excludedShop + '名は送りません）' : '') + attachNote + '\n\n' +
     'この操作は取り消せません。よろしいですか？',
     ui.ButtonSet.YES_NO
   );
@@ -376,6 +379,15 @@ function buildRecipientList_(opts) {
 
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  // 2026-10-26: 提携店QR経由のお客様は一斉配信から外す（定価・キャンペーン対象外。CampaignShopFilter.gs）
+  //   判定できない時は例外 → 手動送信は「設定読込失敗」、予約配信は「エラー」で止まる（割引の配信が店のお客様に届くのを防ぐ）
+  let shopRefs = {};
+  try {
+    shopRefs = getShopRefChatIdsForBroadcast_();
+  } catch (e) {
+    throw new Error('提携店QR経由のお客様を判定できないため止めました（' + e + '）');
+  }
+  let excludedShop = 0;
   const list = [];
   data.forEach(function(row, idx) {
     const chatId = String(row[chatCol - 1] || '').trim();
@@ -386,6 +398,8 @@ function buildRecipientList_(opts) {
       const t = row[targetCol - 1];
       if (t === false || String(t).toUpperCase() === 'FALSE') return;
     }
+
+    if (Object.prototype.hasOwnProperty.call(shopRefs, chatId)) { excludedShop++; return; }
 
     // スケジュール配信のみ: 当日登録の新規客を除外（即時配信バグ対策）
     if (opts.excludeRegisteredOnDate && regCol) {
@@ -408,6 +422,7 @@ function buildRecipientList_(opts) {
       rowIndex:   idx + 2   // データは2行目開始
     });
   });
+  list.excludedShop = excludedShop;   // プレビュー・確認画面の「◯名を除く」用（配列の長さ＝送る人数は変えない）
   return list;
 }
 
@@ -940,7 +955,7 @@ function showCampaignHelp_() {
     '③ プレビュー：送信先の人数と内容を確認\n' +
     '④ 一斉送信を実行：最終確認 → 配信\n\n' +
     '★ ②③④はどのタブにいても実行OK。④が下書きの本文＋画像を\n' +
-    '　 配信対象=☑ の全員に送ります。\n\n' +
+    '　 配信対象=☑ の全員に送ります（提携店QR経由のお客様は自動で除く）。\n\n' +
     '【テスト送信（本番前におすすめ）】\n' +
     '「🧪 テスト送信」で自分のチャットIDだけに実物を確認できます。\n\n' +
     '【結果の見方】\n' +

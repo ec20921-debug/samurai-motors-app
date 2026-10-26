@@ -19,7 +19,7 @@
  * 【再利用】
  *   送信は Campaign.gs の executeBroadcast_ / buildRecipientList_ をそのまま使う。
  *   素材名→リンク解決は CampaignAssets.gs の resolveAssetValue_。
- *   送り先は「配信対象=☑ の全員」（送信時点の状態で判定）。言語は予約行で指定。
+ *   送り先は「配信対象=☑ の全員」（送信時点の状態で判定・提携店QR経由のお客様は除く＝CampaignShopFilter.gs）。言語は予約行で指定。
  *
  * 【セットアップ】
  *   setupCampaignSchedule() を1回実行 → シート生成 + 15分トリガー登録。
@@ -446,8 +446,8 @@ function previewScheduledRow() {
     return;
   }
 
-  let total = 0;
-  try { total = buildRecipientList_().length; } catch (e) { total = 0; }
+  let total = 0, excludedShop = 0;
+  try { const rl = buildRecipientList_(); total = rl.length; excludedShop = rl.excludedShop || 0; } catch (e) { total = 0; }
 
   // スケジュール情報の見出し
   const type = String(ctx.row[SCHED_COL.TYPE - 1] || '').trim();
@@ -462,7 +462,7 @@ function previewScheduledRow() {
     '  状態: ' + enabled + '\n' +
     '────────────────\n\n';
 
-  const msg = head + buildDraftPreviewText_(draft, total) +
+  const msg = head + buildDraftPreviewText_(draft, total, excludedShop) +
     '\n\n※ 実物を自分に送って確認するには「🧪 この予約をテスト送信」を使ってください。';
   ui.alert('🗓 予約プレビュー', msg, ui.ButtonSet.OK);
 }
