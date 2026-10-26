@@ -83,7 +83,7 @@ function ensurePartnerLangColumn_(sheet) {
 }
 
 // ====== 車屋への月次レポート ======
-// クメール語は Panha 校閲（2026-10-26・provisional）。英語は 2026-10-26 までの文と同じ（nothingDue だけ新設）。日本語は同日新設
+// クメール語は Panha 校閲（2026-10-26・provisional）。英語は 2026-10-26 までの文と同じ（nothingDue を新設・collect から現金を外した）。日本語は同日新設
 const SHOP_REPORT_TEXT = {
   title:      { km: 'របាយការណ៍ប្រចាំខែ', en: 'Monthly Report', ja: '月次レポート' },
   shop:       { km: 'ហាង', en: 'Shop', ja: 'お店' },
@@ -94,9 +94,10 @@ const SHOP_REPORT_TEXT = {
   payout:     { km: 'យើងនឹងបង់កម្រៃជើងសារចំនួន {amt} ជូនហាង ត្រឹមថ្ងៃទី10 (តាម ABA)។', en: 'We will pay your commission {amt} by the 10th (ABA).',
                 ja: '紹介料 {amt} は、10日までに ABA でお支払いします。' },
   notSettled: { km: 'មិនទាន់ទូទាត់', en: 'Not yet settled', ja: '未精算' },
-  collect:    { km: 'បុគ្គលិករបស់យើងនឹងទទួលប្រាក់ពីហាង នៅពេលមកលើកក្រោយ (សាច់ប្រាក់ ឬ ABA)។ សូមអរគុណ!',
-                en: 'Our staff will collect on the next visit (cash or ABA). Thank you!',
-                ja: '次にうかがった時に、スタッフが受け取ります（現金または ABA）。よろしくお願いします！' },
+  // 2026-10-25 Daisuke 決定「当社が受け取るのは ABA の QR だけ（現金は受け取らない）」に合わせて、現金を外した（Panha 案B・2026-10-26）
+  collect:    { km: 'បុគ្គលិករបស់យើងនឹងទទួលប្រាក់ពីហាង នៅពេលមកលើកក្រោយ (តាម ABA)។ សូមអរគុណ!',
+                en: 'Our staff will collect on the next visit (ABA). Thank you!',
+                ja: '次にうかがった時に、スタッフが ABA で受け取ります。よろしくお願いします！' },
   settled:    { km: 'ទូទាត់រួចរាល់ទាំងអស់។ សូមអរគុណដែលសហការជាមួយយើង!', en: 'All settled. Thank you for working with us!',
                 ja: 'すべて精算済みです。いつもありがとうございます！' },
   // 当社→店の紹介料の支払いだけがある月（お店が当社に払うものは無い）。「All settled」が支払い予告と矛盾して見えないように（Panha 2026-10-26 提案）
