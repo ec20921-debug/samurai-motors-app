@@ -276,6 +276,18 @@ function sendShopMonthlyReports() {
   var lastMonthEnd = new Date(firstOfThisMonth.getTime() - 1);
   var ymLabel = Utilities.formatDate(lastMonthEnd, tz, 'yyyy-MM');
 
+  // 個人提携の紹介料を台帳へ記帳（作業完了・清算済みの予約から・IndividualPartnerOps.gs・2026-10-26）。
+  // 精算・レポートより先に。失敗したら個人提携へのレポートは止める（数字が欠けたまま送らない）
+  var indivPartners = {};
+  var indivSyncOk = true;
+  try {
+    indivPartners = individualPartnersById_();
+    syncIndividualPartnerCommissions_();
+  } catch (err) {
+    indivSyncOk = false;
+    Logger.log('⚠️ 個人提携の紹介料の記帳失敗: ' + err);
+  }
+
   // 前月分のパートナー精算（提携先・紹介者）を先に作る。失敗してもレポート送信は続行
   try {
     buildPartnerSettlement(ymLabel);
@@ -333,6 +345,16 @@ function sendShopMonthlyReports() {
   var props = getShopProvProps_();
   var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果', ''];
   if (skippedSrc.length) adminLines.push('⏭ 送らない（流入元の提携先）: ' + skippedSrc.join(' / '));
+  // 個人提携: 前月より前の月の未払いも支払い予定に含める（月をまたいで清算済みになった予約など）
+  var indivOwed = {};
+  if (indivSyncOk && Object.keys(indivPartners).length) {
+    try {
+      indivOwed = individualOwedUpTo_(ymLabel, indivPartners);
+    } catch (err) {
+      indivSyncOk = false;
+      Logger.log('⚠️ 個人提携の未払い集計失敗: ' + err);
+    }
+  }
 
   linkedShops.forEach(function(r) {
     var shopId = String(r[idx['shop_id']]);
@@ -345,6 +367,20 @@ function sendShopMonthlyReports() {
              : (rateKeys.length ? null : (termsByShop[shopId] || { rate: COMMISSION_DEFAULT_RATE }).rate);
     var yourPct = rate === null ? 'mixed' : rate + '%';
     var ourPct = rate === null ? 'mixed' : (Math.round((100 - rate) * 100) / 100) + '%';
+
+    // 個人提携（IndividualPartnerOps.gs）: 日本語＋英語のレポート。記帳に失敗した月は送らない（管理グループに知らせる）
+    if (indivPartners[shopId]) {
+      if (!indivSyncOk) {
+        adminLines.push('⚠️ ' + shopName + '（個人提携）: 紹介料の記帳・集計に失敗したため送っていません → syncIndividualPartnerCommissionsNow() のあと sendShopMonthlyReports() を手で実行');
+        return;
+      }
+      var owedAll = indivOwed[shopId] || 0;
+      var okIndiv = sendViaBookingBot_(props.bookingBotToken, groupChatId,
+        buildIndividualMonthlyReport_(shopName, ymLabel, a, yourPct, owedAll));
+      adminLines.push((okIndiv ? '✅ ' : '❌ ') + '🙋 ' + shopName + '（個人提携）: ' + a.count + '件 / 売上' + a.sales.toFixed(2) +
+        '$ / 紹介料(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 当社→紹介者 未払い' + owedAll.toFixed(2) + '$（10日までに ABA）');
+      return;
+    }
 
     // 店舗向け（英語。クメール語版は Panha 校閲後に差し替え可）
     var shopLines = [

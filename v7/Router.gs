@@ -242,9 +242,10 @@ function apiBookingInit(params) {
 
   // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩）。
   //   これまでは歓迎文でバナーを隠すだけで、予約画面と予約作成には全体キャンペーンが効いていた（createBooking と同じ判定）
+  //   個人提携（IndividualPartner.gs）のお客様も紹介料が付くので同じく対象外（getReferralPartnerRef_ は個人提携を含む）
   let shop = false;
   try {
-    if (typeof getValidShopRef_ === 'function' && getValidShopRef_(chatId)) {
+    if (typeof getReferralPartnerRef_ === 'function' && getReferralPartnerRef_(chatId)) {
       shop = true;
       campaign = null;
     }

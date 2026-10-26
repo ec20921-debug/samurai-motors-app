@@ -86,7 +86,7 @@ function buildShopInvoiceText_(p) {
  * @param {Object} body - job_end の本文（amount・carModel・plate・name・v2.list_price / v2.shop_rate）
  * @param {Object} opts - apiJobEnd の opts（rowIndex・rowData … 作業記録の行）
  * @param {Object} p - { shopId, pt, refId, adminOpts }
- * @return {string} sent / skip_zero / duplicate / unknown / no_row / no_shop / source_partner / source_unknown / no_list_price / over_list / not_linked / no_qr / send_failed / error
+ * @return {string} sent / skip_zero / duplicate / unknown / no_row / no_shop / source_partner / source_unknown / individual_partner / partner_kind_unknown / no_list_price / over_list / not_linked / no_qr / send_failed / error
  */
 function sendShopInvoiceForJob_(body, opts, p) {
   p = p || {};
@@ -125,6 +125,10 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
   var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopId) : false;
   if (srcPartner === true) return 'source_partner';
   if (srcPartner === null) return 'source_unknown';
+  // 個人提携には請求を送らない（お客様は当社に払う・IndividualPartner.gs・2026-10-26）。判定できない時も送らない
+  var indivPartner = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
+  if (indivPartner === true) return 'individual_partner';
+  if (indivPartner === null) return 'partner_kind_unknown';
   var listPrice = (typeof fieldListPrice_ === 'function') ? fieldListPrice_(body) : 0;
   if (!(listPrice > 0)) return 'no_list_price';
   if (due > listPrice) return 'over_list';
@@ -203,6 +207,12 @@ function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts) {
         break;
       case 'source_unknown':
         msg = '⚠️ 請求を送れていません: 流入元タブが読めず、' + name + ' がレジデンス等の提携先か確かめられません。' + manual;
+        break;
+      case 'individual_partner':
+        msg = '⚠️ 請求を送っていません: ' + name + ' は個人提携のため、グループへ請求しません（お客様は当社に払う）。お客様への請求を確かめてください';
+        break;
+      case 'partner_kind_unknown':
+        msg = '⚠️ 請求を送れていません: 店マスターが読めず、' + name + ' が個人提携か確かめられません。' + manual;
         break;
       default:
         msg = '⚠️ 請求の送信に失敗しました: ' + name + ' $' + due + '。お店のグループへ手で QR を送ってください';

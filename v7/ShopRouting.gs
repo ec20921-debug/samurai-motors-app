@@ -139,7 +139,10 @@ function handleShopGroupMessage_(msg) {
 
   // 流入元（レジデンス等）の提携先は「住民のご予約」。判定できない時は中立の文（SourceGroupNotify.gs・2026-10-26）
   var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopIdHit) : false;
-  sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
+  // 個人提携は「ご紹介の方のご予約」（日本語＋英語・IndividualPartner.gs・2026-10-26）。分からない時は中立の文
+  var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
+  if (indivPartner === null) srcPartner = null;
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName) :
     '✅ Connected! / 連携完了！\n' +
     (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +
     (srcPartner === true
@@ -162,7 +165,7 @@ function handleShopGroupMessage_(msg) {
   try {
     var cfg = getConfig();
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-      '🔗 店舗グループ連携完了: ' + shopName + '\n' +
+      '🔗 店舗グループ連携完了: ' + shopName + (indivPartner === true ? '（個人提携）' : '') + '\n' +
       'shop_id: ' + shopIdHit + '\n' +
       'グループ: ' + (msg.chat.title || msg.chat.id));
   } catch (err) {
@@ -210,8 +213,10 @@ function handleShopStart_(msg, text) {
   }
 
   // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
-  // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩）
-  sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName });
+  // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩。個人提携も紹介料が付くので同じ）
+  // 個人提携（IndividualPartner.gs・2026-10-26）: 写真は共有しないので、その一言の代わりに「予約の内容が紹介者に伝わる」を出す
+  var indivState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
+  sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName, individual: indivState === true });
   ensureCustomerTopic(msg);
 
   // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
@@ -233,7 +238,8 @@ function handleShopStart_(msg, text) {
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
 
-  if (link && String(link.obj['状態']) === '連携済' && String(link.obj['グループchat_id'])) {
+  // 個人提携のグループには予約が入った時だけ送る（お客様の名前は出さない）。個人提携か分からない時も送らない
+  if (indivState === false && link && String(link.obj['状態']) === '連携済' && String(link.obj['グループchat_id'])) {
     try {
       sendMessage(BOT_TYPE.BOOKING, String(link.obj['グループchat_id']),
         '🔔 New customer from your QR! / お店のQRからお客様が来ました！\n' +
@@ -248,8 +254,11 @@ function handleShopStart_(msg, text) {
   try {
     var cfg = getConfig();
     var linked = !!(link && String(link.obj['状態']) === '連携済');
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-      '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, indivState === true
+      ? '🙋 個人提携の紹介QRからの新規流入\n紹介者: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName + '\n' +
+        '（お客様は当社に直接お支払い・決済QRは通常どおり。紹介者のグループには予約が入った時だけ知らせる）' +
+        (linked ? '' : '\n（紹介者のグループは未連携: 予約のお知らせは届きません）' + shopLinkGuideText_(link, welcomeShopName || shopId))
+      : '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
       (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）' +
         shopLinkGuideText_(link, welcomeShopName || shopId)));
   } catch (err) {
@@ -352,16 +361,29 @@ function getShopNameById_(shopId) {
 
 /**
  * 「店に支払う」お客様か（= 当社の決済QR・支払いのご案内を送らない）。該当すれば shop_id、しなければ ''。
- * shop_ref があり、その店が店マスターにあり、Bot連携で停止になっていない時だけ（2026-10-20）
- * 読み取りエラーで分からない時は店扱い（当社QRを送ると取り消せない・二重請求になるため止める側に倒す）。例外は外へ出さない
+ * 店QRの紐付けが有効な提携先（getReferralPartnerRef_）のうち、個人提携でないもの（2026-10-20 / 2026-10-26）。
+ * 個人提携のお客様は当社に直接払う（IndividualPartner.gs）。個人提携か分からない時は店扱い（止める側）
  */
 function getValidShopRef_(chatId) {
+  var shopId = getReferralPartnerRef_(chatId);
+  if (!shopId) return '';
+  if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) return '';
+  return shopId;
+}
+
+/**
+ * 店QRで紐付いた提携先（個人提携を含む）。該当すれば shop_id、しなければ ''。
+ * shop_ref があり、その店が店マスターにあり、Bot連携で停止になっていない時だけ（2026-10-20）。
+ * キャンペーンの対象外・予約の「紹介元shop_id」に使う（決済の判定は getValidShopRef_）。
+ * 読み取りエラーで分からない時は shop_id を返す（当社QRを送ると取り消せない・二重請求になるため止める側に倒す）。例外は外へ出さない
+ */
+function getReferralPartnerRef_(chatId) {
   var shopId = getShopRefForCustomer(chatId);
   if (!shopId) return '';
   try {
     var hit = lookupShopMaster_(shopId);
     if (hit.error) {
-      Logger.log('⚠️ getValidShopRef_: 店マスターを読めないため店扱い（shop=' + shopId + '）');
+      Logger.log('⚠️ getReferralPartnerRef_: 店マスターを読めないため店扱い（shop=' + shopId + '）');
       return shopId;
     }
     if (!hit.found) return '';
@@ -369,7 +391,7 @@ function getValidShopRef_(chatId) {
     if (link && String(link.obj['状態']) === '停止') return '';
     return shopId;
   } catch (err) {
-    Logger.log('⚠️ getValidShopRef_ 判定エラー（店扱い）: ' + err);
+    Logger.log('⚠️ getReferralPartnerRef_ 判定エラー（店扱い）: ' + err);
     return shopId;
   }
 }
@@ -398,6 +420,8 @@ function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
 function notifyShopGroupByShopId_(shopId, text, blobs) {
   try {
     if (!shopId) return '';
+    // 個人提携のグループには作業の通知・写真を送らない（予約の通知だけ・IndividualPartner.gs・2026-10-26）。分からない時も送らない
+    if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) !== false) return '';
     var link = findShopLinkByShopId_(shopId);
     if (!link || String(link.obj['状態']) !== '連携済') return '';
     var groupChatId = String(link.obj['グループchat_id'] || '');
@@ -442,6 +466,8 @@ function apiFieldPartnerShops() {
     if (!id || seen[id] || stopped[id] === true || id.indexOf('SHOP-SAMPLE') === 0 || String(name || '').indexOf('【サンプル】') === 0) return;
     // 流入元（レジデンス等）の提携先は店集金・請求の相手ではないので出さない（SourceGroupNotify.gs・2026-10-26）
     if (typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(id)) return;
+    // 個人提携も店集金・請求の相手ではないので出さない（IndividualPartner.gs・2026-10-26）
+    if (typeof isIndividualPartnerShop_ === 'function' && isIndividualPartnerShop_(id)) return;
     seen[id] = true;
     out.push({ id: id, name: String(name || id),
                rate: rates.hasOwnProperty(id) ? rates[id] : (typeof FIELD_SHOP_RATE_DEFAULT_ !== 'undefined' ? FIELD_SHOP_RATE_DEFAULT_ : 30) });
@@ -481,6 +507,8 @@ function validFieldShopId_(shopId) {
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/.test(id) || id.indexOf('SHOP-SAMPLE') === 0) return '';
   // 流入元（レジデンス等）の提携先は通さない。流入元タブが読めず判定できない時も通さない（SourceGroupNotify.gs・2026-10-26）
   if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(id) !== false) return '';
+  // 個人提携も通さない。判定できない時も通さない（IndividualPartner.gs・2026-10-26）
+  if (typeof individualPartnerState_ === 'function' && individualPartnerState_(id) !== false) return '';
   try {
     var link = findShopLinkByShopId_(id);
     if (link && String(link.obj['状態']) === '停止') return '';

@@ -653,6 +653,10 @@ function createBooking(params) {
   if (after.sourceGroup && res && res.status === 'ok' && typeof notifySourceGroupBooking_ === 'function') {
     notifySourceGroupBooking_(after.sourceGroup.cfg, after.sourceGroup.info);
   }
+  // 個人提携の紹介者のグループへの「予約が入った」も同じくロックの外で（2026-10-26 IndividualPartner.gs）
+  if (after.individualPartner && res && res.status === 'ok' && typeof notifyIndividualPartnerBooking_ === 'function') {
+    notifyIndividualPartnerBooking_(after.individualPartner.shopId, after.individualPartner.info);
+  }
   return res;
 }
 
@@ -756,9 +760,14 @@ function createBookingLocked_(params, after) {
       : null;
     const cfg = getBookingConfig();
     // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩。お客様は店に定価を払う）。
-    //   流入元（src）とは同時に付かない（最後に読んだQRが優先）。判定は決済QRと同じ getValidShopRef_
+    //   流入元（src）とは同時に付かない（最後に読んだQRが優先）。
+    //   個人提携（IndividualPartner.gs）のお客様も紹介料が付くので同じく対象外（getReferralPartnerRef_ は個人提携を含む・2026-10-26）
     const campCfg = cfg.campaign || { active: false, percent: 0 };
-    const shopNoCamp = !srcDisc && typeof getValidShopRef_ === 'function' && !!getValidShopRef_(params.chatId);
+    const partnerRef = (typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(params.chatId) : '';
+    const shopNoCamp = !srcDisc && !!partnerRef;
+    // 紹介元の提携先（予約タブ「紹介元shop_id」）。流入元の予約には付けない。個人提携は紹介料の月次集計に使う（v7-operations/IndividualPartnerOps.gs）
+    const referralShopId = srcCfg ? '' : partnerRef;
+    const indivPartner = (referralShopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(referralShopId) : null;
     // 画面ではキャンペーン価格を見せていたのに、ここで外れる（QR → START の直後に開いた等）→ 予約は作らず、画面に取り直してもらう
     if (shopNoCamp && params.campaignShown === true && campCfg.active && campCfg.percent > 0) {
       return { status: 'error', code: 'PRICE_CHANGED', message: 'Prices have been updated. Please check your selection again.' };
@@ -884,7 +893,9 @@ function createBookingLocked_(params, after) {
       // ── 専用QR（流入元）(2026-10-15 SourceCampaign.gs) ──
       '流入元':         srcCfg ? srcCfg.code : '',                 // チャネル別コード（picasso_signage 等）
       '特典':           srcPerkText,
-      '部屋番号':       unitNo
+      '部屋番号':       unitNo,
+      // ── 紹介元の提携先（店QR）(2026-10-26 IndividualPartner.gs) ──
+      '紹介元shop_id':  referralShopId
     });
     // 画面の ?src= だけで来た（/start を経ていない）場合も、以後の案内のために紐付けを残す
     if (srcCfg && !getSourceRefForCustomer(params.chatId)) setSourceRefForCustomer_(String(params.chatId), srcCfg.code);
@@ -931,7 +942,9 @@ function createBookingLocked_(params, after) {
       srcDiscount: srcDisc,
       srcPerkText: srcPerkText,
       unitNo: unitNo,
-      carModel: carModel
+      carModel: carModel,
+      // 2026-10-26: 個人提携の紹介（管理通知に1行）
+      referralAdminLine: (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name) : ''
     });
 
     // ── 9. 流入元（レジデンス等）の提携先グループへ「予約が入った」（2026-10-26 SourceGroupNotify.gs） ──
@@ -942,6 +955,13 @@ function createBookingLocked_(params, after) {
         date: params.date, startTime: params.startTime, endTime: endTimeStr, unitNo: unitNo
       } };
       markSourceGroupBooking_(srcCfg, after.sourceGroup.info);   // 作業の通知に使う印は、ここ（ロック内）で付ける
+    }
+    // ── 9-b. 個人提携の紹介者のグループへ「予約が入った」（2026-10-26 IndividualPartner.gs）。送るのはロックの外（createBooking） ──
+    if (after && indivPartner) {
+      after.individualPartner = { shopId: referralShopId, info: {
+        bookingId: bookingId, plan: plan, options: optionLines, vehicleType: vehicleType, carModel: carModel,
+        date: params.date, startTime: params.startTime, endTime: endTimeStr
+      } };
     }
 
     return {
@@ -1132,6 +1152,7 @@ function notifyBookingCreated(info) {
     '予約番号: ' + info.bookingId + '\n' +
     '顧客: ' + (info.name || 'Guest') + ' (chat_id=' + info.chatId + ')\n';
   if (info.source && typeof sourceAdminLinesForBooking_ === 'function') adminText += sourceAdminLinesForBooking_(info);
+  if (info.referralAdminLine) adminText += info.referralAdminLine;
   if (hasPlan) {
     adminText += 'プラン: ' + info.plan.planFull + '\n';
   } else {

@@ -33,12 +33,16 @@ var SHOP_GREETING_PROP_PREFIX = 'shop_greeting_sent_';
 var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
- * あいさつ文の本文（km → 空行 → en）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）
+ * あいさつ文の本文（km → 空行 → en）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
+ * 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
   if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {
     return buildSourceGroupGreeting_(shopName);
   }
+  // 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
+  var indiv = (shopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
+  if (indiv) return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate);
   var name = String(shopName || '').trim() || 'your shop';
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
   var fill = function() { return name; };
@@ -57,6 +61,11 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   // 流入元タブが読めず、レジデンス等の提携先か判定できない時は送らない（車屋用の文を一度送ると戻せない。毎時の安全網が再試行）
   if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(shopId) === null) {
     Logger.log('⚠️ あいさつ文 保留（流入元タブを読めない）: ' + shopId);
+    return false;
+  }
+  // 店マスターが読めず個人提携か判定できない時も送らない（IndividualPartner.gs・2026-10-26）
+  if (typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === null) {
+    Logger.log('⚠️ あいさつ文 保留（店マスターを読めない）: ' + shopId);
     return false;
   }
 

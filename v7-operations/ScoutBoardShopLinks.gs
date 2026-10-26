@@ -148,7 +148,10 @@ function scoutLinksRows_() {
       totalSales, shopShare, Math.round((sales - shopShare + fieldSales) * 100) / 100, rate,
       linked ? String(link['グループ名'] || '') : '',
       linked ? String(link['紐付け日時'] || '') : '',
-      (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
+      // 個人提携は日本語＋英語の専用文（IndividualPartnerOps.gs・2026-10-26）
+      String(shop[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() === INDIVIDUAL_PARTNER_KIND
+        ? individualGroupGreetingText_(name, rate)
+        : (SCOUT_LINKS_GREETING_KM ? SCOUT_LINKS_GREETING_KM.replace(/\{shop\}/g, name) + '\n\n' : '') + SCOUT_LINKS_GREETING_EN.replace(/\{shop\}/g, name),
       id
     ];
   });
