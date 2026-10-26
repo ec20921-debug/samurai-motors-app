@@ -174,13 +174,25 @@ function normTimeStr_(v, tz) {
 }
 
 /**
- * 予約の進行状態がキャンセルか。
- * 予約シートの値は「キャンセル」（v7 Setup の入力規則）。以前の 'cancelled' 判定だけでは外れていなかった（2026-10-26）。
+ * 予約の進行状態を英語のキー（confirmed / in_progress / completed / cancelled）にそろえる。
+ * 予約シートの値は日本語（v7 Setup の入力規則: 予約確定・作業中・作業完了・キャンセル）なのに、
+ * 英語のキーだけで比べていたため、作業完了・キャンセルの判定が外れていた（2026-10-26）。英語の値はそのまま返す。
  * 経営ダッシュボード・経営チャット・日報・売上キャッシュで共通に使う
  */
-function isCancelledStatus_(s) {
+function bookingStatusKey_(s) {
   const v = String(s || '').trim();
-  return v === 'キャンセル' || v === 'cancelled';
+  const map = { '予約確定': 'confirmed', '作業中': 'in_progress', '作業完了': 'completed', 'キャンセル': 'cancelled' };
+  return Object.prototype.hasOwnProperty.call(map, v) ? map[v] : v;
+}
+
+/** 予約の進行状態がキャンセルか */
+function isCancelledStatus_(s) {
+  return bookingStatusKey_(s) === 'cancelled';
+}
+
+/** 予約の進行状態が作業完了か */
+function isCompletedStatus_(s) {
+  return bookingStatusKey_(s) === 'completed';
 }
 
 /** 売上計上対象か（キャンセル除外＝既存ダッシュボード・日報と同基準） */
@@ -284,7 +296,7 @@ function buildSalesSection2_(rows, ym, todayStr) {
 function buildUnpaidSection_(rows, now) {
   const items = [];
   rows.forEach(function(r) {
-    if (String(r['進行状態'] || '') !== 'completed') return;
+    if (!isCompletedStatus_(r['進行状態'])) return;
     const pay = String(r['決済状態'] || '').trim();
     if (pay === '清算済み') return;
 
@@ -322,7 +334,7 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
       customer: customers[String(r['顧客ID'] || '').trim()] || '（未登録）',
       car: String(r['車種名'] || '') || String(r['車種タイプ'] || ''),
       plan: String(r['プラン'] || ''),
-      prog: String(r['進行状態'] || ''),
+      prog: bookingStatusKey_(r['進行状態']),   // 画面は英語のキーで色分け・表示名を引く（PROG_JP）
       pay: String(r['決済状態'] || ''),
       priceUsd: round2_(rowRevenue_(r))
     };
@@ -355,9 +367,8 @@ function buildBookingsNowSection_(rows, customers, ym, todayStr, tz) {
   const counts = { confirmed: 0, in_progress: 0, completed: 0, cancelled: 0 };
   rows.forEach(function(r) {
     if (r._date.substring(0, 7) !== ym) return;
-    const s = String(r['進行状態'] || '');
-    if (isCancelledStatus_(s)) counts.cancelled++;
-    else if (counts.hasOwnProperty(s)) counts[s]++;
+    const k = bookingStatusKey_(r['進行状態']);
+    if (counts.hasOwnProperty(k)) counts[k]++;
   });
 
   return { today: today, upcoming: upcoming, monthCounts: counts };

@@ -337,7 +337,7 @@ function buildSalesSection_(todayStr) {
 
     if (!isCancelledStatus_(prog)) {
       total += amt;
-      if (prog === 'completed') completedCount++;
+      if (isCompletedStatus_(prog)) completedCount++;
       planMap[plan] = planMap[plan] || { count: 0, amount: 0 };
       planMap[plan].count  += 1;
       planMap[plan].amount += amt;
