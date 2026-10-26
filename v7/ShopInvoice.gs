@@ -44,6 +44,7 @@ var SHOP_INVOICE_JA_ = {
   screenshot: 'お支払い後、お支払い画面のスクリーンショットをこのグループに送ってください。'
 };
 var SHOP_INVOICE_LINE_ = '━━━━━━━━━━━━━━━━━';
+var SHOP_INVOICE_CAPTION_MAX_ = 1024;   // Telegram の写真の説明文の上限
 var SHOP_INVOICE_COL_ = '店への請求';   // 作業記録の列（JobIdempotency.gs JOBS_V2_COLS_）
 
 /** 金額の表示（既存の Bot と同じ「21$」形式。セントがある時は 30.10$） */
@@ -62,8 +63,8 @@ function shopInvoiceServices_(body) {
 
 /**
  * 請求の本文（QR 画像のキャプション。Telegram では画像の下に出る）
- * @param {Object} p - { pt, refId, carModel, plate, services, customerName, listPrice, rate, due, langs }
- *   langs = 出す言語の順（省略時は従来どおり クメール語 → 英語）
+ * @param {Object} p - { pt, refId, carModel, plate, services, customerName, listPrice, rate, due, langs, compact }
+ *   langs = 出す言語の順（省略時は従来どおり クメール語 → 英語）／ compact = 内訳とお客様の名前を出さない（説明文の上限対策）
  */
 function buildShopInvoiceText_(p) {
   var langs = p.langs || ['km', 'en'], L = SHOP_INVOICE_LINE_;
@@ -76,7 +77,7 @@ function buildShopInvoiceText_(p) {
   var car = [p.carModel, p.plate].map(function(s) { return String(s || '').trim(); }).filter(String).join(' / ');
   if (car) lines.push('🚗 ' + car);
   if (p.services) lines.push('✨ ' + p.services);
-  if (p.pt === 'shopref') {
+  if (p.pt === 'shopref' && !p.compact) {
     if (p.customerName) lines.push('👤 ' + p.customerName);
     // 内訳は定価が当社の取り分より大きい時だけ。率は 店の手数料 と合う時だけ出す（現場で金額を直した時に食い違わせない）
     var shareCents = Math.round(Number(p.listPrice) * 100) - Math.round(Number(p.due) * 100);
@@ -156,8 +157,9 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
   if (!groupChatId) return 'not_linked';
   var qr = getActiveQR();
   if (!qr || !qr.imageUrl) return 'no_qr';
+  var langs = shopGroupLangs_(shopId);   // 店マスター「グループへの通知の言語」（PartnerLang.gs・2026-10-26）。印の前に決める
   shopInvoiceMark_(opts.rowIndex, '送信中');   // 送る前に印（返事が取れずに再送された時、二重に請求しない）
-  var text = buildShopInvoiceText_({
+  var invoice = {
     pt:           p.pt,
     refId:        p.refId,
     carModel:     shopInvoiceCut_(body.carModel),
@@ -167,8 +169,14 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
     listPrice:    listPrice,
     rate:         body.v2 && body.v2.shop_rate,
     due:          due,
-    langs:        shopGroupLangs_(shopId)   // 店マスター「グループへの通知の言語」（PartnerLang.gs・2026-10-26）
-  });
+    langs:        langs
+  };
+  var text = buildShopInvoiceText_(invoice);
+  // 写真の説明文は Telegram の上限 1024 字。3言語で長くなった時は、内訳（定価・店の紹介料）とお客様の名前を外して収める
+  if (text.length > SHOP_INVOICE_CAPTION_MAX_) {
+    invoice.compact = true;
+    text = buildShopInvoiceText_(invoice);
+  }
   var res = sendQRImage(groupChatId, qr.imageUrl, text);
   return (res && res.ok) ? 'sent' : 'send_failed';
 }

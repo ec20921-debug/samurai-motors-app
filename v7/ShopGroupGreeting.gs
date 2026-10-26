@@ -55,7 +55,8 @@ function buildShopGroupGreeting_(shopName, shopId) {
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
   var fill = function() { return name; };
   var texts = { km: SHOP_GREETING_KM, en: SHOP_GREETING_EN, ja: SHOP_GREETING_JA };
-  return langLines_(shopGroupLangs_(shopId), texts).map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n');
+  // 1回きり・取り消せない送信なので、5分キャッシュを使わず設定を読み直す
+  return langLines_(shopGroupLangs_(shopId, true), texts).map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n');
 }
 
 /**

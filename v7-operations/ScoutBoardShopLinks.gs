@@ -62,7 +62,9 @@ function scoutLinksShopLangLabel_(shop) {
   const raw = String(shop[PARTNER_GROUP_LANG_COL] || '').trim();
   const label = partnerLangsLabel_(shopGroupLangsOps_(shop));
   if (!raw) return label + '（標準）';
-  return parsePartnerLangs_(raw) ? label : label + '（「' + raw + '」を読めないので標準）';
+  if (!parsePartnerLangs_(raw)) return label + '（「' + raw + '」を読めないので標準）';
+  const unknown = partnerLangsUnknownWords_(raw);
+  return unknown.length ? label + '（⚠️ 読めない語: ' + unknown.join('・') + '）' : label;
 }
 
 function scoutBoardWriteShopLinks_(board, d) {
@@ -79,7 +81,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
-    ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語）。レジデンス等・個人提携は固定 / Group language per shop: 店マスター']
+    ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語・最大5分で反映。あいさつ文は連携の1回だけなので ⑤ の前に決める）。レジデンス等・個人提携は固定 / Group language per shop: 店マスター']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');

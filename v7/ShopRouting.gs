@@ -144,8 +144,9 @@ function handleShopGroupMessage_(msg) {
   if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
   if (indivPartner === null) srcPartner = null;
-  // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）
-  var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit) : null;
+  // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）。
+  // 返事とあいさつ文は取り消せないので、5分キャッシュを使わず設定を読み直す
+  var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit, true) : null;
   sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName) :
     shopLangsHit ? shopGroupConnectedText_(shopLangsHit, shopName) :
     '✅ Connected! / 連携完了！\n' +
@@ -437,7 +438,7 @@ function validPartnerShopId_(shopId) {
  * 顧客が店QR経由でない・グループ未連携の場合は何もしない。
  *
  * @param {string} customerChatId - 顧客チャットID
- * @param {string} text - 通知本文（店スタッフ向け・英語短文）
+ * @param {string|Function} text - 通知本文。shop_id を受けて本文を返す関数でもよい（店ごとの通知の言語で組み立てる・PartnerLang.gs・2026-10-26）
  * @param {Array} blobs - 写真Blob配列（省略可）
  * @return {string} 通知した shop_id（該当なしは ''）
  */
