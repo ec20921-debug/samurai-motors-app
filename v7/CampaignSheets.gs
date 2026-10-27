@@ -420,6 +420,7 @@ function appendCampaignLedger_(draft, result, langLabel) {
     const attach = parts.length ? parts.join('\n') : '—';
 
     const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
+    // 本文は下書きセルから読み戻した値（' が外れている）。「- 20%…」等で始まっても数式にしない
     sh.appendRow([
       result.campaignId,
       Utilities.formatDate(result.sentAt, tz, 'yyyy-MM-dd HH:mm:ss'),
@@ -433,7 +434,7 @@ function appendCampaignLedger_(draft, result, langLabel) {
       result.failed,
       result.blocked,
       ''  // 反応メモ（週末に人が追記）
-    ]);
+    ].map(sheetSafeValue_));
   } catch (e) {
     Logger.log('⚠️ appendCampaignLedger_ 失敗（配信自体は完了）: ' + e);
   }
@@ -500,7 +501,8 @@ function ensureCustomerBroadcastColumns_() {
       const v = cur[i][0];
       if (v === '' || v === null) { cur[i][0] = true; filled++; }
     }
-    if (filled > 0) rng.setValues(cur);
+    // 既存セルも書き戻すので、読み戻した文字列が数式にならないように（SheetHelpers.gs sheetSafeValue_）
+    if (filled > 0) rng.setValues(cur.map(function(r) { return [sheetSafeValue_(r[0])]; }));
     Logger.log('  ☑ 配信対象列にチェックボックス書式を再適用（空欄 ' + filled + ' 件を ☑ で初期化）');
   }
 

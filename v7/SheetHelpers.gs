@@ -6,11 +6,14 @@
  *   - 行の追加 / 検索 / 更新のラッパー
  *   - 料金設定（Plan_Prices）の60秒キャッシュ読み込み
  *   - 各シートの列名 ⇔ 列番号マッピング
+ *   - 書く文字列の無害化（数式として評価させない: sheetSafeText_ / sheetSafeValue_）
  *
  * 【設計方針】
  *   - スプレッドシートは CONFIG.spreadsheetId から openById で取得
  *   - ヘッダー行（1行目）は日本語（Setup.gs で定義済み）
  *   - 列位置はヘッダー行から動的に取得（ハードコード禁止、並び替えに強くする）
+ *   - appendRow / updateRow は文字列を必ず sheetSafeValue_ に通す（2026-10-27）。
+ *     数式を書きたい時はこの2つを使わず setFormula で書く
  */
 
 // ====== スプレッドシート取得 ======
@@ -113,10 +116,33 @@ function getHeaderMap(sheetName) {
   return map;
 }
 
+// ====== 書く値の無害化（2026-10-27） ======
+
+/**
+ * シートに書く文字列（先頭が = + - @ なら数式にならないよう ' を付ける）
+ *
+ * Telegram の名前・グループ名・メッセージや、ミニアプリから届く値は誰でも決められる。
+ * =IMPORTXML(...) のような文字列をそのまま書くと数式として動き、シートの中身が外の URL へ送られうる。
+ * ' はセルの値には残らない（読み戻すと元の文字列が返る）ので、読み戻した値を別のセルへ書く時もここを通す。
+ */
+function sheetSafeText_(v) {
+  var s = String(v == null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
+/**
+ * appendRow / updateRow などが書く値の無害化。文字列だけ sheetSafeText_ に通す。
+ * 数値・日付・真偽と、数字だけの文字列（グループの chat_id「-100…」等）は今までどおり数値として入る
+ */
+function sheetSafeValue_(v) {
+  if (typeof v !== 'string' || /^[+\-]?\d+(\.\d+)?$/.test(v)) return v;
+  return sheetSafeText_(v);
+}
+
 // ====== 行操作 ======
 
 /**
- * 行を末尾に追加する
+ * 行を末尾に追加する（文字列は sheetSafeValue_ を通す）
  *
  * @param {string} sheetName
  * @param {Object} rowObj - { 列ヘッダー名: 値, ... }
@@ -129,7 +155,7 @@ function appendRow(sheetName, rowObj) {
   Object.keys(rowObj).forEach(function(key) {
     const colIdx = headers[key];
     if (colIdx) {
-      row[colIdx - 1] = rowObj[key];
+      row[colIdx - 1] = sheetSafeValue_(rowObj[key]);
     } else {
       Logger.log('⚠️ appendRow: 列 "' + key + '" が ' + sheetName + ' に存在しません');
     }
@@ -211,7 +237,7 @@ function readRow(sheetName, rowIndex) {
 }
 
 /**
- * 指定行の特定列を更新
+ * 指定行の特定列を更新（文字列は sheetSafeValue_ を通す）
  *
  * @param {string} sheetName
  * @param {number} rowIndex
@@ -223,7 +249,7 @@ function updateRow(sheetName, rowIndex, updates) {
   Object.keys(updates).forEach(function(key) {
     const colIdx = headers[key];
     if (colIdx) {
-      sheet.getRange(rowIndex, colIdx).setValue(updates[key]);
+      sheet.getRange(rowIndex, colIdx).setValue(sheetSafeValue_(updates[key]));
     } else {
       Logger.log('⚠️ updateRow: 列 "' + key + '" が ' + sheetName + ' に存在しません');
     }

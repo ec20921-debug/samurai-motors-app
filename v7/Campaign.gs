@@ -525,11 +525,11 @@ function executeBroadcast_(draft, recipients) {
     }
   }
 
-  // 履歴シートに一括書き込み
+  // 履歴シートに一括書き込み（氏名は顧客シートから読み戻した値＝' が外れているので、もう一度無害化する）
   if (logRows.length > 0) {
     const logSh = ensureCampaignLogSheet_();
     logSh.getRange(logSh.getLastRow() + 1, 1, logRows.length, logRows[0].length)
-      .setValues(logRows);
+      .setValues(logRows.map(function(r) { return r.map(sheetSafeValue_); }));
   }
 
   // 顧客シートの「最終配信日時」を成功分だけ更新

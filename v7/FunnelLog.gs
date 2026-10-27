@@ -113,7 +113,7 @@ function flushFunnelQueue_(props, all) {
         var obj = funnelRowObject_(ev);
         var row = new Array(lastCol).fill('');
         Object.keys(obj).forEach(function(col) {
-          if (headers[col]) row[headers[col] - 1] = obj[col];
+          if (headers[col]) row[headers[col] - 1] = sheetSafeValue_(obj[col]);   // appendRow と同じ無害化（チャットID等は画面から届く）
         });
         sheet.appendRow(row);                       // 1行ずつ（同時の直接書き込みと行が重ならない）
         written++;

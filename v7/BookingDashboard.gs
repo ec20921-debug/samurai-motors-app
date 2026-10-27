@@ -725,7 +725,8 @@ function fixBookingDatesAndRebuild() {
     }
     if (changed) {
       rng.setNumberFormat('yyyy-MM-dd'); // 表示を日付に
-      rng.setValues(vals);
+      // 日付にしなかったセルも書き戻すので、読み戻した文字列（' が外れている）が数式にならないように
+      rng.setValues(vals.map(function(r) { return [sheetSafeValue_(r[0])]; }));
     }
   }
 

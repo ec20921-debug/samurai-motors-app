@@ -377,6 +377,7 @@ function apiBookingRegisterCustomer(body) {
 
   // 新規登録（ミニアプリ経由なのでトピックはまだ作らない＝/start または最初のDMで作られる）
   const customerId = generateDateSeqId('CUST', SHEET_NAMES.CUSTOMERS, '顧客ID');
+  // name / username は画面から届く値（署名の確認なし）。appendRow が数式にならないよう無害化する（SheetHelpers.gs）
   appendRow(SHEET_NAMES.CUSTOMERS, {
     '顧客ID':       customerId,
     'チャットID':   chatId,

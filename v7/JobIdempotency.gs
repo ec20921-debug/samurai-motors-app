@@ -101,10 +101,9 @@ function jobV2Json_(prevJson, part) {
   return s;
 }
 
-/** セルに数式として解釈されないよう先頭の = + - @ を無害化 */
+/** セルに数式として解釈されないよう先頭の = + - @ を無害化（長さを切ってから共通の sheetSafeText_ へ） */
 function jobSafeText_(v, maxLen) {
-  var s = String(v || '').slice(0, maxLen || 100);
-  return /^[=+\-@]/.test(s) ? "'" + s : s;
+  return sheetSafeText_(String(v || '').slice(0, maxLen || 100));
 }
 
 function jobPayType_(body) {

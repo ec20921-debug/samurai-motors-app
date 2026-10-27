@@ -71,6 +71,7 @@ function getOrCreateTopic(customer) {
       });
     } else {
       const customerId = generateDateSeqId('CUST', SHEET_NAMES.CUSTOMERS, '顧客ID');
+      // 氏名・ユーザー名は Telegram の表示名（誰でも決められる）。appendRow が数式にならないよう無害化する（SheetHelpers.gs）
       appendRow(SHEET_NAMES.CUSTOMERS, {
         '顧客ID': customerId,
         'チャットID': chatId,

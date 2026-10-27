@@ -84,7 +84,8 @@ function scanCampaignAssets_() {
   rows.sort(function(a, b) { return (a[0] + '\t' + a[1]).localeCompare(b[0] + '\t' + b[1]); });
 
   if (rows.length > 0) {
-    sh.getRange(2, 1, rows.length, 5).setValues(rows);
+    // ファイル名は誰でも付けられるので数式にならないように（SheetHelpers.gs sheetSafeValue_）
+    sh.getRange(2, 1, rows.length, 5).setValues(rows.map(function(r) { return r.map(sheetSafeValue_); }));
     for (var i = 0; i < rows.length; i++) {
       if (rows[i][0] === '動画' && Number(rows[i][2]) > 50) {
         sh.getRange(i + 2, 3).setFontColor('#cc0000').setFontWeight('bold');

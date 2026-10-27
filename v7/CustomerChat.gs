@@ -282,6 +282,7 @@ function sendTelegramGeneric(method, payload) {
 
 /**
  * チャット履歴シートにログ記録
+ * 内容はお客様のメッセージ本文・キャプション・ファイル名そのまま。appendRow が数式にならないよう無害化する（SheetHelpers.gs）
  */
 function logChat(entry) {
   try {

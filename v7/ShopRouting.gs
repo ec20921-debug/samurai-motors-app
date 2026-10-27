@@ -127,7 +127,8 @@ function handleShopGroupMessage_(msg) {
 
     // 紐付け書き込み（コードは使い捨て: 状態を連携済にして無効化）
     sheet.getRange(hit.row, col['グループchat_id'] + 1).setValue(String(msg.chat.id));
-    sheet.getRange(hit.row, col['グループ名'] + 1).setValue(msg.chat.title || '');
+    // グループ名は誰でも決められるので数式にならないように（SheetHelpers.gs sheetSafeText_・2026-10-27）
+    sheet.getRange(hit.row, col['グループ名'] + 1).setValue(sheetSafeText_(msg.chat.title || ''));
     sheet.getRange(hit.row, col['紐付け日時'] + 1).setValue(
       Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
     sheet.getRange(hit.row, col['状態'] + 1).setValue('連携済');
