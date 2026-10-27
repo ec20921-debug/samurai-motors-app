@@ -12,7 +12,7 @@
 
 const PARTNER_GROUP_LANG_COL = 'グループへの通知の言語';
 const PARTNER_LANG_SHOP_DEFAULT = ['km', 'en', 'ja'];   // 車屋の標準（Daisuke 2026-10-26）
-const PARTNER_LANG_OPTIONS = ['クメール語＋英語＋日本語', 'クメール語＋英語', '英語＋日本語', '日本語＋英語', '英語', 'クメール語'];
+const PARTNER_LANG_OPTIONS = ['クメール語＋英語＋日本語', 'クメール語＋英語', '英語＋日本語', '日本語＋英語', '英語', 'クメール語', '日本語'];   // 日本語＝個人提携の標準（2026-10-27）
 const PARTNER_LANG_SPLIT = /[＋+,、，・\/&＆→＞>\s]+|と/;
 const PARTNER_LANG_WORDS = {
   'クメール語': 'km', 'クメール': 'km', 'カンボジア語': 'km', '英語': 'en', '英': 'en', '日本語': 'ja', '日本': 'ja',
@@ -72,7 +72,7 @@ function ensurePartnerLangColumn_(sheet) {
       if (!rule || String(rule.getCriteriaValues()[0]) !== String(PARTNER_LANG_OPTIONS)) {
         range.setDataValidation(SpreadsheetApp.newDataValidation()
           .requireValueInList(PARTNER_LANG_OPTIONS, true).setAllowInvalid(true)
-          .setHelpText('グループへの通知の言語（並べた順に出す）。空欄＝車屋の標準（クメール語＋英語＋日本語）。' +
+          .setHelpText('グループへの通知の言語（並べた順に出す）。空欄＝車屋はクメール語＋英語＋日本語・個人提携は日本語。' +
             '変えてから最大5分で反映。あいさつ文は連携した時の1回だけなので、/register の前に決める').build());
       }
     }

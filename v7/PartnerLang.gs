@@ -6,7 +6,7 @@
  *     値は「クメール語＋英語＋日本語」のように並べた順に出す（km / en / ja・カンマ区切りも可）。空欄・読めない値は車屋の標準
  *   - 対象 = 車屋（店集金の提携店）のグループ宛: 連携完了の返事・QRからお客様が来た知らせ（ShopRouting）・あいさつ文（ShopGroupGreeting）・
  *     作業の開始/完了と写真（JobManager）・請求（ShopInvoice）。月次レポートは v7-operations/PartnerLangOps.gs が同じ列を読む
- *   - レジデンス等の提携先（英語）・個人提携（日本語＋英語）のグループは今の文面のまま（この設定は使わない）
+ *   - レジデンス等の提携先（英語）のグループは今の文面のまま（この設定は使わない）。個人提携は空欄＝日本語で、この列の日本語・英語だけを使う（IndividualPartner.gs individualGroupLangs_・2026-10-27）
  *   - 第2回（予定）: 車屋の QR から来たお客様宛にも言語の設定を広げる
  *   - 読み方・別名・区切りは v7-operations/PartnerLangOps.gs と同じ（別 GAS のため複製）。直すときは両方を直す
  *
@@ -86,14 +86,17 @@ function readShopGroupLangs_(fresh) {
 
 /**
  * そのグループに出す言語（並び順どおり）。例外は外へ出さない
- *   レジデンス等の提携先 = 英語・個人提携 = 日本語＋英語（固定。この設定は使わない）
+ *   レジデンス等の提携先 = 英語（固定）・個人提携 = 日本語が標準（この設定で英語にも・2026-10-27）
  *   車屋 = 店マスターの設定。空欄・読めない時は標準（クメール語＋英語＋日本語）
  * @param {boolean} [fresh] - 設定を読み直す（readShopGroupLangs_）
  */
 function shopGroupLangs_(shopId, fresh) {
   try {
     if (shopId && typeof sourcePartnerState_ === 'function' && sourcePartnerState_(shopId) === true) return ['en'];
-    if (shopId && typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) return ['ja', 'en'];
+    // 個人提携は日本語が標準・店マスターの設定で英語にも（2026-10-27 IndividualPartner.gs individualGroupLangs_）
+    if (shopId && typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) {
+      return (typeof individualGroupLangs_ === 'function') ? individualGroupLangs_(shopId, fresh) : ['ja'];
+    }
     var map = readShopGroupLangs_(fresh);
     var v = (shopId && map && Object.prototype.hasOwnProperty.call(map, String(shopId))) ? map[String(shopId)] : '';
     return parsePartnerLangs_(v) || PARTNER_LANG_SHOP_DEFAULT.slice();

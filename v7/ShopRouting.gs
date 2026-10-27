@@ -139,7 +139,7 @@ function handleShopGroupMessage_(msg) {
 
   // 流入元（レジデンス等）の提携先は「住民のご予約」。判定できない時は中立の文（SourceGroupNotify.gs・2026-10-26）
   var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopIdHit) : false;
-  // 個人提携は「ご紹介の方のご予約」（日本語＋英語・IndividualPartner.gs・2026-10-26）。分からない時は中立の文
+  // 個人提携は「ご紹介の方のご予約」（グループの言語・日本語が標準・IndividualPartner.gs）。分からない時は中立の文
   // 連携とあいさつ文は取り消せないので、5分キャッシュを使わず店マスターを読み直してから判定する
   if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
@@ -147,7 +147,7 @@ function handleShopGroupMessage_(msg) {
   // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）。
   // 返事とあいさつ文は取り消せないので、5分キャッシュを使わず設定を読み直す
   var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit, true) : null;
-  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName) :
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
     shopLangsHit ? shopGroupConnectedText_(shopLangsHit, shopName) :
     '✅ Connected! / 連携完了！\n' +
     (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +
@@ -298,9 +298,9 @@ function handleShopStart_(msg, text) {
     // 個人提携: 紹介者ご本人の登録の案内のため chat_id を出す（本人chat_id が未登録の時だけ案内・2026-10-27）
     var indivInfo = (indivState === true && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
     var uname = (msg.from && msg.from.username) ? ' @' + msg.from.username : '';   // 表示名は誰でも変えられるので @ユーザー名も出す
+    // 2026-10-27: 本人の登録はグループに送った本人登録リンクから自動（PartnerSelfRegister.gs）。紹介QRの人を手で本人にしない
     var selfHint = (indivInfo && !indivInfo.selfChat)
-      ? '\n（この方' + uname + 'が紹介者ご本人だと名前と本人に確かめてから、店マスターの「' + PARTNER_SELF_CHAT_COL + '」に ' + msg.chat.id +
-        ' を入れると、ご本人の予約が予約の時に割引・紹介料なしになります。QRを先に読んだ別の人の番号を入れないこと）'
+      ? '\n（紹介者ご本人はまだ未登録。この方' + uname + 'がご本人なら、紹介QRでなく、グループに送った「本人登録リンク」から開いてもらうと自動で登録されます）'
       : '';
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, indivState === true
       ? '🙋 個人提携の紹介QRからの新規流入\n紹介者: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName + '（chat_id=' + msg.chat.id + '）\n' +

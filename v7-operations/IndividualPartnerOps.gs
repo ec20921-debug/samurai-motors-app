@@ -5,7 +5,7 @@
  *   1. 毎月1日 sendShopMonthlyReports（ShopProvisioningManager.gs）の最初に syncIndividualPartnerCommissions_() が、
  *      v7 Database「予約」の「紹介元shop_id」が個人提携の予約のうち、作業完了・清算済みで台帳に無いものを
  *      コミッション台帳へ記帳する（集金者=当社・未払い・率は店マスター「紹介料率(%)」・「予約ID」列で二重記帳を防ぐ）
- *   2. 同じ sendShopMonthlyReports が、個人提携のグループへ日本語＋英語の月次レポート（件数・売上・紹介料・支払い予定）を送る。
+ *   2. 同じ sendShopMonthlyReports が、個人提携のグループへ月次レポート（グループの言語・日本語が標準）（件数・売上・紹介料・支払い予定）を送る。
  *      支払い予定には、前月より前の月の未払い分（月をまたいで清算済みになった予約など）も含める
  *   3. 紹介料は 10日までに ABA で支払い → 台帳の支払ステータスを「支払済み」にする（パートナー精算タブも自動で進む）
  *   - 紹介者本人の利用: 2026-10-27 から、店マスター「本人chat_id」に登録した本人の予約は予約の時に30%引き・紹介料なし
@@ -25,6 +25,10 @@ const INDIVIDUAL_LEDGER_BOOKING_COL = '予約ID';   // コミッション台帳�
 const INDIVIDUAL_BOOKING_REF_COL = '紹介元shop_id';   // v7 Database「予約」タブ（v7 が予約・手動ジョブ売上の時に書く）
 const INDIVIDUAL_BOOKING_RATE_COL = '紹介料率(%)';   // 同じく予約した時の紹介料率の写し（2026-10-27・v7/IndividualPartner.gs BOOKING_REFERRAL_RATE_COL と同じ名前）
 const INDIVIDUAL_AUTO_RECORDER = '自動（個人提携）';
+// 店マスターの個人提携の列（無ければ getShopSheet_ が末尾に足す・2026-10-27）。v7 PartnerSelfRegister.gs / ReferralAttribution.gs が読み書きする
+//   紹介割引率(%)＝配分の設定 ／ 本人chat_id ・本人の名前（Telegram）・本人登録日時・本人登録リンク（「送付済み」だけ）＝予約Botが書く ／
+//   紹介チラシURL＝立ち上げの時に Claude が書く（Day1 publish_referral_set.py の URL）
+const INDIVIDUAL_PARTNER_MASTER_COLS = ['紹介割引率(%)', '本人chat_id', '紹介チラシURL', '本人の名前（Telegram）', '本人登録日時', '本人登録リンク'];
 
 /**
  * 店マスターの個人提携 → { shop_id: { name, terms } }（terms = CommissionManager.shopCommissionTerms_）。
@@ -157,36 +161,55 @@ function individualOwedUpTo_(ymLabel, partners) {
   return out;
 }
 
+// 個人提携のグループは日本語が標準（Daisuke 2026-10-27「ベースは日本語。言語を変えてと言われたら変える」）。
+// 店マスター「グループへの通知の言語」に書けばその言語（日本語・英語）。v7/IndividualPartner.gs individualGroupLangs_ と同じ決まり
+const INDIVIDUAL_LANG_DEFAULT_OPS = ['ja'];
+
+/** 店マスターの行 → 個人提携のグループに出す言語（'ja' / 'en'）。空欄・読めない時は日本語だけ */
+function individualGroupLangsOps_(shopObj) {
+  const langs = (parsePartnerLangs_(shopObj && shopObj[PARTNER_GROUP_LANG_COL]) || []).filter(function(l) { return l === 'ja' || l === 'en'; });
+  return langs.length ? langs : INDIVIDUAL_LANG_DEFAULT_OPS.slice();
+}
+
+/** { ja, en } を langs の順に、空行で区切ってつなぐ */
+function individualTextOps_(langs, texts) {
+  return (langs || INDIVIDUAL_LANG_DEFAULT_OPS).map(function(l) { return texts[l]; }).filter(function(t) { return t; }).join('\n\n');
+}
+
 /**
- * 個人提携のグループへの月次レポート（日本語＋英語）
+ * 個人提携のグループへの月次レポート（日本語が標準・2026-10-27）
  * @param {Object} a - aggregateCommissionsByShop_ の1店分 { count, sales, commission, owedToShop, ... }
  * @param {string} ratePct - '30%' など
  * @param {number} owedAll - 前月までの未払い合計（individualOwedUpTo_）
+ * @param {Array<string>} [langs] - individualGroupLangsOps_（省略時は日本語）
  */
-function buildIndividualMonthlyReport_(name, ymLabel, a, ratePct, owedAll) {
-  const lines = [
-    '📊 SAMURAI MOTORS — 月次レポート / Monthly Report (' + ymLabel + ')',
-    '',
-    name + ' さん',
-    'ご紹介のご利用 / Referred jobs: ' + a.count + '件',
-    '売上合計 / Total sales: ' + a.sales.toFixed(2) + '$',
-    '紹介料 / Your commission (' + ratePct + '): ' + a.commission.toFixed(2) + '$',
-    ''
+function buildIndividualMonthlyReport_(name, ymLabel, a, ratePct, owedAll, langs) {
+  const earlier = Math.round((owedAll - a.owedToShop) * 100) / 100;
+  const ja = [
+    '📊 SAMURAI MOTORS — 月次レポート（' + ymLabel + '）', '', name + ' さん',
+    'ご紹介のご利用: ' + a.count + '件', '売上合計: ' + a.sales.toFixed(2) + '$', '紹介料（' + ratePct + '）: ' + a.commission.toFixed(2) + '$', ''
+  ];
+  const en = [
+    '📊 SAMURAI MOTORS — Monthly Report (' + ymLabel + ')', '', name,
+    'Referred jobs: ' + a.count, 'Total sales: ' + a.sales.toFixed(2) + '$', 'Your commission (' + ratePct + '): ' + a.commission.toFixed(2) + '$', ''
   ];
   if (owedAll > 0) {
-    lines.push('💵 紹介料 ' + owedAll.toFixed(2) + '$ を、10日までに ABA でお支払いします。');
-    lines.push('We will pay your commission of ' + owedAll.toFixed(2) + '$ by ABA by the 10th.');
-    const earlier = Math.round((owedAll - a.owedToShop) * 100) / 100;
-    if (earlier > 0) lines.push('（前月より前の分 ' + earlier.toFixed(2) + '$ を含みます / includes ' + earlier.toFixed(2) + '$ from earlier months）');
+    ja.push('💵 紹介料 ' + owedAll.toFixed(2) + '$ を、10日までに ABA でお支払いします。');
+    en.push('💵 We will pay your commission of ' + owedAll.toFixed(2) + '$ by ABA by the 10th.');
+    if (earlier > 0) {
+      ja.push('（前月より前の分 ' + earlier.toFixed(2) + '$ を含みます）');
+      en.push('(Includes ' + earlier.toFixed(2) + '$ from earlier months.)');
+    }
   } else if (a.count > 0) {
-    lines.push('✅ 紹介料はお支払い済みです / Your commission has been paid.');
+    ja.push('✅ 紹介料はお支払い済みです。');
+    en.push('✅ Your commission has been paid.');
   } else {
-    lines.push('先月はご紹介のご利用がありませんでした。今月もよろしくお願いします！');
-    lines.push('No referred jobs last month — thank you for your support!');
+    ja.push('先月はご紹介のご利用がありませんでした。今月もよろしくお願いします！');
+    en.push('No referred jobs last month — thank you for your support!');
   }
-  lines.push('');
-  lines.push('いつもありがとうございます！ / Thank you!');
-  return lines.join('\n');
+  ja.push('', 'いつもありがとうございます！');
+  en.push('', 'Thank you!');
+  return individualTextOps_(langs, { ja: ja.join('\n'), en: en.join('\n') });
 }
 
 /**
@@ -204,24 +227,34 @@ function individualEffectiveDiscountOps_(shopObj, rate) {
  * 紹介者のグループのあいさつ文（営業ボードの表示用）。
  * v7/IndividualPartner.gs buildIndividualGroupGreeting_（連携時に予約Botが送る文）と同じ文。直すときは両方を直す
  */
-function individualGroupGreetingText_(name, rate, discount) {
+function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
   const n = String(name || '').trim() || 'Partner';
   const pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
   const off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
-  // ご本人の予約は予約の時に（紹介料率＋紹介割引）% 引き・紹介料なし（2026-10-27・v7/ReferralAttribution.gs ⑦）
-  //   本人の登録（店マスター「本人chat_id」）のあとに効くので、そう書く。率が 0 なら出さない
+  // ご本人の予約は予約の時に（紹介料率＋紹介割引）% 引き・紹介料なし（v7/ReferralAttribution.gs ⑦）。率が 0 なら本人の登録の案内を出さない
   const selfPct = Math.min(30, (Number(rate) >= 0 ? Number(rate) : 30) + (Number(discount) > 0 ? Number(discount) : 0));
   const selfOff = selfPct + '%';
-  return n + ' さん × SAMURAI MOTORS のグループです。\n' +
-    'ご紹介いただいた方からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
-    (off ? 'ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます。\n' : '') +
-    (selfPct > 0 ? n + ' さんご自身のご予約は、ご本人の登録のあと、予約の時に ' + selfOff + ' 引きになります（紹介料の対象外）。\n' : '') +
-    '毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、紹介料は ABA でお支払いします。\n' +
-    'いつもありがとうございます。これからもよろしくお願いします！\n\n' +
-    'This is the group for ' + n + ' × SAMURAI MOTORS.\n' +
-    'When someone you referred books with us, we\'ll let you know here — date, time, menu and car (no photos).\n' +
-    (off ? 'People you refer get ' + off + ' off all services.\n' : '') +
-    (selfPct > 0 ? 'Once you are registered, your own bookings get ' + selfOff + ' off when you book (no commission on them).\n' : '') +
-    'At the start of each month, we\'ll send a summary of last month\'s jobs, amounts and your commission (' + pct + '), and pay the commission by ABA.\n' +
-    'Thank you for your support!';
+  const showSelf = selfPct > 0 && !selfDone;   // 本人登録済み（手入力など）なら登録の案内は出さず、割引だけ伝える
+  return individualTextOps_(langs, {
+    ja: n + ' さん、SAMURAI MOTORS の紹介パートナーへようこそ！\nこのグループで、ご案内とお知らせをお送りします。\n\n' +
+      (selfDone && selfPct > 0 ? '【ご本人のご予約】ご本人の登録は済んでいます。ご自身のご予約は、予約の時に ' + selfOff + ' 引きです。\n\n' : '') +
+      (showSelf ? '【はじめに1回だけ】\n① ご本人の登録：このあと届く「🔑 本人登録リンク」を開いてください（「START」ボタンが出たら押してください）。' +
+        'ご自身のご予約が、予約の時に ' + selfOff + ' 引きになります。\n\n' : '') +
+      '【ご紹介のしかた】\n' + (showSelf ? '② ' : '') +
+      'お友達には、このあと届く紹介用のチラシ・URL をお渡しください' + (showSelf ? '（本人登録リンクは渡さないでください）' : '') + '。\n' +
+      (off ? '・ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます\n' : '') +
+      '・お友達のご予約が入ると、ここでお知らせします（日時・メニュー・車種。お名前や写真はお送りしません）\n' +
+      '・毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、10日までに ABA でお支払いします\n\n' +
+      'ご不明な点は、このグループでお気軽にどうぞ。よろしくお願いします！',
+    en: 'Welcome to SAMURAI MOTORS, ' + n + '! We\'ll send updates in this group.\n\n' +
+      (selfDone && selfPct > 0 ? '[Your own bookings] You are already registered. Your own bookings get ' + selfOff + ' off when you book.\n\n' : '') +
+      (showSelf ? '[One-time setup]\n1. Register yourself: open the "🔑 Registration link" coming next (tap "START" if it appears). ' +
+        'Your own bookings will get ' + selfOff + ' off when you book.\n\n' : '') +
+      '[How to refer]\n' + (showSelf ? '2. ' : '') +
+      'Share the referral flyers / URL coming next with your friends' + (showSelf ? ' (not the registration link)' : '') + '.\n' +
+      (off ? '- People you refer get ' + off + ' off all services\n' : '') +
+      '- When a friend books, we\'ll let you know here (date, time, menu and car — no names or photos)\n' +
+      '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th\n\n' +
+      'Feel free to ask anything in this group. Thank you!'
+  });
 }

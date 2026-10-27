@@ -42,17 +42,19 @@ var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
  * あいさつ文の本文（店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切る）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
- * 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
+ * 個人提携は専用文（IndividualPartner.gs・日本語が標準・2026-10-27〜）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
   if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {
     return buildSourceGroupGreeting_(shopName);
   }
-  // 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
+  // 個人提携は専用文（IndividualPartner.gs・日本語が標準・2026-10-27〜）
   var indiv = (shopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
   if (indiv) {
     return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate,
-      (typeof effectiveReferralDiscount_ === 'function') ? effectiveReferralDiscount_(indiv, shopId) : 0);
+      (typeof effectiveReferralDiscount_ === 'function') ? effectiveReferralDiscount_(indiv, shopId) : 0,
+      individualGroupLangs_(shopId, true),   // 日本語が標準（2026-10-27）。1回きりの送信なので設定を読み直す
+      !!indiv.selfChat);   // 本人登録済み（手入力など）なら「このあと本人登録リンク」の案内は出さない
   }
   var name = String(shopName || '').trim() || 'your shop';
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
@@ -88,6 +90,7 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
     Logger.log('⚠️ あいさつ文 lock 取得失敗（次回の安全網で再試行）: ' + shopId);
     return false;
   }
+  var sentNow = false;
   try {
     if (props.getProperty(key)) return true;
     var res = sendMessage(BOT_TYPE.BOOKING, groupChatId, buildShopGroupGreeting_(shopName, shopId));
@@ -97,10 +100,17 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
     }
     props.setProperty(key, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
     Logger.log('👋 あいさつ文 送信: ' + shopId + ' → ' + groupChatId);
-    return true;
+    sentNow = true;
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}
   }
+  // 個人提携: はじめのご案内のすぐあとに、チラシ（店マスター「紹介チラシURL」の画像・最大10枚）＋紹介URL → 本人登録リンク（2026-10-27 PartnerSelfRegister.gs）。
+  //   ロックを外してから送る（予約などを待たせない）。失敗しても毎時の安全網が送る
+  if (sentNow && typeof sendIndividualOnboardingRest_ === 'function' &&
+      typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) {
+    sendIndividualOnboardingRest_(shopId, groupChatId);
+  }
+  return true;
 }
 
 /**
@@ -124,6 +134,10 @@ function sendPendingShopGreetings() {
     if (sendShopGroupGreetingOnce_(shopId, groupChatId, o['店名'])) sent++;
   });
   if (sent > 0) Logger.log('👋 sendPendingShopGreetings: ' + sent + '件送信');
+  // 個人提携: チラシ・紹介URL・本人登録リンクをまだ送っていないグループに送る（2026-10-27 PartnerSelfRegister.gs）
+  if (typeof sendPendingIndividualOnboarding_ === 'function') {
+    try { sendPendingIndividualOnboarding_(); } catch (err) { Logger.log('⚠️ sendPendingIndividualOnboarding_: ' + err); }
+  }
   return sent;
 }
 
