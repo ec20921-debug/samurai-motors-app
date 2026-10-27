@@ -416,7 +416,7 @@ function apiJobStart(body, opts) {
         // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
         startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
           return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', name: body.name || '', car: body.carModel || '', photos: 'before' });
-        }, photoResult.blobs);
+        }, photoResult.blobs, bkRow ? bkRow.data : null);   // 予約の紹介元を優先（2026-10-27 紹介の期限）
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);
@@ -691,7 +691,7 @@ function apiJobEnd(body, opts) {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
         shopRef = notifyShopGroupJobPhotos(customerChatId, function(sid) {
           return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'end', who: 'qr', name: body.name || '', duration: duration, photos: 'after' });
-        }, photoResult.blobs);
+        }, photoResult.blobs, bkRow ? bkRow.data : null);   // 予約の紹介元を優先（2026-10-27 紹介の期限）
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);

@@ -179,6 +179,12 @@ function send24HoursFeedback() {
   } catch (e) {
     Logger.log('⚠️ sendPendingShopGreetings (相乗り) 失敗: ' + e);
   }
+  // ── 紹介元の付いた日（紹介の期限 12か月）を、日付の無い既存の紐付けに一括で付ける（2026-10-27・初回だけ・相乗り実行）──
+  try {
+    if (typeof ensureShopRefDatesMigrated_ === 'function') ensureShopRefDatesMigrated_();
+  } catch (e) {
+    Logger.log('⚠️ ensureShopRefDatesMigrated_ (相乗り) 失敗: ' + e);
+  }
 }
 
 function send24HoursFeedbackCore_() {

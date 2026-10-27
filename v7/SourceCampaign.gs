@@ -295,7 +295,11 @@ function handleSourceStart_(msg, text) {
   // 無効（有効=FALSE）の流入元は通常扱いに戻るだけなので、店の紐付けは残す（resolveBookingSource_ と同じ考え方）
   // 個人提携の紹介元は外さない（当社集金なので流入元と両立する・最初の紹介者で固定・2026-10-27 ReferralAttribution.gs）
   if (cfg.active && (typeof shouldClearShopRefOnSourceScan_ !== 'function' || shouldClearShopRefOnSourceScan_(chatId))) {
-    try { PropertiesService.getScriptProperties().deleteProperty('shop_ref_' + chatId); } catch (ignore) {}
+    try {
+      var sp = PropertiesService.getScriptProperties();
+      sp.deleteProperty('shop_ref_' + chatId);
+      if (typeof SHOP_REF_AT_PREFIX !== 'undefined') sp.deleteProperty(SHOP_REF_AT_PREFIX + chatId);   // 紹介元が付いた日も
+    } catch (ignore) {}
   }
 
   if (cfg.active && cfg.lang === 'en-ja') {

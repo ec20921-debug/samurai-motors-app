@@ -5,7 +5,14 @@
  *   ① 最初の紹介者をずっと（Daisuke 2026-10-26「最初の紹介者をずっとにしないとだめ」）:
  *      有効な紹介元がすでにあるお客様は、別の提携先・紹介者の QR を読んでも紹介元を変えない（紹介料の行き先が変わらない）
  *   ② 既存客は対象外（2026-08-24 確定スキーム「既存客対象外」・2026-10-26 Daisuke 再確認）:
- *      紹介元なしで作業完了の予約があるお客様は、紹介 QR を読んでも紹介元を付けない
+ *      紹介元なしの予約（キャンセル以外）があるお客様は、紹介 QR を読んでも紹介元を付けない
+ *   ⑥ 紹介の期限は紹介元が付いた日から12か月（8/9 決め事④「店QR起点顧客はBot直予約でも12ヶ月30%継続」9/12 裁可・
+ *      2026-10-27 Daisuke「12ヶ月で良い」）。車屋も個人提携も同じ。期限が過ぎたら紹介元は無いのと同じ
+ *      （紹介料・紹介割引なし・全体キャンペーンと一斉配信は通常どおり・決済は当社）。期限の内側に入った予約は、
+ *      作業が期限の後でも予約の「紹介元shop_id」で紹介料が付く。期限が過ぎたお客様は、予約があれば既存客
+ *      （別の紹介者の QR を読んでも付けない）。付いた日は Script Properties `shopref_at_<chatId>`（"<shop_id>|<yyyy-MM-dd>"）。
+ *      付いた日のちょうど12か月後の日に切れる（2026-10-28 に付いたら 2027-10-27 まで有効）。
+ *      この版より前の紐付けは日付が無いので、本番に出したあと最初の確認（毎時の処理か最初の読み取り）で一括して今日を付ける
  *   ③ 個人提携は当社集金なので、レジデンス等の流入元（Picasso 等・SourceCampaign.gs）と両立する:
  *      流入元 QR を読んでも個人提携の紹介元は外さない／個人提携の QR を読んでも流入元は外さない。
  *      車屋（店集金）は従来どおり、どちらかを読むともう一方を外す（店に払う流れと当社に払う流れがぶつかるため）
@@ -18,8 +25,12 @@
  *   ⑤ 割引は1回の予約に1つ: 流入元の特典が効く予約では紹介割引を使わない。全体キャンペーンは紹介のお客様には元から付かない
  *   車屋は配分の対象外（お客様が店に定価を払う仕組みのため。紹介割引率を入れても使わない）
  *
- * 【まだ決めていないこと（2026-10-27 時点・実装していない）】紹介の期限（今は無期限）／紹介されたお客様が紹介者になった時
- *   （①により最初の紹介者のまま）／高額メニューの率（同じ率）／標準の配分（空欄=30%＋0%のまま）
+ * 【2026-10-27 Daisuke 決定（まだ決めていなかった4点）】
+ *   - 紹介の期限 = 12か月（⑥）
+ *   - 紹介されたお客様が紹介者になった時: 本人の利用は最初の紹介者のまま（①のとおり）。最初の紹介者が「本人で良い」と
+ *     言った時だけ、手で付け替える（Script Properties `shop_ref_<chatId>` を直せば、付いた日は自動で今日から）
+ *   - 高額メニューも同じ率。メニューは組み合わせて予約でき、割引は組み合わせた合計（WASH＋GLASS＋HEADLIGHT 等）に効く
+ *   - 標準の配分 = 紹介料 30%（紹介割引率は空欄=0）。紹介者が希望した時だけ、紹介料の一部をお客様の割引に回す（④）
  *
  * 【呼び出し元】ShopRouting.gs handleShopStart_（店QR）／ SourceCampaign.gs handleSourceStart_（流入元QR）／
  *   BookingLogic.gs createBooking（予約の金額・紹介元）／ Router.gs apiBookingInit（予約画面の紹介割引）／ BookingBot.gs（歓迎文）
@@ -33,32 +44,150 @@ var REFERRAL_DISCOUNT_LABEL_EN = 'Referral discount';
 // 予約画面のバナーの添え（Panha 校閲 2026-10-27・provisional・Run Kosal 確認待ち。空なら英語だけ）
 var REFERRAL_DISCOUNT_KM = 'បញ្ចុះតម្លៃសម្រាប់ភ្ញៀវដែលគេណែនាំមក';
 
-// ====== ①② 店QR を読んだ時の紹介元 ======
+var REFERRAL_TERM_MONTHS = 12;   // 紹介の期限（⑥）
+// 紹介元が付いた日 = Script Properties `shopref_at_<chatId>` に "<shop_id>|<yyyy-MM-dd>"。
+//   'shop_ref_' で始めない（CampaignShopFilter.gs が shop_ref_ で始まる Script Properties を全部読むため）。
+//   shop_id も一緒に持つ: shop_ref_ だけを手で付け替えた・片方の書き込みに失敗した時に、前の店の古い日付で新しい紹介元が
+//   すぐ切れないようにする（店が一致しない日付は無いのと同じ＝今日から数える）
+var SHOP_REF_AT_PREFIX = 'shopref_at_';
+var SHOP_REF_AT_MIGRATED_KEY = 'shopref_dates_migrated_v1';   // 日付の無い既存の紐付けに一括で日付を付けた印
+
+// ====== ①②⑥ 店QR を読んだ時の紹介元 ======
 
 /**
  * 店QR を読んだ時、紹介元をどうするか。
- * @return {{action: string, keptShopId?: string}}
+ * @return {{action: string, keptShopId?: string, expired?: boolean}}
  *   action = 'tag'（この店QRを紹介元にする）／ 'keep'（最初の紹介者 keptShopId のまま）／ 'existing'（既存客なので付けない）
+ *   expired = 前の紹介元の期限（12か月）が過ぎていた
  */
 function referralDecision_(chatId, scannedShopId) {
   var prev = getShopRefForCustomer(chatId);
-  if (prev && prev === scannedShopId) return { action: 'tag' };   // 同じ QR の読み直し
-  if (prev) {
+  var expired = !!(prev && referralExpired_(chatId));
+  if (prev && !expired) {
+    if (prev === scannedShopId) return { action: 'tag' };   // 同じ QR の読み直し（付いた日は変えない・setReferralTag_）
     var kept = validPartnerShopId_(prev);   // 停止中・店マスターに無い紹介元は無いのと同じ（読めない時は残す側）
     if (kept) return { action: 'keep', keptShopId: kept };
   }
-  if (isExistingCustomer_(chatId)) return { action: 'existing' };
-  return { action: 'tag' };
+  // 期限が過ぎたお客様は、紹介ありの予約も含めて予約があれば既存客（12か月使ってくれたお客様に新しい紹介料を付けない）
+  if (isExistingCustomer_(chatId, expired)) return { action: 'existing', expired: expired };
+  return { action: 'tag', expired: expired };
+}
+
+/** 今日（プノンペン）yyyy-MM-dd */
+function referralToday_() {
+  return Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd');
+}
+
+/** "<shop_id>|<yyyy-MM-dd>" を読む。形が違えば null */
+function parseShopRefAt_(v) {
+  var m = String(v || '').match(/^(.+)\|(\d{4}-\d{2}-\d{2})$/);
+  return m ? { shopId: m[1], date: m[2] } : null;
+}
+
+/** 今の紹介元（shop_ref_）が付いた日（yyyy-MM-dd）。無い・別の店の日付なら '' */
+function getShopRefTaggedAt_(chatId) {
+  try {
+    var sp = PropertiesService.getScriptProperties();
+    var ref = sp.getProperty('shop_ref_' + String(chatId)) || '';
+    var at = parseShopRefAt_(sp.getProperty(SHOP_REF_AT_PREFIX + String(chatId)));
+    return (ref && at && at.shopId === ref) ? at.date : '';
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * 'yyyy-MM-dd' から n か月後の 'yyyy-MM-dd'（日はそのまま）。**文字列で比べる専用**
+ * （2/29 の12か月後は存在しない "yyyy-02-29" になるが、文字列の比較なら 2/28 まで有効・3/1 に切れる。Date に渡さないこと）
+ */
+function referralAddMonths_(ymd, n) {
+  var m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  var total = Number(m[1]) * 12 + (Number(m[2]) - 1) + n;
+  var y = Math.floor(total / 12), mo = total % 12 + 1;
+  return y + '-' + (mo < 10 ? '0' : '') + mo + '-' + m[3];
+}
+
+/**
+ * この版より前の紐付け（付いた日が無い）に、一括で今日を付ける（1回だけ・印 SHOP_REF_AT_MIGRATED_KEY）。
+ * 読まれた日ごとにばらばらの起点にならないよう、最初に1回まとめて付ける（毎時の send24HoursFeedback と referralExpired_ から呼ぶ）
+ */
+function ensureShopRefDatesMigrated_() {
+  try {
+    var sp = PropertiesService.getScriptProperties();
+    if (sp.getProperty(SHOP_REF_AT_MIGRATED_KEY)) return;
+    var all = sp.getProperties();
+    var today = referralToday_();
+    var add = {};
+    var n = 0;
+    Object.keys(all).forEach(function(k) {
+      if (k.indexOf('shop_ref_') !== 0 || !all[k]) return;
+      var c = k.substring('shop_ref_'.length);
+      var at = parseShopRefAt_(all[SHOP_REF_AT_PREFIX + c]);
+      if (at && at.shopId === all[k]) return;
+      add[SHOP_REF_AT_PREFIX + c] = all[k] + '|' + today;
+      n++;
+    });
+    add[SHOP_REF_AT_MIGRATED_KEY] = today;
+    sp.setProperties(add);
+    Logger.log('🗓 紹介元の付いた日を一括で付けた: ' + n + '件（' + today + '）');
+  } catch (err) {
+    Logger.log('⚠️ ensureShopRefDatesMigrated_: ' + err);
+  }
+}
+
+/**
+ * 紹介元の期限（付いた日から12か月。付いた日のちょうど12か月後の日に切れる）が過ぎたか。
+ * 付いた日が無い紐付けは、一括の日付付け（初回だけ）→ それでも無ければ今日を付いた日にして false。
+ * 読み書きに失敗した時は false（紹介元は今までどおり有効＝店集金の判定を変えない側）
+ */
+function referralExpired_(chatId) {
+  if (!chatId) return false;
+  try {
+    var at = getShopRefTaggedAt_(chatId);
+    if (!at) {
+      ensureShopRefDatesMigrated_();
+      at = getShopRefTaggedAt_(chatId);
+    }
+    if (!at) {
+      var sp = PropertiesService.getScriptProperties();
+      var ref = sp.getProperty('shop_ref_' + String(chatId)) || '';
+      if (!ref) return false;
+      sp.setProperty(SHOP_REF_AT_PREFIX + String(chatId), ref + '|' + referralToday_());
+      Logger.log('🗓 紹介元の付いた日が無い（または別の店の日付）→ 今日から数える: chat_id=' + chatId + ' shop=' + ref);
+      return false;
+    }
+    return referralToday_() >= referralAddMonths_(at, REFERRAL_TERM_MONTHS);
+  } catch (err) {
+    Logger.log('⚠️ referralExpired_: ' + err);
+    return false;
+  }
+}
+
+/**
+ * 店QR の紹介元を付ける（handleShopStart_ の 'tag'）。同じ紹介元の読み直しで期限内なら、付いた日は変えない
+ * （読み直しで期限を延ばさない）。新しく付く・付け直す時は今日を付いた日にする（紹介元と付いた日は1回でまとめて書く）
+ */
+function setReferralTag_(chatId, shopId) {
+  var id = String(chatId);
+  var sp = PropertiesService.getScriptProperties();
+  var prev = sp.getProperty('shop_ref_' + id) || '';
+  if (prev === String(shopId) && getShopRefTaggedAt_(id) && !referralExpired_(id)) return;
+  var props = {};
+  props['shop_ref_' + id] = String(shopId);
+  props[SHOP_REF_AT_PREFIX + id] = String(shopId) + '|' + referralToday_();
+  sp.setProperties(props);
 }
 
 /**
  * 紹介元なしで当社を使ったことがあるか（予約タブに このチャットID の、キャンセル以外で「紹介元shop_id」が空の行がある）。
+ * countReferred = true（紹介の期限が過ぎたお客様）は、紹介ありの予約も数える。
  * 作業完了の前（予約確定・作業中）も数える: 紹介なしで予約済みのお客様に紹介元が付くと、その予約の決済の判定が
  *   今の紐付けに倒れて取り違えるため（予約の「紹介元shop_id」が空 → getValidShopRefForBooking_ が今の紐付けを見る）。
  * 「紹介元shop_id」列が無い時は、キャンセル以外の行があれば既存客。
  * 読めない時は false（従来どおり紹介元を付ける。付け間違いは予約タブの「紹介元shop_id」を手で直せる）＋管理グループに知らせる
  */
-function isExistingCustomer_(chatId) {
+function isExistingCustomer_(chatId, countReferred) {
   var id = String(chatId || '');
   if (!id) return false;
   try {
@@ -75,7 +204,7 @@ function isExistingCustomer_(chatId) {
       if (String(chats[i][0]) !== id) continue;
       var st = String(states[i][0] || '').trim();
       if (!st || st === 'キャンセル') continue;
-      if (!refs || !String(refs[i][0] || '').trim()) return true;
+      if (countReferred || !refs || !String(refs[i][0] || '').trim()) return true;
     }
     return false;
   } catch (err) {

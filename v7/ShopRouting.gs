@@ -247,9 +247,11 @@ function handleShopStart_(msg, text) {
 
   // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
   // 車屋はレジデンス等の流入元（src_ref）を外す（2026-10-20）。個人提携は当社集金なので流入元と両立する（外さない・2026-10-27）
+  // 紹介元が付いた日も残す（紹介の期限 12か月・読み直しでは延ばさない・ReferralAttribution.gs setReferralTag_）
   try {
     var sp = PropertiesService.getScriptProperties();
-    sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    if (typeof setReferralTag_ === 'function') setReferralTag_(String(msg.chat.id), shopId);
+    else sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
     if (typeof shouldClearSourceRefOnShopTag_ !== 'function' || shouldClearSourceRefOnShopTag_(shopId)) {
       sp.deleteProperty('src_ref_' + String(msg.chat.id));
     }
@@ -311,8 +313,11 @@ function handleShopStartNotTagged_(msg, shopId, scannedName, custName, decision)
     sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, keptId
       ? '🔁 別の紹介元のQRを読んだが、最初の紹介元のまま（最初の紹介者で固定）\n' +
         '読んだQR: ' + (scannedName || shopId) + '\n紹介元（変えない）: ' + (getShopNameById_(keptId) || keptId) + '\n顧客: ' + custName +
-        ' (chat_id=' + msg.chat.id + ')\n（紹介料は最初の紹介元へ。直す時は Script Properties の shop_ref_<chat_id>）'
-      : 'ℹ️ 紹介QRを読んだが、紹介なしで使ったことがあるお客様のため紹介扱いにしない（既存客は対象外）\n' +
+        ' (chat_id=' + msg.chat.id + ')\n（紹介料は最初の紹介元へ。最初の紹介元が「付け替えてよい」と言った時だけ、' +
+        'Script Properties の shop_ref_<chat_id> を直す。付いた日は自動で今日から）'
+      : (decision.expired
+        ? 'ℹ️ 紹介QRを読んだが、前の紹介の期限（12か月）が過ぎて当社を使ってきたお客様のため紹介扱いにしない（既存客は対象外）\n'
+        : 'ℹ️ 紹介QRを読んだが、紹介なしで使ったことがあるお客様のため紹介扱いにしない（既存客は対象外）\n') +
         '読んだQR: ' + (scannedName || shopId) + '\n顧客: ' + custName + ' (chat_id=' + msg.chat.id + ')\n（通常のお客様として案内・紹介料なし）');
   } catch (err) {
     Logger.log('⚠️ 管理通知失敗（紹介元を付けない店QR）: ' + err);
@@ -451,7 +456,11 @@ function shopCollectsRef_(shopId) {
  * キャンペーン・一斉配信の対象外・予約の「紹介元shop_id」に使う（決済の判定は getValidShopRef_）。
  */
 function getReferralPartnerRef_(chatId) {
-  return validPartnerShopId_(getShopRefForCustomer(chatId));
+  var ref = getShopRefForCustomer(chatId);
+  if (!ref) return '';
+  // 紹介の期限（付いた日から12か月・2026-10-27 ReferralAttribution.gs）が過ぎたら紹介元は無いのと同じ
+  if (typeof referralExpired_ === 'function' && referralExpired_(chatId)) return '';
+  return validPartnerShopId_(ref);
 }
 
 /**
@@ -484,11 +493,16 @@ function validPartnerShopId_(shopId) {
  * @param {string} customerChatId - 顧客チャットID
  * @param {string|Function} text - 通知本文。shop_id を受けて本文を返す関数でもよい（店ごとの通知の言語で組み立てる・PartnerLang.gs・2026-10-26）
  * @param {Array} blobs - 写真Blob配列（省略可）
+ * @param {Object} [bkData] - 予約タブの行（findRow(...).data）。「紹介元shop_id」があればそれを送り先にする
+ *   （期限の内側に作った予約は、作業が期限の後でも予約した時の店へ。決済の判定 getValidShopRefForBooking_ と同じ・2026-10-27）
  * @return {string} 通知した shop_id（該当なしは ''）
  */
-function notifyShopGroupJobPhotos(customerChatId, text, blobs) {
+function notifyShopGroupJobPhotos(customerChatId, text, blobs, bkData) {
   try {
-    return notifyShopGroupByShopId_(getShopRefForCustomer(customerChatId), text, blobs);
+    // 予約に紹介元が無い時は今の紐付け。紹介の期限（12か月）が過ぎたら無いのと同じ（getReferralPartnerRef_）
+    //   以前は期限を見ない getShopRefForCustomer で、期限後の車屋のお客様に写真が流れ、当社の決済QRも止まる恐れがあった
+    var ref = bkData ? String(bkData['紹介元shop_id'] || '').trim() : '';
+    return notifyShopGroupByShopId_(ref || getReferralPartnerRef_(customerChatId), text, blobs);
   } catch (err) {
     Logger.log('⚠️ notifyShopGroupJobPhotos エラー: ' + err);
     return '';
