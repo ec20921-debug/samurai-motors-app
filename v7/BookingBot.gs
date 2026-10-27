@@ -86,6 +86,12 @@ function handleCustomerMessage(msg) {
   // 毎回 API を叩くと無駄なので、24h に1回だけ設定する（CacheService でガード）。
   maybeRefreshBookingMenuButton_(msg.chat.id);
 
+  // /start self_<token> → 紹介者ご本人の登録リンク（自動で本人登録・2026-10-27 PartnerSelfRegister.gs）
+  if (text.indexOf('/start self_') === 0 &&
+      typeof handleSelfRegStart_ === 'function' && handleSelfRegStart_(msg, text)) {
+    return;
+  }
+
   // /start shop_<shop_id> → 提携店QR経由の流入（歓迎＋店タグ＋店舗グループ通知）
   if (text.indexOf('/start shop_') === 0 &&
       typeof handleShopStart_ === 'function' && handleShopStart_(msg, text)) {

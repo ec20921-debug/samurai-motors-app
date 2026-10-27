@@ -617,7 +617,9 @@ function getShopSheet_() {
       ensureColumnsAtEnd_(sheet, [INDIVIDUAL_PARTNER_KIND_COL]),
       ensureColumnsAtEnd_(sheet, SALESLOG_SHOP_EXTRA_HEADERS),
       // グループへの通知の言語（プルダウン付き・PartnerLangOps.gs・2026-10-26）。列が無い間は v7 も標準の言語で送る
-      ensurePartnerLangColumn_(sheet)
+      ensurePartnerLangColumn_(sheet),
+      // 個人提携の配分・本人登録・紹介チラシ（IndividualPartnerOps.gs・2026-10-27）。v7 は列が無いと書かないだけ
+      ensureColumnsAtEnd_(sheet, INDIVIDUAL_PARTNER_MASTER_COLS)
     ].every(Boolean);
   };
   if (!sheet) {
@@ -627,7 +629,7 @@ function getShopSheet_() {
     ensureShopColumns(); // 作成直後はフラグに関係なく必ず列を揃える
   } else {
     runAtMostEvery_(['schema', SALESLOG_SHOP_SHEET_NAME, '最新反応内容', '業種', 'Facebook']
-      .concat(SHOP_TERMS_HEADERS).concat(SALESLOG_SHOP_EXTRA_HEADERS).concat([PARTNER_GROUP_LANG_COL]).join('|'), 6 * 60 * 60, ensureShopColumns);
+      .concat(SHOP_TERMS_HEADERS).concat(SALESLOG_SHOP_EXTRA_HEADERS).concat([PARTNER_GROUP_LANG_COL]).concat(INDIVIDUAL_PARTNER_MASTER_COLS).join('|'), 6 * 60 * 60, ensureShopColumns);
   }
   _salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME] = sheet;
   return sheet;
