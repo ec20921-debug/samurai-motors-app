@@ -227,11 +227,7 @@ function partnerSendDone_(key, claim, ok) {
   return '';
 }
 
-/** シートに書く文字列（先頭が = + - @ なら数式にならないよう ' を付ける。Telegram の名前は誰でも決められるため） */
-function sheetSafeText_(v) {
-  var s = String(v == null ? '' : v);
-  return /^[=+\-@]/.test(s) ? "'" + s : s;
-}
+// シートに書く名前の無害化 sheetSafeText_ は SheetHelpers.gs の共通版を使う（2026-10-27 一本化）
 
 function selfRegLinkFromToken_(tok) {
   return 'https://t.me/' + SHOP_LINK_BOT_USERNAME + '?start=self_' + tok;
