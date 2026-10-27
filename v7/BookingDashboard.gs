@@ -138,6 +138,8 @@ function bookingDashboardOnOpen_() {
     .addItem('🧱 再生成（レイアウト再構築）', 'ensureBookingDashboard')
     .addSeparator()
     .addItem('⏰ 毎朝自動更新を設定 (JST 7:30)', 'setupBookingDashboardDailyTrigger')
+    .addSeparator()
+    .addItem('🗂 タブを整える（並び・色・非表示）', 'tidyDatabaseTabs')   // TabLayout.gs
     .addToUi();
 }
 
