@@ -136,7 +136,7 @@ Daisuke「お店、車屋提携、個人提携みたいな感じがこれから�
 **登録のしかた**（2026-10-27〜 Daisuke がチャットで「〇〇さんと提携が決まってグループを作りました」と伝えれば、Claude が 1〜3 を用意する。手順の正典 = Day1 `.claude/skills/motors-individual-partner/SKILL.md`）
 1. v7 Database「店マスター」に1行: shop_id・店名・「パートナーID」= PTN-連番・「提携種別」=「個人提携」・「紹介料率(%)」=30・「既定の集金者」=当社・「QRリンク(BookingBot)」= `https://t.me/SAMURAI_MOTORS_BOOKING_BOT?start=shop_<shop_id>`・「グループへの通知の言語」= 空欄（＝日本語）。英語の方なら「英語」（**/register より前に**。はじめのご案内は1回だけ）
 2. 連携コードは §2.5 と同じく `issueShopLinkCodes(['SHOP-…'])`（または Bot連携シートに「待機中」の行を足す）
-3. 紹介チラシ6枚（Day1 `tools/motors_service_flyer/build_referral_set.py` → `publish_referral_set.py`）を**版ごとのフォルダ**（PNG・長辺2000px・256色）で配信用リポジトリ samurai-motors-miniapp（GitHub Pages）の `partners/<番号>/<版>/` と Drive `Deliverables/SamuraiMotors_紹介チラシ/<番号>/<版>/` に置き、店マスター「紹介チラシURL」に URL を改行区切りで入れる（**/register より前に**。空のまま連携するとチラシは送らず管理グループに知らせる）。同じ版は上書きしない（Telegram が同じ URL の古い画像を覚えているため。直したら版を上げる）
+3. 紹介チラシ6枚（Day1 `tools/motors_service_flyer/build_referral_set.py` → `publish_referral_set.py`）を**版ごとのフォルダ**（PNG・長辺2000px・256色）で配信用リポジトリ samurai-motors-miniapp（GitHub Pages）の `partners/<番号>/<版>/` と Drive `Deliverables/SamuraiMotors_紹介チラシ/<番号>/<版>/` に置き、店マスター「紹介チラシURL」に URL をカンマ＋空白区切りで入れる（改行も読むが、シートのツールからは「改行の記号」の文字のまま入ることがある）（**/register より前に**。空のまま連携するとチラシは送らず管理グループに知らせる）。同じ版は上書きしない（Telegram が同じ URL の古い画像を覚えているため。直したら版を上げる）
 4. グループは「名前 × SAMURAI MOTORS」。人だけで先に作ってよい（あとから入った人も履歴で見られる・2026-10-27 Daisuke 確認）。予約Bot を足して `/register <コード>` を送ると、予約Botが順に自動で送る: ①連携完了 ②はじめのご案内（本人登録・紹介のしかた・紹介料。本人登録済みなら登録の案内は出さない）③チラシ（アルバム・最大10枚）＋資料の説明 ④紹介URL（そのまま転送できる）⑤🔑 本人登録リンク
    - チラシを送るたびに v7 Database「紹介チラシ送付履歴」タブへ1行（版・枚数・送り方・送り先。版は URL のフォルダ名から読む。無ければ予約Botが作る）。版ごとの変わったところは「紹介チラシの版」タブ（Claude が書く）
    - チラシを直して版を上げたあと、グループへ送り直すなら GAS エディタで `resendPartnerFlyersNow('<shop_id>')`（履歴に「送り直し」）
