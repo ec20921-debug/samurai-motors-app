@@ -40,6 +40,15 @@ function doGet(e) {
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     if (e && e.parameter) {
       auditTelegramAuth_(action, e.parameter.chatId || '', extractInitData_(e.parameter));
+      // 2026-10-27: 紹介者ご本人の割引は、署名で確かめた本人だけ（ReferralAttribution.gs selfPartnerDiscount_）。
+      //   画面やURLが送った _authUserId は使わない（必ずここで入れ直す）
+      e.parameter._authUserId = '';
+      if (action === 'booking_init') {
+        try {
+          const vg = verifyTelegramInitData_(extractInitData_(e.parameter));
+          e.parameter._authUserId = (vg && vg.ok) ? String(vg.userId || '') : '';
+        } catch (eg) { e.parameter._authUserId = ''; }
+      }
       delete e.parameter._tg; // 下流（ファネルログ等）に署名データを残さない
     }
 
@@ -119,7 +128,9 @@ function doPost(e) {
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
     // 2026-10-08: 現場アプリ v2（client_id 付き）は送り主を署名から確定して記録する
-    if (body.client_id) {
+    // 2026-10-27: 予約作成も（紹介者ご本人の割引は署名で確かめた本人だけ）。画面が送った _authUserId は使わない
+    body._authUserId = '';
+    if (body.client_id || action === 'booking_create') {
       try {
         var vAuth = verifyTelegramInitData_(extractInitData_(body));
         body._authUserId = (vAuth && vAuth.ok) ? String(vAuth.userId || '') : '';
@@ -245,10 +256,16 @@ function apiBookingInit(params) {
   //   個人提携（IndividualPartner.gs）のお客様も紹介料が付くので同じく対象外（getReferralPartnerRef_ は個人提携を含む）
   //   2026-10-27: 個人提携に紹介割引（配分の設定）があれば、全体キャンペーンの代わりに同じ形で返す
   //   （予約画面はキャンペーンと同じ表示・createBooking と同じ判定・ReferralAttribution.gs）。紹介者名は渡さない
+  //   2026-10-27: 紹介者ご本人（店マスター「本人chat_id」）は本人割引を同じ形で返す（createBooking と同じ判定）
   let shop = false;
   try {
+    const selfPartner = (typeof selfPartnerDiscount_ === 'function') ? selfPartnerDiscount_(chatId, params._authUserId) : null;
     const partnerRef = (typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(chatId) : '';
-    if (partnerRef) {
+    if (selfPartner && typeof selfPartnerCampaign_ === 'function') {
+      shop = true;
+      const sc = selfPartnerCampaign_(selfPartner);
+      campaign = { active: true, percent: sc.percent, nameEn: sc.nameEn, nameKm: sc.nameKm };
+    } else if (partnerRef) {
       shop = true;
       campaign = null;
       const pct = (typeof referralDiscountForShop_ === 'function') ? referralDiscountForShop_(partnerRef) : 0;

@@ -227,6 +227,23 @@ function handleShopStart_(msg, text) {
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
 
+  // 紹介者ご本人（店マスター「本人chat_id」に登録済み・2026-10-27）は、どの紹介QRを読んでも本人として扱い、紹介元を付けない
+  //   （本人割引は chat_id で決まる。ほかの紹介者のQRで紹介元が付くと本人割引が外れるため）。QRを先に読んだだけの別の人は本人にならない
+  //   /start は Telegram から直接届く（msg.chat.id は申告ではない）ので、同じ値を確かめ済みとして渡す
+  var selfPartner = (typeof selfPartnerDiscount_ === 'function') ? selfPartnerDiscount_(String(msg.chat.id), String(msg.chat.id)) : null;
+  if (selfPartner) {
+    sendWelcomeMessage(msg, { skipCampaign: true, selfPartnerPct: selfPartner.pct });
+    ensureCustomerTopic(msg);
+    try {
+      sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
+        '🙋 紹介者ご本人が紹介QRから来ました\n紹介者: ' + selfPartner.name + '（chat_id=' + msg.chat.id + '）\n' +
+        '読んだQR: ' + (welcomeShopName || shopId) + '\n（ご本人の予約は ' + selfPartner.pct + '%引き・紹介料なし。紹介元は付けない）');
+    } catch (err) {
+      Logger.log('⚠️ 管理通知失敗（紹介者ご本人の店QR）: ' + err);
+    }
+    return true;
+  }
+
   // 最初の紹介者で固定・既存客は対象外（2026-10-27 ReferralAttribution.gs）
   var decision = (typeof referralDecision_ === 'function') ? referralDecision_(String(msg.chat.id), shopId) : { action: 'tag' };
   if (decision.action !== 'tag') {
@@ -278,9 +295,16 @@ function handleShopStart_(msg, text) {
   try {
     var cfg = getConfig();
     var linked = !!(link && String(link.obj['状態']) === '連携済');
+    // 個人提携: 紹介者ご本人の登録の案内のため chat_id を出す（本人chat_id が未登録の時だけ案内・2026-10-27）
+    var indivInfo = (indivState === true && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
+    var uname = (msg.from && msg.from.username) ? ' @' + msg.from.username : '';   // 表示名は誰でも変えられるので @ユーザー名も出す
+    var selfHint = (indivInfo && !indivInfo.selfChat)
+      ? '\n（この方' + uname + 'が紹介者ご本人だと名前と本人に確かめてから、店マスターの「' + PARTNER_SELF_CHAT_COL + '」に ' + msg.chat.id +
+        ' を入れると、ご本人の予約が予約の時に割引・紹介料なしになります。QRを先に読んだ別の人の番号を入れないこと）'
+      : '';
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, indivState === true
-      ? '🙋 個人提携の紹介QRからの新規流入\n紹介者: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName + '\n' +
-        '（お客様は当社に直接お支払い・決済QRは通常どおり。紹介者のグループには予約が入った時だけ知らせる）' +
+      ? '🙋 個人提携の紹介QRからの新規流入\n紹介者: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName + '（chat_id=' + msg.chat.id + '）\n' +
+        '（お客様は当社に直接お支払い・決済QRは通常どおり。紹介者のグループには予約が入った時だけ知らせる）' + selfHint +
         (linked ? '' : '\n（紹介者のグループは未連携: 予約のお知らせは届きません）' + shopLinkGuideText_(link, welcomeShopName || shopId))
       : '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
       (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）' +

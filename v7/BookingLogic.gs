@@ -769,14 +769,18 @@ function createBookingLocked_(params, after) {
     // 紹介元の提携先（予約タブ「紹介元shop_id」）。個人提携は紹介料の月次集計に使う（v7-operations/IndividualPartnerOps.gs）
     //   流入元の予約には車屋の紹介元は付けない。個人提携は当社集金なので流入元の予約にも付ける（2026-10-27 ReferralAttribution.gs）
     const partnerIsIndiv = !!(partnerRef && typeof isIndividualPartnerShop_ === 'function' && isIndividualPartnerShop_(partnerRef));
-    const referralShopId = (srcCfg && !partnerIsIndiv) ? '' : partnerRef;
+    // 紹介者ご本人の予約（2026-10-27 ReferralAttribution.gs ⑦）: 予約の時に割引・紹介料は付けない（紹介元shop_id を空に）
+    //   本人かどうかは Telegram の署名で確かめた user.id（Router.gs が _authUserId に入れる）と chat_id が一致する時だけ
+    const selfPartner = (typeof selfPartnerDiscount_ === 'function') ? selfPartnerDiscount_(params.chatId, params._authUserId) : null;
+    const referralShopId = selfPartner ? '' : ((srcCfg && !partnerIsIndiv) ? '' : partnerRef);
     const indivPartner = (referralShopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(referralShopId) : null;
     // 配分の設定（2026-10-27）: 個人提携の紹介割引。割引は1つだけ＝流入元の特典が効く予約では使わない
     const referralPct = (indivPartner && !srcDisc && typeof effectiveReferralDiscount_ === 'function')
       ? effectiveReferralDiscount_(indivPartner, referralShopId) : 0;
     const referralCamp = (referralPct > 0 && typeof referralCampaign_ === 'function') ? referralCampaign_(referralPct, indivPartner.name) : null;
-    // 紹介のお客様は全体キャンペーンの代わりに紹介割引（無ければ定価）。流入元の特典が効く予約はどちらも使わない
+    // 紹介のお客様は全体キャンペーンの代わりに紹介割引（無ければ定価）。紹介者ご本人は本人割引。流入元の特典が効く予約はどれも使わない
     const camp = srcDisc ? { active: false, percent: 0 }
+      : (selfPartner && typeof selfPartnerCampaign_ === 'function') ? selfPartnerCampaign_(selfPartner)
       : (shopNoCamp ? (referralCamp || { active: false, percent: 0 }) : campCfg);
     // 画面で見せた割引と、ここで使う割引が食い違う（QR → START の直後に開いた・配分やキャンペーンが変わった等）
     //   → 予約は作らず、画面に取り直してもらう。campaignPct が無い古い画面は「見せたのに無い」だけ確かめる
@@ -907,7 +911,8 @@ function createBookingLocked_(params, after) {
       '割引額(USD)':    discountAmount,                            // 割引で引かれた額(0 = キャンペーンなし)
       'キャンペーン名': srcDisc ? (srcCfg.label + ' 特典')
                       : ((camp && camp.active && discountAmount > 0)
-                        ? (camp.referral ? '紹介割引（' + camp.partnerName + '）' : (camp.nameEn || '')) : ''),
+                        ? (camp.referral ? '紹介割引（' + camp.partnerName + '）'
+                          : camp.self ? '紹介者ご本人割引（' + camp.partnerName + '）' : (camp.nameEn || '')) : ''),
       // ── サービスタイプ (2026-05-20: 店舗/出張区分) ──
       'サービスタイプ': serviceType,                                // '店舗' or '出張'
       // ── 専用QR（流入元）(2026-10-15 SourceCampaign.gs) ──
@@ -968,7 +973,9 @@ function createBookingLocked_(params, after) {
       unitNo: unitNo,
       carModel: carModel,
       // 2026-10-26: 個人提携の紹介（管理通知に1行）
-      referralAdminLine: (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate) : ''
+      referralAdminLine: selfPartner
+        ? '🙋 紹介者ご本人のご予約: ' + selfPartner.name + '（' + selfPartner.pct + '%引き・紹介料なし・お支払いは当社へ）\n'
+        : (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate) : ''
     });
 
     // ── 9. 流入元（レジデンス等）の提携先グループへ「予約が入った」（2026-10-26 SourceGroupNotify.gs） ──
@@ -1070,7 +1077,7 @@ function notifyBookingCreated(info) {
     customerText +=
       '─────────────────\n' +
       '📊 Service subtotal:        ' + usd2(serviceSubtotal) + '\n' +
-      (camp.referral ? '🎁 ' : '🎌 ') + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -' + usd2(discount) + '\n' +
+      ((camp.referral || camp.self) ? '🎁 ' : '🎌 ') + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -' + usd2(discount) + '\n' +
       '✓ Service (after discount): ' + usd2(serviceAfterDiscount) + '\n';
   }
   // サービスタイプによってデリバリー費の表示を分岐
@@ -1201,6 +1208,8 @@ function notifyBookingCreated(info) {
       '料金: ' + priceJoin + ' = サービス計 $' + serviceSubtotal.toFixed(2) +
       (camp.referral
         ? '\n🎁 紹介割引 (' + (camp.partnerName || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2)
+        : camp.self
+        ? '\n🎁 紹介者ご本人割引 (' + (camp.partnerName || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2)
         : '\n🎌 キャンペーン (' + (camp.nameEn || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2)) +
       '\n→ サービス計(割引後): $' + serviceAfterDiscount.toFixed(2) +
       (isInStore ? '\n🏪 店舗作業のため出張料なし' : ('\n+ 出張料: $' + feeAmt)) +

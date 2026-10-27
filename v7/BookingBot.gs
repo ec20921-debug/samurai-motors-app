@@ -202,6 +202,7 @@ function sendWelcomeMessage(msg, opts) {
   //   shopName: 紹介元の店名（表示すると「この店の客として扱われている」証明になる）
   //   individual: true = 紹介元が個人提携（2026-10-26 IndividualPartner.gs）
   //   referralPct: 個人提携の紹介割引(%)（配分の設定・2026-10-27 ReferralAttribution.gs）。0 なら出さない
+  //   selfPartnerPct: 紹介者ご本人の割引(%)（2026-10-27）。あれば「紹介されました」の一言の代わりに出す
   opts = opts || {};
   const from = msg.from || {};
   const name = from.first_name || '';
@@ -275,7 +276,10 @@ function sendWelcomeMessage(msg, opts) {
   // 2026-10-21 Daisuke 決定: 作業前後の写真を店にも共有することを、最初に一言伝える（個人情報の配慮）
   //   クメール語は Panha panha_pass（provisional・Run Kosal 確認待ち）
   //   個人提携（opts.individual・2026-10-26 IndividualPartner.gs）は写真を共有しないので、予約の内容が紹介者に伝わる一言に替える
-  const referralLine = (opts.shopName && opts.individual && typeof individualWelcomeReferralLine_ === 'function')
+  //   紹介者ご本人（opts.selfPartnerPct・2026-10-27 ReferralAttribution.gs ⑦）は本人割引の一言（英語だけ。クメール語を足す時は Panha を通す）
+  const referralLine = (opts.selfPartnerPct > 0)
+    ? '🎁 Partner discount: ' + opts.selfPartnerPct + '% off your own bookings — thank you for introducing us!\n\n'
+    : (opts.shopName && opts.individual && typeof individualWelcomeReferralLine_ === 'function')
     ? individualWelcomeReferralLine_(opts.shopName, opts.referralPct)
     : opts.shopName
     ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n' +

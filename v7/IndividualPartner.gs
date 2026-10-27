@@ -7,7 +7,9 @@
  *   - 紹介者のグループには「予約が入った」だけを日本語＋英語で送る。作業の開始・完了と写真・請求は送らない
  *   - 紹介料は、月初に v7-operations/IndividualPartnerOps.gs が完了・清算済みの予約から台帳へ記帳し、
  *     月次レポート（日本語＋英語）をグループへ送る → 紹介料は ABA で支払う
- *   - 紹介者本人の利用も紹介料の対象（Daisuke 2026-10-26）。全体キャンペーンは提携店と同じく対象外（紹介料と重なるため）
+ *   - 紹介者本人の利用: 2026-10-26 は紹介料の対象 → 2026-10-27 Daisuke「本人の予約は予約の時に30%引き・紹介料なし。
+ *     紹介した友達の予約は、あとでまとめて30%バック」に変更（店マスター「本人chat_id」に登録した時。未登録の間は
+ *     従来どおり紹介料・ReferralAttribution.gs ⑦）。全体キャンペーンは提携店と同じく対象外（紹介料と重なるため）
  *   決定ログ: Vault/01_Personal/Decisions/2026-10-26-motors-individual-partner-type.md
  *
  * 【設定】v7 Database「店マスター」の「提携種別」列が「個人提携」の行。紹介料率は「紹介料率(%)」（空欄=30）。
@@ -25,6 +27,7 @@
 var INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7-operations/IndividualPartnerOps.gs と同じ値（別 GAS プロジェクトのため複製）
 var PARTNER_KIND_COL = '提携種別';
 var REFERRAL_DISCOUNT_COL = '紹介割引率(%)';   // 店マスター（個人提携だけ使う・ReferralAttribution.gs）
+var PARTNER_SELF_CHAT_COL = '本人chat_id';   // 店マスター: 紹介者ご本人の Telegram chat_id（本人の予約は予約の時に割引・紹介料なし・ReferralAttribution.gs）
 var BOOKING_REFERRAL_RATE_COL = '紹介料率(%)';   // 予約タブ: 予約した時の紹介料率の写し（v7-operations/IndividualPartnerOps.gs が記帳に使う）
 var PARTNER_KIND_CACHE_KEY = 'shop_partner_kinds_v1';   // 2026-10-27 に discount を足した。古い中身（discount 無し）は割引0として読む（鍵は変えない＝最後に読めた内容を空にしない）
 var PARTNER_KIND_CACHE_SEC = 300;
@@ -44,7 +47,7 @@ var INDIVIDUAL_DISCOUNT_KM = '🎁 បញ្ចុះតម្លៃ {pct}% ល�
 // ====== 判定 ======
 
 /**
- * 店マスター → { shop_id: { name, rate, discount } | 0 }（個人提携だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
+ * 店マスター → { shop_id: { name, rate, discount, selfChat } | 0 }（個人提携だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
  * 読めない時は最後に読めた内容（6時間）、それも無ければ null
  * @param {boolean} [fresh] - キャッシュを使わず読み直す
  */
@@ -66,17 +69,19 @@ function readPartnerKinds_(fresh) {
       var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
       var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), ki = head.indexOf(PARTNER_KIND_COL), ri = head.indexOf('紹介料率(%)');
       var di = head.indexOf(REFERRAL_DISCOUNT_COL);   // 無い時は割引 0（従来どおり）
+      var si = head.indexOf(PARTNER_SELF_CHAT_COL);   // 無い時は本人割引なし（従来どおり）
       if (ci < 0) throw new Error('店マスターに shop_id 列がありません');
       // 列が無い・見出しが違う時に「全員が車屋」と決めつけない（決済QR・写真の向きが逆になる）→ 分からない扱い
       if (ki < 0) throw new Error('店マスターに「' + PARTNER_KIND_COL + '」列がありません');
-      sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri, di) + 1).getValues().forEach(function(r) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri, di, si) + 1).getValues().forEach(function(r) {
         var id = String(r[ci] || '').trim();
         if (!id) return;
         var indiv = String(r[ki] || '').trim() === INDIVIDUAL_PARTNER_KIND;
         map[id] = indiv ? {
           name: (ni >= 0 ? String(r[ni] || '').trim() : '') || id,
           rate: (ri >= 0 && typeof fieldParseRate_ === 'function') ? fieldParseRate_(r[ri]) : 30,
-          discount: (di >= 0 && typeof referralParseDiscount_ === 'function') ? referralParseDiscount_(r[di]) : 0
+          discount: (di >= 0 && typeof referralParseDiscount_ === 'function') ? referralParseDiscount_(r[di]) : 0,
+          selfChat: si >= 0 ? String(r[si] || '').trim() : ''
         } : 0;
       });
     }
@@ -125,9 +130,33 @@ function individualPartnerInfo_(shopId) {
   return readPartnerKinds_()[String(shopId).trim()] || null;
 }
 
-/** そのお客様の紹介元が個人提携なら shop_id、そうでなければ ''（手動ジョブの売上行に紹介元を残す・ManualSales.gs） */
+/**
+ * 店マスター「本人chat_id」がこの chat_id の個人提携 → { shopId, name, rate, discount }。無い・分からない時は null。
+ * 停止中・店マスターから消えた紹介者は対象外（validPartnerShopId_）
+ */
+function individualPartnerSelfFor_(chatId) {
+  var id = String(chatId || '').trim();
+  if (!id) return null;
+  var map = readPartnerKinds_();
+  if (!map) return null;
+  var keys = Object.keys(map);
+  for (var i = 0; i < keys.length; i++) {
+    var p = map[keys[i]];
+    if (!p || String(p.selfChat || '') !== id) continue;
+    if (typeof validPartnerShopId_ === 'function' && !validPartnerShopId_(keys[i])) continue;   // 停止中の紹介者は対象外（ほかの行も見る）
+    return { shopId: keys[i], name: p.name, rate: p.rate, discount: p.discount || 0 };
+  }
+  return null;
+}
+
+/**
+ * そのお客様の紹介元が個人提携なら shop_id、そうでなければ ''（手動ジョブの売上行に紹介元を残す・ManualSales.gs）。
+ * 紹介者ご本人（本人割引の対象）は '' ＝本人の利用に紹介料は付けない（2026-10-27 Daisuke）
+ */
 function individualReferralFor_(chatId) {
   try {
+    // 手動ジョブの紐付けた chat_id は現場の記録（画面の申告ではない）ので、同じ値を確かめ済みとして渡す
+    if (typeof selfPartnerDiscount_ === 'function' && selfPartnerDiscount_(chatId, chatId)) return '';
     var ref = (chatId && typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(chatId) : '';
     return (ref && isIndividualPartnerShop_(ref)) ? ref : '';
   } catch (err) {
@@ -242,14 +271,20 @@ function buildIndividualGroupGreeting_(name, rate, discount) {
   var n = String(name || '').trim() || 'Partner';
   var pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
   var off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
+  // ご本人の予約は予約の時に（紹介料率＋紹介割引）% 引き・紹介料なし（2026-10-27・ReferralAttribution.gs ⑦）
+  //   本人の登録（店マスター「本人chat_id」）のあとに効くので、そう書く。率が 0 なら出さない
+  var selfPct = Math.min(30, (Number(rate) >= 0 ? Number(rate) : 30) + (Number(discount) > 0 ? Number(discount) : 0));
+  var selfOff = selfPct + '%';
   return n + ' さん × SAMURAI MOTORS のグループです。\n' +
-    'ご紹介いただいた方（' + n + ' さんご自身のご利用も含みます）からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
+    'ご紹介いただいた方からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
     (off ? 'ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます。\n' : '') +
+    (selfPct > 0 ? n + ' さんご自身のご予約は、ご本人の登録のあと、予約の時に ' + selfOff + ' 引きになります（紹介料の対象外）。\n' : '') +
     '毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、紹介料は ABA でお支払いします。\n' +
     'いつもありがとうございます。これからもよろしくお願いします！\n\n' +
     'This is the group for ' + n + ' × SAMURAI MOTORS.\n' +
-    'When someone you referred books with us (including your own bookings), we\'ll let you know here — date, time, menu and car (no photos).\n' +
+    'When someone you referred books with us, we\'ll let you know here — date, time, menu and car (no photos).\n' +
     (off ? 'People you refer get ' + off + ' off all services.\n' : '') +
+    (selfPct > 0 ? 'Once you are registered, your own bookings get ' + selfOff + ' off when you book (no commission on them).\n' : '') +
     'At the start of each month, we\'ll send a summary of last month\'s jobs, amounts and your commission (' + pct + '), and pay the commission by ABA.\n' +
     'Thank you for your support!';
 }

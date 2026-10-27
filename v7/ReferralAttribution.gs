@@ -24,6 +24,9 @@
  *      （紹介料は紹介者との約束なので変えない）。紹介料は従来どおり実際に払われた額 × 紹介料率
  *   ⑤ 割引は1回の予約に1つ: 流入元の特典が効く予約では紹介割引を使わない。全体キャンペーンは紹介のお客様には元から付かない
  *   車屋は配分の対象外（お客様が店に定価を払う仕組みのため。紹介割引率を入れても使わない）
+ *   ⑦ 紹介者ご本人の予約（2026-10-27 Daisuke）: 店マスター「本人chat_id」に本人の Telegram chat_id を入れると、本人の予約は
+ *      予約の時に（紹介料率＋紹介割引）% 引き（標準 30%）・その予約に紹介料は付けない（予約の「紹介元shop_id」を空にする）。
+ *      紹介した友達の予約は今までどおり紹介料。本人がほかの人の紹介で来ていた（有効な紹介元が別にある）時は対象外
  *
  * 【2026-10-27 Daisuke 決定（まだ決めていなかった4点）】
  *   - 紹介の期限 = 12か月（⑥）
@@ -292,5 +295,55 @@ function referralCampaign_(pct, partnerName) {
     nameKm: REFERRAL_DISCOUNT_KM,
     referral: true,
     partnerName: String(partnerName || '')
+  };
+}
+
+// ====== ⑦ 紹介者ご本人の予約（2026-10-27 Daisuke「Hiro さん本人の予約だけ予約の時に30%引き・その予約に紹介料は付けない」） ======
+
+// 予約画面のバナー・予約確定文の英語ラベル（クメール語の添えは無し＝英語だけ。クメール語を足す時は Panha を通す）
+var SELF_PARTNER_LABEL_EN = 'Partner discount';
+
+/**
+ * 紹介者ご本人の割引 { shopId, name, pct }。対象でなければ null。
+ *   - 店マスター「本人chat_id」がこのお客様の chat_id の個人提携（individualPartnerSelfFor_）
+ *   - ほかに有効な紹介元がある時は対象外（最初の紹介者のまま＝本人の利用はその人の紹介・2026-10-27 決定）
+ *   - 率 = 紹介料率＋紹介割引（30% まで）。標準の 30＋0 なら 30%引き
+ * 紹介元の QR を読んだかどうか・紹介の期限には関係しない（本人であることで決まる）
+ *
+ * なりすまし対策（2026-10-27 レビュー指摘）: 予約画面の chat_id は画面が申告する値なので、それだけで本人とはしない。
+ *   verifiedUserId = Telegram の署名で確かめた user.id（Router.gs が _authUserId に入れる）と chat_id が一致する時だけ本人。
+ *   Telegram から直接届いた /start（msg.chat.id）や手動ジョブなど、chat_id が信頼できる呼び元は同じ値を渡す
+ * @param {string} chatId
+ * @param {string} verifiedUserId - 署名で確かめた user.id（無い・違う時は本人割引なし）
+ */
+function selfPartnerDiscount_(chatId, verifiedUserId) {
+  try {
+    if (typeof individualPartnerSelfFor_ !== 'function') return null;
+    var id = String(chatId || '');
+    if (!id || String(verifiedUserId || '') !== id) return null;
+    var self = individualPartnerSelfFor_(id);
+    if (!self) return null;
+    var ref = (typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(id) : '';
+    if (ref && ref !== self.shopId) return null;
+    var rate = Number(self.rate);
+    if (!isFinite(rate) || rate < 0) rate = 30;
+    var pct = Math.min(REFERRAL_TOTAL_CAP_PCT, Math.round((rate + effectiveReferralDiscount_(self, self.shopId)) * 100) / 100);
+    return pct > 0 ? { shopId: self.shopId, name: self.name, pct: pct } : null;
+  } catch (err) {
+    Logger.log('⚠️ selfPartnerDiscount_: ' + err);
+    return null;
+  }
+}
+
+/** 紹介者ご本人の割引を、全体キャンペーンと同じ形にする（self: true・partnerName） */
+function selfPartnerCampaign_(self) {
+  if (!self || !(self.pct > 0)) return null;
+  return {
+    active: true,
+    percent: self.pct,
+    nameEn: SELF_PARTNER_LABEL_EN,
+    nameKm: '',
+    self: true,
+    partnerName: String(self.name || '')
   };
 }

@@ -8,7 +8,8 @@
  *   2. 同じ sendShopMonthlyReports が、個人提携のグループへ日本語＋英語の月次レポート（件数・売上・紹介料・支払い予定）を送る。
  *      支払い予定には、前月より前の月の未払い分（月をまたいで清算済みになった予約など）も含める
  *   3. 紹介料は 10日までに ABA で支払い → 台帳の支払ステータスを「支払済み」にする（パートナー精算タブも自動で進む）
- *   - 紹介者本人の利用も対象（本人が自分の紹介QRを1回読めば、以後の予約に紹介元が付く）
+ *   - 紹介者本人の利用: 2026-10-27 から、店マスター「本人chat_id」に登録した本人の予約は予約の時に30%引き・紹介料なし
+ *     （予約の「紹介元shop_id」が空なので、ここでは数えない）。未登録の間は従来どおり紹介料の対象
  *   - 月をまたいで清算済みになった予約（10/31 の作業を 11/2 に清算など）は、施工日の月の件数・売上には入らず、
  *     次の月報の支払い予定に「前月より前の分」として入る
  *   - 判定・記帳できない時は黙って0件にしない: 店マスター「提携種別」列が無い → 全店の月報を止める／
@@ -207,14 +208,20 @@ function individualGroupGreetingText_(name, rate, discount) {
   const n = String(name || '').trim() || 'Partner';
   const pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
   const off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
+  // ご本人の予約は予約の時に（紹介料率＋紹介割引）% 引き・紹介料なし（2026-10-27・v7/ReferralAttribution.gs ⑦）
+  //   本人の登録（店マスター「本人chat_id」）のあとに効くので、そう書く。率が 0 なら出さない
+  const selfPct = Math.min(30, (Number(rate) >= 0 ? Number(rate) : 30) + (Number(discount) > 0 ? Number(discount) : 0));
+  const selfOff = selfPct + '%';
   return n + ' さん × SAMURAI MOTORS のグループです。\n' +
-    'ご紹介いただいた方（' + n + ' さんご自身のご利用も含みます）からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
+    'ご紹介いただいた方からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
     (off ? 'ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます。\n' : '') +
+    (selfPct > 0 ? n + ' さんご自身のご予約は、ご本人の登録のあと、予約の時に ' + selfOff + ' 引きになります（紹介料の対象外）。\n' : '') +
     '毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、紹介料は ABA でお支払いします。\n' +
     'いつもありがとうございます。これからもよろしくお願いします！\n\n' +
     'This is the group for ' + n + ' × SAMURAI MOTORS.\n' +
-    'When someone you referred books with us (including your own bookings), we\'ll let you know here — date, time, menu and car (no photos).\n' +
+    'When someone you referred books with us, we\'ll let you know here — date, time, menu and car (no photos).\n' +
     (off ? 'People you refer get ' + off + ' off all services.\n' : '') +
+    (selfPct > 0 ? 'Once you are registered, your own bookings get ' + selfOff + ' off when you book (no commission on them).\n' : '') +
     'At the start of each month, we\'ll send a summary of last month\'s jobs, amounts and your commission (' + pct + '), and pay the commission by ABA.\n' +
     'Thank you for your support!';
 }
