@@ -50,7 +50,8 @@ for /l %%n in (1,1,3) do (
     echo OK: production is serving %BUILD%
     exit /b 0
   )
-  timeout /t 5 /nobreak >nul
+  rem 2026-10-27: Git Bash から呼ぶと PATH の GNU timeout が先に当たり待てない → Windows の timeout.exe を直接呼ぶ
+  "%SystemRoot%\System32\timeout.exe" /t 5 /nobreak >nul
 )
 echo NG: production ping did not return %BUILD% - deployment NOT verified
 exit /b 1
