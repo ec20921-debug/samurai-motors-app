@@ -23,20 +23,23 @@
  *   - 1つの紹介者に登録できる本人は1人。登録済みなら別の人がリンクを押しても上書きしない（書く直前にセルを読み直す・書いたら flush）
  *   - 管理グループのメンバー（スタッフ・Daisuke）は本人にしない（試しに押しても登録されない）。確かめられない時も登録しない
  *   - ほかの紹介者の本人として登録済みの人は、別の紹介者の本人にしない
- *   - 紹介者のグループに入っていない人は本人にしない（getChatMember。確かめられない時は登録し、管理グループに一言）
+ *   - 紹介者のグループに入っていない人は本人にしない（getChatMember。確かめられない時は登録し、管理グループに一言）。
+ *     グループが連携済みでない間（作り直し中・停止）は登録しない。リンクは送ったグループ用（グループが変わったら取り消し）
  *   - リンク本体はグループにだけ送る。店マスター・営業ボードには「送付済み」だけ（先に開いた人が本人になるリンクのため）
  *   - 登録したら、まずグループと管理グループに知らせる（Telegram 名・@ユーザー名。違う人ならすぐ分かる）。歓迎文などはそのあと
  *   - 個人提携でない・停止中・店マスターに無い紹介者のリンクは登録しない（開いた人に「このリンクは使えません」）。読めない時は「少し待って」
  *   - 送る前に印を取る（partnerSendClaim_）: /register 直後の送信と毎時の安全網が重なっても、チラシ・リンクは1回だけ
+ *   - チラシURL・紹介URL が別の紹介者（番号・shop_id）のものなら送らない（紹介料の取り違えを防ぐ）
  *   - 毎時の安全網: チラシ・本人登録リンクの最初の送信は、この版より後にあいさつ文を送ったグループで、あいさつ文から7日以内だけ
- *     （Hiro さん等の既存グループに今さら送らない・送れないまま毎時くり返さない）
+ *     （Hiro さん等の既存グループに今さら送らない）。作り直したリンクは枠に関係なく送れるまで送る。送れない時は6時間に1回知らせる
  *
  * 【GSS（店マスター）】紹介チラシURL（立ち上げの時に Claude が書く・改行区切り）／ 本人chat_id ／ 本人の名前（Telegram）／
- *   本人登録日時 ／ 本人登録リンク（予約Botが「送付済み 日時」と書く）。列は v7-operations が無ければ足す（IndividualPartnerOps.gs）
+ *   本人登録日時 ／ 本人登録リンク（予約Botが「送付済み 日時」「登録に使用済み 日時」と書く）。列は v7-operations が無ければ足す（IndividualPartnerOps.gs）
  *   チラシは版ごとのフォルダ（miniapp partners/<番号>/<版>/・PNG）。送るたびに「紹介チラシ送付履歴」タブへ1行（無ければ作る）。
  *   チラシを作り直したら → 店マスターの URL を新しい版に替えて resendPartnerFlyersNow('<shop_id>')（2026-10-27 Daisuke）
- * 【取り消し・作り直し】違う人が登録された → 「本人chat_id」と「本人登録リンク」の両方を消す → 前のリンクはすぐ使えなくなり
- *   （5分ほどで割引も外れる）、1時間以内に新しいリンクがグループに届く。すぐ送るなら sendSelfRegLinkNow('<shop_id>')
+ * 【取り消し・作り直し】違う人が登録された → 店マスター「本人chat_id」を消すだけ → このリンクはすぐ使えなくなり（5分ほどで割引も外れる）、
+ *   その人は本人登録リンクでは戻れない（戻すなら「本人chat_id」に手で入れる）。1時間以内に新しいリンクがグループに届く（すぐなら sendSelfRegLinkNow）
+ *   まだ誰も登録していないリンクを止める → 「本人登録リンク」を消す（同じく作り直して送る）
  *   グループを作り直した時（同じ shop_id で /register し直した）→ resendPartnerFlyersNow と sendSelfRegLinkNow（あいさつ文は送り直さない）
  * 【呼び出し元】ShopGroupGreeting.gs（あいさつ文のあと・毎時の安全網）／ BookingBot.gs handleCustomerMessage（/start self_）
  */
@@ -46,6 +49,10 @@ var SELF_REG_SHOP_PREFIX = 'selfreg_shop_';   // Script Properties: shop_id → 
 var SELF_REG_SENT_PREFIX = 'selfreg_sent_';   // Script Properties: 本人登録リンクをグループに送った日時
 var PARTNER_FLYERS_SENT_PREFIX = 'partner_flyers_sent_';   // Script Properties: チラシ・紹介URLをグループに送った日時
 var SELF_REG_CELL_PREFIX = 'selfreg_cell_';   // Script Properties: 店マスター「本人登録リンク」に「送付済み」を書けた印（消されたら＝取り消し）
+var SELF_REG_GID_PREFIX = 'selfreg_gid_';     // Script Properties: リンクを送った紹介者グループの chat_id（グループが変わったら＝取り消し）
+var SELF_REG_USED_PREFIX = 'selfreg_used_';   // Script Properties: このリンクで本人になった chat_id（「本人chat_id」を消したら＝取り消し）
+var SELF_REG_DENY_PREFIX = 'selfreg_deny_';   // Script Properties: 取り消された人（カンマ区切り）。本人登録リンクでは二度と本人にしない（手で「本人chat_id」に入れれば戻せる）
+var SELF_REG_NEED_PREFIX = 'selfreg_need_';   // Script Properties: 作り直したリンクの送り待ち（毎時、送れるまで送る・7日の枠に関係なく）
 var PARTNER_SEND_STALE_MIN = 10;   // 「送信中」の印がこれより古ければ、止まった実行の残りとみなして送り直してよい
 var PARTNER_ONBOARD_SINCE = '2026-10-27 11:00:00';   // プノンペン時刻。この時刻より後にあいさつ文を送ったグループだけ、毎時の安全網でチラシ・リンクを送る
 var PARTNER_ONBOARD_RETRY_DAYS = 7;
@@ -125,17 +132,65 @@ function markSelfLinkCell_(shopId, at) {
   return false;
 }
 
-/** 店マスター「本人登録リンク」を消して取り消されたか: true / false / null（店マスターを読めない） */
+/**
+ * 今のリンクが取り消されたか: true / false / null（確かめられない＝登録しない側）。取り消しになるのは:
+ *   - リンクを送った後で、紹介者のグループが変わった（作り直し・別グループで /register）
+ *   - 店マスター「本人登録リンク」を消した（「送付済み」を書けていた時だけ。列が消えていたら確かめられない）
+ *   - このリンクで登録した本人の「本人chat_id」を消した（違う人が登録された時はこれだけで取り消せる・2026-10-27 レビュー）
+ */
 function selfLinkRevoked_(shopId) {
-  if (!PropertiesService.getScriptProperties().getProperty(SELF_REG_CELL_PREFIX + shopId)) return false;   // まだ一度も書けていない
+  var props = PropertiesService.getScriptProperties();
+  var cellMark = props.getProperty(SELF_REG_CELL_PREFIX + shopId);
+  var used = props.getProperty(SELF_REG_USED_PREFIX + shopId);
+  var sentGid = props.getProperty(SELF_REG_GID_PREFIX + shopId);
   try {
+    if (sentGid) {
+      var gid = partnerGroupChatId_(shopId);
+      if (gid && String(gid) !== String(sentGid)) return true;
+    }
+    if (!cellMark && !used) return false;
     var mr = partnerMasterRow_(shopId);
     if (!mr) return null;
-    return mr.head.indexOf(PARTNER_SELF_LINK_COL) >= 0 && !String(partnerMasterCell_(mr, PARTNER_SELF_LINK_COL) || '').trim();
+    if (cellMark) {
+      if (mr.head.indexOf(PARTNER_SELF_LINK_COL) < 0) return null;
+      if (!String(partnerMasterCell_(mr, PARTNER_SELF_LINK_COL) || '').trim()) return true;
+    }
+    if (used) {
+      if (mr.head.indexOf(PARTNER_SELF_CHAT_COL) < 0) return null;
+      if (!String(partnerMasterCell_(mr, PARTNER_SELF_CHAT_COL) || '').trim()) return true;
+    }
+    return false;
   } catch (err) {
     Logger.log('⚠️ selfLinkRevoked_: ' + err);
     return null;
   }
+}
+
+/** 取り消された人（このリンクで本人になり、あとで「本人chat_id」を消された人）。本人登録リンクでは二度と本人にしない */
+function selfRegDenied_(shopId, chatId) {
+  var v = String(PropertiesService.getScriptProperties().getProperty(SELF_REG_DENY_PREFIX + shopId) || '');
+  return (',' + v + ',').indexOf(',' + String(chatId) + ',') >= 0;
+}
+
+function addSelfRegDeny_(shopId, chatId) {
+  if (!chatId || selfRegDenied_(shopId, chatId)) return;
+  var props = PropertiesService.getScriptProperties();
+  var v = String(props.getProperty(SELF_REG_DENY_PREFIX + shopId) || '');
+  props.setProperty(SELF_REG_DENY_PREFIX + shopId, v ? v + ',' + chatId : String(chatId));
+}
+
+/** 「送信中」の印がまだ新しいか（10分以内） */
+function partnerSendingFresh_(v) {
+  var s = String(v || '');
+  if (s.indexOf('sending ') !== 0) return false;
+  var stale = Utilities.formatDate(new Date(new Date().getTime() - PARTNER_SEND_STALE_MIN * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
+  return s.substring('sending '.length) > stale;
+}
+
+/** 送った日時（'sending …' は送信中＝まだ送っていないので ''） */
+function partnerSentAt_(key) {
+  var v = String(PropertiesService.getScriptProperties().getProperty(key) || '');
+  return v.indexOf('sending ') === 0 ? '' : v;
 }
 
 /**
@@ -149,8 +204,7 @@ function partnerSendClaim_(key, force) {
     var props = PropertiesService.getScriptProperties();
     var cur = String(props.getProperty(key) || '');
     if (cur.indexOf('sending ') === 0) {
-      var stale = Utilities.formatDate(new Date(new Date().getTime() - PARTNER_SEND_STALE_MIN * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
-      if (cur.substring('sending '.length) > stale) return null;
+      if (partnerSendingFresh_(cur)) return null;
     } else if (cur && !force) {
       return null;
     }
@@ -188,20 +242,39 @@ function selfRegLinkFor_(shopId) {
   return selfRegLinkFromToken_(selfRegTokenFor_(shopId));
 }
 
-/** リンクを作り直す（前のリンクを使えなくする）。次の送信で新しいリンクになる */
+/**
+ * リンクを作り直す（前のリンクを使えなくする）。このリンクで登録していた人は取り消された人として覚える（同じリンクの系統では本人にしない）。
+ * 新しいリンクは「送り待ち」の印を付け、毎時の安全網が送れるまで送る（7日の枠に関係なく）。
+ * @return {boolean} 作り直した時 true（リンクの送信中で作り直せない時は false＝次の回に）
+ */
 function rotateSelfRegToken_(shopId) {
   var id = String(shopId || '').trim();
-  var props = PropertiesService.getScriptProperties();
-  var old = props.getProperty(SELF_REG_SHOP_PREFIX + id);
-  if (old) props.deleteProperty(SELF_REG_TOKEN_PREFIX + old);
-  props.deleteProperty(SELF_REG_SHOP_PREFIX + id);
-  props.deleteProperty(SELF_REG_SENT_PREFIX + id);
-  props.deleteProperty(SELF_REG_CELL_PREFIX + id);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5 * 1000)) return false;
+  try {
+    var props = PropertiesService.getScriptProperties();
+    if (partnerSendingFresh_(props.getProperty(SELF_REG_SENT_PREFIX + id))) return false;   // ほかの実行がリンクを送信中
+    var used = props.getProperty(SELF_REG_USED_PREFIX + id);
+    if (used) addSelfRegDeny_(id, used);
+    // この紹介者の token をすべて消す（取り違えで2本できていても残さない）
+    var all = props.getProperties();
+    Object.keys(all).forEach(function(k) {
+      if (k.indexOf(SELF_REG_TOKEN_PREFIX) === 0 && String(all[k]) === id) props.deleteProperty(k);
+    });
+    [SELF_REG_SHOP_PREFIX, SELF_REG_SENT_PREFIX, SELF_REG_CELL_PREFIX, SELF_REG_GID_PREFIX, SELF_REG_USED_PREFIX].forEach(function(p) {
+      props.deleteProperty(p + id);
+    });
+    props.setProperty(SELF_REG_NEED_PREFIX + id, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
+    return true;
+  } finally {
+    try { lock.releaseLock(); } catch (ignore) {}
+  }
 }
 
 /**
  * 本人登録リンクを作り直して、その紹介者の連携済みグループへ今すぐ送る（GAS エディタで実行）。前のリンクはすぐ使えなくなる。
- * 使う時: グループを作り直して /register し直した時・違う人が登録された時（先に店マスター「本人chat_id」を消す）。本人登録済みなら何もしない
+ * 使う時: グループを作り直して /register し直した時・違う人が登録された時（先に店マスター「本人chat_id」を消す）。本人登録済みなら何もしない。
+ * 送れなかった時は毎時の安全網が送り続ける
  */
 function sendSelfRegLinkNow(shopId) {
   var id = String(shopId || '').trim();
@@ -211,9 +284,11 @@ function sendSelfRegLinkNow(shopId) {
   var info = individualPartnerInfo_(id);
   if (!info) { Logger.log('⚠️ 個人提携として読めない（店マスター）: ' + id); return false; }
   if (info.selfChat) { Logger.log('ℹ️ 本人登録済み（作り直すなら先に店マスター「' + PARTNER_SELF_CHAT_COL + '」を消す）: ' + id); return false; }
-  rotateSelfRegToken_(id);
+  if (!(selfRegPctFor_(info) > 0)) { Logger.log('ℹ️ 本人割引が 0% の配分なので、本人登録リンクは送らない: ' + id); return false; }
+  if (!rotateSelfRegToken_(id)) { Logger.log('⚠️ 本人登録リンクの送信中です。少し待ってからもう一度: ' + id); return false; }
   var r = sendSelfRegLinkOnce_(id, gid);
-  Logger.log((r === 'sent' ? '🔑 本人登録リンクを作り直して送った: ' : '⚠️ 送れなかった: ') + id);
+  if (r === 'sent') PropertiesService.getScriptProperties().deleteProperty(SELF_REG_NEED_PREFIX + id);
+  Logger.log((r === 'sent' ? '🔑 本人登録リンクを作り直して送った: ' : '⚠️ いま送れなかった（毎時の安全網が送る）: ') + id);
   return r === 'sent';
 }
 
@@ -269,8 +344,11 @@ function sendSelfRegLinkOnce_(shopId, groupChatId) {
   var at = partnerSendDone_(key, claim, !!(res && res.ok));
   if (!at) {
     Logger.log('⚠️ 本人登録リンク 送信失敗: ' + shopId + ' ' + JSON.stringify(res));
+    warnOncePer_('warn_selfreg_send_failed_' + shopId, 6 * 60 * 60,
+      '⚠️ ' + info.name + '（個人提携）のグループに本人登録リンクを送れていません（毎時再試行・6時間に1回お知らせ）。グループの連携・Bot がグループにいるかを確かめてください');
     return false;
   }
+  PropertiesService.getScriptProperties().setProperty(SELF_REG_GID_PREFIX + shopId, String(groupChatId));   // このリンクはこのグループ用
   markSelfLinkCell_(shopId, at);
   Logger.log('🔑 本人登録リンク 送信: ' + shopId + ' → ' + groupChatId);
   return 'sent';
@@ -308,7 +386,7 @@ function partnerFlyersText_(name, no, langs) {
  * 個人提携のグループに、チラシ（アルバム）＋説明＋紹介URL を1回だけ送る。
  * 店マスター「紹介チラシURL」が空なら送らず管理グループに知らせる（立ち上げの時に Claude が書く）
  * @param {Object} [opts] - { force: true } で送り直し
- * @return {boolean} 送った、または送る必要が無い時 true（チラシが未登録・送信失敗は false）
+ * @return {string|boolean} 今送った時 'sent'／送る必要が無い・送信済み・ほかの実行が送信中は true／チラシが未登録・別の紹介者のもの・送信失敗は false
  */
 function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
   opts = opts || {};
@@ -318,11 +396,12 @@ function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
   var key = PARTNER_FLYERS_SENT_PREFIX + shopId;
   var claim = partnerSendClaim_(key, !!opts.force);
   if (!claim) return true;   // 送信済み・ほかの実行が送信中（即時送信と毎時の安全網が重なっても1回だけ）
-  var r = null, urls = [], album = null;
+  var r = null, urls = [], album = null, wrong = '';
   try {
     r = partnerMasterRow_(shopId);
     urls = parsePartnerFlyerUrls_(partnerMasterCell_(r, PARTNER_FLYER_URL_COL));
-    if (urls.length) {
+    wrong = r ? partnerFlyerMismatch_(r, shopId, urls) : '';
+    if (urls.length && !wrong) {
       album = urls.length === 1
         ? sendPhoto(BOT_TYPE.BOOKING, groupChatId, urls[0])
         : sendMediaGroup(BOT_TYPE.BOOKING, groupChatId, urls.map(function(u) { return { type: 'photo', media: u }; }));
@@ -340,6 +419,12 @@ function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
     warnOncePer_('warn_partner_flyers_missing_' + shopId, 6 * 60 * 60,
       '⚠️ ' + name + '（個人提携）のグループにチラシを送れていません: 店マスター「' + PARTNER_FLYER_URL_COL + '」が空です。\n' +
       'チラシを作って URL を入れたら、毎時の安全網が送ります（あいさつ文から' + PARTNER_ONBOARD_RETRY_DAYS + '日以内）');
+    return false;
+  }
+  if (wrong) {
+    warnOncePer_('warn_partner_flyers_wrong_' + shopId, 6 * 60 * 60,
+      '⚠️ ' + name + '（個人提携）のグループにチラシを送っていません: ' + wrong + '。\n' +
+      '別の紹介者の URL を貼っていないか、店マスターの行を確かめてください（紹介料の取り違えを防ぐため）');
     return false;
   }
   if (!sentAt) {
@@ -370,7 +455,24 @@ function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
     sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '📎 ' + name + '（個人提携）のグループに、チラシ ' + ver + '・' + urls.length + '枚と紹介URLを送りました' +
       (restOk ? '' : '\n⚠️ チラシのあとの説明・紹介URLが届いていません。紹介URL: ' + refUrl + '（グループに手で貼ってください）'));
   } catch (ignore) {}
-  return true;
+  return 'sent';
+}
+
+/**
+ * 「紹介チラシURL」「QRリンク(BookingBot)」がこの紹介者のものか。違えば理由（''＝問題なし）。
+ * 貼り間違えると友達の予約が別の人の紹介になる（紹介料の取り違え）ので、送る前に確かめる（2026-10-27 レビュー）
+ */
+function partnerFlyerMismatch_(r, shopId, urls) {
+  var ref = String(partnerMasterCell_(r, 'QRリンク(BookingBot)') || '').trim();
+  var tail = 'start=shop_' + shopId;
+  if (ref && ref.slice(-tail.length) !== tail) return '「QRリンク(BookingBot)」が別の shop_id のリンク（' + ref + '）';
+  var no = String(partnerMasterCell_(r, 'パートナーID') || '').trim();
+  if (!no) return '';
+  var bad = (urls || []).filter(function(u) {
+    var m = String(u).match(/\/partners\/([^\/]+)\//);
+    return m && m[1] !== no;
+  });
+  return bad.length ? '「' + PARTNER_FLYER_URL_COL + '」に別の番号のチラシ（' + bad[0] + '・この紹介者は ' + no + '）' : '';
 }
 
 /**
@@ -380,9 +482,9 @@ function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
 function resendPartnerFlyersNow(shopId) {
   var gid = partnerGroupChatId_(shopId);
   if (!gid) { Logger.log('⚠️ 連携済みのグループが無い: ' + shopId); return false; }
-  var ok = sendIndividualFlyersOnce_(shopId, gid, { force: true });
-  Logger.log((ok ? '📎 送り直した: ' : '⚠️ 送れなかった: ') + shopId);
-  return ok;
+  var r = sendIndividualFlyersOnce_(shopId, gid, { force: true });
+  Logger.log((r === 'sent' ? '📎 送り直した: ' : r ? '⚠️ ほかの実行が送信中か混み合っている。少し待ってもう一度: ' : '⚠️ 送れなかった（管理グループの知らせを見る）: ') + shopId);
+  return r === 'sent';
 }
 
 // ====== 送付履歴（v7 Database「紹介チラシ送付履歴」・2026-10-27） ======
@@ -432,43 +534,53 @@ function sendIndividualOnboardingRest_(shopId, groupChatId) {
 }
 
 /**
- * 安全網（毎時・sendPendingShopGreetings から）:
- *   - この版より後にあいさつ文を送った個人提携のグループで、あいさつ文から7日以内なら、チラシ・本人登録リンクの送り残しを送る
- *   - 本人が未登録で、店マスター「本人登録リンク」が消されていたら、リンクを作り直して送る（前のリンクは使えなくなる）
+ * 安全網（毎時・sendPendingShopGreetings から）。紹介者ごとに（1件の失敗で他を止めない）:
+ *   1. 本人が未登録で、今のリンクが取り消されていたら（「本人登録リンク」「本人chat_id」を消した・グループが変わった）作り直す
+ *      （送った時の書き込みに失敗していただけなら、作り直さず「送付済み」を書き直す）
+ *   2. 作り直したリンクの送り待ちは、送れるまで毎時送る（7日の枠に関係なく。Hiro さん等の既存グループでも）
+ *   3. 最初の送り残し: この版より後にあいさつ文を送ったグループで、あいさつ文から7日以内なら、チラシ・本人登録リンクを送る
  */
 function sendPendingIndividualOnboarding_() {
   var props = PropertiesService.getScriptProperties();
   var since = Utilities.formatDate(new Date(new Date().getTime() - PARTNER_ONBOARD_RETRY_DAYS * 24 * 60 * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
   var sent = 0;
   readShopLinks_().forEach(function(r) {
-    var o = r.obj;
-    if (String(o['状態'] || '') !== '連携済') return;
-    var shopId = String(o['shop_id'] || '').trim(), gid = String(o['グループchat_id'] || '');
-    if (!shopId || !gid) return;
-    if (typeof individualPartnerState_ !== 'function' || individualPartnerState_(shopId) !== true) return;
-    var info = individualPartnerInfo_(shopId);
-    if (!info) return;
-    // リンクの作り直し（本人未登録・リンクを送った・店マスターの「本人登録リンク」を消した）
-    if (!info.selfChat && props.getProperty(SELF_REG_SHOP_PREFIX + shopId) && props.getProperty(SELF_REG_SENT_PREFIX + shopId)) {
-      var mr = partnerMasterRow_(shopId);
-      if (mr && mr.head.indexOf(PARTNER_SELF_LINK_COL) >= 0 && !String(partnerMasterCell_(mr, PARTNER_SELF_LINK_COL) || '').trim()) {
-        if (!props.getProperty(SELF_REG_CELL_PREFIX + shopId)) {
-          // 一度も書けていない（送った時の書き込みに失敗）＝消されたのではない → 作り直さず書き直すだけ（毎時作り直して送り続けない）
-          markSelfLinkCell_(shopId, props.getProperty(SELF_REG_SENT_PREFIX + shopId));
-          return;
+    try {
+      var o = r.obj;
+      if (String(o['状態'] || '') !== '連携済') return;
+      var shopId = String(o['shop_id'] || '').trim(), gid = String(o['グループchat_id'] || '');
+      if (!shopId || !gid) return;
+      if (typeof individualPartnerState_ !== 'function' || individualPartnerState_(shopId) !== true) return;
+      var info = individualPartnerInfo_(shopId);
+      if (!info) return;
+      // 1. 取り消し → 作り直し（送信中の 'sending' は送ったとみなさない）
+      if (!info.selfChat && props.getProperty(SELF_REG_SHOP_PREFIX + shopId) && partnerSentAt_(SELF_REG_SENT_PREFIX + shopId)) {
+        var mr = partnerMasterRow_(shopId);
+        var cellEmpty = !!mr && mr.head.indexOf(PARTNER_SELF_LINK_COL) >= 0 && !String(partnerMasterCell_(mr, PARTNER_SELF_LINK_COL) || '').trim();
+        if (cellEmpty && !props.getProperty(SELF_REG_CELL_PREFIX + shopId) && !props.getProperty(SELF_REG_USED_PREFIX + shopId)) {
+          markSelfLinkCell_(shopId, partnerSentAt_(SELF_REG_SENT_PREFIX + shopId));   // 書き込みに失敗していただけ（消されたのではない）
+        } else if (selfLinkRevoked_(shopId) === true) {
+          rotateSelfRegToken_(shopId);   // 送り待ちの印を付ける（送信中なら次の回）
         }
-        rotateSelfRegToken_(shopId);
+      }
+      // 2. 作り直したリンクの送り待ち（送れるまで毎時）
+      if (props.getProperty(SELF_REG_NEED_PREFIX + shopId)) {
+        if (info.selfChat) { props.deleteProperty(SELF_REG_NEED_PREFIX + shopId); return; }
         if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') {
+          props.deleteProperty(SELF_REG_NEED_PREFIX + shopId);
           sent++;
           try { sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '🔑 ' + info.name + '（個人提携）の本人登録リンクを作り直して送りました（前のリンクは使えません）'); } catch (ignore) {}
         }
         return;
       }
+      // 3. 最初の送り残し（既存のグループ・7日より前は送らない）
+      var greetAt = String(props.getProperty(SHOP_GREETING_PROP_PREFIX + shopId) || '');
+      if (!greetAt || greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;
+      sendIndividualFlyersOnce_(shopId, gid);   // 送信済み・送信中なら何もしない（印は関数の中で取る）
+      if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') sent++;
+    } catch (err) {
+      Logger.log('⚠️ sendPendingIndividualOnboarding_（' + String((r && r.obj && r.obj['shop_id']) || '') + '）: ' + err);
     }
-    var greetAt = String(props.getProperty(SHOP_GREETING_PROP_PREFIX + shopId) || '');
-    if (!greetAt || greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;   // 既存のグループ・7日より前は送らない
-    sendIndividualFlyersOnce_(shopId, gid);   // 送信済み・送信中なら何もしない（印は関数の中で取る）
-    if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') sent++;
   });
   if (sent > 0) Logger.log('🔑 sendPendingIndividualOnboarding_: ' + sent + '件');
   return sent;
@@ -478,6 +590,7 @@ function sendPendingIndividualOnboarding_() {
 
 /**
  * 店マスターの「本人chat_id」に書く（書く直前にセルを読み直す・書いたら flush）。本人の名前・登録日時の列があれば一緒に書く。
+ * 「本人chat_id」が書けたら登録できた扱い（名前・日時・「本人登録リンク」の書き込みに失敗しても、割引は効くので登録として知らせる）
  * @return {string} 'registered' / 'already' / 'taken:<登録済みの chat_id>' / 'failed'
  */
 function writeSelfChatToMaster_(shopId, chatId, who) {
@@ -486,9 +599,17 @@ function writeSelfChatToMaster_(shopId, chatId, who) {
   var cur = String(partnerMasterCell_(r, PARTNER_SELF_CHAT_COL) || '').trim();
   if (cur === String(chatId)) return 'already';
   if (cur) return 'taken:' + cur;
-  partnerMasterSet_(r, PARTNER_SELF_CHAT_COL, String(chatId));
-  partnerMasterSet_(r, PARTNER_SELF_NAME_COL, sheetSafeText_(who || ''));
-  partnerMasterSet_(r, PARTNER_SELF_AT_COL, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm'));
+  if (!partnerMasterSet_(r, PARTNER_SELF_CHAT_COL, String(chatId))) return 'failed';
+  // このリンクで本人になった人（「本人chat_id」を消したら、このリンクは取り消し・この人は本人登録リンクで戻れない）
+  PropertiesService.getScriptProperties().setProperty(SELF_REG_USED_PREFIX + shopId, String(chatId));
+  try {
+    var at = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm');
+    partnerMasterSet_(r, PARTNER_SELF_NAME_COL, sheetSafeText_(who || ''));
+    partnerMasterSet_(r, PARTNER_SELF_AT_COL, at);
+    partnerMasterSet_(r, PARTNER_SELF_LINK_COL, '登録に使用済み ' + at + '（違う人なら「本人chat_id」を消す → 新しいリンクを送る）');
+  } catch (err) {
+    Logger.log('⚠️ 本人の名前・登録日時の記録: ' + err);
+  }
   try { SpreadsheetApp.flush(); } catch (ignore) {}   // ロックを外す前に書き込みを確定（並走した実行から見えるように）
   return 'registered';
 }
@@ -644,7 +765,9 @@ function handleSelfRegStart_(msg, text) {
   }
   var valid = !!shopId && state === true && !!validPartnerShopId_(shopId);
   if (!valid) {
-    admin('⚠️ 本人登録リンクから来たが、登録しなかった（リンクが古い・個人提携でない・停止中のいずれか）\n顧客: ' + who +
+    // 知らない token を何度も送られても管理グループを埋めない（同じ人は10分に1回）
+    warnOncePer_('warn_selfreg_invalid_' + chatId, 10 * 60,
+      '⚠️ 本人登録リンクから来たが、登録しなかった（リンクが古い・個人提携でない・停止中のいずれか）\n顧客: ' + who +
       '（chat_id=' + chatId + '）\nshop_id: ' + (shopId || '（リンクの token が見つからない）'));
     reply(individualText_(INDIVIDUAL_LANG_DEFAULT, SELF_REG_TEXT.invalid));
     welcome();
@@ -653,13 +776,28 @@ function handleSelfRegStart_(msg, text) {
   var langs = individualGroupLangs_(shopId);
   var name0 = (individualPartnerInfo_(shopId) || {}).name || shopId;
 
-  // 店マスター「本人登録リンク」を消した＝このリンクの取り消し（すぐ効く。新しいリンクは毎時の安全網か sendSelfRegLinkNow で届く）
+  // 紹介者のグループが連携済みでない間（作り直し中・停止）は登録しない（グループのメンバーか確かめられないため）
+  if (!partnerGroupChatId_(shopId)) {
+    admin('⚠️ 本人登録リンク: 紹介者のグループが連携済みでないので、登録していない（作り直し中なら、新しいグループで /register のあと sendSelfRegLinkNow）\n' +
+      '紹介者: ' + name0 + '（' + shopId + '）\n開いた人: ' + who + '（chat_id=' + chatId + '）');
+    reply(individualText_(langs, SELF_REG_TEXT.revoked));
+    return true;
+  }
+  // 取り消されたリンク（「本人登録リンク」か「本人chat_id」を消した・グループが変わった）。すぐ効く。新しいリンクは毎時の安全網か sendSelfRegLinkNow で届く
   var revoked = selfLinkRevoked_(shopId);
   if (revoked !== false) {
-    admin((revoked ? '⚠️ 本人登録リンク: 取り消したリンク（店マスター「' + PARTNER_SELF_LINK_COL + '」を消した）が開かれた（登録していない）'
+    admin((revoked ? '⚠️ 本人登録リンク: 取り消したリンク（「' + PARTNER_SELF_LINK_COL + '」か「' + PARTNER_SELF_CHAT_COL + '」を消した・グループが変わった）が開かれた（登録していない）'
                    : '⚠️ 本人登録リンク: 店マスターを読めず、登録していない（本人なら少し待って押し直してもらう）') +
       '\n紹介者: ' + name0 + '（' + shopId + '）\n開いた人: ' + who + '（chat_id=' + chatId + '）');
     reply(individualText_(langs, revoked ? SELF_REG_TEXT.revoked : SELF_REG_TEXT.unknown));
+    return true;
+  }
+  // 本人から外した人（違う人が登録されて「本人chat_id」を消した）は、本人登録リンクでは戻さない
+  if (selfRegDenied_(shopId, chatId)) {
+    admin('⚠️ 本人登録リンク: 本人から外した人が開いた（登録していない）\n紹介者: ' + name0 + '（' + shopId + '）\n' +
+      '開いた人: ' + who + '（chat_id=' + chatId + '）\n→ この人を本人に戻すなら、店マスター「' + PARTNER_SELF_CHAT_COL + '」に ' + chatId + ' を手で入れる');
+    reply(individualText_(langs, SELF_REG_TEXT.taken));
+    welcome();
     return true;
   }
 
@@ -699,7 +837,9 @@ function handleSelfRegStart_(msg, text) {
   }
   var result = '';
   try {
-    result = writeSelfChatToMaster_(shopId, chatId, who);   // 書く直前に店マスターのセルを読み直す
+    // 確かめてからロックを取るまでに取り消されていないか、ロックの中でもう一度見る
+    var rv = selfLinkRevoked_(shopId);
+    result = rv === false ? writeSelfChatToMaster_(shopId, chatId, who) : (rv ? 'revoked' : 'failed');   // 書く直前に店マスターのセルを読み直す
   } catch (err) {
     Logger.log('⚠️ handleSelfRegStart_: ' + err);
     result = 'failed';
@@ -708,10 +848,15 @@ function handleSelfRegStart_(msg, text) {
   }
   if (result === 'registered') refreshPartnerKinds_();
 
+  if (result === 'revoked') {
+    admin('⚠️ 本人登録リンク: 開いた直後にリンクが取り消された（登録していない）\n紹介者: ' + name0 + '（' + shopId + '）\n開いた人: ' + who + '（chat_id=' + chatId + '）');
+    reply(individualText_(langs, SELF_REG_TEXT.revoked));
+    return true;
+  }
   if (result.indexOf('taken:') === 0) {
     admin('⚠️ 本人登録リンクを、登録済みの本人とは別の人が開いた（上書きしていない）\n紹介者: ' + name0 + '（' + shopId + '）\n' +
       '登録済みの chat_id: ' + result.substring('taken:'.length) + '\n今回開いた人: ' + who + '（chat_id=' + chatId + '）\n' +
-      '→ 登録済みの方が違う人なら、店マスター「' + PARTNER_SELF_CHAT_COL + '」と「' + PARTNER_SELF_LINK_COL + '」の両方を消す（新しいリンクが1時間以内にグループへ届く）');
+      '→ 登録済みの方が違う人なら、店マスター「' + PARTNER_SELF_CHAT_COL + '」を消す（このリンクは使えなくなり、新しいリンクが1時間以内にグループへ届く）');
     reply(individualText_(langs, SELF_REG_TEXT.taken));
     welcome();
     return true;
@@ -741,7 +886,7 @@ function handleSelfRegStart_(msg, text) {
       (pct > 0 ? '本人の予約は ' + pct + '%引き・紹介料なし' : '⚠️ 本人割引が 0（ほかの紹介者の紹介で来ていた・店マスターが読めない のどちらか）。確かめてご本人に連絡') +
       (inGroup === null ? '\n（紹介者のグループのメンバーか確かめられませんでした。名前が本人か確かめてください）' : '') +
       (groupOk ? '' : '\n⚠️ 紹介者のグループへの「ご登録ありがとうございました」が届いていません') +
-      '\n→ 違う人なら、店マスター「' + PARTNER_SELF_CHAT_COL + '」と「' + PARTNER_SELF_LINK_COL + '」の両方を消す（前のリンクはすぐ使えなくなり、新しいリンクが1時間以内にグループへ届く）');
+      '\n→ 違う人なら、店マスター「' + PARTNER_SELF_CHAT_COL + '」を消す（このリンクはすぐ使えなくなり、その人はこのリンクで戻れない。新しいリンクが1時間以内にグループへ届く）');
   }
   reply(selfRegUserText_(name0, pct, result === 'already', langs));
   welcome(pct > 0 ? { skipCampaign: true, selfPartnerPct: pct } : { skipCampaign: true });

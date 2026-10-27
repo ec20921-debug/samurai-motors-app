@@ -268,7 +268,8 @@ function scoutLinksIndivCells_(o, n, sends) {
   // 店マスター「本人登録リンク」には予約Botが「送付済み 日時」だけを書く。リンク本体（先に開いた人が本人になる）は表示しない
   const selfLinkRaw = String(s['本人登録リンク'] || '').trim();
   const selfLink = selfLinkRaw.indexOf('start=self_') >= 0 ? '送付済み（リンク本体は表示しない）' : selfLinkRaw;
-  const flyerUrls = String(s['紹介チラシURL'] || '').split(/[\s,、，]+/).filter(function(u) { return /^https:\/\//.test(u); });
+  // v7 PartnerSelfRegister.gs parsePartnerFlyerUrls_ と同じ読み方（送るのは最大10枚）
+  const flyerUrls = String(s['紹介チラシURL'] || '').split(/[\s,、，]+/).filter(function(u) { return /^https:\/\/\S+$/.test(u); }).slice(0, 10);
   const sent = (sends || {})[o.id];
   const disc = individualEffectiveDiscountOps_(s, o.rate);
   const selfPct = Math.min(30, (Number(o.rate) >= 0 ? Number(o.rate) : 30) + disc);
@@ -299,7 +300,7 @@ function scoutLinksWriteKindTabs_(board, items) {
     '🙋 個人提携（1時間ごとに自動更新・見るだけ） / Individual partners',
     '入力は v7 Database「店マスター」（紹介料率・紹介割引率・グループへの通知の言語・紹介チラシURL）。本人登録は、グループに届く「🔑 本人登録リンク」から本人が押すと自動で入る',
     '本人の割引 = 紹介料率＋紹介割引（30%まで）。本人の予約は予約の時にこの割引・紹介料なし。紹介した友達の予約は翌月に紹介料',
-    '取り消し（違う人が登録された）: 店マスター「本人chat_id」と「本人登録リンク」の両方を消す → 前のリンクはすぐ使えなくなり、1時間以内に新しいリンクがグループに届く',
+    '取り消し（違う人が登録された）: 店マスター「本人chat_id」を消すだけ → そのリンクはすぐ使えなくなり（外した人はリンクで戻れない）、1時間以内に新しいリンクがグループに届く',
     'チラシ: 版ごとのフォルダ（PNG）。どの版をいつ送ったかの全件は v7 Database「紹介チラシ送付履歴」、版の中身は「紹介チラシの版」'
   ], SCOUT_LINKS_INDIV_HEADERS, indiv.map(function(o, i) { return scoutLinksIndivCells_(o, i + 1, sends); }),
   [36, 140, 80, 260, 90, 140, 220, 200, 90, 260, 70, 80, 80, 140, 70, 80, 60, 60, 70, 90, 200, 200, 130, 220]);
