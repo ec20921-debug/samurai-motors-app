@@ -5,11 +5,14 @@
  *   - v7-ops 用スプレッドシートの読み書き
  *   - スタッフマスターの 60秒キャッシュ付き読み取り
  *   - 列名ベースの汎用 append / find 関数
+ *   - 書く文字列の無害化（数式として評価させない: safeCellText_ / safeCellValue_）
  *
  * 【設計方針】
  *   - getConfig().operationsSpreadsheetId で常に勤務専用シートを開く
  *   - 列ヘッダーは1行目を基準（v7 と同じ方式）
  *   - スプレッドシート／シートは実行内キャッシュ（下記）
+ *   - appendRow / updateRow は文字列を必ず safeCellValue_ に通す（2026-10-27）。
+ *     数式・書式なしテキストの列へそのまま書きたい値だけ sheetRaw_ で包む
  */
 
 // ====== 実行内キャッシュ（2026-08-03 追加） ======
@@ -66,15 +69,53 @@ function readAllValues_(sheetName) {
   return { headers: values[0], values: values.slice(1) };
 }
 
+// ====== 書く値の無害化（2026-10-27） ======
+
 /**
- * オブジェクト形式で1行追加
+ * シートに書く自由入力が = + - @ で始まると数式として動くため、先頭に ' を付けて文字として保存する
+ *
+ * ミニアプリ・業務Bot・Google フォームから届く値や、v7 Database から読み戻した値（顧客の名前・グループ名・店名など）は
+ * 外から決められる。=IMPORTXML(...) のような文字列をそのまま書くと数式として動き、シートの中身が外の URL へ送られうる。
+ * ' はセルの値には残らない（読み戻すと元の文字列が返る）ので、読み戻した値を別のセルへ書く時もここを通す
+ */
+function safeCellText_(v) {
+  const s = String(v == null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
+/**
+ * 書く値の無害化。文字列だけ safeCellText_ に通す（v7 の sheetSafeValue_ と同じ）。
+ * 数値・日付・真偽と、数字だけの文字列（「-5」「+855123」等）は今までどおり数値として入る
+ */
+function safeCellValue_(v) {
+  if (typeof v !== 'string' || /^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(v)) return v;
+  return safeCellText_(v);
+}
+
+/**
+ * appendRow / updateRow（と SalesLogManager.gs の appendSheetRow_ / updateSheetRow_）へ「そのまま書く」値を渡す時だけ包む。
+ *   - コードで組んだ数式（=HYPERLINK(...) など）
+ *   - 表示形式が「書式なしテキスト」の列に書く文字（この形式なら数式は動かない。' を付けると画面に ' が出る）
+ * 外から届いた文字列を、書式なしテキストでない列へ書く時は包まない
+ */
+function sheetRaw_(v) {
+  return { sheetRaw: v };
+}
+
+/** 共通の書き込み口が1セルに書く値（sheetRaw_ で包んだものだけそのまま・ほかは safeCellValue_） */
+function sheetCellValue_(v) {
+  return (v && typeof v === 'object' && v.hasOwnProperty('sheetRaw')) ? v.sheetRaw : safeCellValue_(v);
+}
+
+/**
+ * オブジェクト形式で1行追加（文字列は safeCellValue_ を通す）
  * dict: { '列名': 値, ... } のハッシュ
  */
 function appendRow(sheetName, dict) {
   const sheet = getSheet(sheetName);
   const headers = getHeaders(sheetName);
   const row = headers.map(function(h) {
-    return dict.hasOwnProperty(h) ? dict[h] : '';
+    return dict.hasOwnProperty(h) ? sheetCellValue_(dict[h]) : '';
   });
   sheet.appendRow(row);
   return sheet.getLastRow();
@@ -104,7 +145,7 @@ function findRow(sheetName, columnName, value) {
 }
 
 /**
- * 指定行の列値を更新
+ * 指定行の列値を更新（文字列は safeCellValue_ を通す）
  * updates: { '列名': 新値, ... }
  */
 function updateRow(sheetName, rowNumber, updates) {
@@ -116,7 +157,7 @@ function updateRow(sheetName, rowNumber, updates) {
       Logger.log('⚠️ updateRow: 列 ' + col + ' 未発見、スキップ');
       return;
     }
-    sheet.getRange(rowNumber, colIdx + 1).setValue(updates[col]);
+    sheet.getRange(rowNumber, colIdx + 1).setValue(sheetCellValue_(updates[col]));
   });
 }
 

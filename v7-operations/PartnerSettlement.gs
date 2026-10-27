@@ -311,8 +311,9 @@ function writeSettlementRows_(sheet, rows) {
   const lastRow = sheet.getLastRow();
   if (lastRow >= start) sheet.getRange(start, 1, lastRow - start + 1, PS_HEADERS.length).clearContent();
   if (!rows.length) return;
+  // 支払先（店名・紹介者名）は台帳から、メモ等はこのタブから読み戻した値＝' が外れているので safeCellValue_ を通す（2026-10-27）
   sheet.getRange(start, 1, rows.length, PS_HEADERS.length).setValues(
-    rows.map(function(o) { return PS_HEADERS.map(function(h) { return o[h] === undefined ? '' : o[h]; }); })
+    rows.map(function(o) { return PS_HEADERS.map(function(h) { return o[h] === undefined ? '' : safeCellValue_(o[h]); }); })
   );
 }
 

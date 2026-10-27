@@ -137,18 +137,13 @@ function scoutBoardSheet_(board, key) {
 }
 
 /**
- * 表に書く値の無害化（2026-10-27）。値は v7 のシート（Bot連携の「グループ名」など）から読み戻したもの＝' が外れているので、
- * =IMPORTXML(...) のような文字列がこのボードで数式として動かないようにする。数値・日付・数字だけの文字列はそのまま
+ * 表を書く: 見出し1行＋データ。見出しは太字・色・固定、絞り込み（Excel のオートフィルタにもなる）
+ * 値は v7 のシート（Bot連携の「グループ名」など）から読み戻したもの＝' が外れているので、全セルを safeCellValue_
+ * （SheetHelpers.gs）に通し、=IMPORTXML(...) のような文字列がこのボードで数式として動かないようにする（2026-10-27）
  */
-function scoutBoardSafeValue_(v) {
-  if (typeof v !== 'string' || /^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(v)) return v;
-  return safeCellText_(v);   // FieldExpense.gs（先頭が = + - @ なら ' を付ける）
-}
-
-/** 表を書く: 見出し1行＋データ。見出しは太字・色・固定、絞り込み（Excel のオートフィルタにもなる） */
 function scoutBoardTable_(sh, startRow, headers, rows, widths, wrapCols) {
   const data = [headers].concat(rows.length ? rows : [headers.map(function(_, i) { return i === 0 ? '（なし）' : ''; })])
-    .map(function(r) { return r.map(scoutBoardSafeValue_); });
+    .map(function(r) { return r.map(safeCellValue_); });
   sh.getRange(startRow, 1, data.length, headers.length).setValues(data);
   sh.getRange(startRow, 1, 1, headers.length).setFontWeight('bold').setBackground(SCOUT_BOARD_HEAD_BG).setWrap(true);
   if (rows.length) {

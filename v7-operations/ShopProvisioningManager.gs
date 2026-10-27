@@ -174,11 +174,11 @@ function handleShopFormSubmit(e) {
     var deepLink = 'https://t.me/' + props.botUsername + '?start=shop_' + shopId;
     qrUrl = createShopQrPng_(deepLink, shopName, shopId);
 
-    // Bot連携台帳へ行追加（v7 Database）
+    // Bot連携台帳へ行追加（v7 Database）。店名はフォームの入力なので safeCellValue_ を通す（2026-10-27）
     var sheet = ensureShopLinkSheet_();
     sheet.appendRow([
       shopId, shopName, otc, '', '', '', '待機中', qrUrl, formatOpsDateTime_(new Date())
-    ]);
+    ].map(safeCellValue_));
     SpreadsheetApp.flush();
   } finally {
     // Telegram 送信前にロック解放（PartnerManager の作法を踏襲）

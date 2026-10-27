@@ -20,12 +20,7 @@ function ensureExpenseClientIdCol_() {
   return { sheet: sheet, col: idx + 1 };
 }
 
-/** シートに書く自由入力が = + - @ で始まると数式として動くため、先頭に ' を付けて文字として保存する */
-function safeCellText_(v) {
-  const s = String(v == null ? '' : v);
-  return /^[=+\-@]/.test(s) ? "'" + s : s;
-}
-
+// safeCellText_ は SheetHelpers.gs（2026-10-27 共通化。appendRow 側でも同じ無害化をする）
 function submitExpenseV2_(chatId, payload, clientId) {
   if (!/^[0-9a-fA-F-]{36}$/.test(String(clientId || ''))) return { ok: false, error: 'INVALID_CLIENT_ID' };
   const lock = LockService.getScriptLock();

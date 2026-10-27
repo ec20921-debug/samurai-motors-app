@@ -431,8 +431,10 @@ function handleJetroFormSubmit(e) {
       '氏名':                fullName,
       '会社名':              companyName,
       '役職':                jobTitle,
-      '駐在員 電話番号':     expatPhone,
-      'ドライバー 電話番号': driverPhone,
+      // 電話の列（H/I）は書式なしテキスト（ensureJetroBookingSheet）＝数式は動かず、' を付けると画面に出るのでそのまま書く。
+      // ほかの列（氏名・会社名など誰でも書けるフォームの入力）は appendRow が ' を付ける（2026-10-27）
+      '駐在員 電話番号':     sheetRaw_(expatPhone),
+      'ドライバー 電話番号': sheetRaw_(driverPhone),
       'ステータス':          '未対応',
       '確定時刻':            '',
       '車両情報':            '',

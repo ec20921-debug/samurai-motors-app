@@ -428,6 +428,7 @@ function runSalesLogV2Migration_(extraShopIdsToRefresh) {
 
   // shop_id backfill は列一括書き込み（1行ずつ setValue すると初回アクセスが
   // タイムアウトしうるため。読んだ範囲と同一範囲に書き戻す）
+  // 読み戻した値は ' が外れているので、書き戻す前に safeCellValue_ を通す（2026-10-27）
   const headers = getSheetHeaders_(visitSheet);
   const shopIdCol = headers.indexOf('shop_id') + 1;
   const numRows = rows.length;
@@ -436,7 +437,7 @@ function runSalesLogV2Migration_(extraShopIdsToRefresh) {
     assignments.forEach(function(a) {
       if (a.row - 2 >= 0 && a.row - 2 < numRows) colVals[a.row - 2][0] = a.shopId;
     });
-    visitSheet.getRange(2, shopIdCol, numRows, 1).setValues(colVals);
+    visitSheet.getRange(2, shopIdCol, numRows, 1).setValues(colVals.map(function(r) { return [safeCellValue_(r[0])]; }));
   }
 
   refreshShopAggregatesBulk_(touchedShopIds.concat(extraShopIdsToRefresh || []));
@@ -461,7 +462,8 @@ function backfillReactionLabels_(visitSheet, rows) {
       colVals[r.row - 2][0] = reactionLabel_(r.obj['反応']);
     }
   });
-  visitSheet.getRange(2, labelCol, rows.length, 1).setValues(colVals);
+  // 触らない行も読み戻した値を書き戻すので safeCellValue_ を通す（2026-10-27）
+  visitSheet.getRange(2, labelCol, rows.length, 1).setValues(colVals.map(function(r) { return [safeCellValue_(r[0])]; }));
   Logger.log('🏷️ 反応内容ラベル補完: ' + targets.length + '行');
 }
 
@@ -751,11 +753,21 @@ function findSheetRow_(sheet, columnName, value) {
   return null;
 }
 
+/**
+ * appendSheetRow_ / updateSheetRow_ が1セルに書く値（2026-10-27）。
+ * 店名・メモ・オーナー名などはミニアプリ（スタッフ）・フォームから届くか、v7 Database から読み戻した値なので
+ * 全部 sheetCellValue_（SheetHelpers.gs・先頭が = + - @ なら '）に通す。
+ * 電話は数字だけでも ' を付けて文字にする（「+855 …」が数式あつかいで #ERROR! になるのを防ぐ・従来どおり）
+ */
+function salesLogCellValue_(header, v) {
+  if (header === '電話' && !(v && typeof v === 'object')) return safeCellText_(v);
+  return sheetCellValue_(v);
+}
+
 function appendSheetRow_(sheet, dict) {
   const headers = getSheetHeaders_(sheet);
   const row = headers.map(function(h) {
-    if (!dict.hasOwnProperty(h)) return '';
-    return h === '電話' ? safeCellText_(dict[h]) : dict[h]; // 「+855 …」が数式あつかいで #ERROR! になるのを防ぐ
+    return dict.hasOwnProperty(h) ? salesLogCellValue_(h, dict[h]) : '';
   });
   sheet.appendRow(row);
   return sheet.getLastRow();
@@ -769,7 +781,7 @@ function updateSheetRow_(sheet, rowNumber, updates) {
       Logger.log('⚠️ updateSheetRow_: 列 ' + col + ' 未発見、スキップ');
       return;
     }
-    sheet.getRange(rowNumber, idx + 1).setValue(col === '電話' ? safeCellText_(updates[col]) : updates[col]);
+    sheet.getRange(rowNumber, idx + 1).setValue(salesLogCellValue_(col, updates[col]));
   });
 }
 

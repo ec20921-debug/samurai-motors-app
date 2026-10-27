@@ -248,7 +248,8 @@ function submitExpense(chatId, payload) {
     '勘定科目':      category,
     '登録者':        staff.nameJp,
     '登録者 Chat ID': String(chatId),
-    'レシート写真':  receiptUrl ? '=HYPERLINK("' + receiptUrl + '","レシート")' : '',
+    // レシートの Drive URL から組んだ数式なので sheetRaw_ で包む（appendRow はほかの文字列を数式にしない・SheetHelpers.gs）
+    'レシート写真':  receiptUrl ? sheetRaw_('=HYPERLINK("' + receiptUrl + '","レシート")') : '',
     'OCR原文':       ocrText,
     'ステータス':    statusValue,
     'メモ':          memo,
@@ -763,14 +764,21 @@ function nextMasterId_(sheet) {
   return maxId + 1;
 }
 
+// 経費マスターでコードが数式を書く列（0始まり: H レシート=HYPERLINK / K JPY換算 / L 月）
+const MASTER_FORMULA_COL_IDX_ = [7, 10, 11];
+
 /**
  * 経費マスターに1行(A〜Q)を書き込む。書き込みに失敗したら途中まで書かれたセルを消して例外を投げ直す
  * （失敗時に日付だけの行が残ると、次回以降の追記位置・ID がずれていくため）。
+ * 数式の列以外（摘要・備考・入力者など。現場アプリ・ルーティン経費の表から来た文字）は safeCellValue_ を通す（2026-10-27）
  */
 function writeMasterRow_(sheet, newRow, rowValues) {
   ensureMasterCategoryValidation_(sheet, rowValues[0][1]);
+  const safeRow = rowValues[0].map(function(v, i) {
+    return MASTER_FORMULA_COL_IDX_.indexOf(i) >= 0 ? v : safeCellValue_(v);
+  });
   try {
-    sheet.getRange(newRow, 1, 1, 17).setValues(rowValues);
+    sheet.getRange(newRow, 1, 1, 17).setValues([safeRow]);
     SpreadsheetApp.flush(); // 入力規則違反などの書き込みエラーをここで確定させる
   } catch (err) {
     try { sheet.getRange(newRow, 1, 1, 17).clearContent(); } catch (e2) { /* 後始末の失敗は無視 */ }
