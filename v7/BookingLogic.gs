@@ -760,19 +760,38 @@ function createBookingLocked_(params, after) {
       : null;
     const cfg = getBookingConfig();
     // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩。お客様は店に定価を払う）。
-    //   流入元（src）とは同時に付かない（最後に読んだQRが優先）。
+    //   車屋の紹介元と流入元（src）は同時に付かない（どちらかを読むともう一方を外す）。個人提携は流入元と両立する（2026-10-27）。
     //   個人提携（IndividualPartner.gs）のお客様も紹介料が付くので同じく対象外（getReferralPartnerRef_ は個人提携を含む・2026-10-26）
+    //   代わりに紹介割引（配分の設定）があれば使う（2026-10-27 ReferralAttribution.gs）
     const campCfg = cfg.campaign || { active: false, percent: 0 };
     const partnerRef = (typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(params.chatId) : '';
     const shopNoCamp = !srcDisc && !!partnerRef;
-    // 紹介元の提携先（予約タブ「紹介元shop_id」）。流入元の予約には付けない。個人提携は紹介料の月次集計に使う（v7-operations/IndividualPartnerOps.gs）
-    const referralShopId = srcCfg ? '' : partnerRef;
+    // 紹介元の提携先（予約タブ「紹介元shop_id」）。個人提携は紹介料の月次集計に使う（v7-operations/IndividualPartnerOps.gs）
+    //   流入元の予約には車屋の紹介元は付けない。個人提携は当社集金なので流入元の予約にも付ける（2026-10-27 ReferralAttribution.gs）
+    const partnerIsIndiv = !!(partnerRef && typeof isIndividualPartnerShop_ === 'function' && isIndividualPartnerShop_(partnerRef));
+    const referralShopId = (srcCfg && !partnerIsIndiv) ? '' : partnerRef;
     const indivPartner = (referralShopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(referralShopId) : null;
-    // 画面ではキャンペーン価格を見せていたのに、ここで外れる（QR → START の直後に開いた等）→ 予約は作らず、画面に取り直してもらう
-    if (shopNoCamp && params.campaignShown === true && campCfg.active && campCfg.percent > 0) {
+    // 配分の設定（2026-10-27）: 個人提携の紹介割引。割引は1つだけ＝流入元の特典が効く予約では使わない
+    const referralPct = (indivPartner && !srcDisc && typeof effectiveReferralDiscount_ === 'function')
+      ? effectiveReferralDiscount_(indivPartner, referralShopId) : 0;
+    const referralCamp = (referralPct > 0 && typeof referralCampaign_ === 'function') ? referralCampaign_(referralPct, indivPartner.name) : null;
+    // 紹介のお客様は全体キャンペーンの代わりに紹介割引（無ければ定価）。流入元の特典が効く予約はどちらも使わない
+    const camp = srcDisc ? { active: false, percent: 0 }
+      : (shopNoCamp ? (referralCamp || { active: false, percent: 0 }) : campCfg);
+    // 画面で見せた割引と、ここで使う割引が食い違う（QR → START の直後に開いた・配分やキャンペーンが変わった等）
+    //   → 予約は作らず、画面に取り直してもらう。campaignPct が無い古い画面は「見せたのに無い」だけ確かめる
+    //   画面はキャンペーン／紹介割引を見せたが、ここでは流入元の特典が効く（画面を開いた後に流入元が付いた）も同じ
+    if (srcDisc && params.campaignShown === true) {
       return { status: 'error', code: 'PRICE_CHANGED', message: 'Prices have been updated. Please check your selection again.' };
     }
-    const camp = (srcDisc || shopNoCamp) ? { active: false, percent: 0 } : campCfg;
+    if (!srcDisc && params.campaignShown === true) {
+      const effPct = (camp.active && camp.percent > 0) ? Number(camp.percent) : 0;
+      const shownPct = (params.campaignPct === undefined || params.campaignPct === null || params.campaignPct === '')
+        ? null : Number(params.campaignPct);
+      if (!effPct || (shownPct !== null && isFinite(shownPct) && Math.abs(shownPct - effPct) > 0.001)) {
+        return { status: 'error', code: 'PRICE_CHANGED', message: 'Prices have been updated. Please check your selection again.' };
+      }
+    }
     let discountAmount = 0;
     if (srcDisc) {
       discountAmount = srcDisc.total;
@@ -855,7 +874,7 @@ function createBookingLocked_(params, after) {
     const calendarEventId = event.getId();
 
     // ── 7. シートへ記録 ──
-    appendRow(SHEET_NAMES.BOOKINGS, {
+    const bookingRow = {
       '予約ID':         bookingId,
       '顧客ID':         params.customerId || '',
       'チャットID':     String(params.chatId),
@@ -887,7 +906,8 @@ function createBookingLocked_(params, after) {
       '割引前金額(USD)': subtotal,                                  // WASH+GLASS+Delivery の合計(割引前)
       '割引額(USD)':    discountAmount,                            // 割引で引かれた額(0 = キャンペーンなし)
       'キャンペーン名': srcDisc ? (srcCfg.label + ' 特典')
-                      : ((camp && camp.active && discountAmount > 0) ? (camp.nameEn || '') : ''),
+                      : ((camp && camp.active && discountAmount > 0)
+                        ? (camp.referral ? '紹介割引（' + camp.partnerName + '）' : (camp.nameEn || '')) : ''),
       // ── サービスタイプ (2026-05-20: 店舗/出張区分) ──
       'サービスタイプ': serviceType,                                // '店舗' or '出張'
       // ── 専用QR（流入元）(2026-10-15 SourceCampaign.gs) ──
@@ -896,11 +916,14 @@ function createBookingLocked_(params, after) {
       '部屋番号':       unitNo,
       // ── 紹介元の提携先（店QR）(2026-10-26 IndividualPartner.gs) ──
       '紹介元shop_id':  referralShopId
-    });
+    };
+    // 個人提携は予約した時の紹介料率を写す（配分を月の途中で変えても、変える前の予約の率が変わらない・2026-10-27）
+    if (indivPartner) bookingRow[BOOKING_REFERRAL_RATE_COL] = indivPartner.rate;
+    appendRow(SHEET_NAMES.BOOKINGS, bookingRow);
     // 画面の ?src= だけで来た（/start を経ていない）場合も、以後の案内のために紐付けを残す
     if (srcCfg && !getSourceRefForCustomer(params.chatId)) setSourceRefForCustomer_(String(params.chatId), srcCfg.code);
     if (srcCfg) warnIfSourceColumnsMissing_();
-    if (referralShopId && typeof warnIfReferralColumnMissing_ === 'function') warnIfReferralColumnMissing_();
+    if (referralShopId && typeof warnIfReferralColumnMissing_ === 'function') warnIfReferralColumnMissing_(!!indivPartner);
 
     // ── 7-b. ファネル計測ログ(失敗してもメイン処理は継続) ──
     // 2026-05-20 fix: GLASS 単体予約時 plan が null になるため、null ガードを追加
@@ -945,7 +968,7 @@ function createBookingLocked_(params, after) {
       unitNo: unitNo,
       carModel: carModel,
       // 2026-10-26: 個人提携の紹介（管理通知に1行）
-      referralAdminLine: (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name) : ''
+      referralAdminLine: (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate) : ''
     });
 
     // ── 9. 流入元（レジデンス等）の提携先グループへ「予約が入った」（2026-10-26 SourceGroupNotify.gs） ──
@@ -1047,7 +1070,7 @@ function notifyBookingCreated(info) {
     customerText +=
       '─────────────────\n' +
       '📊 Service subtotal:        ' + usd2(serviceSubtotal) + '\n' +
-      '🎌 ' + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -' + usd2(discount) + '\n' +
+      (camp.referral ? '🎁 ' : '🎌 ') + (camp.nameEn || 'Campaign') + ' (-' + camp.percent + '%):  -' + usd2(discount) + '\n' +
       '✓ Service (after discount): ' + usd2(serviceAfterDiscount) + '\n';
   }
   // サービスタイプによってデリバリー費の表示を分岐
@@ -1176,7 +1199,9 @@ function notifyBookingCreated(info) {
   if (camp && discount > 0) {
     adminText +=
       '料金: ' + priceJoin + ' = サービス計 $' + serviceSubtotal.toFixed(2) +
-      '\n🎌 キャンペーン (' + (camp.nameEn || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2) +
+      (camp.referral
+        ? '\n🎁 紹介割引 (' + (camp.partnerName || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2)
+        : '\n🎌 キャンペーン (' + (camp.nameEn || '') + ' -' + camp.percent + '%): -$' + discount.toFixed(2)) +
       '\n→ サービス計(割引後): $' + serviceAfterDiscount.toFixed(2) +
       (isInStore ? '\n🏪 店舗作業のため出張料なし' : ('\n+ 出張料: $' + feeAmt)) +
       '\n→ 請求額: $' + (typeof info.amount === 'number' ? info.amount.toFixed(2) : info.amount);

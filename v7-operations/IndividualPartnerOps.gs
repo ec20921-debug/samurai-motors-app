@@ -22,6 +22,7 @@ const INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7/IndividualPartner.gs と
 const INDIVIDUAL_PARTNER_KIND_COL = '提携種別';
 const INDIVIDUAL_LEDGER_BOOKING_COL = '予約ID';   // コミッション台帳の末尾に足す（自動記帳の重複防止）
 const INDIVIDUAL_BOOKING_REF_COL = '紹介元shop_id';   // v7 Database「予約」タブ（v7 が予約・手動ジョブ売上の時に書く）
+const INDIVIDUAL_BOOKING_RATE_COL = '紹介料率(%)';   // 同じく予約した時の紹介料率の写し（2026-10-27・v7/IndividualPartner.gs BOOKING_REFERRAL_RATE_COL と同じ名前）
 const INDIVIDUAL_AUTO_RECORDER = '自動（個人提携）';
 
 /**
@@ -45,7 +46,9 @@ function individualPartnersById_() {
 /**
  * 個人提携の紹介で、作業完了・清算済みになった予約をコミッション台帳へ記帳する（冪等）。
  * 売上 = 予約の「請求額(USD)」（無ければ 料金(USD)）＝ お客様が実際に払った額（8/24 ルール①: 実支払額の30%）。
- * 施工日 = 予約日。率・紹介者（店マスターの「紹介者名」）は記帳時の店マスターから写す（commissionCreate と同じ）
+ *   紹介割引（配分の設定・2026-10-27）のある予約は、割引後の額が売上（紹介料も割引後の額 × 紹介料率）。
+ * 施工日 = 予約日。率は予約した時の写し（予約タブ「紹介料率(%)」）、無ければ記帳時の店マスター。
+ * 紹介者（店マスターの「紹介者名」）は記帳時の店マスターから写す（commissionCreate と同じ）
  * @return {number} 今回記帳した件数
  */
 function syncIndividualPartnerCommissions_() {
@@ -83,7 +86,9 @@ function syncIndividualPartnerCommissions_() {
 
       const serviceDate = formatSalesLogDateCell_(o['予約日']).substring(0, 10);
       const revenueCents = Math.round(paid * 100);
-      const rate = p.terms.rate;
+      // 率は予約した時の写し（予約タブ「紹介料率(%)」・2026-10-27 配分の設定）。無い・読めない予約は店マスターの今の率
+      const bookedRate = parsePercentCell_(o[INDIVIDUAL_BOOKING_RATE_COL]);
+      const rate = bookedRate !== null ? bookedRate : p.terms.rate;
       const commissionCents = commissionAmountCents_(revenueCents, rate);
       const intro = introducerAppliesOn_(p.terms, serviceDate)
         ? { name: p.terms.introducerName, rate: p.terms.introducerRate,
@@ -184,18 +189,32 @@ function buildIndividualMonthlyReport_(name, ymLabel, a, ratePct, owedAll) {
 }
 
 /**
+ * 店マスターの行の「紹介割引率(%)」のうち、実際に使う割引(%)（紹介料＋割引は30%まで。超えたら割引を減らす）。
+ * v7/ReferralAttribution.gs effectiveReferralDiscount_ と同じ決まり（別 GAS プロジェクトのため複製）
+ */
+function individualEffectiveDiscountOps_(shopObj, rate) {
+  const want = parsePercentCell_(shopObj ? shopObj['紹介割引率(%)'] : '') || 0;
+  if (want <= 0) return 0;
+  const r = (Number(rate) >= 0) ? Number(rate) : COMMISSION_DEFAULT_RATE;
+  return Math.min(want, Math.max(0, Math.round((30 - r) * 100) / 100));
+}
+
+/**
  * 紹介者のグループのあいさつ文（営業ボードの表示用）。
  * v7/IndividualPartner.gs buildIndividualGroupGreeting_（連携時に予約Botが送る文）と同じ文。直すときは両方を直す
  */
-function individualGroupGreetingText_(name, rate) {
+function individualGroupGreetingText_(name, rate, discount) {
   const n = String(name || '').trim() || 'Partner';
   const pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
+  const off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
   return n + ' さん × SAMURAI MOTORS のグループです。\n' +
     'ご紹介いただいた方（' + n + ' さんご自身のご利用も含みます）からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
+    (off ? 'ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます。\n' : '') +
     '毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、紹介料は ABA でお支払いします。\n' +
     'いつもありがとうございます。これからもよろしくお願いします！\n\n' +
     'This is the group for ' + n + ' × SAMURAI MOTORS.\n' +
     'When someone you referred books with us (including your own bookings), we\'ll let you know here — date, time, menu and car (no photos).\n' +
+    (off ? 'People you refer get ' + off + ' off all services.\n' : '') +
     'At the start of each month, we\'ll send a summary of last month\'s jobs, amounts and your commission (' + pct + '), and pay the commission by ABA.\n' +
     'Thank you for your support!';
 }

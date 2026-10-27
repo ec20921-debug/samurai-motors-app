@@ -243,11 +243,17 @@ function apiBookingInit(params) {
   // 2026-10-26: 提携店QR経由のお客様は定価・全体キャンペーン対象外（2026-08-10 裁可⑩）。
   //   これまでは歓迎文でバナーを隠すだけで、予約画面と予約作成には全体キャンペーンが効いていた（createBooking と同じ判定）
   //   個人提携（IndividualPartner.gs）のお客様も紹介料が付くので同じく対象外（getReferralPartnerRef_ は個人提携を含む）
+  //   2026-10-27: 個人提携に紹介割引（配分の設定）があれば、全体キャンペーンの代わりに同じ形で返す
+  //   （予約画面はキャンペーンと同じ表示・createBooking と同じ判定・ReferralAttribution.gs）。紹介者名は渡さない
   let shop = false;
   try {
-    if (typeof getReferralPartnerRef_ === 'function' && getReferralPartnerRef_(chatId)) {
+    const partnerRef = (typeof getReferralPartnerRef_ === 'function') ? getReferralPartnerRef_(chatId) : '';
+    if (partnerRef) {
       shop = true;
       campaign = null;
+      const pct = (typeof referralDiscountForShop_ === 'function') ? referralDiscountForShop_(partnerRef) : 0;
+      const rc = (pct > 0 && typeof referralCampaign_ === 'function') ? referralCampaign_(pct, '') : null;
+      if (rc) campaign = { active: true, percent: rc.percent, nameEn: rc.nameEn, nameKm: rc.nameKm };
     }
   } catch (e) {
     Logger.log('⚠️ apiBookingInit: 提携店の判定エラー(無視可): ' + e);

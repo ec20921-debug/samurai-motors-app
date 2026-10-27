@@ -11,6 +11,7 @@
  *   決定ログ: Vault/01_Personal/Decisions/2026-10-26-motors-individual-partner-type.md
  *
  * 【設定】v7 Database「店マスター」の「提携種別」列が「個人提携」の行。紹介料率は「紹介料率(%)」（空欄=30）。
+ *   紹介されたお客様への割引は「紹介割引率(%)」（空欄=0・合計30%まで・配分の設定 2026-10-27 ReferralAttribution.gs）。
  *   店QR（t.me/<予約Bot>?start=shop_<shop_id>）・Bot連携（/register）・グループ名は車屋と同じ仕組みを使う
  *
  * 【読めない時】店マスターを読めず個人提携か分からない時（individualPartnerState_ = null）は、
@@ -23,7 +24,9 @@
 
 var INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7-operations/IndividualPartnerOps.gs と同じ値（別 GAS プロジェクトのため複製）
 var PARTNER_KIND_COL = '提携種別';
-var PARTNER_KIND_CACHE_KEY = 'shop_partner_kinds_v1';
+var REFERRAL_DISCOUNT_COL = '紹介割引率(%)';   // 店マスター（個人提携だけ使う・ReferralAttribution.gs）
+var BOOKING_REFERRAL_RATE_COL = '紹介料率(%)';   // 予約タブ: 予約した時の紹介料率の写し（v7-operations/IndividualPartnerOps.gs が記帳に使う）
+var PARTNER_KIND_CACHE_KEY = 'shop_partner_kinds_v1';   // 2026-10-27 に discount を足した。古い中身（discount 無し）は割引0として読む（鍵は変えない＝最後に読めた内容を空にしない）
 var PARTNER_KIND_CACHE_SEC = 300;
 var PARTNER_KIND_LKG_KEY = 'shop_partner_kinds_lkg_v1';
 var PARTNER_KIND_LKG_SEC = 6 * 60 * 60;
@@ -34,11 +37,14 @@ var __partnerKindReadFailed_ = false;   // この実行の読み直しが失敗�
 // お客様向けの一言（歓迎文。英語は下の individualWelcomeReferralLine_）。
 // クメール語は Panha 校閲（2026-10-26・provisional・Run Kosal 確認待ち: ប្រាប់…អំពី の自然さ／សេវា＝選んだメニュー／ប្រភេទរថយន្ត／否定の括弧）
 var INDIVIDUAL_WELCOME_KM = '📅 ពេលអ្នកកក់ យើងនឹងប្រាប់ {name} អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត ផងដែរ (មិនផ្ញើឈ្មោះ ស្លាកលេខ ឬរូបថតទេ)។';
+// 紹介割引の一言（{pct} に数字・英語は individualWelcomeReferralLine_）。空なら英語だけ（2026-10-27）
+// クメール語は Panha 校閲（2026-10-27・provisional 44/50・Run Kosal 確認待ち: ភ្ញៀវដែលគេណែនាំមក の自然さ／សេវាទាំងអស់ と គ្រប់សេវា／数字は半角）
+var INDIVIDUAL_DISCOUNT_KM = '🎁 បញ្ចុះតម្លៃ {pct}% លើសេវាទាំងអស់ សម្រាប់ភ្ញៀវដែលគេណែនាំមក';
 
 // ====== 判定 ======
 
 /**
- * 店マスター → { shop_id: { name, rate } | 0 }（個人提携だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
+ * 店マスター → { shop_id: { name, rate, discount } | 0 }（個人提携だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
  * 読めない時は最後に読めた内容（6時間）、それも無ければ null
  * @param {boolean} [fresh] - キャッシュを使わず読み直す
  */
@@ -59,16 +65,18 @@ function readPartnerKinds_(fresh) {
     if (sh.getLastRow() >= 2) {
       var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
       var ci = head.indexOf('shop_id'), ni = head.indexOf('店名'), ki = head.indexOf(PARTNER_KIND_COL), ri = head.indexOf('紹介料率(%)');
+      var di = head.indexOf(REFERRAL_DISCOUNT_COL);   // 無い時は割引 0（従来どおり）
       if (ci < 0) throw new Error('店マスターに shop_id 列がありません');
       // 列が無い・見出しが違う時に「全員が車屋」と決めつけない（決済QR・写真の向きが逆になる）→ 分からない扱い
       if (ki < 0) throw new Error('店マスターに「' + PARTNER_KIND_COL + '」列がありません');
-      sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri) + 1).getValues().forEach(function(r) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri, di) + 1).getValues().forEach(function(r) {
         var id = String(r[ci] || '').trim();
         if (!id) return;
         var indiv = String(r[ki] || '').trim() === INDIVIDUAL_PARTNER_KIND;
         map[id] = indiv ? {
           name: (ni >= 0 ? String(r[ni] || '').trim() : '') || id,
-          rate: (ri >= 0 && typeof fieldParseRate_ === 'function') ? fieldParseRate_(r[ri]) : 30
+          rate: (ri >= 0 && typeof fieldParseRate_ === 'function') ? fieldParseRate_(r[ri]) : 30,
+          discount: (di >= 0 && typeof referralParseDiscount_ === 'function') ? referralParseDiscount_(r[di]) : 0
         } : 0;
       });
     }
@@ -111,7 +119,7 @@ function isIndividualPartnerShop_(shopId) {
   return individualPartnerState_(shopId) === true;
 }
 
-/** 個人提携の { name, rate }。個人提携でない・分からない時は null */
+/** 個人提携の { name, rate, discount }（discount は店マスターの値そのまま。実際に使う割引は effectiveReferralDiscount_）。個人提携でない・分からない時は null */
 function individualPartnerInfo_(shopId) {
   if (!isIndividualPartnerShop_(shopId)) return null;
   return readPartnerKinds_()[String(shopId).trim()] || null;
@@ -149,17 +157,30 @@ function warnPartnerKindUnknown_(what) {
     '店マスターを直したあと、止めた決済QRは retryPaymentQR("<予約ID>") で送れます（1時間に1回だけ知らせます）');
 }
 
-/** 予約タブに「紹介元shop_id」列が無い（紹介元が予約に残らず、個人提携の紹介料が集計されない） */
-function warnIfReferralColumnMissing_() {
+/**
+ * 予約タブに「紹介元shop_id」列が無い（紹介元が予約に残らず、個人提携の紹介料が集計されない）。
+ * 個人提携の予約では「紹介料率(%)」列（予約した時の率の写し・2026-10-27）も確かめる（無いと月初の記帳は店マスターのその時の率になる）
+ * @param {boolean} [withRate] - 「紹介料率(%)」列も確かめる
+ */
+function warnIfReferralColumnMissing_(withRate) {
+  var h;
   try {
-    if (getHeaderMap(SHEET_NAMES.BOOKINGS)['紹介元shop_id']) return;
+    h = getHeaderMap(SHEET_NAMES.BOOKINGS);
   } catch (err) {
     Logger.log('⚠️ warnIfReferralColumnMissing_: ' + err);
     return;
   }
-  warnOncePer_('warn_referral_col_missing', 6 * 60 * 60,
-    '⚠️ 予約タブに「紹介元shop_id」列がありません。提携先の紹介元が予約に記録されず、個人提携の紹介料が集計されません。\n' +
-    '予約タブの末尾に「紹介元shop_id」列を追加してください（6時間に1回だけ知らせます）');
+  if (!h['紹介元shop_id']) {
+    warnOncePer_('warn_referral_col_missing', 6 * 60 * 60,
+      '⚠️ 予約タブに「紹介元shop_id」列がありません。提携先の紹介元が予約に記録されず、個人提携の紹介料が集計されません。\n' +
+      '予約タブの末尾に「紹介元shop_id」列を追加してください（6時間に1回だけ知らせます）');
+  }
+  if (withRate && !h[BOOKING_REFERRAL_RATE_COL]) {
+    warnOncePer_('warn_referral_rate_col_missing', 6 * 60 * 60,
+      '⚠️ 予約タブに「' + BOOKING_REFERRAL_RATE_COL + '」列がありません。予約した時の紹介料率が残らず、月初の記帳は店マスターのその時の率になります' +
+      '（配分を月の途中で変えると、変える前の予約にも新しい率が付きます）。\n' +
+      '予約タブの末尾に「' + BOOKING_REFERRAL_RATE_COL + '」列を追加してください（6時間に1回だけ知らせます）');
+  }
 }
 
 // ====== 紹介者のグループへの通知（予約が入った時だけ） ======
@@ -217,15 +238,18 @@ function notifyIndividualPartnerBooking_(shopId, info) {
  * 紹介者のグループのあいさつ文（日本語＋英語・連携直後に1回）。
  * v7-operations/IndividualPartnerOps.gs individualGroupGreetingText_（営業ボードの表示）と同じ文。直すときは両方を直す
  */
-function buildIndividualGroupGreeting_(name, rate) {
+function buildIndividualGroupGreeting_(name, rate, discount) {
   var n = String(name || '').trim() || 'Partner';
   var pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
+  var off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
   return n + ' さん × SAMURAI MOTORS のグループです。\n' +
     'ご紹介いただいた方（' + n + ' さんご自身のご利用も含みます）からご予約が入ると、ここでお知らせします（日時・メニュー・車種。写真はお送りしません）。\n' +
+    (off ? 'ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます。\n' : '') +
     '毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、紹介料は ABA でお支払いします。\n' +
     'いつもありがとうございます。これからもよろしくお願いします！\n\n' +
     'This is the group for ' + n + ' × SAMURAI MOTORS.\n' +
     'When someone you referred books with us (including your own bookings), we\'ll let you know here — date, time, menu and car (no photos).\n' +
+    (off ? 'People you refer get ' + off + ' off all services.\n' : '') +
     'At the start of each month, we\'ll send a summary of last month\'s jobs, amounts and your commission (' + pct + '), and pay the commission by ABA.\n' +
     'Thank you for your support!';
 }
@@ -240,16 +264,26 @@ function individualConnectedText_(name) {
 
 /**
  * 紹介QRから来たお客様への歓迎文の一言（BookingBot.gs sendWelcomeMessage）。
- * 車屋向けの「写真はお店にも共有」は出さない（写真は送らない）。代わりに予約の内容が紹介者に伝わることを伝える
+ * 車屋向けの「写真はお店にも共有」は出さない（写真は送らない）。代わりに予約の内容が紹介者に伝わることを伝える。
+ * 紹介割引（配分の設定・2026-10-27）があれば、その一言も出す（クメール語は INDIVIDUAL_DISCOUNT_KM が入っている時だけ）
+ * @param {number} [discountPct] - 実際に使う紹介割引(%)（effectiveReferralDiscount_）
  */
-function individualWelcomeReferralLine_(name) {
+function individualWelcomeReferralLine_(name, discountPct) {
   var fill = function() { return name; };   // 名前に $& 等が入っても特殊展開しない
+  var pct = Number(discountPct) > 0 ? String(Number(discountPct)) : '';
+  var fillPct = function() { return pct; };
   return '🤝 Referred by ' + name + ' — thank you!\n' +
+    (pct ? (INDIVIDUAL_DISCOUNT_KM ? INDIVIDUAL_DISCOUNT_KM.replace(/\{pct\}/g, fillPct) + '\n' : '') +
+      '🎁 Referral discount: ' + pct + '% off all services\n' : '') +
     (INDIVIDUAL_WELCOME_KM ? INDIVIDUAL_WELCOME_KM.replace(/\{name\}/g, fill) + '\n' : '') +
     '📅 When you book, we\'ll also let ' + name + ' know the date, time, menu and car type (no name, plate number or photos).\n\n';
 }
 
-/** 管理グループの新規予約通知に足す1行 */
-function individualAdminLine_(name) {
-  return '🙋 紹介: ' + name + '（個人提携・お支払いは当社へ・紹介料は月初に自動集計）\n';
+/**
+ * 管理グループの新規予約通知に足す1行
+ * @param {number} [rate] - 紹介料率(%)（予約に写した率）
+ */
+function individualAdminLine_(name, rate) {
+  var r = (rate !== undefined && rate !== null && rate !== '' && isFinite(Number(rate))) ? '・紹介料 ' + Number(rate) + '%' : '';
+  return '🙋 紹介: ' + name + '（個人提携' + r + '・お支払いは当社へ・紹介料は月初に自動集計）\n';
 }

@@ -201,6 +201,7 @@ function sendWelcomeMessage(msg, opts) {
   //   skipCampaign: true = キャンペーンバナー非表示（提携店経由は定価・キャンペーン対象外 = Daisuke裁可⑩）
   //   shopName: 紹介元の店名（表示すると「この店の客として扱われている」証明になる）
   //   individual: true = 紹介元が個人提携（2026-10-26 IndividualPartner.gs）
+  //   referralPct: 個人提携の紹介割引(%)（配分の設定・2026-10-27 ReferralAttribution.gs）。0 なら出さない
   opts = opts || {};
   const from = msg.from || {};
   const name = from.first_name || '';
@@ -275,7 +276,7 @@ function sendWelcomeMessage(msg, opts) {
   //   クメール語は Panha panha_pass（provisional・Run Kosal 確認待ち）
   //   個人提携（opts.individual・2026-10-26 IndividualPartner.gs）は写真を共有しないので、予約の内容が紹介者に伝わる一言に替える
   const referralLine = (opts.shopName && opts.individual && typeof individualWelcomeReferralLine_ === 'function')
-    ? individualWelcomeReferralLine_(opts.shopName)
+    ? individualWelcomeReferralLine_(opts.shopName, opts.referralPct)
     : opts.shopName
     ? '🤝 Referred by ' + opts.shopName + ' — thank you!\n' +
       '📸 យើងនឹងចែករំលែករូបថតរថយន្តរបស់អ្នក មុន / ក្រោយ ជាមួយ ' + opts.shopName + ' ផងដែរ។\n' +

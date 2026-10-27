@@ -163,7 +163,9 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
       var todayDate = Utilities.parseDate(
         Utilities.formatDate(startDate, tz, 'yyyy-MM-dd'), tz, 'yyyy-MM-dd');
 
-      appendRow(SHEET_NAMES.BOOKINGS, {
+      // 2026-10-26: 個人提携の紹介のお客様（QR連携済み）は紹介元を残す（紹介料の月次集計・v7-operations/IndividualPartnerOps.gs）
+      var indivRef = (!shopPays && linkedChatId && typeof individualReferralFor_ === 'function') ? individualReferralFor_(linkedChatId) : '';
+      var manualRow = {
         '予約ID':         newBookingId,
         '顧客ID':         linkedCustomerId,
         'チャットID':     linkedChatId,
@@ -190,9 +192,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '割引額(USD)':    realDiscount ? Math.round((listPrice - amount) * 100) / 100 : 0,
         // 手動登録フォームで建物名が入っていれば出張、無ければ店舗と推定
         'サービスタイプ': (String(body.building || '').trim() ? '出張' : '店舗'),
-        // 2026-10-26: 個人提携の紹介のお客様（QR連携済み）は紹介元を残す（紹介料の月次集計・v7-operations/IndividualPartnerOps.gs）
-        '紹介元shop_id':  (!shopPays && linkedChatId && typeof individualReferralFor_ === 'function') ? individualReferralFor_(linkedChatId) : ''
-      });
+        '紹介元shop_id':  indivRef
+      };
+      // 予約した時（記録した時）の紹介料率を写す（配分を月の途中で変えても率が変わらない・2026-10-27 ReferralAttribution.gs）
+      var indivInfo = (indivRef && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(indivRef) : null;
+      if (indivInfo) manualRow[BOOKING_REFERRAL_RATE_COL] = indivInfo.rate;
+      appendRow(SHEET_NAMES.BOOKINGS, manualRow);
 
       // 管理者通知（best-effort）
       try {

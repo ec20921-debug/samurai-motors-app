@@ -218,32 +218,46 @@ function handleShopStart_(msg, text) {
     return true;
   }
 
-  // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
-  // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩。個人提携も紹介料が付くので同じ）
-  // 個人提携（IndividualPartner.gs・2026-10-26）: 写真は共有しないので、その一言の代わりに「予約の内容が紹介者に伝わる」を出す
-  var indivState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
-  sendWelcomeMessage(msg, { skipCampaign: true, shopName: welcomeShopName, individual: indivState === true });
-  ensureCustomerTopic(msg);
-
-  // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
-  // 最後に読んだQRを優先: レジデンス等の流入元（src_ref）は外す（2026-10-20）
-  try {
-    var sp = PropertiesService.getScriptProperties();
-    sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
-    sp.deleteProperty('src_ref_' + String(msg.chat.id));
-  } catch (err) {
-    Logger.log('⚠️ shop_ref 保存失敗: ' + err);
-  }
-
   // 流入分析用にファネルログへ記録（流入元QRの 'src:<コード>' と同じ形・2026-10-21）。失敗しても本処理は止めない
+  // 紹介元を付けない時（最初の紹介者のまま・既存客）も残す（シールの動作確認に使う・ReferralAttribution.gs）
   if (typeof logFunnelEvent === 'function') {
     try { logFunnelEvent(msg.chat.id, 'bot_start', 'shop:' + shopId, '', null); } catch (err) { Logger.log('⚠️ ファネル記録失敗（店QR）: ' + err); }
   }
 
-  // 店舗グループへ来店通知
   var custName = ((msg.from && msg.from.first_name) || '') + ' ' + ((msg.from && msg.from.last_name) || '');
   custName = custName.trim() || 'Customer';
 
+  // 最初の紹介者で固定・既存客は対象外（2026-10-27 ReferralAttribution.gs）
+  var decision = (typeof referralDecision_ === 'function') ? referralDecision_(String(msg.chat.id), shopId) : { action: 'tag' };
+  if (decision.action !== 'tag') {
+    handleShopStartNotTagged_(msg, shopId, welcomeShopName, custName, decision);
+    return true;
+  }
+
+  // 提携店専用ウェルカム: 紹介元店名を表示し、キャンペーンは非表示
+  // （提携店経由は定価・キャンペーン対象外 = 2026-08-10 Daisuke裁可⑩。個人提携も紹介料が付くので同じ）
+  // 個人提携（IndividualPartner.gs・2026-10-26）: 写真は共有しないので、その一言の代わりに「予約の内容が紹介者に伝わる」を出す
+  //   紹介割引（配分の設定・2026-10-27）があれば、その一言も出す
+  var indivState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
+  sendWelcomeMessage(msg, {
+    skipCampaign: true, shopName: welcomeShopName, individual: indivState === true,
+    referralPct: (indivState === true && typeof referralDiscountForShop_ === 'function') ? referralDiscountForShop_(shopId) : 0
+  });
+  ensureCustomerTopic(msg);
+
+  // 顧客→店タグ（Phase 2 で予約レコードへ転記するための参照）
+  // 車屋はレジデンス等の流入元（src_ref）を外す（2026-10-20）。個人提携は当社集金なので流入元と両立する（外さない・2026-10-27）
+  try {
+    var sp = PropertiesService.getScriptProperties();
+    sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    if (typeof shouldClearSourceRefOnShopTag_ !== 'function' || shouldClearSourceRefOnShopTag_(shopId)) {
+      sp.deleteProperty('src_ref_' + String(msg.chat.id));
+    }
+  } catch (err) {
+    Logger.log('⚠️ shop_ref 保存失敗: ' + err);
+  }
+
+  // 店舗グループへ来店通知
   // 個人提携のグループには予約が入った時だけ送る（お客様の名前は出さない）。個人提携か分からない時も送らない
   if (indivState === false && link && String(link.obj['状態']) === '連携済' && String(link.obj['グループchat_id'])) {
     try {
@@ -273,6 +287,36 @@ function handleShopStart_(msg, text) {
     Logger.log('⚠️ 管理通知失敗（QR流入）: ' + err);
   }
   return true;
+}
+
+/**
+ * 店QR を読んだが紹介元を付けない時（2026-10-27 ReferralAttribution.gs）。紹介元・流入元の紐付けは変えない。
+ *   keep     : 最初の紹介者のまま → その紹介者のお客様としての歓迎文（誰に予約が伝わるかを正しく伝える）
+ *   existing : 紹介なしで使ったことがあるお客様 → 通常の歓迎文（キャンペーンも通常どおり）
+ * 読んだ QR の店・紹介者のグループには送らない（そのお客様は紹介にならないため）
+ */
+function handleShopStartNotTagged_(msg, shopId, scannedName, custName, decision) {
+  var keptId = decision.action === 'keep' ? String(decision.keptShopId || '') : '';
+  if (keptId) {
+    var keptState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(keptId) : false;
+    sendWelcomeMessage(msg, {
+      skipCampaign: true, shopName: getShopNameById_(keptId) || keptId, individual: keptState === true,
+      referralPct: (keptState === true && typeof referralDiscountForShop_ === 'function') ? referralDiscountForShop_(keptId) : 0
+    });
+  } else {
+    sendWelcomeMessage(msg);
+  }
+  ensureCustomerTopic(msg);
+  try {
+    sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, keptId
+      ? '🔁 別の紹介元のQRを読んだが、最初の紹介元のまま（最初の紹介者で固定）\n' +
+        '読んだQR: ' + (scannedName || shopId) + '\n紹介元（変えない）: ' + (getShopNameById_(keptId) || keptId) + '\n顧客: ' + custName +
+        ' (chat_id=' + msg.chat.id + ')\n（紹介料は最初の紹介元へ。直す時は Script Properties の shop_ref_<chat_id>）'
+      : 'ℹ️ 紹介QRを読んだが、紹介なしで使ったことがあるお客様のため紹介扱いにしない（既存客は対象外）\n' +
+        '読んだQR: ' + (scannedName || shopId) + '\n顧客: ' + custName + ' (chat_id=' + msg.chat.id + ')\n（通常のお客様として案内・紹介料なし）');
+  } catch (err) {
+    Logger.log('⚠️ 管理通知失敗（紹介元を付けない店QR）: ' + err);
+  }
 }
 
 /**

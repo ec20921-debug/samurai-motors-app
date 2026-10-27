@@ -161,6 +161,8 @@ function scoutLinksRows_() {
       if (funnel.opened[c]) opened++;
       (bookings[c] || []).forEach(function(b) {
         if (b.status === 'キャンセル') return;
+        // 別の提携先の紹介の予約は数えない（最初の紹介者で固定・2026-10-27: 紹介元のあるお客様が別の店のQRを読んでも紹介元は変わらない）
+        if (b.ref && b.ref !== id) return;
         booked++;
         if (b.status === '作業完了') { done++; sales += b.amount; }
       });
@@ -200,7 +202,7 @@ function scoutLinksRows_() {
       kind === 'source'
         ? SCOUT_LINKS_GREETING_SOURCE_EN.replace(/\{shop\}/g, fill)
         : kind === 'individual'
-        ? individualGroupGreetingText_(name, rate)
+        ? individualGroupGreetingText_(name, rate, individualEffectiveDiscountOps_(shop, rate))
         : langLinesOps_(shopGroupLangsOps_(shop), { km: SCOUT_LINKS_GREETING_KM, en: SCOUT_LINKS_GREETING_EN, ja: SCOUT_LINKS_GREETING_JA })
           .map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n'),
       id
@@ -268,11 +270,15 @@ function scoutLinksBookings_(ss) {
   const values = sh.getDataRange().getValues();
   const head = values.shift().map(String);
   const ci = head.indexOf('チャットID'), li = head.indexOf('進行状態'), ki = head.indexOf('料金(USD)');
+  const ri = head.indexOf('紹介元shop_id');   // 2026-10-26〜 予約した時の紹介元（空 = 紹介なし・この列より前の予約）
   if (ci < 0 || li < 0) return out;
   values.forEach(function(r) {
     const chat = String(r[ci] || '').trim();
     if (!chat) return;
-    (out[chat] = out[chat] || []).push({ status: String(r[li] || ''), amount: ki >= 0 ? (Number(r[ki]) || 0) : 0 });
+    (out[chat] = out[chat] || []).push({
+      status: String(r[li] || ''), amount: ki >= 0 ? (Number(r[ki]) || 0) : 0,
+      ref: ri >= 0 ? String(r[ri] || '').trim() : ''
+    });
   });
   return out;
 }

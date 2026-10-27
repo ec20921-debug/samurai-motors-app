@@ -50,7 +50,10 @@ function buildShopGroupGreeting_(shopName, shopId) {
   }
   // 個人提携は日本語＋英語の専用文（IndividualPartner.gs・2026-10-26）
   var indiv = (shopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
-  if (indiv) return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate);
+  if (indiv) {
+    return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate,
+      (typeof effectiveReferralDiscount_ === 'function') ? effectiveReferralDiscount_(indiv, shopId) : 0);
+  }
   var name = String(shopName || '').trim() || 'your shop';
   // 置換は関数で渡す（店名に $& 等が入っても特殊展開しない）
   var fill = function() { return name; };
