@@ -89,7 +89,7 @@ function partnerMasterCell_(r, col) {
 function partnerMasterSet_(r, col, value) {
   var i = r ? r.head.indexOf(col) : -1;
   if (i < 0) return false;
-  r.sheet.getRange(r.row, i + 1).setValue(value);
+  r.sheet.getRange(r.row, i + 1).setValue(sheetSafeValue_(value));   // 数式にならないように（SheetHelpers.gs）
   return true;
 }
 
@@ -514,7 +514,7 @@ function logPartnerFlyerSend_(row) {
       sh.setFrozenRows(1);
     }
     var head = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(function(h) { return String(h).trim(); });
-    sh.appendRow(head.map(function(h) { return Object.prototype.hasOwnProperty.call(row, h) ? row[h] : ''; }));
+    sh.appendRow(head.map(function(h) { return sheetSafeValue_(Object.prototype.hasOwnProperty.call(row, h) ? row[h] : ''); }));
   } catch (err) {
     Logger.log('⚠️ 紹介チラシ送付履歴に書けない: ' + err);
   }

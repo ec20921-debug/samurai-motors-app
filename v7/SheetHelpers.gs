@@ -135,7 +135,7 @@ function sheetSafeText_(v) {
  * 数値・日付・真偽と、数字だけの文字列（グループの chat_id「-100…」等）は今までどおり数値として入る
  */
 function sheetSafeValue_(v) {
-  if (typeof v !== 'string' || /^[+\-]?\d+(\.\d+)?$/.test(v)) return v;
+  if (typeof v !== 'string' || /^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(v)) return v;
   return sheetSafeText_(v);
 }
 

