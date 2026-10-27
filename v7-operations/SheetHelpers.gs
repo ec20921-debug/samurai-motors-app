@@ -77,6 +77,7 @@ function readAllValues_(sheetName) {
  * ミニアプリ・業務Bot・Google フォームから届く値や、v7 Database から読み戻した値（顧客の名前・グループ名・店名など）は
  * 外から決められる。=IMPORTXML(...) のような文字列をそのまま書くと数式として動き、シートの中身が外の URL へ送られうる。
  * ' はセルの値には残らない（読み戻すと元の文字列が返る）ので、読み戻した値を別のセルへ書く時もここを通す
+ * ※ 表示形式が「書式なしテキスト」の列だけは例外で、' がそのまま値に残る（画面にも出る）
  */
 function safeCellText_(v) {
   const s = String(v == null ? '' : v);
@@ -84,12 +85,21 @@ function safeCellText_(v) {
 }
 
 /**
- * 書く値の無害化。文字列だけ safeCellText_ に通す（v7 の sheetSafeValue_ と同じ）。
- * 数値・日付・真偽と、数字だけの文字列（「-5」「+855123」等）は今までどおり数値として入る
+ * 書く値の無害化（v7 の sheetSafeValue_ と同じ考え方）。
+ * 数値・日付・真偽・空と、数字だけの文字列（「-5」「+855123」等）は今までどおり数値として入る。
+ * 配列・オブジェクト（ミニアプリの JSON でどんな形でも送れる）は文字にしてから判定する
+ * （["=IMPORTXML(...)"] のような配列はセルに書くと文字になり、数式として動くため）
  */
 function safeCellValue_(v) {
-  if (typeof v !== 'string' || /^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(v)) return v;
-  return safeCellText_(v);
+  if (v === null || v === undefined || typeof v === 'number' || typeof v === 'boolean' ||
+      Object.prototype.toString.call(v) === '[object Date]') return v;
+  const s = String(v);
+  return /^[+\-]?(\d+(\.\d*)?|\.\d+)$/.test(s) ? s : safeCellText_(s);
+}
+
+/** sheetRaw_ の入れ物。new でしか作れない＝ミニアプリの JSON（{"sheetRaw": …} など）からは作れない */
+function SheetRawValue_(v) {
+  this.value = v;
 }
 
 /**
@@ -99,12 +109,12 @@ function safeCellValue_(v) {
  * 外から届いた文字列を、書式なしテキストでない列へ書く時は包まない
  */
 function sheetRaw_(v) {
-  return { sheetRaw: v };
+  return new SheetRawValue_(v);
 }
 
 /** 共通の書き込み口が1セルに書く値（sheetRaw_ で包んだものだけそのまま・ほかは safeCellValue_） */
 function sheetCellValue_(v) {
-  return (v && typeof v === 'object' && v.hasOwnProperty('sheetRaw')) ? v.sheetRaw : safeCellValue_(v);
+  return v instanceof SheetRawValue_ ? v.value : safeCellValue_(v);
 }
 
 /**

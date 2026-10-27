@@ -79,6 +79,12 @@ function doPunchLocked_(type, chatId, gps, opts) {
   if (!staff) {
     return { ok: false, error: 'STAFF_NOT_FOUND', message: 'スタッフ未登録' };
   }
+  // GPS はミニアプリの JSON がそのまま届く（文字・配列・オブジェクトも送れる）→ 数値だけにする。
+  // 数値でなければ「GPS不可」と同じ扱い（シートの数式・管理グループの通知のリンクに変な文字を入れない・2026-10-27）
+  if (gps) {
+    const lat = Number(gps.lat), lng = Number(gps.lng);
+    gps = (isFinite(lat) && isFinite(lng)) ? { lat: lat, lng: lng, accuracy: Number(gps.accuracy) || 0 } : null;
+  }
 
   // 2026-10-08: 現場アプリ v2 は圏外でも端末に保存して後から送る → 「押した時刻」(opts.at) で記録する。
   //   受け付けるのは受信時刻の 72 時間前〜2 分後まで（それ以外・不正値は受信時刻。圏外が長い日もあるため 72h）

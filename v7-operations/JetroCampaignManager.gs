@@ -392,6 +392,16 @@ function updateJetroFormText() {
 // ============================================================
 
 /**
+ * 電話の列（H/I）に書く値（2026-10-27）。
+ * H/I は書式なしテキスト（ensureJetroBookingSheet）なので、' を付けると画面に ' が出る → 電話らしい形（数字・空白・+()-.）だけそのまま書く。
+ * この形なら書式が外れていても、数式として評価されて計算か #ERROR! になるだけで、外へ送る式にはならない。
+ * それ以外の形は appendRow に任せる（先頭が = + - @ なら ' が付く）
+ */
+function jetroPhoneCell_(v) {
+  return /^[+\d][\d\s().\-]*$/.test(v) ? sheetRaw_(v) : v;
+}
+
+/**
  * Google Form 送信時に呼ばれる
  * 1. 予約IDを採番してシート記録
  * 2. Admin グループに通知(業務Bot)
@@ -431,10 +441,9 @@ function handleJetroFormSubmit(e) {
       '氏名':                fullName,
       '会社名':              companyName,
       '役職':                jobTitle,
-      // 電話の列（H/I）は書式なしテキスト（ensureJetroBookingSheet）＝数式は動かず、' を付けると画面に出るのでそのまま書く。
-      // ほかの列（氏名・会社名など誰でも書けるフォームの入力）は appendRow が ' を付ける（2026-10-27）
-      '駐在員 電話番号':     sheetRaw_(expatPhone),
-      'ドライバー 電話番号': sheetRaw_(driverPhone),
+      // 氏名・会社名など（誰でも書けるフォームの入力）は appendRow が ' を付ける。電話は jetroPhoneCell_（2026-10-27）
+      '駐在員 電話番号':     jetroPhoneCell_(expatPhone),
+      'ドライバー 電話番号': jetroPhoneCell_(driverPhone),
       'ステータス':          '未対応',
       '確定時刻':            '',
       '車両情報':            '',

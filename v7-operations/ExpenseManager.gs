@@ -764,18 +764,19 @@ function nextMasterId_(sheet) {
   return maxId + 1;
 }
 
-// 経費マスターでコードが数式を書く列（0始まり: H レシート=HYPERLINK / K JPY換算 / L 月）
-const MASTER_FORMULA_COL_IDX_ = [7, 10, 11];
+// 経費マスターでコードが決めた値をそのまま書く列（0始まり: H レシート=HYPERLINK / K JPY換算 / L 月 は数式、
+// P 集計対象（○ / -）・Q 経費計上（●）は固定の記号）
+const MASTER_RAW_COL_IDX_ = [7, 10, 11, 15, 16];
 
 /**
  * 経費マスターに1行(A〜Q)を書き込む。書き込みに失敗したら途中まで書かれたセルを消して例外を投げ直す
  * （失敗時に日付だけの行が残ると、次回以降の追記位置・ID がずれていくため）。
- * 数式の列以外（摘要・備考・入力者など。現場アプリ・ルーティン経費の表から来た文字）は safeCellValue_ を通す（2026-10-27）
+ * それ以外の列（摘要・備考・入力者など。現場アプリ・ルーティン経費の表から来た文字）は safeCellValue_ を通す（2026-10-27）
  */
 function writeMasterRow_(sheet, newRow, rowValues) {
   ensureMasterCategoryValidation_(sheet, rowValues[0][1]);
   const safeRow = rowValues[0].map(function(v, i) {
-    return MASTER_FORMULA_COL_IDX_.indexOf(i) >= 0 ? v : safeCellValue_(v);
+    return MASTER_RAW_COL_IDX_.indexOf(i) >= 0 ? v : safeCellValue_(v);
   });
   try {
     sheet.getRange(newRow, 1, 1, 17).setValues([safeRow]);

@@ -20,7 +20,8 @@ function ensureExpenseClientIdCol_() {
   return { sheet: sheet, col: idx + 1 };
 }
 
-// safeCellText_ は SheetHelpers.gs（2026-10-27 共通化。appendRow 側でも同じ無害化をする）
+// 摘要・メモ・取引先の無害化（先頭が = + - @ なら '）は、書く所（appendRow・経費マスターの writeMasterRow_）でする。
+// ここで先に付けると、経費マスターの備考（「取引先: … / メモ」とつなげる）や通知に ' が見えてしまう（2026-10-27）
 function submitExpenseV2_(chatId, payload, clientId) {
   if (!/^[0-9a-fA-F-]{36}$/.test(String(clientId || ''))) return { ok: false, error: 'INVALID_CLIENT_ID' };
   const lock = LockService.getScriptLock();
@@ -39,9 +40,6 @@ function submitExpenseV2_(chatId, payload, clientId) {
     }
     payload.clientId = clientId;
     payload.skipFuzzyDup = true;
-    payload.description = safeCellText_(payload.description);
-    payload.memo = safeCellText_(payload.memo);
-    payload.vendor = safeCellText_(payload.vendor);
     const res = submitExpense(chatId, payload);
     if (res && res.ok) res.status = res.duplicate ? 'duplicate' : 'ok';
     return res;

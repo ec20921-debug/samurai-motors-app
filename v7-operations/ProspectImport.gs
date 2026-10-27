@@ -58,7 +58,10 @@ function prospectImportPreview() {
   });
   // 電話の列は書く前に文字の形式にする（後からだと「+855 …」が数式として入り #ERROR! になる・先頭ゼロも消える）
   sheet.getRange(2, 11, Math.max(rows.length, 1), 1).setNumberFormat('@');
-  if (rows.length) sheet.getRange(2, 1, rows.length, PROSPECT_CHECK_HEADERS.length).setValues(rows);
+  // 店名・住所・メモ等は Web で集めた値を読み戻したもの＝' が外れているので safeCellValue_ を通す（2026-10-27）。
+  // 電話の列（11列目）は書式なしテキストなので ' を付けない（付けると画面に出る）
+  if (rows.length) sheet.getRange(2, 1, rows.length, PROSPECT_CHECK_HEADERS.length).setValues(
+    rows.map(function(r) { return r.map(function(v, i) { return i === 10 ? v : safeCellValue_(v); }); }));
 
   const count = {};
   rows.forEach(function(r) { count[r[0]] = (count[r[0]] || 0) + 1; });

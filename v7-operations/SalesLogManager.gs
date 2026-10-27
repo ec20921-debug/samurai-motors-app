@@ -757,10 +757,11 @@ function findSheetRow_(sheet, columnName, value) {
  * appendSheetRow_ / updateSheetRow_ が1セルに書く値（2026-10-27）。
  * 店名・メモ・オーナー名などはミニアプリ（スタッフ）・フォームから届くか、v7 Database から読み戻した値なので
  * 全部 sheetCellValue_（SheetHelpers.gs・先頭が = + - @ なら '）に通す。
- * 電話は数字だけでも ' を付けて文字にする（「+855 …」が数式あつかいで #ERROR! になるのを防ぐ・従来どおり）
+ * 電話は従来どおり safeCellText_: 「+85512345678」のように + で始まれば数字だけでも ' を付けて文字にする
+ * （safeCellValue_ だと数値になって + が落ちる。「+855 …」が数式あつかいで #ERROR! になるのも防ぐ）
  */
 function salesLogCellValue_(header, v) {
-  if (header === '電話' && !(v && typeof v === 'object')) return safeCellText_(v);
+  if (header === '電話' && !(v instanceof SheetRawValue_)) return safeCellText_(v);
   return sheetCellValue_(v);
 }
 
