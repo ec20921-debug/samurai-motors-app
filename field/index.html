@@ -219,6 +219,8 @@ main.tabbed{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 .cam .frame .req.opt{background:rgba(255,255,255,.85);color:var(--sub)}
 .cam .shoot{position:relative;min-height:72px;border-radius:14px;background:var(--blue);color:#fff;font-size:20px;font-weight:700;display:grid;place-items:center}
 .cam .shoot input{position:absolute;inset:0;opacity:0;width:100%;height:100%}
+.cam .retake{position:relative;overflow:hidden;width:100%}
+.cam .retake input{position:absolute;inset:0;opacity:0;width:100%;height:100%}
 .thumbs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
 .thumbs button{flex:none;width:64px;height:48px;border-radius:8px;overflow:hidden;border:2px solid var(--line);background:#f7f9fb;position:relative;display:grid;place-items:center;font-size:11px;color:var(--sub);font-weight:700}
 .thumbs button img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -1181,7 +1183,8 @@ function renderJob() {
     if (c.step === 'after') html += '<div class="card"><div class="timer"><div class="l">⏱ ' + t('work_time') + '</div><div class="v num" style="color:var(--text)">' + hms(workSec(c)) + '</div></div></div>';
     html += '<div class="card"><div class="band">📷 ' + t(c.step === 'before' ? 'photo_before' : 'photo_after') + '<span class="r num">' + pg.got + '/' + pg.n + '</span></div><div class="body cam">' +
       '<div class="frame">' + (img ? '<img src="' + img + '" alt="">' : G[sh.g]) + '<span class="req ' + (sh.req ? '' : 'opt') + '">' + t(sh.req ? 'lbl_required' : 'lbl_optional') + '</span><span class="cnt">' + (idx + 1) + '/' + shots.length + '</span><span class="lbl">' + t(sh.tk) + '</span></div>' +
-      (img ? '<div class="row2"><button type="button" class="btn sm ghost" id="retake">↺ ' + t('btn_retake') + '</button><button type="button" class="btn sm green" id="okNext">' + t('btn_ok') + ' ›</button></div>'
+      // 撮ったらそのまま次の枠へ（OK の確認は 2026-10-28 Daisuke「タップが増えるだけ」で廃止）。撮り直しはサムネから選んでここを押すとすぐカメラ
+      (img ? '<div class="btn sm ghost retake">↺ ' + t('btn_retake') + '<input type="file" accept="image/*" capture="environment" id="shoot"></div>'
            : '<div class="shoot">📷 ' + t(sh.tk) + '<input type="file" accept="image/*" capture="environment" id="shoot"></div>' + (sh.req ? '' : '<button type="button" class="btn sm ghost" id="skipShot">' + t('btn_next') + ' ›</button>')) +
       '<div class="thumbs">' + shots.map(function (s, i) { var p = c.photos[s.id]; return '<button type="button" data-shot="' + i + '" class="' + (i === idx ? 'now' : '') + (p ? ' has' : '') + '">' + (p ? '<img src="' + p + '" alt="">' : t(s.tk)) + (p ? '<span class="k">✓</span>' : '') + '</button>'; }).join('') + '</div>' +
       '</div></div>';
@@ -1260,9 +1263,11 @@ function bindJob() {
   document.querySelectorAll('[data-dmgdel]').forEach(function (b) { b.onclick = function () { c.dmg.splice(+b.getAttribute('data-dmgdel'), 1); saveDraft(); renderJob(); }; });
   var dn = $('dmgNone'); if (dn) dn.onclick = function () { c.noDamage = !c.noDamage; saveDraft(); renderJob(); };
 
-  var sh = $('shoot'); if (sh) sh.onchange = function () { if (!sh.files[0]) return; var shots = shotsFor(c.job, c.step); readShrunk(sh.files[0], function (u) { c.photos[shots[c.shotIdx].id] = u; saveDraft(); renderJob(); }); };
-  var rt = $('retake'); if (rt) rt.onclick = function () { var shots = shotsFor(c.job, c.step); delete c.photos[shots[c.shotIdx].id]; saveDraft(); renderJob(); };
-  var ok = $('okNext'); if (ok) ok.onclick = function () { advanceShot(); };
+  var sh = $('shoot'); if (sh) sh.onchange = function () { if (!sh.files[0]) return; var shots = shotsFor(c.job, c.step); readShrunk(sh.files[0], function (u) {
+    var id = shots[c.shotIdx].id, had = !!c.photos[id];
+    c.photos[id] = u; saveDraft();
+    if (had) renderJob(); else advanceShot();   // 撮り直しはその枠に残る・新しく撮ったら次の枠へ
+  }); };
   var sk = $('skipShot'); if (sk) sk.onclick = function () { advanceShot(); };
   document.querySelectorAll('[data-shot]').forEach(function (b) { b.onclick = function () { c.shotIdx = +b.getAttribute('data-shot'); renderJob(); }; });
 
