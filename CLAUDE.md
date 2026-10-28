@@ -124,7 +124,3 @@
 - `docs/GAS_PATTERNS.md` — doPost/Properties/Cache のコード例・v6 教訓・自問ルール
 - `docs/SPEC_v7_CustomerSystem.md` — 完全仕様書 / `docs/SPEC_v7.5.md` 等 — 増分仕様
 - `docs/manual_admin_jp.md` / `docs/manual_staff_km.md` — 運用マニュアル
-
----
-
-あなたの出力が終わったら、Codexがレビューします。品質を意識してください。
