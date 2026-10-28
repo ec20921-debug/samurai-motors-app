@@ -20,6 +20,16 @@ function fieldUsd_(n) {
 }
 
 /**
+ * お店と決めた金額が目安から大きく離れているか（現場アプリ sjOff と同じ: 目安の 0.5倍未満・1.5倍超）。
+ * 自動で請求が届く前の歯止めとして管理グループに注意を出す（目安が無い時は出さない＝現場アプリが毎回確認している）
+ */
+function fieldAgreedOff_(body) {
+  var p = Number(body && body.amount) || 0;
+  var g = Number(body && body.v2 && body.v2.guide_price) || 0;
+  return g > 0 && p > 0 && (p < g * 0.5 || p > g * 1.5);
+}
+
+/**
  * 管理グループの「支払い」行に付ける内訳（お店の仕事・店の車）。例: （お店と決めた金額 $20・目安 $24.5・差 −$4.5）
  * 目安が無い（BODY など）時は「目安なし」
  */
@@ -42,6 +52,8 @@ var SHOP_DAMAGE_TEXT_ = {
           ja: '写真は上のとおりです。作業の前から、この状態でした。' }
 };
 var SHOP_DAMAGE_NUM_ = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+var SHOP_DAMAGE_MAX_ = 30;      // 1通に載せる上限（Telegram の 4096 文字に収める）。超えた分は「…」
+var SHOP_DAMAGE_MEMO_MAX_ = 80; // ひとことの上限（文字単位で切る＝絵文字を半分に切らない）
 
 /** 傷の文章をお店のグループへ送るか（ScriptProperties「SHOP_DAMAGE_NOTE」= on） */
 function shopDamageNoteOn_() {
@@ -58,25 +70,27 @@ function shopDamageNoteOn_() {
  * @param {Array} damages - 現場アプリの v2.damage（{x, y, memo, photo}）
  */
 function shopDamageText_(langs, damages) {
-  var list = (Array.isArray(damages) ? damages : []).filter(function(d) { return d && (String(d.memo || '').trim() || d.photo); }).slice(0, 10);
+  var list = (Array.isArray(damages) ? damages : []).filter(function(d) { return d && (String(d.memo || '').trim() || d.photo); });
   if (!list.length) return '';
   var head = langLines_(langs, langFill_(SHOP_DAMAGE_TEXT_.head, { n: list.length }));
   if (head.length) head[0] = '⚠️ ' + head[0];
-  var items = list.map(function(d, i) {
-    var memo = String(d.memo || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-    return SHOP_DAMAGE_NUM_[i] + ' ' + (memo || '📷');
+  var items = list.slice(0, SHOP_DAMAGE_MAX_).map(function(d, i) {
+    var memo = Array.from(String(d.memo || '').replace(/\s+/g, ' ').trim()).slice(0, SHOP_DAMAGE_MEMO_MAX_).join('');
+    return (SHOP_DAMAGE_NUM_[i] || '(' + (i + 1) + ')') + ' ' + (memo || '📷');
   });
+  if (list.length > SHOP_DAMAGE_MAX_) items.push('…');
   return head.concat(items, [''], langLines_(langs, SHOP_DAMAGE_TEXT_.note)).join('\n');
 }
 
 /**
  * 作業開始（お店の仕事）: 作業前の写真のあとに、傷・へこみの文章をお店のグループへ。失敗しても作業は止めない
- * @param {string} shopId - apiJobStartV2 が確かめた店
- * @param {Object} body - job_start の本文（v2.damage）
+ * 「お店の仕事」モード（v2.mode = 'shop'）の作業だけ。予約の流れで店を選んだ作業には送らない
+ * @param {string} shopId - apiJobStart が確かめた店（作業前の写真をお店のグループへ送れた時だけ呼ぶ）
+ * @param {Object} body - job_start の本文（v2.mode・v2.damage）
  */
 function notifyShopDamage_(shopId, body) {
   try {
-    if (!shopId || !shopDamageNoteOn_()) return '';
+    if (!shopId || !(body && body.v2 && body.v2.mode === 'shop') || !shopDamageNoteOn_()) return '';
     var text = shopDamageText_(shopGroupLangs_(shopId), body && body.v2 && body.v2.damage);
     if (!text) return '';
     return notifyShopGroupByShopId_(shopId, text, null);

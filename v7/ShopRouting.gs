@@ -54,6 +54,8 @@ function readShopLinks_() {
 
 function invalidateShopLinkCache_() {
   try { CacheService.getScriptCache().remove(SHOP_LINK_CACHE_KEY); } catch (ignore) {}
+  // 現場アプリのお店一覧（linked）も作り直す（グループを連携した直後から一覧に出す・2026-10-28）
+  try { CacheService.getScriptCache().remove('field_partner_shops_v3'); } catch (ignore) {}
 }
 
 // ====== ① 店舗グループでの /register ======
@@ -582,14 +584,20 @@ function apiFieldPartnerShops() {
     try { return { status: 'ok', shops: JSON.parse(hit) }; } catch (ignore) {}
   }
   var out = [], seen = {}, rates = {};
-  var stopped = {}, linked = {};
-  readShopLinks_().forEach(function(l) {
+  var stopped = {};
+  var links = readShopLinks_();
+  links.forEach(function(l) {
     var id = String(l.obj['shop_id'] || '');
     if (String(l.obj['状態']) === '停止') { if (!stopped.hasOwnProperty(id)) stopped[id] = true; }
     else stopped[id] = false;
-    // お店のグループとつながっているか（2026-10-28: 現場アプリの一覧はグループのあるお店を上に出す）
-    if (String(l.obj['状態']) === '連携済' && String(l.obj['グループchat_id'] || '')) linked[id] = true;
   });
+  // お店のグループとつながっているか。送る側（notifyShopGroupByShopId_）と同じ行（findShopLinkByShopId_）で決める（2026-10-28）
+  // Bot連携が読めない・空の時は linked を付けない（現場アプリは全部のお店を出す）
+  var isLinked = function(id) {
+    if (!links.length) return undefined;
+    var link = findShopLinkByShopId_(id);
+    return !!(link && String(link.obj['状態']) === '連携済' && String(link.obj['グループchat_id'] || ''));
+  };
   var add = function(id, name) {
     id = String(id || '').trim();
     if (!id || seen[id] || stopped[id] === true || id.indexOf('SHOP-SAMPLE') === 0 || String(name || '').indexOf('【サンプル】') === 0) return;
@@ -598,7 +606,7 @@ function apiFieldPartnerShops() {
     // 個人提携も店集金・請求の相手ではないので出さない（IndividualPartner.gs・2026-10-26）
     if (typeof isIndividualPartnerShop_ === 'function' && isIndividualPartnerShop_(id)) return;
     seen[id] = true;
-    out.push({ id: id, name: String(name || id), linked: !!linked[id],
+    out.push({ id: id, name: String(name || id), linked: isLinked(id),
                rate: rates.hasOwnProperty(id) ? rates[id] : (typeof FIELD_SHOP_RATE_DEFAULT_ !== 'undefined' ? FIELD_SHOP_RATE_DEFAULT_ : 30) });
   };
   try {
@@ -621,7 +629,7 @@ function apiFieldPartnerShops() {
   } catch (err) {
     Logger.log('⚠️ apiFieldPartnerShops 店マスター: ' + err);
   }
-  readShopLinks_().forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
+  links.forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
   out.sort(function(a, b) { return a.name.localeCompare(b.name); });
   try { cache.put('field_partner_shops_v3', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
   return { status: 'ok', shops: out };

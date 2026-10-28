@@ -136,6 +136,8 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
       if (sp.rate !== null) shopRate = String(sp.rate);
     }
     var shopKind = payType === 'shopref' ? '紹介:' : '店払い:';
+    // 現場アプリ「お店の仕事」の店の車は、お店と決めた金額（定価×率ではない・2026-10-28 FieldShopMode.gs）
+    var agreed = payType === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body);
     var realDiscount = !shopPays && listPrice > amount;   // ABA 等で定価より安くした時だけ割引として残す
 
     var lock = LockService.getScriptLock();
@@ -184,7 +186,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '入金確認日時':   now,
         '催促回数':       0,
         '管理者メモ':     '客名:' + name + '｜手動ジョブ売上' +
-                         (shopPays ? '｜' + shopKind + shopLabel + (listPrice > amount ? '（定価$' + listPrice + (shopRate ? '・お店' + shopRate + '%' : '') + '）' : '') : '') +
+                         (shopPays ? '｜' + shopKind + shopLabel + (agreed ? '（お店と決めた金額）' : listPrice > amount ? '（定価$' + listPrice + (shopRate ? '・お店' + shopRate + '%' : '') + '）' : '') : '') +
                          (plate ? '｜No.' + plate : '') +
                          (carModel ? '｜車:' + carModel : '') +
                          '｜' + dedupeKey,
@@ -207,7 +209,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
           '🆔 ' + newBookingId + '\n' +
           '💵 $' + amount + (shopPays
             ? '（清算済み・' + (payType === 'shopref' ? '紹介のお客さん' : 'お店の車') + '・お店から QR: ' + shopLabel +
-              (listPrice > amount ? '・定価 $' + listPrice + (shopRate ? '・お店 ' + shopRate + '%' : '') : '') + '）'
+              (agreed ? '・お店と決めた金額' : listPrice > amount ? '・定価 $' + listPrice + (shopRate ? '・お店 ' + shopRate + '%' : '') : '') + '）'
             : '（清算済み）') + '\n' +
           '👤 ' + (name || '-') +
           (carModel ? ' / ' + carModel : '') + (plate ? ' / ' + plate : '');

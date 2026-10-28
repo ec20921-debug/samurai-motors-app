@@ -91,7 +91,11 @@ function fieldPayAdminLine_(pt, shopName, body, shopId) {
   var split = sp && sp.list > 0 && sp.rate !== null ? '（定価 $' + sp.list + '・お店 ' + sp.rate + '%）' : '';
   var warn = sp && sp.mismatch ? '\n⚠️ 店マスターの率だと当社分は $' + sp.expected + '（現場で金額を変えています。確認してください）' : '';
   // 現場アプリ「お店の仕事」の店の車は、お店と決めた金額をそのまま受け取る（2026-10-28 FieldShopMode.gs）。定価×率の検算はしない
-  if (pt === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body)) { split = fieldAgreedAdminNote_(body); warn = ''; }
+  // 目安から大きく離れた時だけ注意（現場アプリと同じ 0.5〜1.5倍。請求は自動で届くので打ち間違いの歯止め）
+  if (pt === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body)) {
+    split = fieldAgreedAdminNote_(body);
+    warn = fieldAgreedOff_(body) ? '\n⚠️ 目安から大きく離れています。金額がお店と決めたとおりか確認してください' : '';
+  }
   switch (pt) {
     case 'aba':     return '💳 支払い: ABA QR で受け取り済み\n';
     case 'shopref': return '💳 支払い: 提携店の紹介のお客さん・当社分はお店がその場で QR で払う（店グループへ請求）' + split + (shopName ? '\n🏪 ' + shopName : '') + warn + '\n';
@@ -122,7 +126,9 @@ function markBookingPaidOnSite_(bkRow, body, pt, shopName, shopId) {
     var amount = pt === 'free' ? 0 : Math.round(Number(body.amount) * 100) / 100;
     var label = { aba: 'ABA QR', shopref: '紹介客・店から QR', shop: '店の車・店から QR', free: '無料（デモ）', cash: '現金（旧）' }[pt] || pt;
     var add = '現場で受領: ' + label + (shopName ? '・' + shopName : '') + ' $' + amount;
-    if (fieldPayIsShop_(pt)) {
+    if (pt === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body)) {
+      add += '（お店と決めた金額）';   // 現場アプリ「お店の仕事」: 定価×率ではない（2026-10-28）
+    } else if (fieldPayIsShop_(pt)) {
       var sp = fieldShopSplit_(body, shopId);
       if (sp.list > 0) add += '（定価 $' + sp.list + (sp.rate !== null ? '・お店 ' + sp.rate + '%' : '') + '）';
     }

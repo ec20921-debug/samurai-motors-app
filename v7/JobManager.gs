@@ -440,12 +440,12 @@ function apiJobStart(body, opts) {
       try {
         if (!jobCustSent_(opts, 'startshop:' + startFieldShop) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
-          notifyShopGroupByShopId_(startFieldShop,
+          var fieldShopSent = notifyShopGroupByShopId_(startFieldShop,
             shopGroupJobText_(shopGroupLangs_(startFieldShop), { phase: 'start', who: 'shop',
               car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before' }),
             photoResult.blobs);
           // 作業前からあった傷・へこみを文章で（2026-10-28 FieldShopMode.gs。SHOP_DAMAGE_NOTE=on の時だけ）
-          if (typeof notifyShopDamage_ === 'function') notifyShopDamage_(startFieldShop, body);
+          if (fieldShopSent && typeof notifyShopDamage_ === 'function') notifyShopDamage_(startFieldShop, body);
         }
       } catch (e) {
         Logger.log('⚠️ 選んだ提携店への同報失敗(start): ' + e);

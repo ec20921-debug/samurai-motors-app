@@ -627,6 +627,7 @@ function loadData(manual) {
   return Promise.all([p1, p2, p3, p4]).then(function () {
     if (S.view === 'home') render();
     else if (S.view === 'shoppick' && $('sjList')) { $('sjList').innerHTML = sjListHtml(); bindSjList(); }
+    else if (S.view === 'shopnew' && $('sjSug')) { $('sjSug').innerHTML = sjSugHtml(); bindSjSug(); }
     if (manual) toast(S.load === 'ok' ? '✓ ' + t('refresh') : t('load_failed'), S.load === 'ok' ? 'ok' : 'warn');
   });
 }
@@ -1364,8 +1365,10 @@ function renderBar() {
 // ═══════════════════════════════════════════════════════════════
 //  お店の仕事（2026-10-27 Daisuke 裁可・LUXE Auto の作業から見直し）
 //  お店を選ぶ → 車・サービス・値段（お店と決めた金額）→ 作業前の写真 → 傷・へこみ → 作業 → 作業後の写真 → 送る前の確認
-//  サーバーは今のまま（v7 @95）で動く: 店の車 = payment_type 'shop'、紹介のお客さん = 'shopref'、請求は ShopInvoice.gs
-//  請求が止まらないよう v2.list_price は「定価（メニューの値段）とお店と決めた金額の大きい方」を送る（FieldPayment.gs の確認と合わせる）
+//  店の車 = payment_type 'shop'、紹介のお客さん = 'shopref'、請求は ShopInvoice.gs（v7 @95 のままでも動く）
+//  請求が止まらないよう v2.list_price は「定価（メニューの値段）とお店と決めた金額の大きい方」を送る
+//  2026-10-28 サーバー側 v7/FieldShopMode.gs: price_mode 'agreed' の店の車は定価×率で検算せず、管理グループに「お店と決めた金額」
+//    （目安の 0.5〜1.5倍の外は注意＝ sjOff と同じ）。傷の文章をお店へ（SHOP_DAMAGE_NOTE=on）。お店一覧の linked
 // ═══════════════════════════════════════════════════════════════
 function sjNum(v) { var n = parseFloat(v); return isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0; }
 function sjRound(n) { return Math.round(n * 100) / 100; }
@@ -1444,7 +1447,8 @@ function renderShopPick() {
 function sjSuggest(name) {
   var q = String(name || '').trim().toLowerCase();
   if (q.length < 2) return [];
-  return (S.shops || []).filter(function (sp) { return String(sp.name).toLowerCase().indexOf(q) >= 0; }).slice(0, 5);
+  return (S.shops || []).filter(function (sp) { return String(sp.name).toLowerCase().indexOf(q) >= 0 || String(sp.id).toLowerCase().indexOf(q) >= 0; })
+    .sort(function (a, b) { return (a.linked === false) - (b.linked === false) || String(a.name).localeCompare(String(b.name)); }).slice(0, 5);
 }
 function sjSugHtml() {
   var list = sjSuggest(S.sj && S.sj.shopName);
