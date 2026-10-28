@@ -23,7 +23,8 @@ function loadV7() {
   const ctx = {
     console, sent,
     Logger: { log: () => {} },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     CacheService: { getScriptCache: () => ({
       get: (k) => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; }, remove: (k) => { delete cache[k]; } }) },
   };
@@ -108,6 +109,17 @@ test('傷の文章を送る: SHOP_DAMAGE_NOTE=on・お店の仕事モードの�
   assert.equal(sent.length, 1);
   run('notifyShopGroupByShopId_ = function () { throw new Error("boom"); };');
   assert.equal(ctx.notifyShopDamage_('PTN-A01', body), '');
+});
+
+test('エディタで実行する切り替え: enableShopDamageNote で送る・disableShopDamageNote で止める', () => {
+  const { ctx, props } = loadV7();
+  assert.equal(ctx.shopDamageNoteOn_(), false);
+  ctx.enableShopDamageNote();
+  assert.equal(props.SHOP_DAMAGE_NOTE, 'on');
+  assert.equal(ctx.shopDamageNoteOn_(), true);
+  ctx.disableShopDamageNote();
+  assert.ok(!('SHOP_DAMAGE_NOTE' in props));
+  assert.equal(ctx.shopDamageNoteOn_(), false);
 });
 
 function stubShops(run, links) {

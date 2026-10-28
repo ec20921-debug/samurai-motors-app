@@ -65,6 +65,21 @@ function shopDamageNoteOn_() {
 }
 
 /**
+ * GAS エディタで選んで「実行」: 傷の文章をお店のグループへ送り始める（2026-10-28）
+ * スクリプト プロパティが 50 個を超えると設定画面から足せないため、関数で入れる
+ */
+function enableShopDamageNote() {
+  PropertiesService.getScriptProperties().setProperty('SHOP_DAMAGE_NOTE', 'on');
+  Logger.log('✅ SHOP_DAMAGE_NOTE = on（作業前からあった傷・へこみの文章をお店のグループへ送る）');
+}
+
+/** GAS エディタで選んで「実行」: 傷の文章を止める（プロパティを消す） */
+function disableShopDamageNote() {
+  PropertiesService.getScriptProperties().deleteProperty('SHOP_DAMAGE_NOTE');
+  Logger.log('⏸ SHOP_DAMAGE_NOTE を消しました（傷の文章は送らない）');
+}
+
+/**
  * 傷・へこみの文章（言語は店マスター「グループへの通知の言語」の順）。傷が無ければ ''
  * @param {Array} langs - shopGroupLangs_ の値
  * @param {Array} damages - 現場アプリの v2.damage（{x, y, memo, photo}）
