@@ -6,7 +6,7 @@
  * ① 管理グループの支払い行: 「定価・率」と「現場で金額を変えています」の注意の代わりに
  *    「お店と決めた金額 $X（目安 $Y・差 ±$Z）」を出す（FieldPayment.gs fieldPayAdminLine_ から呼ぶ）
  * ② 作業開始で、作業前からあった傷・へこみを文章でお店のグループへ（写真は今までどおり作業前の写真と一緒に届く）
- *    お店に届くクメール語は Run Kosal の確認が済むまで出さない: ScriptProperties「SHOP_DAMAGE_NOTE」= on で送る（既定は送らない）
+ *    ScriptProperties「SHOP_DAMAGE_NOTE」= on で送る（既定は送らない＝止めたい時は消すだけ）。クメール語は Run Kosal 確認済み（2026-10-28）
  */
 
 /** お店と決めた金額で送られた作業か（現場アプリ「お店の仕事」） */
@@ -42,7 +42,7 @@ function fieldAgreedAdminNote_(body) {
 }
 
 // ====== 作業前からあった傷・へこみ（お店のグループ宛） ======
-// クメール語は Panha 校閲（2026-10-27・provisional・native-check-queue）。Run Kosal の確認後に SHOP_DAMAGE_NOTE=on
+// クメール語は Panha 校閲（2026-10-27）＋ Run Kosal のネイティブ確認（2026-10-28・glossary active）。変える時は Panha と Run Kosal を通す
 var SHOP_DAMAGE_TEXT_ = {
   head: { km: 'ស្នាមកោស / ស្នាមជ្រុញ ដែលមានតាំងពីមុនធ្វើសេវា ({n} កន្លែង)',
           en: 'Scratches / dents already there before our work ({n})',
