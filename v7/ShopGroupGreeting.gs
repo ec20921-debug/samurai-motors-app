@@ -42,7 +42,7 @@ var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
  * あいさつ文の本文（店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切る）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
- * 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜。あいさつ文のクメール語はまだ無い＝英語だけ）
+ * 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
   if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {

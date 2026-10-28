@@ -16,7 +16,8 @@
  *   本人が④から開くと、店マスター「本人chat_id」（＋本人の名前・登録日時）に自動で書き込み、
  *   グループに「ご登録ありがとうございました」、管理グループに登録した人の名前・@ユーザー名を送る
  *   → 本人の予約は予約の時に割引（ReferralAttribution.gs ⑦ selfPartnerDiscount_）
- *   言語はグループごと（individualGroupLangs_・2026-10-28〜 英語＋クメール語が標準。ここの文はクメール語がまだ無い＝英語だけ。店マスター「グループへの通知の言語」で日本語にも）
+ *   言語はグループごと（individualGroupLangs_・2026-10-28〜 英語＋クメール語が標準。店マスター「グループへの通知の言語」で日本語にも）。
+ *   グループ宛（チラシの説明・本人登録リンク・登録のお礼）はクメール語あり（Panha 校閲・provisional）。リンクを開いた人への返事（SELF_REG_TEXT・selfRegUserText_）はクメール語がまだ無い＝英語だけ
  *
  * 【守り】
  *   - 紹介QRからは本人登録しない（友達が先に押しても本人にならない）
@@ -311,7 +312,13 @@ function selfRegGroupText_(name, pct, link, langs) {
       'The first person to open this link is registered as ' + n + '. Please do not tap it unless you are ' + n + '.\n' +
       'Open the link and tap "START" if it appears (if not, that\'s fine). The reply may take about a minute.\n' +
       (off ? 'After that, your own bookings from the Booking button get ' + off + '% off.\n' : '') +
-      'For friends, please share the referral flyers / URL, not this link.'
+      'For friends, please share the referral flyers / URL, not this link.',
+    // クメール語は Panha 校閲（2026-10-28・provisional）。リンクはクメール語のかたまりにも入れる
+    km: '🔑 តំណភ្ជាប់ចុះឈ្មោះសម្រាប់ ' + n + '\n' + link + '\n' +
+      'អ្នកដំបូងគេដែលបើកតំណភ្ជាប់នេះ នឹងត្រូវបានចុះឈ្មោះជា ' + n + '។ សូមកុំចុច បើអ្នកមិនមែនជា ' + n + '។\n' +
+      'សូមបើកតំណភ្ជាប់ ហើយចុចប៊ូតុង «START» បើមានបង្ហាញ (បើមិនបង្ហាញ ក៏មិនអីទេ)។ អាចត្រូវរង់ចាំប្រហែល 1 នាទី ទើបមានសារឆ្លើយតប។\n' +
+      (off ? 'បន្ទាប់ពីនោះ ការកក់របស់អ្នកផ្ទាល់ តាមប៊ូតុង «Booking» នឹងបានបញ្ចុះតម្លៃ ' + off + '%។\n' : '') +
+      'សម្រាប់មិត្តភក្តិ សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ មិនមែនតំណភ្ជាប់នេះទេ។'
   });
 }
 
@@ -374,7 +381,15 @@ function partnerFlyersText_(name, no, langs) {
       '[What\'s included]\n- Illustrated flyer (A4): how our mobile service works and main prices\n' +
       '- Phone card: an easy-to-read vertical guide\n- Price list (A4): all menus and prices\n' +
       'Each comes in Japanese + English and Khmer + English. Use whichever suits your friend.\n\n' +
-      'Bookings made through the QR or URL are recorded as your referrals automatically.'
+      'Bookings made through the QR or URL are recorded as your referrals automatically.',
+    // クメール語は Panha 校閲（2026-10-28・provisional）
+    km: '📎 ខិត្តប័ណ្ណសម្រាប់ណែនាំ (មាន' + (no ? ' លេខ ' + no + ' និង' : '') + ' QR របស់អ្នកផ្ទាល់)\n' +
+      'បើអ្នកស្គាល់អ្នកដែលចាប់អារម្មណ៍ចំពោះការថែទាំរថយន្តគុណភាពជប៉ុន សូមណែនាំពួកគេមកយើង។ ' +
+      'សូមផ្ញើបន្តរូបភាពទាំងនេះដោយមិនកែប្រែ ឬផ្ញើ URL ដែលនឹងមកដល់បន្ទាប់។\n\n' +
+      '[អ្វីដែលរួមបញ្ចូល]\n- ខិត្តប័ណ្ណរូបគំនូរ (A4)៖ ដំណើរការនៃសេវាដល់ទីតាំងរបស់យើង និងតម្លៃសំខាន់ៗ\n' +
+      '- កាតសម្រាប់ទូរស័ព្ទ៖ ការណែនាំបញ្ឈរដែលងាយអាន\n- តារាងតម្លៃ (A4)៖ មុខសេវា និងតម្លៃទាំងអស់\n' +
+      'ទាំងបីមានកំណែ ភាសាជប៉ុន + ភាសាអង់គ្លេស និងកំណែ ភាសាខ្មែរ + ភាសាអង់គ្លេស។ សូមប្រើកំណែណាដែលសមនឹងមិត្តភក្តិរបស់អ្នក។\n\n' +
+      'ការកក់ដែលធ្វើតាម QR ឬ URL យើងនឹងកត់ត្រាជាការណែនាំរបស់អ្នកដោយស្វ័យប្រវត្តិ។'
   });
 }
 
@@ -721,7 +736,11 @@ function selfRegGroupDoneText_(name, pct, who, langs) {
       'これからどうぞよろしくお願いします！\n（違う方が登録された場合は、SAMURAI MOTORS にご連絡ください）',
     en: '✅ Thank you for registering!\nRegistration for ' + name + ' is complete (Telegram: ' + who + ').\n' +
       (pct > 0 ? 'Your own bookings from the Booking button get ' + pct + '% off.\n' : '') +
-      'We look forward to working with you!\n(If this is not you, please contact SAMURAI MOTORS.)'
+      'We look forward to working with you!\n(If this is not you, please contact SAMURAI MOTORS.)',
+    // クメール語は Panha 校閲（2026-10-28・provisional）
+    km: '✅ សូមអរគុណដែលបានចុះឈ្មោះ!\nការចុះឈ្មោះសម្រាប់ ' + name + ' រួចរាល់ហើយ (Telegram: ' + who + ')។\n' +
+      (pct > 0 ? 'ការកក់របស់អ្នកផ្ទាល់ តាមប៊ូតុង «Booking» នឹងបានបញ្ចុះតម្លៃ ' + pct + '%។\n' : '') +
+      'យើងរីករាយនឹងបានសហការជាមួយអ្នក!\n(បើមិនមែនជាអ្នកទេ សូមទាក់ទងមក SAMURAI MOTORS។)'
   });
 }
 

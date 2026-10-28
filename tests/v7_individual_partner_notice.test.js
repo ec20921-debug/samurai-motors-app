@@ -6,7 +6,8 @@
  * .gs を Node の vm に読み込み、シート・Telegram はスタブで置き換える（本番には触れない）。
  *   - グループの言語の標準 = 英語＋クメール語（店マスター「グループへの通知の言語」が空欄の時）
  *   - 紹介者ご本人の予約: 金額・地図・駐車のお願い入り／お友達の予約: 日時・車種・メニューだけ
- *   - クメール語の文が無い文（はじめのご案内など）は英語だけ・クメール語だけの設定でも空にしない
+ *   - 立ち上げの文（連携完了・はじめのご案内・チラシの説明・本人登録リンク・登録のお礼）のクメール語・営業ボードの表示と同じ文
+ *   - クメール語の文がまだ無い文（本人登録リンクを開いた人への返事）は英語だけ・クメール語だけの設定でも空にしない
  *   - 月報: 見出しは「 / 」で1行・文は言語ごとに1行
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
@@ -26,7 +27,7 @@ function load(dir, files) {
 }
 
 function loadV7(langByShop) {
-  const run = load('v7', ['PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs', 'BookingLogic.gs']);
+  const run = load('v7', ['PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs', 'BookingLogic.gs', 'PartnerSelfRegister.gs']);
   run('__partnerLangMemo_ = ' + JSON.stringify(langByShop || {}) + ';');
   return run;
 }
@@ -109,12 +110,76 @@ test('日本語の設定: 日付は 10/30(金)・見出しは日本語', () => {
   assert.match(notice(run, 'individualSelfBookingNotice_', SELF, 'SHOP-JA'), /^✅ ご予約を承りました\nHiro Sato さん、ありがとうございます！\n/);
 });
 
-test('クメール語の文がまだ無い文: 英語＋クメール語なら英語だけ・クメール語だけの設定でも空にしない', () => {
+test('クメール語の文がまだ無い文（本人登録リンクを開いた人への返事）: 英語＋クメール語なら英語だけ・クメール語だけの設定でも空にしない', () => {
   const run = loadV7({ 'SHOP-KM': 'クメール語' });
-  const connected = run('individualConnectedText_("Hiro Sato", individualGroupLangs_("SHOP-HIRO"))');
-  assert.match(connected, /^✅ Connected!/);
-  assert.doesNotMatch(connected, /連携完了/);
-  assert.match(run('individualConnectedText_("Hiro Sato", individualGroupLangs_("SHOP-KM"))'), /^✅ Connected!/);
+  assert.equal(run('individualText_(individualGroupLangs_("SHOP-HIRO"), SELF_REG_TEXT.busy)'), '⏳ Busy, please open the link again in a minute.');
+  assert.equal(run('individualText_(individualGroupLangs_("SHOP-KM"), SELF_REG_TEXT.busy)'), '⏳ Busy, please open the link again in a minute.');
+});
+
+test('連携完了（英語＋クメール語）', () => {
+  const run = loadV7();
+  assert.equal(run('individualConnectedText_("Hiro Sato", individualGroupLangs_("SHOP-HIRO"))'), [
+    '✅ Connected!', 'Partner: Hiro Sato', 'When someone you referred books with us, you\'ll get a message here.', '',
+    '✅ បានភ្ជាប់ក្រុមហើយ!', 'ដៃគូ: Hiro Sato', 'ដំណឹងអំពីការកក់ ពីភ្ញៀវដែលអ្នកបានណែនាំមក នឹងផ្ញើមកក្នុងក្រុមនេះ។'
+  ].join('\n'));
+});
+
+test('はじめのご案内（英語＋クメール語・本人未登録・紹介割引なし）: 営業ボードの表示（v7-operations）と同じ文', () => {
+  const run = loadV7();
+  const text = run('buildIndividualGroupGreeting_("Hiro Sato", 30, 0, individualGroupLangs_("SHOP-HIRO"), false)');
+  const km = text.split('\n\n').slice(4).join('\n\n');   // 英語は4かたまり（あいさつ・はじめに・紹介のしかた・締め）
+  assert.equal(km, [
+    'សូមស្វាគមន៍ Hiro Sato មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។',
+    '',
+    '[ធ្វើតែម្តងគត់]',
+    '1. ចុះឈ្មោះខ្លួនអ្នក៖ សូមបើក «🔑 តំណភ្ជាប់ចុះឈ្មោះ» ដែលនឹងមកដល់បន្ទាប់ (បើមានប៊ូតុង «START» បង្ហាញ សូមចុច)។ ការកក់របស់អ្នកផ្ទាល់ នឹងបានបញ្ចុះតម្លៃ 30% ពេលកក់។',
+    '',
+    '[របៀបណែនាំមិត្តភក្តិ]',
+    '2. សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ ដែលនឹងមកដល់បន្ទាប់ ទៅកាន់មិត្តភក្តិរបស់អ្នក (មិនមែនតំណភ្ជាប់ចុះឈ្មោះទេ)។',
+    '- ពេលមិត្តភក្តិកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)',
+    '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (30%) របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)',
+    '',
+    'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
+  ].join('\n'));
+  assert.match(text, /^Welcome to SAMURAI MOTORS, Hiro Sato!/);
+  // 本人登録済み・紹介割引あり（20＋10）: 登録の案内なし・割引の行あり。% を二重に付けない
+  const done = run('buildIndividualGroupGreeting_("Hiro Sato", 20, 10, individualGroupLangs_("SHOP-HIRO"), true)');
+  assert.match(done, /\n\[ការកក់របស់អ្នកផ្ទាល់\] អ្នកបានចុះឈ្មោះរួចហើយ។ ការកក់របស់អ្នកផ្ទាល់ នឹងបានបញ្ចុះតម្លៃ 30% ពេលកក់។\n/);
+  assert.match(done, /\n- ភ្ញៀវដែលអ្នកបានណែនាំមក នឹងបានបញ្ចុះតម្លៃ 10% លើសេវាទាំងអស់\n/);
+  assert.match(done, /\nសូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ ដែលនឹងមកដល់បន្ទាប់ ទៅកាន់មិត្តភក្តិរបស់អ្នក។\n/);
+  assert.doesNotMatch(done, /%%|ធ្វើតែម្តងគត់/);
+  // 営業ボードの表示（v7-operations）は予約Botが送る文と同じ
+  const ops = load('v7-operations', ['PartnerLangOps.gs', 'IndividualPartnerOps.gs']);
+  [[30, 0, false], [20, 10, true], [30, 0, true]].forEach(([r, d, sd]) => {
+    assert.equal(ops('individualGroupGreetingText_("Hiro Sato", ' + r + ', ' + d + ', individualGroupLangsOps_({}), ' + sd + ')'),
+      run('buildIndividualGroupGreeting_("Hiro Sato", ' + r + ', ' + d + ', individualGroupLangs_("SHOP-HIRO"), ' + sd + ')'));
+  });
+});
+
+test('チラシの説明・本人登録リンク・登録のお礼（英語＋クメール語）', () => {
+  const run = loadV7();
+  const L = 'individualGroupLangs_("SHOP-HIRO")';
+  const flyers = run('partnerFlyersText_("Hiro Sato", "PTN-011", ' + L + ')');
+  assert.match(flyers, /\n\n📎 ខិត្តប័ណ្ណសម្រាប់ណែនាំ \(មាន លេខ PTN-011 និង QR របស់អ្នកផ្ទាល់\)\n/);
+  assert.match(run('partnerFlyersText_("Hiro Sato", "", ' + L + ')'), /\n\n📎 ខិត្តប័ណ្ណសម្រាប់ណែនាំ \(មាន QR របស់អ្នកផ្ទាល់\)\n/);
+  assert.match(flyers, /ការកក់ដែលធ្វើតាម QR ឬ URL យើងនឹងកត់ត្រាជាការណែនាំរបស់អ្នកដោយស្វ័យប្រវត្តិ។$/);
+  const link = 'https://t.me/SAMURAI_MOTORS_BOOKING_BOT?start=self_x';
+  assert.equal(run('selfRegGroupText_("Hiro Sato", 30, ' + JSON.stringify(link) + ', ' + L + ')').split('\n\n')[1], [
+    '🔑 តំណភ្ជាប់ចុះឈ្មោះសម្រាប់ Hiro Sato',
+    link,
+    'អ្នកដំបូងគេដែលបើកតំណភ្ជាប់នេះ នឹងត្រូវបានចុះឈ្មោះជា Hiro Sato។ សូមកុំចុច បើអ្នកមិនមែនជា Hiro Sato។',
+    'សូមបើកតំណភ្ជាប់ ហើយចុចប៊ូតុង «START» បើមានបង្ហាញ (បើមិនបង្ហាញ ក៏មិនអីទេ)។ អាចត្រូវរង់ចាំប្រហែល 1 នាទី ទើបមានសារឆ្លើយតប។',
+    'បន្ទាប់ពីនោះ ការកក់របស់អ្នកផ្ទាល់ តាមប៊ូតុង «Booking» នឹងបានបញ្ចុះតម្លៃ 30%។',
+    'សម្រាប់មិត្តភក្តិ សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ មិនមែនតំណភ្ជាប់នេះទេ។'
+  ].join('\n'));
+  assert.equal(run('selfRegGroupDoneText_("Hiro Sato", 30, "Hirotaka Sato", ' + L + ')').split('\n\n')[1], [
+    '✅ សូមអរគុណដែលបានចុះឈ្មោះ!',
+    'ការចុះឈ្មោះសម្រាប់ Hiro Sato រួចរាល់ហើយ (Telegram: Hirotaka Sato)។',
+    'ការកក់របស់អ្នកផ្ទាល់ តាមប៊ូតុង «Booking» នឹងបានបញ្ចុះតម្លៃ 30%។',
+    'យើងរីករាយនឹងបានសហការជាមួយអ្នក!',
+    '(បើមិនមែនជាអ្នកទេ សូមទាក់ទងមក SAMURAI MOTORS។)'
+  ].join('\n'));
+  assert.doesNotMatch(run('selfRegGroupDoneText_("Hiro Sato", 0, "Hirotaka Sato", ' + L + ')'), /«Booking»/);
 });
 
 test('月報（英語＋クメール語）: 見出しは1行・文は言語ごと', () => {

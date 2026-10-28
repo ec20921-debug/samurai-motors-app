@@ -174,7 +174,7 @@ function individualGroupLangsOps_(shopObj) {
 
 /**
  * { ja, en, km } を langs の順に、空行で区切ってつなぐ。その言語の文が無ければ飛ばし、1つも無ければ英語
- * （あいさつ文はクメール語の文がまだ無い＝英語＋クメール語のグループには英語だけ。v7/IndividualPartner.gs individualText_ と同じ）
+ * （クメール語の文が無い文を、クメール語だけの設定で空にしない。v7/IndividualPartner.gs individualText_ と同じ）
  */
 function individualTextOps_(langs, texts) {
   const out = (langs || INDIVIDUAL_LANG_DEFAULT_OPS).map(function(l) { return texts[l]; }).filter(function(t) { return t; });
@@ -285,6 +285,17 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       (off ? '- People you refer get ' + off + ' off all services\n' : '') +
       '- When a friend books, we\'ll let you know here (date, time, menu and car — no names or photos)\n' +
       '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th\n\n' +
-      'Feel free to ask anything in this group. Thank you!'
+      'Feel free to ask anything in this group. Thank you!',
+    // クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。pct / off / selfOff は % 込みの文字列
+    km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
+      (selfDone && selfPct > 0 ? '[ការកក់របស់អ្នកផ្ទាល់] អ្នកបានចុះឈ្មោះរួចហើយ។ ការកក់របស់អ្នកផ្ទាល់ នឹងបានបញ្ចុះតម្លៃ ' + selfOff + ' ពេលកក់។\n\n' : '') +
+      (showSelf ? '[ធ្វើតែម្តងគត់]\n1. ចុះឈ្មោះខ្លួនអ្នក៖ សូមបើក «🔑 តំណភ្ជាប់ចុះឈ្មោះ» ដែលនឹងមកដល់បន្ទាប់ (បើមានប៊ូតុង «START» បង្ហាញ សូមចុច)។ ' +
+        'ការកក់របស់អ្នកផ្ទាល់ នឹងបានបញ្ចុះតម្លៃ ' + selfOff + ' ពេលកក់។\n\n' : '') +
+      '[របៀបណែនាំមិត្តភក្តិ]\n' + (showSelf ? '2. ' : '') +
+      'សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ ដែលនឹងមកដល់បន្ទាប់ ទៅកាន់មិត្តភក្តិរបស់អ្នក' + (showSelf ? ' (មិនមែនតំណភ្ជាប់ចុះឈ្មោះទេ)' : '') + '។\n' +
+      (off ? '- ភ្ញៀវដែលអ្នកបានណែនាំមក នឹងបានបញ្ចុះតម្លៃ ' + off + ' លើសេវាទាំងអស់\n' : '') +
+      '- ពេលមិត្តភក្តិកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
+      '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n' +
+      'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }
