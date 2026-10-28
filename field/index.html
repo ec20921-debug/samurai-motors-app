@@ -1413,7 +1413,7 @@ function bindSjHome() {
 }
 function sjOpenShop(id, name, isNew) {
   if (sjRunning()) { toast(t('job_running'), 'warn'); S.view = 'job'; render(); return; }
-  S.sj = { shop: id || '', shopName: name || '', newShop: !!isNew, who: 'shop', car: '', plate: '', size: 'SEDAN', menu: [], price: '', repaint: '', vinImg: null };
+  S.sj = { shop: id || '', shopName: name || '', newShop: !!isNew, who: 'shop', car: '', plate: '', size: 'SEDAN', menu: [], price: '', priceAuto: true, repaint: '', vinImg: null };
   S.view = 'shopjob'; render(); window.scrollTo(0, 0);
 }
 
@@ -1488,6 +1488,8 @@ function bindSjPrice(o, guide, who, onChange) {
 }
 function renderShopJob() {
   var sj = S.sj, rate = shopRateOf(sj.shop), guide = sjGuide(sj, sj.who, rate), html = '';
+  // 金額を自分で直すまでは、サービス・車の大きさ・店の車/紹介を変えるたびに目安を入れておく（2026-10-28 Daisuke）
+  if (sj.priceAuto !== false) sj.price = guide > 0 ? String(guide) : '';
   html += '<div class="seg2"><button type="button" data-sjwho="shop" class="' + (sj.who === 'shop' ? 'on' : '') + '">' + t('sj_who_shop') + '</button><button type="button" data-sjwho="ref" class="' + (sj.who === 'ref' ? 'on' : '') + '">' + t('sj_who_ref') + '</button></div>';
   html += '<div class="card"><div class="body">' +
     '<div class="fld"><label>' + t('car') + '</label><input id="sjCar" autocomplete="off" value="' + esc(sj.car) + '"></div>' +
@@ -1518,7 +1520,7 @@ function renderShopJob() {
     else { EXCL.forEach(function (g) { if (g.indexOf(k) >= 0) sj.menu = sj.menu.filter(function (x) { return g.indexOf(x) < 0; }); }); sj.menu.push(k); }
     renderShopJob();
   }; });
-  bindSjPrice(sj, guide, sj.who, null);
+  bindSjPrice(sj, guide, sj.who, function () { sj.priceAuto = !sjNum(sj.price); });   // 空にしたら目安に戻す
   renderBar();
 }
 function sjBar(bar) {
@@ -1644,7 +1646,7 @@ function bindSjJob(c) {
   var oy = $('sjOffYes'); if (oy) oy.onclick = function () { oy.disabled = true; c.offOk = true; c.askOff = false; var nb = $('next'); if (nb) { nb.disabled = true; sjSend(c, nb); } };
   var on = $('sjOffNo'); if (on) on.onclick = function () { c.askOff = false; renderJob(); var pz = $('pz'); if (pz) pz.focus(); };
   var ag = $('sjAgain'); if (ag) ag.onclick = function () {
-    S.sj = { shop: c.shop, shopName: c.shopName, newShop: c.newShop, who: c.who, car: '', plate: '', size: c.job.size, menu: c.job.menu.slice(), price: c.price, repaint: '', vinImg: null, again: true };
+    S.sj = { shop: c.shop, shopName: c.shopName, newShop: c.newShop, who: c.who, car: '', plate: '', size: c.job.size, menu: c.job.menu.slice(), price: c.price, priceAuto: sjNum(c.price) === sjGuide(c.job, c.who, c.rate), repaint: '', vinImg: null, again: true };
     S.cur = null; Outbox.kvDel('draft'); S.view = 'shopjob'; render(); window.scrollTo(0, 0);
   };
   var hm = $('sjHome'); if (hm) hm.onclick = function () { S.cur = null; Outbox.kvDel('draft'); S.view = 'home'; S.tab = 'today'; render(); };
