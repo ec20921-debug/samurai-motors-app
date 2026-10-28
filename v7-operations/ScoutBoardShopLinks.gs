@@ -15,7 +15,7 @@
  *   あいさつ文は右端・全行を折り返さず1行の高さに揃える。手順は「アプリでQRを出す → 印刷 → 記録 → グループ」の順
  * - 2026-10-26: Daisuke「何語で通知かも各グループ毎にわかるように」→「グループへの通知の言語」「お客様への通知の言語」の2列。
  *   車屋のグループの言語は店マスター「グループへの通知の言語」の設定（空欄＝標準 クメール語＋英語＋日本語・PartnerLangOps.gs）。
- *   あいさつ文の列も実際に送る文にした（車屋＝設定の言語の順・レジデンス等＝英語・個人提携＝日本語が標準（2026-10-27〜）。v7 ShopGroupGreeting.gs と同じ選び方）
+ *   あいさつ文の列も実際に送る文にした（車屋＝設定の言語の順・レジデンス等＝英語・個人提携＝英語＋クメール語が標準（2026-10-28〜・それまでは日本語）。v7 ShopGroupGreeting.gs と同じ選び方）
  */
 
 const SCOUT_LINKS_TAB_KEY = 'links';
@@ -84,7 +84,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['④ Telegram で「新しいグループ」→ お店の人（オーナー）と 予約Bot @' + SCOUT_LINKS_BOT + ' を追加。グループ名は「作るグループ名」をコピペ / New group → add the owner and the bot'],
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
-    ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語・最大5分で反映。あいさつ文は連携の1回だけなので ⑤ の前に決める）。レジデンス等は英語で固定・個人提携は空欄＝日本語（同じ列で英語にも） / Group language per shop: 店マスター'],
+    ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語・最大5分で反映。あいさつ文は連携の1回だけなので ⑤ の前に決める）。レジデンス等は英語で固定・個人提携は空欄＝英語＋クメール語（同じ列で日本語にも） / Group language per shop: 店マスター'],
     ['📑 種類ごとの一覧は「🙋 個人提携」「🚗 車屋提携」「🏢 商業施設提携」タブ（2026-10-27） / Per-type tabs']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
@@ -194,7 +194,7 @@ function scoutLinksRows_() {
       linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
       linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: アプリのお店の画面で「🔗 このお店のQRを出す」を押す）'),
       kind === 'shop' ? scoutLinksShopLangLabel_(shop)
-        : kind === 'individual' ? partnerLangsLabel_(individualGroupLangsOps_(shop)) + (String(shop['グループへの通知の言語'] || '').trim() ? '' : '（空欄＝日本語）')
+        : kind === 'individual' ? partnerLangsLabel_(individualGroupLangsOps_(shop)) + (String(shop['グループへの通知の言語'] || '').trim() ? '' : '（空欄＝英語＋クメール語）')
         : SCOUT_LINKS_LANG_FIXED[kind].group,
       kind === 'shop' ? SCOUT_LINKS_SHOP_CUSTOMER_LANG : SCOUT_LINKS_LANG_FIXED[kind].customer,
       name + ' × SAMURAI MOTORS',
@@ -204,7 +204,7 @@ function scoutLinksRows_() {
       totalSales, shopShare, Math.round((sales - shopShare + fieldSales) * 100) / 100, rate,
       linked ? String(link['グループ名'] || '') : '',
       linked ? String(link['紐付け日時'] || '') : '',
-      // レジデンス等は英語の専用文（SourceGroupNotify.gs）、個人提携は専用文（IndividualPartnerOps.gs・日本語が標準・2026-10-27〜）
+      // レジデンス等は英語の専用文（SourceGroupNotify.gs）、個人提携は専用文（IndividualPartnerOps.gs・英語＋クメール語が標準・2026-10-28〜）
       kind === 'source'
         ? SCOUT_LINKS_GREETING_SOURCE_EN.replace(/\{shop\}/g, fill)
         : kind === 'individual'

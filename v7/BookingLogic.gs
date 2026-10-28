@@ -994,6 +994,17 @@ function createBookingLocked_(params, after) {
         date: params.date, startTime: params.startTime, endTime: endTimeStr
       } };
     }
+    // ── 9-c. 紹介者ご本人の予約も、ご本人のグループへ（2026-10-28 Daisuke・金額・地図・駐車のお願い入り）。紹介元shop_id は空のまま ──
+    if (after && selfPartner) {
+      after.individualPartner = { shopId: selfPartner.shopId, info: {
+        bookingId: bookingId, plan: plan, options: optionLines, vehicleType: vehicleType, carModel: carModel,
+        date: params.date, startTime: params.startTime, endTime: endTimeStr,
+        self: true, name: selfPartner.name,
+        selfPct: (camp && camp.self && discountAmount > 0) ? camp.percent : 0,
+        serviceSubtotal: serviceSubtotal, discountAmount: discountAmount, dispatchFee: dispatchFeeAmount, amount: amount,
+        mapsUrl: loc.mapsUrl || locationStr, inStore: serviceType === '店舗'
+      } };
+    }
 
     return {
       status: 'ok',

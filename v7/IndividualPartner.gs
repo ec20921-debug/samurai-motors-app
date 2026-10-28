@@ -4,7 +4,8 @@
  * 【目的】Daisuke「お店、車屋提携、個人提携みたいな感じがこれからも増えていく」。
  *   個人の紹介者は、車屋（店集金・ShopRouting.gs）ともレジデンス等の流入元（SourceGroupNotify.gs）とも扱いが違う:
  *   - 紹介されたお客様は当社に直接払う（当社の決済QR・支払いのご案内は通常どおり）→ getValidShopRef_ が '' を返す
- *   - 紹介者のグループには「予約が入った」だけを送る（日本語が標準・2026-10-27〜。店マスター「グループへの通知の言語」で英語にも）。作業の開始・完了と写真・請求は送らない
+ *   - 紹介者のグループには「予約が入った」だけを送る（2026-10-28〜 英語＋クメール語が標準。店マスター「グループへの通知の言語」で日本語にも）。
+ *     紹介者ご本人の予約も送る（金額・地図・駐車のお願い入り・2026-10-28 IndividualPartnerNotice.gs）。作業の開始・完了と写真・請求は送らない
  *   - 紹介料は、月初に v7-operations/IndividualPartnerOps.gs が完了・清算済みの予約から台帳へ記帳し、
  *     月次レポート（グループの言語）をグループへ送る → 紹介料は ABA で支払う
  *   - 紹介者本人の利用: 2026-10-26 は紹介料の対象 → 2026-10-27 Daisuke「本人の予約は予約の時に30%引き・紹介料なし。
@@ -214,12 +215,13 @@ function warnIfReferralColumnMissing_(withRate) {
 
 // ====== 紹介者のグループの言語（2026-10-27） ======
 
-// Daisuke 2026-10-27「基本的にはまず日本人向けの定型になると思うので、日本語でいいか。言語を変えてと言われたときに変えればいい」
-//   → 個人提携のグループは日本語が標準。店マスター「グループへの通知の言語」に書けばその言語（日本語・英語。クメール語の文面は無い）
-var INDIVIDUAL_LANG_DEFAULT = ['ja'];
+// Daisuke 2026-10-27「基本的にはまず日本人向けの定型になると思うので、日本語でいいか」→ 2026-10-28「言語設定のデフォルトは、英語とクメール語にしよう」
+//   → 個人提携のグループは英語＋クメール語が標準。店マスター「グループへの通知の言語」に書けばその言語（日本語・英語・クメール語）。
+//   クメール語の文面が無い文（はじめのご案内・チラシの説明・本人登録まわり 2026-10-28 時点）は英語だけ（individualText_）
+var INDIVIDUAL_LANG_DEFAULT = ['en', 'km'];
 
 /**
- * 個人提携のグループに出す言語（並び順どおり・'ja' / 'en'）。空欄・読めない時は日本語だけ
+ * 個人提携のグループに出す言語（並び順どおり・'ja' / 'en' / 'km'）。空欄・読めない時は英語＋クメール語
  * @param {boolean} [fresh] - 設定を読み直す（取り消せない1回きりの送信の前）
  */
 function individualGroupLangs_(shopId, fresh) {
@@ -227,17 +229,31 @@ function individualGroupLangs_(shopId, fresh) {
     var map = (typeof readShopGroupLangs_ === 'function') ? readShopGroupLangs_(fresh) : {};
     var v = (shopId && map && Object.prototype.hasOwnProperty.call(map, String(shopId))) ? map[String(shopId)] : '';
     var langs = ((typeof parsePartnerLangs_ === 'function' ? parsePartnerLangs_(v) : null) || [])
-      .filter(function(l) { return l === 'ja' || l === 'en'; });
+      .filter(function(l) { return l === 'ja' || l === 'en' || l === 'km'; });
     return langs.length ? langs : INDIVIDUAL_LANG_DEFAULT.slice();
   } catch (err) {
-    Logger.log('⚠️ individualGroupLangs_（日本語で送る）: ' + err);
+    Logger.log('⚠️ individualGroupLangs_（英語＋クメール語で送る）: ' + err);
     return INDIVIDUAL_LANG_DEFAULT.slice();
   }
 }
 
-/** { ja, en } を langs の順に、空行で区切ってつなぐ */
+/**
+ * { ja, en, km } を langs の順に sep でつなぐ。その言語の文が無ければ飛ばし、1つも無ければ英語
+ * （クメール語だけの設定で、クメール語の文がまだ無い文を空で送らない）
+ */
+function individualJoin_(langs, texts, sep) {
+  var out = (langs || INDIVIDUAL_LANG_DEFAULT).map(function(l) { return texts[l]; }).filter(function(t) { return t; });
+  return out.length ? out.join(sep) : (texts.en || texts.ja || '');
+}
+
+/** 言語ごとの文を空行で区切ってつなぐ（長い文） */
 function individualText_(langs, texts) {
-  return (langs || INDIVIDUAL_LANG_DEFAULT).map(function(l) { return texts[l]; }).filter(function(t) { return t; }).join('\n\n');
+  return individualJoin_(langs, texts, '\n\n');
+}
+
+/** 1行に並べる（「Booking confirmed / ការកក់…」・短い見出し） */
+function individualLine_(langs, texts) {
+  return individualJoin_(langs, texts, ' / ');
 }
 
 // ====== 紹介者のグループへの通知（予約が入った時だけ） ======
@@ -254,9 +270,11 @@ function individualDateJa_(ymd) {
 
 /**
  * 予約が入った（createBooking がロックを外したあと）。グループ未連携なら何もしない（人だけのグループの間など）。
- * お客様の名前・ナンバー・場所は載せない（Daisuke 2026-10-26: Picasso と同じ方針）
+ *   紹介されたお友達の予約: お客様の名前・ナンバー・場所・金額は載せない（Daisuke 2026-10-26: Picasso と同じ方針）
+ *   紹介者ご本人の予約（info.self・2026-10-28）: ご本人の予約なので金額・地図・駐車のお願いも載せる
+ * 文面は IndividualPartnerNotice.gs
  * @param {string} shopId - 個人提携の shop_id
- * @param {Object} info - { bookingId, plan, options, vehicleType, carModel, date, startTime, endTime }
+ * @param {Object} info - { bookingId, plan, options, vehicleType, carModel, date, startTime, endTime }（ご本人は self ほか）
  * @return {boolean} 送れたか
  */
 function notifyIndividualPartnerBooking_(shopId, info) {
@@ -265,21 +283,11 @@ function notifyIndividualPartnerBooking_(shopId, info) {
     var link = findShopLinkByShopId_(shopId);
     var chatId = (link && String(link.obj['状態']) === '連携済') ? String(link.obj['グループchat_id'] || '') : '';
     if (!chatId) return false;
-    var services = [];
-    if (info.plan) services.push(info.plan.name || info.plan.planFull || 'SAMURAI WASH');
-    (info.options || []).forEach(function(l) {
-      if (l && l.opt) services.push(optionDisplayName_(l.opt));
-    });
-    var car = [info.carModel, sourceGroupVehicleEn_(info.vehicleType)].filter(Boolean).join(' / ');
-    var tail = '🚗 ' + (car || '-') + '\n🧽 ' + (services.join(' + ') || '-');
-    // 日本語が標準（店マスター「グループへの通知の言語」で英語にも・2026-10-27）
-    var text = individualText_(individualGroupLangs_(shopId), {
-      ja: '📅 ご予約が入りました（ご紹介）\n🗓 ' + individualDateJa_(info.date) + ' ' + info.startTime + '–' + info.endTime + '\n' + tail,
-      en: '📅 New booking from your referral\n🗓 ' + sourceGroupDate_(info.date) + ' ' + info.startTime + '–' + info.endTime + '\n' + tail
-    });
+    var langs = individualGroupLangs_(shopId);
+    var text = info.self ? individualSelfBookingNotice_(langs, info) : individualReferralBookingNotice_(langs, info);
     var res = sendMessage(BOT_TYPE.BOOKING, chatId, text);
     if (!(res && res.ok)) {
-      warnSourceGroupFailed_(link, '予約 ' + info.bookingId, res);
+      warnSourceGroupFailed_(link, '予約 ' + info.bookingId + (info.self ? '（ご本人）' : ''), res);
       return false;
     }
     return true;
@@ -329,7 +337,7 @@ function buildIndividualGroupGreeting_(name, rate, discount, langs, selfDone) {
   });
 }
 
-/** /register の連携完了の返事（日本語が標準・2026-10-27） */
+/** /register の連携完了の返事（2026-10-28〜 英語＋クメール語が標準。クメール語の文はまだ無い＝英語だけ） */
 function individualConnectedText_(name, langs) {
   return individualText_(langs, {
     ja: '✅ 連携完了！\n紹介パートナー: ' + name + '\nご紹介いただいた方のご予約が、このグループに届くようになりました。',

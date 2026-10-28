@@ -5,7 +5,7 @@
  *   1. 毎月1日 sendShopMonthlyReports（ShopProvisioningManager.gs）の最初に syncIndividualPartnerCommissions_() が、
  *      v7 Database「予約」の「紹介元shop_id」が個人提携の予約のうち、作業完了・清算済みで台帳に無いものを
  *      コミッション台帳へ記帳する（集金者=当社・未払い・率は店マスター「紹介料率(%)」・「予約ID」列で二重記帳を防ぐ）
- *   2. 同じ sendShopMonthlyReports が、個人提携のグループへ月次レポート（グループの言語・日本語が標準）（件数・売上・紹介料・支払い予定）を送る。
+ *   2. 同じ sendShopMonthlyReports が、個人提携のグループへ月次レポート（グループの言語・英語＋クメール語が標準）（件数・売上・紹介料・支払い予定）を送る。
  *      支払い予定には、前月より前の月の未払い分（月をまたいで清算済みになった予約など）も含める
  *   3. 紹介料は 10日までに ABA で支払い → 台帳の支払ステータスを「支払済み」にする（パートナー精算タブも自動で進む）
  *   - 紹介者本人の利用: 2026-10-27 から、店マスター「本人chat_id」に登録した本人の予約は予約の時に30%引き・紹介料なし
@@ -161,55 +161,85 @@ function individualOwedUpTo_(ymLabel, partners) {
   return out;
 }
 
-// 個人提携のグループは日本語が標準（Daisuke 2026-10-27「ベースは日本語。言語を変えてと言われたら変える」）。
-// 店マスター「グループへの通知の言語」に書けばその言語（日本語・英語）。v7/IndividualPartner.gs individualGroupLangs_ と同じ決まり
-const INDIVIDUAL_LANG_DEFAULT_OPS = ['ja'];
+// 個人提携のグループは英語＋クメール語が標準（Daisuke 2026-10-27「ベースは日本語」→ 2026-10-28「言語設定のデフォルトは、英語とクメール語にしよう」）。
+// 店マスター「グループへの通知の言語」に書けばその言語（日本語・英語・クメール語）。v7/IndividualPartner.gs individualGroupLangs_ と同じ決まり
+const INDIVIDUAL_LANG_DEFAULT_OPS = ['en', 'km'];
 
-/** 店マスターの行 → 個人提携のグループに出す言語（'ja' / 'en'）。空欄・読めない時は日本語だけ */
+/** 店マスターの行 → 個人提携のグループに出す言語（'ja' / 'en' / 'km'）。空欄・読めない時は英語＋クメール語 */
 function individualGroupLangsOps_(shopObj) {
-  const langs = (parsePartnerLangs_(shopObj && shopObj[PARTNER_GROUP_LANG_COL]) || []).filter(function(l) { return l === 'ja' || l === 'en'; });
+  const langs = (parsePartnerLangs_(shopObj && shopObj[PARTNER_GROUP_LANG_COL]) || [])
+    .filter(function(l) { return l === 'ja' || l === 'en' || l === 'km'; });
   return langs.length ? langs : INDIVIDUAL_LANG_DEFAULT_OPS.slice();
 }
 
-/** { ja, en } を langs の順に、空行で区切ってつなぐ */
+/**
+ * { ja, en, km } を langs の順に、空行で区切ってつなぐ。その言語の文が無ければ飛ばし、1つも無ければ英語
+ * （あいさつ文はクメール語の文がまだ無い＝英語＋クメール語のグループには英語だけ。v7/IndividualPartner.gs individualText_ と同じ）
+ */
 function individualTextOps_(langs, texts) {
-  return (langs || INDIVIDUAL_LANG_DEFAULT_OPS).map(function(l) { return texts[l]; }).filter(function(t) { return t; }).join('\n\n');
+  const out = (langs || INDIVIDUAL_LANG_DEFAULT_OPS).map(function(l) { return texts[l]; }).filter(function(t) { return t; });
+  return out.length ? out.join('\n\n') : (texts.en || texts.ja || '');
 }
 
+// ====== 個人提携の月次レポート ======
+// クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。用語は車屋版 SHOP_REPORT_TEXT（PartnerLangOps.gs）と同じ。
+// 書き方も車屋版と同じ（見出しは「 / 」で1行・文は言語ごとに1行）。2026-10-28 までは言語ごとのかたまりを空行で並べていた
+const INDIVIDUAL_REPORT_TEXT = {
+  title:      { ja: '月次レポート', en: 'Monthly Report', km: 'របាយការណ៍ប្រចាំខែ' },
+  jobs:       { ja: 'ご紹介のご利用', en: 'Referred jobs', km: 'ចំនួនការងារដែលអ្នកបានណែនាំមក' },
+  sales:      { ja: '売上合計', en: 'Total sales', km: 'តម្លៃសេវាសរុប' },
+  commission: { ja: '紹介料', en: 'Your commission', km: 'កម្រៃជើងសារ របស់អ្នក' },
+  payout:     { ja: '紹介料 {amt} を、10日までに ABA でお支払いします。', en: 'We will pay your commission of {amt} by ABA by the 10th.',
+                km: 'យើងនឹងបង់កម្រៃជើងសារចំនួន {amt} ជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)។' },
+  earlier:    { ja: '（前月より前の分 {amt} を含みます）', en: '(Includes {amt} from earlier months.)', km: '(រួមទាំង {amt} ពីខែមុនៗ)' },
+  paid:       { ja: '紹介料はお支払い済みです。', en: 'Your commission has been paid.', km: 'យើងបានបង់កម្រៃជើងសារជូនអ្នកហើយ។' },
+  none:       { ja: '先月はご紹介のご利用がありませんでした。今月もよろしくお願いします！', en: 'No referred jobs last month — thank you for your support!',
+                km: 'ខែមុនមិនមានការងារដែលអ្នកបានណែនាំមកទេ។ សូមអរគុណដែលគាំទ្រយើងជានិច្ច!' },
+  thanks:     { ja: 'いつもありがとうございます！', en: 'Thank you!', km: 'សូមអរគុណ!' }
+};
+
 /**
- * 個人提携のグループへの月次レポート（日本語が標準・2026-10-27）
+ * 個人提携のグループへの月次レポート（英語＋クメール語が標準・2026-10-28）
  * @param {Object} a - aggregateCommissionsByShop_ の1店分 { count, sales, commission, owedToShop, ... }
  * @param {string} ratePct - '30%' など
  * @param {number} owedAll - 前月までの未払い合計（individualOwedUpTo_）
- * @param {Array<string>} [langs] - individualGroupLangsOps_（省略時は日本語）
+ * @param {Array<string>} [langs] - individualGroupLangsOps_（省略時は英語＋クメール語）
  */
 function buildIndividualMonthlyReport_(name, ymLabel, a, ratePct, owedAll, langs) {
+  const T = INDIVIDUAL_REPORT_TEXT;
+  const L = (langs && langs.length) ? langs : INDIVIDUAL_LANG_DEFAULT_OPS;
   const earlier = Math.round((owedAll - a.owedToShop) * 100) / 100;
-  const ja = [
-    '📊 SAMURAI MOTORS — 月次レポート（' + ymLabel + '）', '', name + ' さん',
-    'ご紹介のご利用: ' + a.count + '件', '売上合計: ' + a.sales.toFixed(2) + '$', '紹介料（' + ratePct + '）: ' + a.commission.toFixed(2) + '$', ''
-  ];
-  const en = [
-    '📊 SAMURAI MOTORS — Monthly Report (' + ymLabel + ')', '', name,
-    'Referred jobs: ' + a.count, 'Total sales: ' + a.sales.toFixed(2) + '$', 'Your commission (' + ratePct + '): ' + a.commission.toFixed(2) + '$', ''
+  const label = function(key, suffix) {
+    const t = {};
+    Object.keys(T[key]).forEach(function(l) { t[l] = T[key][l] + (suffix || ''); });
+    return langJoinOps_(L, t) || t.en;
+  };
+  const each = function(prefix, key, vars) {
+    const got = langLinesOps_(L, T[key]);
+    return (got.length ? got : [T[key].en]).map(function(t) {
+      Object.keys(vars || {}).forEach(function(k) { t = t.split('{' + k + '}').join(String(vars[k])); });
+      return prefix + t;
+    });
+  };
+  let lines = [
+    '📊 SAMURAI MOTORS — ' + label('title') + ' (' + ymLabel + ')',
+    '',
+    String(name || '').trim() || 'Partner',
+    label('jobs') + ': ' + a.count,
+    label('sales') + ': ' + a.sales.toFixed(2) + '$',
+    label('commission', ' (' + ratePct + ')') + ': ' + a.commission.toFixed(2) + '$',
+    ''
   ];
   if (owedAll > 0) {
-    ja.push('💵 紹介料 ' + owedAll.toFixed(2) + '$ を、10日までに ABA でお支払いします。');
-    en.push('💵 We will pay your commission of ' + owedAll.toFixed(2) + '$ by ABA by the 10th.');
-    if (earlier > 0) {
-      ja.push('（前月より前の分 ' + earlier.toFixed(2) + '$ を含みます）');
-      en.push('(Includes ' + earlier.toFixed(2) + '$ from earlier months.)');
-    }
+    lines = lines.concat(each('💵 ', 'payout', { amt: owedAll.toFixed(2) + '$' }));
+    if (earlier > 0) lines = lines.concat(each('', 'earlier', { amt: earlier.toFixed(2) + '$' }));
   } else if (a.count > 0) {
-    ja.push('✅ 紹介料はお支払い済みです。');
-    en.push('✅ Your commission has been paid.');
+    lines = lines.concat(each('✅ ', 'paid'));
   } else {
-    ja.push('先月はご紹介のご利用がありませんでした。今月もよろしくお願いします！');
-    en.push('No referred jobs last month — thank you for your support!');
+    lines = lines.concat(each('', 'none'));
   }
-  ja.push('', 'いつもありがとうございます！');
-  en.push('', 'Thank you!');
-  return individualTextOps_(langs, { ja: ja.join('\n'), en: en.join('\n') });
+  lines.push('', label('thanks'));
+  return lines.join('\n');
 }
 
 /**

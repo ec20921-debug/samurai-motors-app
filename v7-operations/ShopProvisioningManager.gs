@@ -373,7 +373,7 @@ function sendShopMonthlyReportsCore_(opt) {
   // 施工ゼロの店の率表示用（店マスターの現在の条件）
   var termsByShop = {};
   var langsByShop = {};   // 店マスター「グループへの通知の言語」（PartnerLangOps.gs・2026-10-26）
-  var indivLangsByShop = {};   // 個人提携は日本語が標準（IndividualPartnerOps.gs individualGroupLangsOps_・2026-10-27）
+  var indivLangsByShop = {};   // 個人提携は英語＋クメール語が標準（IndividualPartnerOps.gs individualGroupLangsOps_・2026-10-28）
   readSheetObjects_(getShopSheet_()).forEach(function(sr) {
     termsByShop[String(sr.obj['shop_id'])] = shopCommissionTerms_(sr.obj);
     langsByShop[String(sr.obj['shop_id'])] = shopGroupLangsOps_(sr.obj);
@@ -408,7 +408,7 @@ function sendShopMonthlyReportsCore_(opt) {
 
     // 個人提携だけの送り直し（sendIndividualPartnerReportsNow）では車屋に送らない
     if (opt.individualOnly && !indivPartners[shopId]) return;
-    // 個人提携（IndividualPartnerOps.gs）: グループの言語（日本語が標準）のレポート。記帳に失敗した月は送らない（管理グループに知らせる）
+    // 個人提携（IndividualPartnerOps.gs）: グループの言語（英語＋クメール語が標準）のレポート。記帳に失敗した月は送らない（管理グループに知らせる）
     if (indivPartners[shopId]) {
       if (!indivSyncOk) {
         adminLines.push('⚠️ ' + shopName + '（個人提携）: 紹介料の記帳・集計に失敗したため送っていません → 原因を直し、syncIndividualPartnerCommissionsNow() のあと sendIndividualPartnerReportsNow() を手で実行（車屋には二重に送らない）');

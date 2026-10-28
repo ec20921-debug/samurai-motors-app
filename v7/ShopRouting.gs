@@ -142,7 +142,7 @@ function handleShopGroupMessage_(msg) {
 
   // 流入元（レジデンス等）の提携先は「住民のご予約」。判定できない時は中立の文（SourceGroupNotify.gs・2026-10-26）
   var srcPartner = (typeof sourcePartnerState_ === 'function') ? sourcePartnerState_(shopIdHit) : false;
-  // 個人提携は「ご紹介の方のご予約」（グループの言語・日本語が標準・IndividualPartner.gs）。分からない時は中立の文
+  // 個人提携は「ご紹介の方のご予約」（グループの言語・英語＋クメール語が標準・IndividualPartner.gs）。分からない時は中立の文
   // 連携とあいさつ文は取り消せないので、5分キャッシュを使わず店マスターを読み直してから判定する
   if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;

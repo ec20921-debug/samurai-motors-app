@@ -42,18 +42,18 @@ var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
  * あいさつ文の本文（店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切る）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
- * 個人提携は専用文（IndividualPartner.gs・日本語が標準・2026-10-27〜）
+ * 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜。あいさつ文のクメール語はまだ無い＝英語だけ）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
   if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {
     return buildSourceGroupGreeting_(shopName);
   }
-  // 個人提携は専用文（IndividualPartner.gs・日本語が標準・2026-10-27〜）
+  // 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜）
   var indiv = (shopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
   if (indiv) {
     return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate,
       (typeof effectiveReferralDiscount_ === 'function') ? effectiveReferralDiscount_(indiv, shopId) : 0,
-      individualGroupLangs_(shopId, true),   // 日本語が標準（2026-10-27）。1回きりの送信なので設定を読み直す
+      individualGroupLangs_(shopId, true),   // 英語＋クメール語が標準（2026-10-28）。1回きりの送信なので設定を読み直す
       !!indiv.selfChat);   // 本人登録済み（手入力など）なら「このあと本人登録リンク」の案内は出さない
   }
   var name = String(shopName || '').trim() || 'your shop';
