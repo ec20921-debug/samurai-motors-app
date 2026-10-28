@@ -572,20 +572,23 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
  * GET field_partner_shops — 現場アプリの「どの提携店？」の選択肢（2026-10-22）
  * 店マスターで専用QRを配った店（QRリンク(BookingBot) あり）＋Bot連携にある店。【サンプル】・停止中は除く
  * 2026-10-25: 店ごとの率（店マスター「紹介料率(%)」・空欄=30）を rate で返す。現場アプリが 当社の受け取り＝定価×(100−rate)% を自動で入れる
- * @return {{status:string, shops:Array<{id:string, name:string, rate:number}>}}
+ * 2026-10-28: linked = お店のグループと連携済み（現場アプリの「お店を選ぶ」はグループのあるお店を一覧に、ないお店は「新しいお店」の候補に）
+ * @return {{status:string, shops:Array<{id:string, name:string, rate:number, linked:boolean}>}}
  */
 function apiFieldPartnerShops() {
   var cache = CacheService.getScriptCache();
-  var hit = cache.get('field_partner_shops_v2');
+  var hit = cache.get('field_partner_shops_v3');
   if (hit) {
     try { return { status: 'ok', shops: JSON.parse(hit) }; } catch (ignore) {}
   }
   var out = [], seen = {}, rates = {};
-  var stopped = {};
+  var stopped = {}, linked = {};
   readShopLinks_().forEach(function(l) {
     var id = String(l.obj['shop_id'] || '');
     if (String(l.obj['状態']) === '停止') { if (!stopped.hasOwnProperty(id)) stopped[id] = true; }
     else stopped[id] = false;
+    // お店のグループとつながっているか（2026-10-28: 現場アプリの一覧はグループのあるお店を上に出す）
+    if (String(l.obj['状態']) === '連携済' && String(l.obj['グループchat_id'] || '')) linked[id] = true;
   });
   var add = function(id, name) {
     id = String(id || '').trim();
@@ -595,7 +598,7 @@ function apiFieldPartnerShops() {
     // 個人提携も店集金・請求の相手ではないので出さない（IndividualPartner.gs・2026-10-26）
     if (typeof isIndividualPartnerShop_ === 'function' && isIndividualPartnerShop_(id)) return;
     seen[id] = true;
-    out.push({ id: id, name: String(name || id),
+    out.push({ id: id, name: String(name || id), linked: !!linked[id],
                rate: rates.hasOwnProperty(id) ? rates[id] : (typeof FIELD_SHOP_RATE_DEFAULT_ !== 'undefined' ? FIELD_SHOP_RATE_DEFAULT_ : 30) });
   };
   try {
@@ -620,7 +623,7 @@ function apiFieldPartnerShops() {
   }
   readShopLinks_().forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
   out.sort(function(a, b) { return a.name.localeCompare(b.name); });
-  try { cache.put('field_partner_shops_v2', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
+  try { cache.put('field_partner_shops_v3', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
   return { status: 'ok', shops: out };
 }
 

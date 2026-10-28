@@ -90,6 +90,8 @@ function fieldPayAdminLine_(pt, shopName, body, shopId) {
   var sp = fieldPayIsShop_(pt) ? fieldShopSplit_(body, shopId) : null;
   var split = sp && sp.list > 0 && sp.rate !== null ? '（定価 $' + sp.list + '・お店 ' + sp.rate + '%）' : '';
   var warn = sp && sp.mismatch ? '\n⚠️ 店マスターの率だと当社分は $' + sp.expected + '（現場で金額を変えています。確認してください）' : '';
+  // 現場アプリ「お店の仕事」の店の車は、お店と決めた金額をそのまま受け取る（2026-10-28 FieldShopMode.gs）。定価×率の検算はしない
+  if (pt === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body)) { split = fieldAgreedAdminNote_(body); warn = ''; }
   switch (pt) {
     case 'aba':     return '💳 支払い: ABA QR で受け取り済み\n';
     case 'shopref': return '💳 支払い: 提携店の紹介のお客さん・当社分はお店がその場で QR で払う（店グループへ請求）' + split + (shopName ? '\n🏪 ' + shopName : '') + warn + '\n';
