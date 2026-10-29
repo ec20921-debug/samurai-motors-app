@@ -86,7 +86,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
     ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語・最大5分で反映。あいさつ文は連携の1回だけなので ⑤ の前に決める）。レジデンス等は英語で固定・個人提携は空欄＝英語＋クメール語（同じ列で日本語にも） / Group language per shop: 店マスター'],
-    ['📑 相手の種類ごとの一覧は「🚗 車屋提携」「🍽 飲食店提携」「🏠 レジデンス提携」「🏢 商業施設提携」「🙋 個人提携」タブ（2026-10-29〜。分類は店マスター「' + BOARD_CATEGORY_COL + '」・空欄は自動） / Per-type tabs']
+    ['📑 相手の種類ごとの一覧は「🚗 車屋提携」「🍽 飲食店提携」「🏠 レジデンス提携」「🏢 商業施設提携」「🙋 個人提携」タブ（2026-10-29〜。分類は店マスター「' + BOARD_CATEGORY_COL + '」・空欄は自動）。型の違い・選び方は「📘 提携の型」タブ / Per-type tabs & partner types']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');

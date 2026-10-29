@@ -21,7 +21,8 @@ const SCOUT_BOARD_TABS = { today: '📅 今日', shops: '🏪 お店一覧', rec
                            // 提携の種類ごと（2026-10-27 Daisuke「タブで個人提携、車屋提携、商業施設提携みたいにわける」・ScoutBoardShopLinks.gs）
                            pIndiv: '🙋 個人提携', pShop: '🚗 車屋提携', pFacility: '🏢 商業施設提携',
                            pRestaurant: '🍽 飲食店提携',   // 2026-10-29 飲食店の型（店マスター 提携種別=飲食店）
-                           pResidence: '🏠 レジデンス提携' };   // 2026-10-29 相手の種類で分ける（Daisuke「ピカソはレジデンスだけど、商業施設ではないよね？」）
+                           pResidence: '🏠 レジデンス提携',
+                           types: '📘 提携の型' };   // 2026-10-29 型の選び方と違い（ScoutBoardPartnerTypes.gs・中身を変えた時だけ書く）   // 2026-10-29 相手の種類で分ける（Daisuke「ピカソはレジデンスだけど、商業施設ではないよね？」）
 const SCOUT_BOARD_RECENT_DAYS = 30;
 const SCOUT_BOARD_WEEKS = 8;
 const SCOUT_BOARD_HEAD_BG = '#fbeec9';
@@ -77,6 +78,7 @@ function scoutBoardRefresh() {
   scoutBoardWriteWeekly_(board, d);
   // 提携店QR・グループ連携（ScoutBoardShopLinks.gs）。失敗しても他のタブには影響させない
   try { scoutBoardWriteShopLinks_(board, d); } catch (e) { Logger.log('⚠️ 営業ボード 提携店QRタブ: ' + e); }
+  try { scoutBoardWritePartnerTypes_(board); } catch (e) { Logger.log('⚠️ 営業ボード 提携の型タブ: ' + e); }
 }
 
 // ====== データ（v7 Database を読むだけ） ======
