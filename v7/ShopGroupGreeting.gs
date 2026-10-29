@@ -42,7 +42,7 @@ var SHOP_GREETING_CATCHUP_DAYS = 7;
 
 /**
  * あいさつ文の本文（店マスター「グループへの通知の言語」の順に、言語ごとに空行で区切る）。流入元（レジデンス等）の提携先は専用の英語文（SourceGroupNotify.gs・2026-10-26）、
- * 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜）
+ * 飲食店は専用文（RestaurantPartner.gs・英語＋クメール語が標準・2026-10-29〜）、個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜）
  */
 function buildShopGroupGreeting_(shopName, shopId) {
   if (shopId && typeof isSourcePartnerShop_ === 'function' && isSourcePartnerShop_(shopId)) {
@@ -97,6 +97,15 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   var sentNow = false;
   try {
     if (props.getProperty(key)) return true;
+    // 取り消せない1回きりの送信なので、提携種別（個人提携・飲食店・車屋）を読み直してから文を決める（/register と同じ・2026-10-29）。
+    // 読み直しに失敗した時は送らない（最後に読めた内容が古い種別かもしれない）→ 毎時の安全網が再試行
+    if (typeof readPartnerKinds_ === 'function') {
+      readPartnerKinds_(true);
+      if (typeof __partnerKindReadFailed_ !== 'undefined' && __partnerKindReadFailed_) {
+        Logger.log('⚠️ あいさつ文 保留（店マスターを読み直せない）: ' + shopId);
+        return false;
+      }
+    }
     var res = sendMessage(BOT_TYPE.BOOKING, groupChatId, buildShopGroupGreeting_(shopName, shopId));
     if (!(res && res.ok)) {
       Logger.log('⚠️ あいさつ文 送信失敗: ' + shopId + ' ' + JSON.stringify(res));

@@ -80,11 +80,13 @@ function readPartnerKinds_(fresh) {
       if (ci < 0) throw new Error('店マスターに shop_id 列がありません');
       // 列が無い・見出しが違う時に「全員が車屋」と決めつけない（決済QR・写真の向きが逆になる）→ 分からない扱い
       if (ki < 0) throw new Error('店マスターに「' + PARTNER_KIND_COL + '」列がありません');
+      var unknownKinds = [];   // 個人提携・飲食店・空欄（車屋）以外の値＝打ち間違いの疑い（2026-10-29 コードレビュー）
       sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri, di, si) + 1).getValues().forEach(function(r) {
         var id = String(r[ci] || '').trim();
         if (!id) return;
         var kindVal = String(r[ki] || '').trim();
         var indiv = kindVal === INDIVIDUAL_PARTNER_KIND || kindVal === RESTAURANT_PARTNER_KIND;
+        if (kindVal && !indiv) unknownKinds.push(((ni >= 0 ? String(r[ni] || '').trim() : '') || id) + '「' + kindVal + '」');
         map[id] = indiv ? {
           kind: kindVal === RESTAURANT_PARTNER_KIND ? 'restaurant' : 'individual',
           name: (ni >= 0 ? String(r[ni] || '').trim() : '') || id,
@@ -93,6 +95,12 @@ function readPartnerKinds_(fresh) {
           selfChat: si >= 0 ? String(r[si] || '').trim() : ''
         } : 0;
       });
+    }
+    // 判定は今のまま（分からない値＝車屋＝店集金）。お金の向きが変わるので管理グループに知らせる（6時間に1回）
+    if (typeof unknownKinds !== 'undefined' && unknownKinds.length) {
+      warnOncePer_('warn_partner_kind_typo', 6 * 60 * 60,
+        '⚠️ 店マスター「' + PARTNER_KIND_COL + '」に分からない値があります: ' + unknownKinds.slice(0, 10).join('・') + '\n' +
+        '「' + INDIVIDUAL_PARTNER_KIND + '」「' + RESTAURANT_PARTNER_KIND + '」か空欄（車屋）にしてください。今は車屋（お客様は店に払う）として扱っています（6時間に1回だけ知らせます）');
     }
     var json = JSON.stringify(map);
     try {

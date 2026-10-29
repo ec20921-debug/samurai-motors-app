@@ -43,13 +43,22 @@ function fakeSheet(rows) {
   };
 }
 
-function loadV7() {
+function loadV7(master, opts) {
+  opts = opts || {};
   const cache = {};
   const sent = [];
+  const props = {};
   const run = load('v7', ['PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs',
     'BookingLogic.gs', 'RestaurantPartner.gs', 'ShopGroupGreeting.gs', 'PartnerSelfRegister.gs'], {
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
-    getSpreadsheet: () => ({ getSheetByName: (n) => (n === '店マスター' ? fakeSheet(MASTER) : null) }),
+    getSpreadsheet: () => {
+      if (opts.sheetBroken && opts.sheetBroken()) throw new Error('読めない');
+      return { getSheetByName: (n) => (n === '店マスター' ? fakeSheet(master || MASTER) : null) };
+    },
+    getConfig: () => ({ adminGroupId: 'ADMIN' }),
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
+    Utilities: { formatDate: () => '2026-10-29 12:00:00' },
     sendMessage: (bot, chat, text) => { sent.push({ chat: chat, text: text }); return { ok: true }; },
     findShopLinkByShopId_: (id) => ({ obj: { '状態': '連携済', 'グループchat_id': '-100' + id } }),
     fieldParseRate_: (v) => (v === '' || v === null || v === undefined ? 30 : Number(v)),
@@ -58,7 +67,7 @@ function loadV7() {
     BOT_TYPE: { BOOKING: 'booking' }
   });
   run('__partnerLangMemo_ = {};');
-  run('isSourcePartnerShop_ = function() { return false; };');   // 流入元タブ（SourceCampaign.gs）は読まない＝レジデンス等ではない
+  run('isSourcePartnerShop_ = function() { return false; }; sourcePartnerState_ = function() { return false; };');   // 流入元タブ（SourceCampaign.gs）は読まない＝レジデンス等ではない
   return { run, sent };
 }
 
@@ -181,3 +190,35 @@ test('v7-operations: 紹介料の記帳・月報の一覧に飲食店も入る�
   assert.equal(got['SHOP-PJ'].terms.rate, 30);
   assert.equal(got['SHOP-HIRO'].kind, 'individual');
 });
+
+test('提携種別の打ち間違い: 車屋（店集金）のまま扱い、管理グループに1回だけ知らせる', () => {
+  const master = MASTER.concat([['SHOP-TYPO', 'Cafe X', '飲食', '', '', '']]);
+  const { run, sent } = loadV7(master);
+  assert.equal(run('individualPartnerState_("SHOP-TYPO")'), false);
+  assert.equal(run('individualPartnerState_("SHOP-PJ")'), true);
+  run('readPartnerKinds_(true)');
+  const warn = sent.filter((m) => m.chat === 'ADMIN');
+  assert.equal(warn.length, 1);
+  assert.match(warn[0].text, /Cafe X「飲食」/);
+  assert.match(warn[0].text, /車屋（お客様は店に払う）として扱っています/);
+});
+
+test('連携の直後のあいさつ文（1回きり）: 飲食店の文を1通だけ・チラシと本人登録リンクは送らない', () => {
+  const { run, sent } = loadV7();
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), true);
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), true);   // 2回目は送らない
+  const toGroup = sent.filter((m) => m.chat === '-100PJ');
+  assert.equal(toGroup.length, 1);
+  assert.match(toGroup[0].text, /^Welcome to SAMURAI MOTORS, PJ Restaurant!/);
+  assert.match(toGroup[0].text, /\[How it works\]/);
+});
+
+test('あいさつ文: 送る直前に店マスターを読み直せない時は送らない（古い種別の文を1回きりで送らない）', () => {
+  let broken = false;
+  const { run, sent } = loadV7(null, { sheetBroken: () => broken });
+  assert.equal(run('individualPartnerState_("SHOP-PJ")'), true);   // 先に読めた内容がある
+  broken = true;
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), false);
+  assert.equal(sent.filter((m) => m.chat === '-100PJ').length, 0);
+});
+

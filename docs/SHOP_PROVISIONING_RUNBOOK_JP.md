@@ -210,6 +210,11 @@ Daisuke「お客様が当社に直接払う形（Picasso・個人提携と同じ
 - **グループに届くもの**: 連携完了・あいさつ文（飲食店向け・RestaurantPartner.gs）・予約の知らせ（日時・メニュー・車種。名前・写真なし。見出し「New booking via your QR」）・月次レポート（個人提携と同じ文）。作業の写真・請求は送らない
 - **個人提携との違い**: 本人登録リンク・紹介チラシの自動送付が無い（チラシは Day1 tools/motors_restaurant_flyer で作り、グループに手で送る）。本人割引の対象にしない（「本人chat_id」が入っていても）
 - **連携の順番**: ① 店マスターで提携種別=飲食店・店名・言語を入れる（あいさつ文は1回きり・取り消せない。5分のキャッシュがあるが /register の時は読み直す）② Bot連携の「店名」も同じ表記に ③ グループに予約Botを招待 → `/register <コード>`
+- **本番に出す順番（2026-10-29 コードレビュー）**: ① v7 を `deploy.cmd` → ② v7-operations を `clasp push --force`（**11/1 の月次レポートより前に**。旧版のままだと飲食店に車屋用の月報が飛び、紹介料も記帳されない）→ ③ それから店マスターに「飲食店」を入れる。③を先にしてしまった時は、①のあと GAS エディタ（v7）で `refreshPartnerKinds_()` を1回実行（旧コードが「車屋」と覚えた5分キャッシュを消す）
+- あいさつ文は1回きり・取り消せない → `/register` の時も、毎時の安全網の時も、送る直前に店マスターを読み直す（読み直せない時は送らず、安全網が再試行）
+- 「提携種別」はプルダウン（個人提携・飲食店・空欄＝車屋）。分からない値（打ち間違い）は車屋（店集金）として扱い、管理グループに「⚠️ 店マスター「提携種別」に分からない値」が6時間に1回出る
+- 飲食店のオーナーご本人が自分のお店の QR から予約した時も、紹介料の対象（本人割引は無い・2026-10-29 の仕様。変えるなら Daisuke に確認）
+- お客様への歓迎文は個人提携と同じ「🤝 Referred by <店名>」（意図どおり・クメール語を変える時は Panha）
 - 営業ボード「🍽 飲食店提携」タブ（1時間ごと）。全体の「🔗」タブにも出る
 - 関連ファイル: v7/RestaurantPartner.gs（文面）・v7/IndividualPartner.gs（判定 isRestaurantPartnerShop_）・v7-operations/IndividualPartnerOps.gs（restaurantGroupGreetingText_・記帳）・v7-operations/ScoutBoardShopLinks.gs（タブ）・tests/v7_restaurant_partner.test.js
 

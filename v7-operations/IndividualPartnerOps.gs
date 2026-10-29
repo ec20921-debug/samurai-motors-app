@@ -338,3 +338,28 @@ function restaurantGroupGreetingText_(name, rate, langs) {
       'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }
+
+/**
+ * 店マスター「提携種別」にプルダウン（個人提携・飲食店。空欄＝車屋）を付ける（打ち間違い防止・2026-10-29 コードレビュー）。
+ * 分からない値は v7 が車屋（お客様は店に払う）として扱うので、入力の時点で気づけるようにする。プルダウンにない値も入る（警告の印だけ）
+ * @return {boolean} 常に true（プルダウンが付けられなくても列はあるので、列そろえは止めない）
+ */
+function ensurePartnerKindValidation_(sheet) {
+  try {
+    const col = getSheetHeaders_(sheet).map(function(h) { return String(h).trim(); }).indexOf(INDIVIDUAL_PARTNER_KIND_COL) + 1;
+    if (col > 0 && sheet.getMaxRows() > 1) {
+      const options = [INDIVIDUAL_PARTNER_KIND, RESTAURANT_PARTNER_KIND];
+      const range = sheet.getRange(2, col, sheet.getMaxRows() - 1, 1);
+      const rule = range.getDataValidation();
+      if (!rule || String(rule.getCriteriaValues()[0]) !== String(options)) {
+        range.setDataValidation(SpreadsheetApp.newDataValidation()
+          .requireValueInList(options, true).setAllowInvalid(true)
+          .setHelpText('提携の型。空欄＝車屋（お客様は店に払う）／個人提携・飲食店＝お客様は当社に払い、紹介料を月初に払う。' +
+            '型の一覧は営業ボードの「📘 提携の型」').build());
+      }
+    }
+  } catch (err) {
+    Logger.log('⚠️ 提携種別のプルダウン設定失敗（列はある）: ' + err);
+  }
+  return true;
+}

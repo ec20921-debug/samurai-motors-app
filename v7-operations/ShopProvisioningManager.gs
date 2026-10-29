@@ -410,15 +410,17 @@ function sendShopMonthlyReportsCore_(opt) {
     if (opt.individualOnly && !indivPartners[shopId]) return;
     // 個人提携（IndividualPartnerOps.gs）: グループの言語（英語＋クメール語が標準）のレポート。記帳に失敗した月は送らない（管理グループに知らせる）
     if (indivPartners[shopId]) {
+      // 飲食店（2026-10-29）も同じレポート。管理グループの表示だけ出し分ける
+      var kindLabel = indivPartners[shopId].kind === 'restaurant' ? '（飲食店）' : '（個人提携）';
       if (!indivSyncOk) {
-        adminLines.push('⚠️ ' + shopName + '（個人提携）: 紹介料の記帳・集計に失敗したため送っていません → 原因を直し、syncIndividualPartnerCommissionsNow() のあと sendIndividualPartnerReportsNow() を手で実行（車屋には二重に送らない）');
+        adminLines.push('⚠️ ' + shopName + kindLabel + ': 紹介料の記帳・集計に失敗したため送っていません → 原因を直し、syncIndividualPartnerCommissionsNow() のあと sendIndividualPartnerReportsNow() を手で実行（車屋には二重に送らない）');
         return;
       }
       var owedAll = indivOwed[shopId] || 0;
       var okIndiv = sendViaBookingBot_(props.bookingBotToken, groupChatId,
         buildIndividualMonthlyReport_(shopName, ymLabel, a, yourPct, owedAll, indivLangsByShop[shopId]));
-      adminLines.push((okIndiv ? '✅ ' : '❌ ') + '🙋 ' + shopName + '（個人提携）: ' + a.count + '件 / 売上' + a.sales.toFixed(2) +
-        '$ / 紹介料(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 当社→紹介者 未払い' + owedAll.toFixed(2) + '$（10日までに ABA）');
+      adminLines.push((okIndiv ? '✅ ' : '❌ ') + (indivPartners[shopId].kind === 'restaurant' ? '🍽 ' : '🙋 ') + shopName + kindLabel + ': ' + a.count + '件 / 売上' + a.sales.toFixed(2) +
+        '$ / 紹介料(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 当社→' + (indivPartners[shopId].kind === 'restaurant' ? 'お店' : '紹介者') + ' 未払い' + owedAll.toFixed(2) + '$（10日までに ABA）');
       return;
     }
 
