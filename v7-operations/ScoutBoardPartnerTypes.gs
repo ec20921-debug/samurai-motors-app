@@ -8,7 +8,7 @@
  */
 
 const SCOUT_TYPES_TAB_KEY = 'types';
-const SCOUT_TYPES_VERSION = '2026-10-29a';   // 下の文を変えたら上げる
+const SCOUT_TYPES_VERSION = '2026-10-29b';   // b: ① の「相手」「スキル」を2列分の幅に・提携のタブを並べ直す   // 下の文を変えたら上げる
 const SCOUT_TYPES_PROP = 'SCOUT_BOARD_TYPES_VERSION';
 
 const SCOUT_TYPES_TITLE = '📘 Samurai Motors 提携の型（4種類） / Partner types';
@@ -64,6 +64,7 @@ function scoutBoardWritePartnerTypes_(board) {
   }
   const sh = scoutBoardSheet_(board, SCOUT_TYPES_TAB_KEY);
   const W = 5;
+  sh.getRange(1, 1, sh.getMaxRows(), W).breakApart();   // 前の版の結合を外してから書く
   const pad = function(row) { const r = row.slice(); while (r.length < W) r.push(''); return r; };
 
   // [行の中身, 行の種類] の順に並べてから1回で書く（種類で見た目を決める）
@@ -92,7 +93,11 @@ function scoutBoardWritePartnerTypes_(board) {
     else if (kind === 'note') sh.getRange(row, 1).setFontColor('#555555');
     else if (kind === 'section') sh.getRange(row, 1).setFontSize(12).setFontWeight('bold');
     else if (kind === 'head') all.setFontWeight('bold').setBackground(SCOUT_BOARD_HEAD_BG).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
-    else if (kind === 'choose') {
+    if (kind === 'head' || kind === 'choose') {   // 「相手」は A:B・「スキル」は D:E の幅で読めるように
+      sh.getRange(row, 1, 1, 2).merge();
+      sh.getRange(row, 4, 1, 2).merge();
+    }
+    if (kind === 'choose') {
       all.setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
       sh.getRange(row, 3).setFontWeight('bold').setBackground(SCOUT_TYPES_FILLS[(i - 5) % SCOUT_TYPES_FILLS.length]);
     } else if (kind === 'typeHead') {
@@ -110,5 +115,19 @@ function scoutBoardWritePartnerTypes_(board) {
     }
   });
   sh.setFrozenRows(1);
+  try { scoutBoardOrderPartnerTabs_(board); } catch (e) { Logger.log('⚠️ 営業ボード タブの並べ直し: ' + e); }
   props.setProperty(SCOUT_TYPES_PROP, SCOUT_TYPES_VERSION);
+}
+
+/** 提携のタブを 🔗 → 📘 → 🚗 → 🏢 → 🏠 → 🍽 → 🙋 の順に左から並べる（版を上げた時だけ・後から足したタブがばらばらに並ぶため） */
+function scoutBoardOrderPartnerTabs_(board) {
+  let pos = 1;
+  [SCOUT_LINKS_TAB_KEY, SCOUT_TYPES_TAB_KEY, 'pShop', 'pFacility', 'pResidence', 'pRestaurant', 'pIndiv'].forEach(function(k) {
+    const sh = board.getSheetByName(SCOUT_BOARD_TABS[k]);
+    if (!sh) return;
+    board.setActiveSheet(sh);
+    board.moveActiveSheet(pos++);
+  });
+  const first = board.getSheetByName(SCOUT_BOARD_TABS[SCOUT_LINKS_TAB_KEY]);
+  if (first) board.setActiveSheet(first);
 }
