@@ -650,6 +650,15 @@ function createBooking(params) {
   // 流入元の提携先グループへの「予約が入った」は、予約のロックを外してから送る（2026-10-26 SourceGroupNotify.gs）
   const after = {};
   const res = createBookingLocked_(params, after);
+  // 予約確定の3方向通知（お客様・管理グループ）もロックの外で。提携先グループより先に送る（2026-10-29 ForumTopicManager.gs）
+  // 予約はもう登録済みなので、通知で例外が出ても予約は成功として返す
+  if (after.bookingCreated && res && res.status === 'ok') {
+    try {
+      notifyBookingCreated(after.bookingCreated);
+    } catch (e) {
+      Logger.log('❌ createBooking: 予約確定の通知失敗（予約は登録済み）bookingId=' + after.bookingCreated.bookingId + ' err=' + e);
+    }
+  }
   if (after.sourceGroup && res && res.status === 'ok' && typeof notifySourceGroupBooking_ === 'function') {
     notifySourceGroupBooking_(after.sourceGroup.cfg, after.sourceGroup.info);
   }
@@ -947,8 +956,8 @@ function createBookingLocked_(params, after) {
       });
     }
 
-    // ── 8. 3方向通知 ──
-    notifyBookingCreated({
+    // ── 8. 3方向通知（送るのはロックの外 createBooking。消えたトピックの作り直しがロックを取るため・2026-10-29） ──
+    const createdInfo = {
       bookingId: bookingId,
       chatId: params.chatId,
       name: params.name,
@@ -980,7 +989,9 @@ function createBookingLocked_(params, after) {
       referralAdminLine: selfPartner
         ? '🙋 紹介者ご本人のご予約: ' + selfPartner.name + '（' + selfPartner.pct + '%引き・紹介料なし・お支払いは当社へ）\n'
         : (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate) : ''
-    });
+    };
+    if (after) after.bookingCreated = createdInfo;
+    else notifyBookingCreated(createdInfo);
 
     // ── 9. 流入元（レジデンス等）の提携先グループへ「予約が入った」（2026-10-26 SourceGroupNotify.gs） ──
     // 予約確定文に「管理側にも共有されます」を出した予約だけ（同じ時点で判定）。送るのはロックの外（createBooking）

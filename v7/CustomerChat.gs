@@ -23,27 +23,45 @@
  */
 function forwardCustomerMessage(msg) {
   const customer = extractCustomerFromMessage(msg);
-  const topic = getOrCreateTopic(customer);
   const cfg = getConfig();
+  let result = null;
 
-  // ── 初回トピック作成時は挨拶メッセージを先頭に送信 ──
-  if (topic.isNew) {
-    const intro =
-      '🆕 新規顧客からの最初の連絡\n' +
+  // トピックが消えていたら作り直して1回だけ転送し直す（ForumTopicManager.gs・2026-10-29）
+  const sent = sendWithTopicRecovery_(customer, function(threadId, topic) {
+    // ── 初回トピック作成時（作り直した時も）は挨拶メッセージを先頭に送信 ──
+    if (topic.isNew) {
+      const intro =
+        (topic.recreated ? '♻️ トピックを作り直しました（前のトピックは削除されていました）\n' : '🆕 新規顧客からの最初の連絡\n') +
+        '━━━━━━━━━━━━━━━━━\n' +
+        '氏名: ' + buildDisplayName(customer) + '\n' +
+        'Chat ID: ' + customer.chatId + '\n' +
+        (customer.username ? 'Username: @' + customer.username + '\n' : '') +
+        (customer.languageCode ? '言語: ' + customer.languageCode + '\n' : '') +
+        '━━━━━━━━━━━━━━━━━\n' +
+        (topic.recreated ? 'これまでのやりとりはスプレッドシートの「チャット履歴」タブにあります。\n' : '') +
+        'このトピックで返信すると顧客にメッセージが届きます。';
+      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, intro, {
+        message_thread_id: threadId
+      });
+    }
+
+    // ── メッセージ種別に応じて転送 ──
+    result = sendMessageToTopic(msg, threadId);
+    return result.res;
+  });
+  if (!sent.ok) {
+    // トピックに届かなかった（閉じたトピック・作り直しても失敗など）→ グループ直下（General）へ誰からかを添えて送る
+    // General での返信はお客様に届かない（handleAdminReply はトピック内だけ）ので、その旨も書く
+    Logger.log('⚠️ forwardCustomerMessage: 管理グループへの転送失敗 chatId=' + customer.chatId + ' threadId=' + sent.threadId);
+    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+      '⚠️ お客様のメッセージをトピックに転送できませんでした\n' +
       '━━━━━━━━━━━━━━━━━\n' +
       '氏名: ' + buildDisplayName(customer) + '\n' +
       'Chat ID: ' + customer.chatId + '\n' +
-      (customer.username ? 'Username: @' + customer.username + '\n' : '') +
-      (customer.languageCode ? '言語: ' + customer.languageCode + '\n' : '') +
       '━━━━━━━━━━━━━━━━━\n' +
-      'このトピックで返信すると顧客にメッセージが届きます。';
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, intro, {
-      message_thread_id: topic.threadId
-    });
+      'このすぐ下が届いた内容です。ここ（General）で返信してもお客様には届きません。');
+    sendMessageToTopic(msg, undefined);   // thread 指定なし＝General
   }
-
-  // ── メッセージ種別に応じて転送 ──
-  const result = sendMessageToTopic(msg, topic.threadId);
 
   // ── 顧客最終連絡日時を更新 ──
   touchCustomerLastContact(customer.chatId);
@@ -52,9 +70,9 @@ function forwardCustomerMessage(msg) {
   logChat({
     direction: '顧客→管理',
     chatId: customer.chatId,
-    threadId: topic.threadId,
+    threadId: sent.threadId,
     messageType: result.messageType,
-    content: result.content,
+    content: (sent.ok ? '' : '(トピックへの転送失敗・General へ) ') + result.content,
     adminId: ''
   });
 }
@@ -62,101 +80,102 @@ function forwardCustomerMessage(msg) {
 /**
  * メッセージの内容に応じて適切な send* を呼び分ける
  *
- * @return {{messageType: string, content: string}} ログ用の要約
+ * @return {{messageType: string, content: string, res: Object}} ログ用の要約と Telegram API の応答
  */
 function sendMessageToTopic(msg, threadId) {
   const cfg = getConfig();
   const chatId = cfg.adminGroupId;
   const opts = { message_thread_id: threadId };
+  let res;
 
   // テキスト
   if (msg.text) {
-    sendMessage(BOT_TYPE.BOOKING, chatId, msg.text, opts);
-    return { messageType: 'テキスト', content: truncate(msg.text, 200) };
+    res = sendMessage(BOT_TYPE.BOOKING, chatId, msg.text, opts);
+    return { messageType: 'テキスト', content: truncate(msg.text, 200), res: res };
   }
 
   // 写真（最大解像度を送信）
   if (msg.photo && msg.photo.length > 0) {
     const best = msg.photo[msg.photo.length - 1];
     const caption = msg.caption || '';
-    sendPhoto(BOT_TYPE.BOOKING, chatId, best.file_id, Object.assign({
+    res = sendPhoto(BOT_TYPE.BOOKING, chatId, best.file_id, Object.assign({
       caption: caption
     }, opts));
-    return { messageType: '写真', content: caption || '(写真)' };
+    return { messageType: '写真', content: caption || '(写真)', res: res };
   }
 
   // 動画
   if (msg.video) {
-    sendTelegramGeneric('sendVideo', {
+    res = sendTelegramGeneric('sendVideo', {
       chat_id: chatId,
       video: msg.video.file_id,
       caption: msg.caption || '',
       message_thread_id: threadId
     });
-    return { messageType: '動画', content: msg.caption || '(動画)' };
+    return { messageType: '動画', content: msg.caption || '(動画)', res: res };
   }
 
   // ドキュメント
   if (msg.document) {
-    sendTelegramGeneric('sendDocument', {
+    res = sendTelegramGeneric('sendDocument', {
       chat_id: chatId,
       document: msg.document.file_id,
       caption: msg.caption || '',
       message_thread_id: threadId
     });
-    return { messageType: 'ドキュメント', content: msg.document.file_name || '(ファイル)' };
+    return { messageType: 'ドキュメント', content: msg.document.file_name || '(ファイル)', res: res };
   }
 
   // 音声メモ
   if (msg.voice) {
-    sendTelegramGeneric('sendVoice', {
+    res = sendTelegramGeneric('sendVoice', {
       chat_id: chatId,
       voice: msg.voice.file_id,
       caption: msg.caption || '',
       message_thread_id: threadId
     });
-    return { messageType: '音声', content: '(音声メモ ' + (msg.voice.duration || 0) + '秒)' };
+    return { messageType: '音声', content: '(音声メモ ' + (msg.voice.duration || 0) + '秒)', res: res };
   }
 
   // ビデオメモ（丸い動画）
   if (msg.video_note) {
-    sendTelegramGeneric('sendVideoNote', {
+    res = sendTelegramGeneric('sendVideoNote', {
       chat_id: chatId,
       video_note: msg.video_note.file_id,
       message_thread_id: threadId
     });
-    return { messageType: '動画', content: '(ビデオメモ)' };
+    return { messageType: '動画', content: '(ビデオメモ)', res: res };
   }
 
   // 位置情報
   if (msg.location) {
     const loc = msg.location;
-    sendTelegramGeneric('sendLocation', {
+    res = sendTelegramGeneric('sendLocation', {
       chat_id: chatId,
       latitude: loc.latitude,
       longitude: loc.longitude,
       message_thread_id: threadId
     });
     const locText = '📍 緯度: ' + loc.latitude + ' / 経度: ' + loc.longitude;
-    return { messageType: '位置情報', content: locText };
+    return { messageType: '位置情報', content: locText, res: res };
   }
 
   // ステッカー
   if (msg.sticker) {
-    sendTelegramGeneric('sendSticker', {
+    res = sendTelegramGeneric('sendSticker', {
       chat_id: chatId,
       sticker: msg.sticker.file_id,
       message_thread_id: threadId
     });
-    return { messageType: 'テキスト', content: '(ステッカー ' + (msg.sticker.emoji || '') + ')' };
+    return { messageType: 'テキスト', content: '(ステッカー ' + (msg.sticker.emoji || '') + ')', res: res };
   }
 
   // 未対応の種別はログ通知
-  sendMessage(BOT_TYPE.BOOKING, chatId,
+  res = sendMessage(BOT_TYPE.BOOKING, chatId,
     '⚠️ 未対応のメッセージ種別を受信（ログ確認してください）',
     opts
   );
-  return { messageType: 'テキスト', content: '(未対応種別)' };
+  return { messageType: 'テキスト', content: '(未対応種別)', res: res };
 }
 
 // ====== 管理者 → 顧客（返信） ======

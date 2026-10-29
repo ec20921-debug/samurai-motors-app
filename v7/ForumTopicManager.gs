@@ -20,14 +20,20 @@
  * 顧客のフォーラムトピックを取得する。未作成なら新規作成する。
  *
  * @param {Object} customer - {chatId, firstName, lastName, username}
+ * @param {number} [staleThreadId] - 消えていたトピックの番号。シートの番号がこれと同じなら、無いものとして作り直す。
+ *        確認と作り直しを同じロックの中で行うので、並走した別の実行が先に作り直していればその番号を使う（2026-10-29）
  * @return {{threadId: number, isNew: boolean}}
  */
-function getOrCreateTopic(customer) {
+function getOrCreateTopic(customer, staleThreadId) {
   const chatId = String(customer.chatId);
+  const hasUsableTopic = function(row) {
+    return !!(row && row.data['トピックID']) &&
+      !(staleThreadId && Number(row.data['トピックID']) === Number(staleThreadId));
+  };
 
   // ── 1. シートから既存トピックIDを検索 ──
   const existing = findCustomerRow(chatId);
-  if (existing && existing.data['トピックID']) {
+  if (hasUsableTopic(existing)) {
     return {
       threadId: Number(existing.data['トピックID']),
       isNew: false
@@ -44,7 +50,7 @@ function getOrCreateTopic(customer) {
   try {
     // ── 3. ロック取得後にもう一度チェック（他のスレッドが先に作った可能性） ──
     const recheck = findCustomerRow(chatId);
-    if (recheck && recheck.data['トピックID']) {
+    if (hasUsableTopic(recheck)) {
       return {
         threadId: Number(recheck.data['トピックID']),
         isNew: false
@@ -177,13 +183,73 @@ function pickIconColor(chatId) {
 // ====== stale thread 自動復旧 ======
 
 /**
- * 顧客トピックへテキスト送信（古い thread_id で失敗したら自動再作成してリトライ）
+ * Telegram の失敗応答が「トピックが消えている」ことを示すか
+ */
+function isStaleThreadError_(res) {
+  const desc = String((res && res.description) || '');
+  return /thread.*not.*found/i.test(desc) || /TOPIC_.*(INVALID|DELETED)/i.test(desc);
+}
+
+/**
+ * 顧客トピックへ送信する共通処理（古い thread_id で失敗したら自動再作成してリトライ）
  *
  * 【背景】
  *   管理グループでチャットログを削除してトピックごと消してしまうと、
  *   顧客シートに残った「トピックID」は無効になり、sendMessage が
  *   "message thread not found" (400) を返して配送失敗する。
- *   ここで検知して: トピックID をクリア → getOrCreateTopic で再作成 → 1回だけリトライ。
+ *   ここで検知して: getOrCreateTopic に消えた番号を渡して再作成 → 1回だけリトライ。
+ *   2026-10-29: テキスト以外（顧客メッセージの転送・写真付きの決済通知）でも使えるよう送信部分を sendFn に分離。
+ *     トピックID のクリアはやめ、確認と作り直しを getOrCreateTopic のロックの中でまとめて行う（並走でトピックを二重に作らない）
+ *   ⚠️ 作り直す時は getOrCreateTopic が ScriptLock を取る。別の ScriptLock を持ったまま呼ばない（通知はロックの外で送る）
+ *
+ * @param {Object} customer - {chatId, firstName, lastName, username, ...}
+ * @param {function(number, {isNew: boolean, recreated: boolean}): Object} sendFn
+ *        threadId を受け取って送信し、Telegram API の応答を返す
+ * @param {number|string} [knownThreadId] - 呼び出し側が顧客シートから読んだトピックID（同じ行をもう一度読まないため）
+ * @return {{ok: boolean, threadId: number, recreated: boolean}}
+ */
+function sendWithTopicRecovery_(customer, sendFn, knownThreadId) {
+  const chatId = String(customer.chatId);
+
+  // ── 1回目: 既存の（あるいは新規作成の）トピックへ送信 ──
+  let topic = knownThreadId ? { threadId: Number(knownThreadId), isNew: false } : getOrCreateTopic(customer);
+  let res = sendFn(topic.threadId, { isNew: topic.isNew, recreated: false });
+
+  if (res && res.ok) {
+    return { ok: true, threadId: topic.threadId, recreated: false };
+  }
+
+  // ── 失敗時: "message thread not found" なら1回だけ再作成 ──
+  const isStaleThread = isStaleThreadError_(res);
+  Logger.log('⚠️ sendWithTopicRecovery_: 1回目失敗 desc="' + ((res && res.description) || '') + '" stale=' + isStaleThread);
+
+  if (!isStaleThread) {
+    // 別の理由（権限・chat_id 不正など）は再作成しても直らないのでここで終了
+    return { ok: false, threadId: topic.threadId, recreated: false };
+  }
+
+  const staleThreadId = topic.threadId;
+  try {
+    topic = getOrCreateTopic(customer, staleThreadId);
+  } catch (e) {
+    // 作り直せなかった（ロック待ち・トピックを作る権限がない等）。呼び出し側がグループ直下へ逃がす
+    // （例外のまま返すとキューが毎分やり直し続けるため）
+    Logger.log('❌ sendWithTopicRecovery_: トピック再作成失敗 chatId=' + chatId + ' err=' + e);
+    return { ok: false, threadId: staleThreadId, recreated: false };
+  }
+  Logger.log('♻️ トピック再作成 chatId=' + chatId + ' 旧 threadId=' + staleThreadId + ' 新 threadId=' + topic.threadId);
+
+  res = sendFn(topic.threadId, { isNew: topic.isNew, recreated: true });
+
+  return {
+    ok: !!(res && res.ok),
+    threadId: topic.threadId,
+    recreated: true
+  };
+}
+
+/**
+ * 顧客トピックへテキスト送信（古い thread_id で失敗したら自動再作成してリトライ）
  *
  * @param {Object} customer - {chatId, firstName, lastName, username, ...}
  * @param {string} text
@@ -192,47 +258,65 @@ function pickIconColor(chatId) {
  */
 function sendToCustomerTopicWithRecovery(customer, text, extraOpts) {
   const cfg = getConfig();
-  const chatId = String(customer.chatId);
+  return sendWithTopicRecovery_(customer, function(threadId, topic) {
+    if (topic.isNew && topic.recreated) sendRecreatedTopicIntro_(threadId, customer);
+    return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, Object.assign({
+      message_thread_id: threadId
+    }, extraOpts || {}));
+  });
+}
 
-  // ── 1回目: 既存の（あるいは新規作成の）トピックへ送信 ──
-  let topic = getOrCreateTopic(customer);
-  let res = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, Object.assign({
-    message_thread_id: topic.threadId
-  }, extraOpts || {}));
-
-  if (res && res.ok) {
-    return { ok: true, threadId: topic.threadId, recreated: false };
+/**
+ * 顧客のトピックへ管理通知を送る（決済・特価予約・QR連携の通知など・2026-10-29）
+ *
+ * トピックが消えていたら作り直して1回だけ再送し、それでも届かなければグループ直下（General）へ送る。
+ * トピックをまだ持たない顧客は、これまでどおりグループ直下へ送る（ここではトピックも顧客行も作らない）。
+ * ⚠️ トピックを作り直す時に ScriptLock を取るので、別の ScriptLock を持ったまま呼ばない
+ *
+ * @param {string} chatId - 顧客のチャットID（空ならグループ直下）
+ * @param {function(Object): Object} sendFn - 送信オプション（{message_thread_id} または {}）を受け取って送信し、
+ *        Telegram API の応答を返す
+ * @return {{ok: boolean, threadId: (number|null)}}
+ */
+function sendAdminNoticeToCustomerTopic_(chatId, sendFn) {
+  try {
+    const row = chatId ? findCustomerRow(chatId) : null;
+    if (row && row.data['トピックID']) {
+      const customer = {
+        chatId:    String(chatId),
+        firstName: String(row.data['氏名'] || ''),
+        lastName:  '',
+        username:  String(row.data['ユーザー名'] || '')
+      };
+      const sent = sendWithTopicRecovery_(customer, function(threadId, topic) {
+        if (topic.isNew && topic.recreated) sendRecreatedTopicIntro_(threadId, customer);
+        return sendFn({ message_thread_id: threadId });
+      }, row.data['トピックID']);
+      if (sent.ok) return { ok: true, threadId: sent.threadId };
+    }
+  } catch (e) {
+    // 通知は最優先。トピックの検索・作り直しで失敗してもグループ直下へ送る
+    Logger.log('⚠️ sendAdminNoticeToCustomerTopic_: トピック送信で例外 chatId=' + chatId + ' err=' + e);
   }
+  const res = sendFn({});
+  return { ok: !!(res && res.ok), threadId: null };
+}
 
-  // ── 失敗時: "message thread not found" ならトピックID をクリアして1回だけ再作成 ──
-  const desc = String((res && res.description) || '');
-  const isStaleThread = /thread.*not.*found/i.test(desc) || /TOPIC_.*INVALID/i.test(desc);
-  Logger.log('⚠️ sendToCustomerTopicWithRecovery: 1回目失敗 desc="' + desc + '" stale=' + isStaleThread);
-
-  if (!isStaleThread) {
-    // 別の理由（権限・chat_id 不正など）は再作成しても直らないのでここで終了
-    return { ok: false, threadId: topic.threadId, recreated: false };
-  }
-
-  // トピックID をクリアして強制的に再作成
-  const row = findCustomerRow(chatId);
-  if (row) {
-    updateRow(SHEET_NAMES.CUSTOMERS, row.rowIndex, { 'トピックID': '' });
-    Logger.log('🧹 stale トピックID クリア chatId=' + chatId + ' (旧 threadId=' + topic.threadId + ')');
-  }
-
-  topic = getOrCreateTopic(customer);
-  Logger.log('♻️ トピック再作成 chatId=' + chatId + ' 新 threadId=' + topic.threadId);
-
-  res = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, Object.assign({
-    message_thread_id: topic.threadId
-  }, extraOpts || {}));
-
-  return {
-    ok: !!(res && res.ok),
-    threadId: topic.threadId,
-    recreated: true
-  };
+/**
+ * 作り直したトピックの先頭に「作り直しました」の案内を送る（予約・決済などの通知で作り直した時）
+ * お客様のメッセージで作り直した時は CustomerChat.gs が詳しい案内を送る
+ */
+function sendRecreatedTopicIntro_(threadId, customer) {
+  const cfg = getConfig();
+  sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+    '♻️ トピックを作り直しました（前のトピックは削除されていました）\n' +
+    '━━━━━━━━━━━━━━━━━\n' +
+    '氏名: ' + buildDisplayName(customer) + '\n' +
+    'Chat ID: ' + customer.chatId + '\n' +
+    '━━━━━━━━━━━━━━━━━\n' +
+    'これまでのやりとりはスプレッドシートの「チャット履歴」タブにあります。\n' +
+    'このトピックで返信すると顧客にメッセージが届きます。',
+    { message_thread_id: threadId });
 }
 
 /**

@@ -74,9 +74,8 @@ function handleManualLinkStart_(msg, text) {
 
     // 顧客台帳登録＋管理グループの顧客トピック確保（1顧客=1トピック基盤に乗せる）
     var customer = extractCustomerFromMessage(msg);
-    var topic = null;
     try {
-      topic = getOrCreateTopic(customer);
+      getOrCreateTopic(customer);
     } catch (eTopic) {
       Logger.log('⚠️ handleManualLinkStart_: トピック作成失敗（処理続行）: ' + eTopic);
     }
@@ -94,7 +93,7 @@ function handleManualLinkStart_(msg, text) {
       : linkBookingScan_(key, chatId);
 
     // 管理グループ（顧客トピック）へ結果通知
-    notifyLinkResultToAdmin_(topic, customer, kind, key, result);
+    notifyLinkResultToAdmin_(customer, kind, key, result);
 
     Logger.log('🔗 handleManualLinkStart_: kind=' + kind + ' key=' + key +
                ' chatId=' + chatId + ' mode=' + result.mode +
@@ -499,7 +498,7 @@ function sendManualPaymentInfo_(chatId, amount, payType) {
 /**
  * 連携結果を管理グループ（顧客トピック）へ通知する
  */
-function notifyLinkResultToAdmin_(topic, customer, kind, key, result) {
+function notifyLinkResultToAdmin_(customer, kind, key, result) {
   try {
     var cfg = getConfig();
     var name = buildDisplayName(customer);
@@ -531,8 +530,10 @@ function notifyLinkResultToAdmin_(topic, customer, kind, key, result) {
       default:
         body = 'ℹ️ mode=' + result.mode;
     }
-    var opts = (topic && topic.threadId) ? { message_thread_id: topic.threadId } : {};
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, head + body, opts);
+    // 顧客トピックへ（トピックが消えていたら作り直す・作れなかった時はグループ直下へ ForumTopicManager.gs）
+    sendAdminNoticeToCustomerTopic_(customer.chatId, function(o) {
+      return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, head + body, o);
+    });
   } catch (e) {
     Logger.log('⚠️ notifyLinkResultToAdmin_: ' + e);
   }

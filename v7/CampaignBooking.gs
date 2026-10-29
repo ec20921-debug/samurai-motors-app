@@ -347,6 +347,17 @@ function isManualCampaignBooking(campaignName) {
  * @return {Object} {status, bookingId, priceUsd, serviceType, ...}
  */
 function createManualBooking(params) {
+  // 管理者通知はロックの外で送る（消えたトピックの作り直しがロックを取るため・2026-10-29 ForumTopicManager.gs）
+  var after = [];
+  var res = createManualBookingLocked_(params, after);
+  after.forEach(function(send) {
+    try { send(); } catch (e) { Logger.log('⚠️ createManualBooking 管理者通知失敗（業務は継続）: ' + e); }
+  });
+  return res;
+}
+
+/** createManualBooking の本体（ScriptLock の中）。after にはロックの外で送る通知を入れる */
+function createManualBookingLocked_(params, after) {
   var lock = LockService.getScriptLock();
   var acquired = lock.tryLock(15 * 1000);
   if (!acquired) {
@@ -488,15 +499,8 @@ function createManualBooking(params) {
       'サービスタイプ': serviceType
     });
 
-    // ── 管理者通知（顧客トピックがあればそこへ、なければグループ直下へ） ──
+    // ── 管理者通知（顧客トピックがあればそこへ、なければグループ直下へ。トピックが消えていたら作り直す ForumTopicManager.gs・ロックの外で送る） ──
     try {
-      var threadId = null;
-      if (params.chatId) {
-        var custRow = findCustomerRow(String(params.chatId));
-        if (custRow && custRow.data['トピックID']) {
-          threadId = custRow.data['トピックID'];
-        }
-      }
       var adminText = '🎫 特価予約 作成\n' +
         '━━━━━━━━━━━━━━━━━\n' +
         '🆔 ' + bookingId + '\n' +
@@ -508,8 +512,12 @@ function createManualBooking(params) {
           : '🏪 来店・作業待ち（ミニアプリで作業開始してください）\n') +
         '⏳ 未清算（作業後に💵清算）\n' +
         (params.staff ? '👷 ' + params.staff + '\n' : '');
-      var adminOpts = threadId ? { message_thread_id: threadId } : {};
-      sendMessage(BOT_TYPE.BOOKING, sysCfg.adminGroupId, adminText, adminOpts);
+      var noticeChatId = params.chatId ? String(params.chatId) : '';
+      after.push(function() {
+        sendAdminNoticeToCustomerTopic_(noticeChatId, function(o) {
+          return sendMessage(BOT_TYPE.BOOKING, sysCfg.adminGroupId, adminText, o);
+        });
+      });
     } catch (e) {
       Logger.log('⚠️ createManualBooking 管理者通知失敗（業務は継続）: ' + e);
     }
@@ -558,24 +566,18 @@ function settleManualBooking(bookingId) {
       '入金確認日時': new Date()
     });
 
-    // 管理者通知
+    // 管理者通知（トピックが消えていたら作り直す ForumTopicManager.gs）
     try {
       var cfg = getConfig();
-      var threadId = null;
       var chatId = String(bkRow.data['チャットID'] || '');
-      if (chatId) {
-        var custRow = findCustomerRow(chatId);
-        if (custRow && custRow.data['トピックID']) {
-          threadId = custRow.data['トピックID'];
-        }
-      }
       var text = '💵 特価予約 清算済み\n' +
         '━━━━━━━━━━━━━━━━━\n' +
         '🆔 ' + bookingId + '\n' +
         '🎟 ' + (bkRow.data['キャンペーン名'] || '-') +
         ' / $' + (bkRow.data['料金(USD)'] || '-');
-      var adminOpts = threadId ? { message_thread_id: threadId } : {};
-      sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, adminOpts);
+      sendAdminNoticeToCustomerTopic_(chatId, function(o) {
+        return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, o);
+      });
     } catch (e) {
       Logger.log('⚠️ settleManualBooking 通知失敗: ' + e);
     }

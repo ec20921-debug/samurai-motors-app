@@ -47,22 +47,33 @@ function sendPaymentQR(bookingId, opts) {
     return { ok: false, reason: 'LOCKED' };
   }
 
+  // 管理通知はロックの外で送る（消えたトピックの作り直しがロックを取るため・2026-10-29 ForumTopicManager.gs）
+  var after = [];
+  var res;
   try {
-    return sendPaymentQR_locked_(bookingId, opts || {});
+    res = sendPaymentQR_locked_(bookingId, opts || {}, after);
   } finally {
     lock.releaseLock();
   }
+  after.forEach(function(send) {
+    try { send(); } catch (e) { Logger.log('⚠️ sendPaymentQR: 管理通知の送信失敗 bookingId=' + bookingId + ' err=' + e); }
+  });
+  return res;
 }
 
 /**
  * sendPaymentQR の本体(ロック獲得後に呼ばれる)
+ * @param {Array<function()>} after - ロックの外で送る管理通知を入れる
  */
-function sendPaymentQR_locked_(bookingId, opts) {
+function sendPaymentQR_locked_(bookingId, opts, after) {
   opts = opts || {};
+  var notifyFailure = function(reason, detail) {
+    after.push(function() { notifyAdminQRFailure_(bookingId, reason, detail); });
+  };
   var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
   if (!bkRow) {
     Logger.log('⚠️ sendPaymentQR: 予約が見つからない bookingId=' + bookingId);
-    notifyAdminQRFailure_(bookingId, 'BOOKING_NOT_FOUND', '予約が見つかりません');
+    notifyFailure('BOOKING_NOT_FOUND', '予約が見つかりません');
     return { ok: false, reason: 'BOOKING_NOT_FOUND' };
   }
 
@@ -96,7 +107,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
   var customerChatId = String(bkRow.data['チャットID'] || '');
   if (!customerChatId) {
     Logger.log('⚠️ sendPaymentQR: チャットID無し bookingId=' + bookingId);
-    notifyAdminQRFailure_(bookingId, 'NO_CHAT_ID', '顧客のチャットIDが登録されていません');
+    notifyFailure('NO_CHAT_ID', '顧客のチャットIDが登録されていません');
     return { ok: false, reason: 'NO_CHAT_ID' };
   }
 
@@ -130,7 +141,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
       '⚠️ QR មិនអាចបង្ហាញបាន។ សូមទាក់ទងអ្នកគ្រប់គ្រង។\n' +
       'QR not available. Please contact admin.'
     );
-    notifyAdminQRFailure_(bookingId, 'NO_ACTIVE_QR',
+    notifyFailure('NO_ACTIVE_QR',
       'QRコードシートに「有効=TRUE」の行がありません。シートを確認して有効行を1件立ててください。');
     return { ok: false, reason: 'NO_ACTIVE_QR' };
   }
@@ -150,7 +161,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
 
   if (!sendRes || !sendRes.ok) {
     Logger.log('⚠️ sendPaymentQR: QR画像送信失敗 bookingId=' + bookingId + ' res=' + JSON.stringify(sendRes));
-    notifyAdminQRFailure_(bookingId, 'SEND_FAILED',
+    notifyFailure('SEND_FAILED',
       'QR画像送信がTelegram側で失敗しました。画像URL/Drive共有設定を確認してください。\nerror=' +
       ((sendRes && (sendRes.error || sendRes.description)) || 'unknown'));
     return { ok: false, reason: 'SEND_FAILED' };
@@ -166,12 +177,7 @@ function sendPaymentQR_locked_(bookingId, opts) {
     Logger.log('⚠️ sendPaymentQR: 予約シート更新失敗 bookingId=' + bookingId + ' err=' + e);
   }
 
-  // ── 管理グループへ通知（顧客トピック内に） ──
-  var threadId = null;
-  var custRow = findCustomerRow(customerChatId);
-  if (custRow && custRow.data['トピックID']) {
-    threadId = custRow.data['トピックID'];
-  }
+  // ── 管理グループへ通知（顧客トピック内に。トピックが消えていたら作り直す ForumTopicManager.gs・ロックの外で送る） ──
   var cfg = getConfig();
   var adminText =
     '💰 QR 送信完了\n' +
@@ -180,8 +186,11 @@ function sendPaymentQR_locked_(bookingId, opts) {
     '💵 $' + amount + '\n' +
     '🏦 ' + (qr.bank || '-') + '\n' +
     '⏳ 顧客の支払い待ち';
-  var adminOpts = threadId ? { message_thread_id: threadId } : {};
-  sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+  after.push(function() {
+    sendAdminNoticeToCustomerTopic_(customerChatId, function(o) {
+      return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, o);
+    });
+  });
 
   return { ok: true };
 }
@@ -203,22 +212,16 @@ function notifyAdminQRFailure_(bookingId, reason, detail) {
       '👉 復旧コマンド:\n' +
       '   retryPaymentQR("' + bookingId + '")';
 
-    // 顧客トピックが分かればそこへ、なければグループ直下へ
-    var adminOpts = {};
+    // 顧客トピックが分かればそこへ、なければグループ直下へ（トピックが消えていたら作り直す ForumTopicManager.gs）
+    var chatId = '';
     try {
       var bkRow = findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId);
-      if (bkRow) {
-        var chatId = String(bkRow.data['チャットID'] || '');
-        if (chatId) {
-          var custRow = findCustomerRow(chatId);
-          if (custRow && custRow.data['トピックID']) {
-            adminOpts.message_thread_id = custRow.data['トピックID'];
-          }
-        }
-      }
+      if (bkRow) chatId = String(bkRow.data['チャットID'] || '');
     } catch (e) { /* 通知は最優先、探索失敗は無視 */ }
 
-    sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, adminOpts);
+    sendAdminNoticeToCustomerTopic_(chatId, function(o) {
+      return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, text, o);
+    });
   } catch (err) {
     Logger.log('⚠️ notifyAdminQRFailure_ 失敗: ' + err);
   }
@@ -389,12 +392,8 @@ function tryHandlePaymentScreenshot(msg) {
     Logger.log('⚠️ tryHandlePaymentScreenshot: 予約シート更新失敗 err=' + e);
   }
 
-  // ── 管理グループへ通知（顧客トピック内に） ──
+  // ── 管理グループへ通知（顧客トピック内に。トピックが消えていたら作り直す ForumTopicManager.gs） ──
   var threadId = null;
-  var custRow = findCustomerRow(chatId);
-  if (custRow && custRow.data['トピックID']) {
-    threadId = custRow.data['トピックID'];
-  }
   var cfgN = getConfig();
   var adminText =
     '💳 支払いスクショ受信\n' +
@@ -404,17 +403,25 @@ function tryHandlePaymentScreenshot(msg) {
     '📂 ' + (driveUrl || '(Drive保存失敗)') + '\n' +
     '━━━━━━━━━━━━━━━━━\n' +
     '✅ 入金確認後、予約シートの 決済状態 を「清算済み」に変更してください';
-  var adminOpts = threadId ? { message_thread_id: threadId } : {};
 
   // 管理グループにも実物の写真を転送（確認しやすく）
   try {
     var best2 = msg.photo[msg.photo.length - 1];
-    sendPhoto(BOT_TYPE.BOOKING, cfgN.adminGroupId, best2.file_id, Object.assign({
-      caption: adminText
-    }, adminOpts));
+    var adminSent = sendAdminNoticeToCustomerTopic_(chatId, function(o) {
+      return sendPhoto(BOT_TYPE.BOOKING, cfgN.adminGroupId, best2.file_id, Object.assign({
+        caption: adminText
+      }, o));
+    });
+    threadId = adminSent.threadId;
+    if (!adminSent.ok) {
+      Logger.log('⚠️ 管理グループへ写真送信失敗、テキストのみ送信');
+      threadId = sendAdminNoticeToCustomerTopic_(chatId, function(o) {
+        return sendMessage(BOT_TYPE.BOOKING, cfgN.adminGroupId, adminText, o);
+      }).threadId;
+    }
   } catch (err) {
     Logger.log('⚠️ 管理グループへ写真送信失敗、テキストのみ送信: ' + err);
-    sendMessage(BOT_TYPE.BOOKING, cfgN.adminGroupId, adminText, adminOpts);
+    sendMessage(BOT_TYPE.BOOKING, cfgN.adminGroupId, adminText);
   }
 
   // ── 顧客へ受領メッセージ ──
@@ -566,16 +573,14 @@ function checkUnpaidReminders() {
         });
         sent++;
 
-        // 管理グループへ通知
-        var custRow = findCustomerRow(chatId);
-        var threadId = (custRow && custRow.data['トピックID']) ? custRow.data['トピックID'] : null;
+        // 管理グループへ通知（トピックが消えていたら作り直す ForumTopicManager.gs）
         var cfg = getConfig();
-        var adminOpts = threadId ? { message_thread_id: threadId } : {};
-        sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
+        var reminderAdminText =
           '⏰ 催促送信 (' + (reminderCount + 1) + '回目)\n' +
-          '🆔 ' + bookingId + ' / $' + amount + ' / ' + hoursPassed + 'h経過',
-          adminOpts
-        );
+          '🆔 ' + bookingId + ' / $' + amount + ' / ' + hoursPassed + 'h経過';
+        sendAdminNoticeToCustomerTopic_(chatId, function(o) {
+          return sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, reminderAdminText, o);
+        });
       }
     } catch (err) {
       Logger.log('⚠️ checkUnpaidReminders 送信失敗 bookingId=' + bookingId + ' err=' + err);
