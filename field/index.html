@@ -184,6 +184,7 @@ main.tabbed{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 .tl-item .n{font-size:16px;font-weight:700}
 div.tl-item{cursor:pointer}
 .bkd{display:grid;gap:4px;margin-top:6px;font-size:15px;color:var(--sub)}
+.bkd>div,.next .meta>div{min-width:0;overflow-wrap:anywhere}
 .bkd b{color:var(--text)}
 .bkd .acts{margin-top:6px}
 .tl-item.done .n{color:var(--sub);text-decoration:line-through}
@@ -1045,7 +1046,7 @@ function renderHome() {
     html += '<div class="card next"><div class="band">⏭ ' + t('next_title') + '</div>' +
       '<div class="body"><div class="when"><span class="t num">' + esc(nx.time || '--:--') + '</span><span class="in">' + inTxt + '</span></div>' +
       '<div class="name">' + esc(nx.name || t('no_name')) + '</div><div class="chips">' + itemChips(nx) + '</div>' +
-      '<div class="meta"><div>' + (/^https?:\/\//.test(nx.place || '') ? '' : '📍 ') + '<b>' + esc(placeText(nx.place)) + '</b></div>' + (nx.placeNote ? '<div>📝 <b>' + esc(nx.placeNote) + '</b></div>' : '') + '<div>🚗 <b>' + esc(nx.car || '—') + '</b> <span class="num">' + esc(nx.plate) + '</span> · ' + (nx.size === 'SUV' ? t('size_suv') : t('size_sedan')) + '</div></div>' +
+      '<div class="meta"><div>' + (/^https?:\/\//.test(nx.place || '') ? '' : '📍 ') + '<b>' + esc(placeText(nx.place)) + '</b></div>' + (nx.address && nx.address !== nx.place ? '<div>🏠 <b>' + esc(nx.address) + '</b></div>' : '') + (nx.placeNote ? '<div>📝 <b>' + esc(nx.placeNote) + '</b></div>' : '') + '<div>🚗 <b>' + esc(nx.car || '—') + '</b> <span class="num">' + esc(nx.plate) + '</span> · ' + (nx.size === 'SUV' ? t('size_suv') : t('size_sedan')) + '</div></div>' +
       '<div class="acts"><button type="button" class="act go" data-map="' + esc(nx.place) + '"><span class="ic">🗺</span>' + t('btn_map') + '</button>' +
       '<button type="button" class="act" data-open="' + esc(nx.id) + '"><span class="ic">🔍</span>' + t('job_precheck') + '</button></div>' +
       '<button type="button" class="btn green" data-open="' + esc(nx.id) + '">▶ ' + t('btn_start') + '</button></div></div>';

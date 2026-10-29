@@ -24,7 +24,7 @@ function load(files, extra) {
 }
 
 test('場所のメモ: 出張だけ使う（店舗・流入元の固定場所は空）', () => {
-  const ctx = load(['SourceCampaign.gs', 'BookingLogic.gs']);
+  const ctx = load(['BookingLogic.gs']);
   assert.equal(ctx.bookingPlaceNote_('Vattanac Tower B2', false, '出張'), 'Vattanac Tower B2');
   assert.equal(ctx.bookingPlaceNote_('Vattanac Tower B2', false, '店舗'), '');
   assert.equal(ctx.bookingPlaceNote_('Vattanac Tower B2', true, '出張'), '');
@@ -32,13 +32,27 @@ test('場所のメモ: 出張だけ使う（店舗・流入元の固定場所は
   assert.equal(ctx.bookingPlaceNote_(undefined, false, '出張'), '');
 });
 
-test('場所のメモ: 改行・制御文字は空白、先頭の = + - @ は外す、200字まで', () => {
-  const ctx = load(['SourceCampaign.gs', 'BookingLogic.gs']);
+test('場所のメモ: 先頭の - + は消さない（地下階・電話番号の意味を変えない）', () => {
+  const ctx = load(['BookingLogic.gs']);
+  assert.equal(ctx.bookingPlaceNote_('-2 parking', false, '出張'), '-2 parking');
+  assert.equal(ctx.bookingPlaceNote_('+855 12 345 678 gate', false, '出張'), '+855 12 345 678 gate');
+  // 数式にならない対策はシートに書く側（appendRow → sheetSafeValue_）。ここでは文字のまま
+  assert.equal(ctx.bookingPlaceNote_('=IMPORTXML("http://x")', false, '出張'), '=IMPORTXML("http://x")');
+});
+
+test('場所のメモ: 改行・制御文字・向きを変える記号は空白、クメール語のゼロ幅文字は残す', () => {
+  const ctx = load(['BookingLogic.gs']);
   assert.equal(ctx.bookingPlaceNote_('Gate 2\nB2 parking\t\tnear lift', false, '出張'), 'Gate 2 B2 parking near lift');
-  assert.equal(ctx.bookingPlaceNote_('=IMPORTXML("http://x")', false, '出張'), 'IMPORTXML("http://x")');
-  assert.equal(ctx.bookingPlaceNote_('  +@-B1', false, '出張'), 'B1');
-  assert.equal(ctx.bookingPlaceNote_('ជាន់ B2 ក្បែរជណ្ដើរយន្ត', false, '出張'), 'ជាន់ B2 ក្បែរជណ្ដើរយន្ត');
+  assert.equal(ctx.bookingPlaceNote_('B2\u202eparking\u2028lift\u0085x', false, '出張'), 'B2 parking lift x');
+  assert.equal(ctx.bookingPlaceNote_('ជាន់ B2 ក្បែរ\u200bជណ្ដើរយន្ត', false, '出張'), 'ជាន់ B2 ក្បែរ\u200bជណ្ដើរយន្ត');
+});
+
+test('場所のメモ: 200字まで（絵文字の途中で切らない）', () => {
+  const ctx = load(['BookingLogic.gs']);
   assert.equal(ctx.bookingPlaceNote_('x'.repeat(300), false, '出張').length, 200);
+  const cut = ctx.bookingPlaceNote_('🚗'.repeat(250), false, '出張');
+  assert.equal(Array.from(cut).length, 200);
+  assert.ok(!/[\ud800-\udbff]$/.test(cut), '片割れのサロゲートで終わらない');
 });
 
 function bookingsSheet(headers, rows) {

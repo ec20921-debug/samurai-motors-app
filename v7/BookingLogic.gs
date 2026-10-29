@@ -897,7 +897,7 @@ function createBookingLocked_(params, after) {
       '緯度':           loc.lat || '',
       '経度':           loc.lng || '',
       '住所':           '',
-      '場所補足':       placeNote,
+      '場所補足':       placeNote ? "'" + placeNote : '',   // 文字として書く（「3/4」を日付にしない）
       'マップリンク':   loc.mapsUrl || '',
       'カレンダーID':   calendarEventId,
       '予約登録日時':   new Date(),
@@ -1298,11 +1298,17 @@ function formatHHmm(h, m) {
 
 /**
  * 予約画面の「場所のメモ」（2026-10-29・任意）。出張だけ使い、店舗・流入元の固定場所（Picasso 等）は空。
- * 改行・制御文字は空白に、先頭の = + - @ は外し（シートで数式にしない）、200字まで
+ * - 先頭の - + は消さない（「-2 parking」=地下2階、「+855…」）。数式にならない対策はシートに書く appendRow（sheetSafeValue_）
+ * - 改行・制御文字・行区切り・文字の向きを変える記号は空白に。ゼロ幅の文字（U+200B〜200D）はクメール語で使うので残す
+ * - 200字まで（絵文字の途中で切らない）
  */
 function bookingPlaceNote_(raw, srcFixedPlace, serviceType) {
   if (srcFixedPlace || serviceType !== '出張') return '';
-  return sourceSafeText_(String(raw || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s{2,}/g, ' '), 200);
+  var s = String(raw == null ? '' : raw)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/\s{2,}/g, ' ').trim();
+  var chars = Array.from(s);
+  return chars.length > 200 ? chars.slice(0, 200).join('').trim() : s;
 }
 
 /**
