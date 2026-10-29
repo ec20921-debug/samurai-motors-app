@@ -61,9 +61,10 @@ function individualNoticeCarAndMenu_(info) {
  * 紹介されたお友達の予約（名前・ナンバー・場所・金額は載せない）
  * @param {Array<string>} langs - individualGroupLangs_
  * @param {Object} info - { plan, options, vehicleType, carModel, date, startTime, endTime }
+ * @param {Object} [head] - 見出し { ja, en, km }（飲食店は RestaurantPartner.gs RESTAURANT_TEXT.noticeHead・2026-10-29）。省略時はご紹介の見出し
  */
-function individualReferralBookingNotice_(langs, info) {
-  return '📅 ' + individualLine_(langs, INDIVIDUAL_NOTICE_TEXT.referralHead) + '\n' +
+function individualReferralBookingNotice_(langs, info, head) {
+  return '📅 ' + individualLine_(langs, head || INDIVIDUAL_NOTICE_TEXT.referralHead) + '\n' +
     '🗓 ' + individualNoticeWhen_(langs, info) + '\n' +
     individualNoticeCarAndMenu_(info);
 }

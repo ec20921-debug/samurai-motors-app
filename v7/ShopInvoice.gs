@@ -237,7 +237,7 @@ function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts) {
         msg = '⚠️ 請求を送れていません: 流入元タブが読めず、' + name + ' がレジデンス等の提携先か確かめられません。' + manual;
         break;
       case 'individual_partner':
-        msg = '⚠️ 請求を送っていません: ' + name + ' は個人提携のため、グループへ請求しません（お客様は当社に払う）。お客様への請求を確かめてください';
+        msg = '⚠️ 請求を送っていません: ' + name + ' は個人提携・飲食店の型のため、グループへ請求しません（お客様は当社に払う）。お客様への請求を確かめてください';
         break;
       case 'partner_kind_unknown':
         msg = '⚠️ 請求を送れていません: 店マスターが読めず、' + name + ' が個人提携か確かめられません。' + manual;

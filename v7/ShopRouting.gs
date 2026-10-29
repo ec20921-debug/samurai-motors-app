@@ -150,7 +150,10 @@ function handleShopGroupMessage_(msg) {
   // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）。
   // 返事とあいさつ文は取り消せないので、5分キャッシュを使わず設定を読み直す
   var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit, true) : null;
-  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
+  var restaurantHit = indivPartner === true && typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopIdHit);
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
+    restaurantHit ? restaurantConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
+    indivPartner === true ? individualConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
     shopLangsHit ? shopGroupConnectedText_(shopLangsHit, shopName) :
     '✅ Connected! / 連携完了！\n' +
     (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +
@@ -174,7 +177,7 @@ function handleShopGroupMessage_(msg) {
   try {
     var cfg = getConfig();
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId,
-      '🔗 店舗グループ連携完了: ' + shopName + (indivPartner === true ? '（個人提携）' : '') + '\n' +
+      '🔗 店舗グループ連携完了: ' + shopName + (restaurantHit ? '（飲食店）' : indivPartner === true ? '（個人提携）' : '') + '\n' +
       'shop_id: ' + shopIdHit + '\n' +
       'グループ: ' + (msg.chat.title || msg.chat.id));
   } catch (err) {
@@ -302,13 +305,15 @@ function handleShopStart_(msg, text) {
     var indivInfo = (indivState === true && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
     var uname = (msg.from && msg.from.username) ? ' @' + msg.from.username : '';   // 表示名は誰でも変えられるので @ユーザー名も出す
     // 2026-10-27: 本人の登録はグループに送った本人登録リンクから自動（PartnerSelfRegister.gs）。紹介QRの人を手で本人にしない
-    var selfHint = (indivInfo && !indivInfo.selfChat)
+    var restaurantRef = !!(indivInfo && indivInfo.kind === 'restaurant');   // 飲食店は本人登録なし（RestaurantPartner.gs・2026-10-29）
+    var selfHint = (indivInfo && !indivInfo.selfChat && !restaurantRef)
       ? '\n（紹介者ご本人はまだ未登録。この方' + uname + 'がご本人なら、紹介QRでなく、グループに送った「本人登録リンク」から開いてもらうと自動で登録されます）'
       : '';
     sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, indivState === true
-      ? '🙋 個人提携の紹介QRからの新規流入\n紹介者: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName + '（chat_id=' + msg.chat.id + '）\n' +
-        '（お客様は当社に直接お支払い・決済QRは通常どおり。紹介者のグループには予約が入った時だけ知らせる）' + selfHint +
-        (linked ? '' : '\n（紹介者のグループは未連携: 予約のお知らせは届きません）' + shopLinkGuideText_(link, welcomeShopName || shopId))
+      ? (restaurantRef ? '🍽 飲食店の QR からの新規流入\n店: ' : '🙋 個人提携の紹介QRからの新規流入\n紹介者: ') +
+        (welcomeShopName || shopId) + '\n顧客: ' + custName + '（chat_id=' + msg.chat.id + '）\n' +
+        '（お客様は当社に直接お支払い・決済QRは通常どおり。' + (restaurantRef ? 'お店' : '紹介者') + 'のグループには予約が入った時だけ知らせる）' + selfHint +
+        (linked ? '' : '\n（' + (restaurantRef ? 'お店' : '紹介者') + 'のグループは未連携: 予約のお知らせは届きません）' + shopLinkGuideText_(link, welcomeShopName || shopId))
       : '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
       (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）' +
         shopLinkGuideText_(link, welcomeShopName || shopId)));

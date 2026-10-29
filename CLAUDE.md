@@ -25,7 +25,7 @@
 | 業務Bot / job-manager.html | 🇰🇭 現場スタッフ | クメール語 | 日本語（括弧） |
 | 管理グループ通知 | 🇯🇵 日本人管理者 | 日本語 | — |
 | 提携店（車屋）のグループ | 🇰🇭🇯🇵 お店＋当社スタッフ | 店マスター「グループへの通知の言語」の順（空欄＝クメール語 → 英語 → 日本語） | — |
-| レジデンス等の提携先のグループ / 個人提携のグループ | 管理側 / 紹介者 | 英語（固定） / 店マスター「グループへの通知の言語」の順（空欄＝英語＋クメール語・2026-10-28〜） | — |
+| レジデンス等の提携先のグループ / 個人提携・飲食店のグループ | 管理側 / 紹介者・お店 | 英語（固定） / 店マスター「グループへの通知の言語」の順（空欄＝英語＋クメール語・2026-10-28〜・飲食店は 2026-10-29〜） | — |
 | スプレッドシート | 🇯🇵 管理者（主） | 日本語 | 英語（列ヘッダー） |
 | GASコード・コメント | 開発者 | 英語 | — |
 
@@ -50,7 +50,7 @@
 | 作業管理 | JobManager | 作業開始/完了・写真3方向配信・リピーター判定 |
 | 顧客コミュ | CustomerChat / CustomerContact / CustomerNotifier / ForumTopicManager | 転送・連絡先・通知・1顧客1トピック |
 | 決済 | PaymentManager | QR送信・スクショ受付・24h催促 |
-| 提携先 | ShopRouting / ShopGroupGreeting / ShopInvoice / SourceGroupNotify / IndividualPartner / PartnerLang | 店QR・グループ連携・あいさつ文・請求・レジデンス等・個人提携・グループへの通知の言語（2026-10-26） |
+| 提携先 | ShopRouting / ShopGroupGreeting / ShopInvoice / SourceGroupNotify / IndividualPartner / RestaurantPartner / PartnerLang | 店QR・グループ連携・あいさつ文・請求・レジデンス等・個人提携・飲食店（2026-10-29）・グループへの通知の言語（2026-10-26） |
 | キャンペーン | Campaign / CampaignAssets / CampaignBooking / CampaignScheduler / CampaignSheets | 配信・素材・予約連動・スケジュール・シート |
 | セットアップ系（本番外） | Setup / SetupProperties / GetGroupId / WebhookSetup | .claspignore で push 除外 |
 | ⚠️ 整理候補 | Setup_CampaignBooking / Setup_MenuV2 / Setup_MenuV3 / Migration_ServiceType | **claspignore 漏れで push 対象に残存**（docs/DEPLOY.md 参照） |

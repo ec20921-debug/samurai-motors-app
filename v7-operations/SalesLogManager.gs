@@ -616,12 +616,14 @@ function getShopSheet_() {
       // 提携先ごとの紹介料条件（CommissionManager.gs）。既存の手動列の位置を動かさないよう末尾に追加
       ensureColumnsAtEnd_(sheet, SHOP_TERMS_HEADERS),
       // 提携の種別（個人提携 等・IndividualPartnerOps.gs・2026-10-26）。v7 は列が無いと個人提携か判定できず止める側に倒す
-      ensureColumnsAtEnd_(sheet, [INDIVIDUAL_PARTNER_KIND_COL]),
+      ensureColumnsAtEnd_(sheet, [INDIVIDUAL_PARTNER_KIND_COL]) && ensurePartnerKindValidation_(sheet),
       ensureColumnsAtEnd_(sheet, SALESLOG_SHOP_EXTRA_HEADERS),
       // グループへの通知の言語（プルダウン付き・PartnerLangOps.gs・2026-10-26）。列が無い間は v7 も標準の言語で送る
       ensurePartnerLangColumn_(sheet),
       // 個人提携の配分・本人登録・紹介チラシ（IndividualPartnerOps.gs・2026-10-27）。v7 は列が無いと書かないだけ
-      ensureColumnsAtEnd_(sheet, INDIVIDUAL_PARTNER_MASTER_COLS)
+      ensureColumnsAtEnd_(sheet, INDIVIDUAL_PARTNER_MASTER_COLS),
+      // 営業ボードの分類（相手の種類・タブの分け方だけ・ScoutBoardShopLinks.gs・2026-10-29）
+      ensureBoardCategoryColumn_(sheet)
     ].every(Boolean);
   };
   if (!sheet) {

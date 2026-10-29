@@ -988,7 +988,7 @@ function createBookingLocked_(params, after) {
       // 2026-10-26: 個人提携の紹介（管理通知に1行）
       referralAdminLine: selfPartner
         ? '🙋 紹介者ご本人のご予約: ' + selfPartner.name + '（' + selfPartner.pct + '%引き・紹介料なし・お支払いは当社へ）\n'
-        : (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate) : ''
+        : (indivPartner && typeof individualAdminLine_ === 'function') ? individualAdminLine_(indivPartner.name, indivPartner.rate, indivPartner.kind) : ''
     };
     if (after) after.bookingCreated = createdInfo;
     else notifyBookingCreated(createdInfo);
