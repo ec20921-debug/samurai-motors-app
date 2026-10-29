@@ -725,6 +725,8 @@ function createBookingLocked_(params, after) {
       return { status: 'error', message: 'Please enter your unit number. / 部屋番号を入力してください。' };
     }
     const serviceType = srcFixedPlace ? '出張' : ((params.serviceType === '店舗') ? '店舗' : '出張');
+    // 2026-10-29: 出張の「場所のメモ」（建物名・入口・駐車場の階など・任意）。予約タブ 場所補足・管理通知・現場アプリへ
+    const placeNote = bookingPlaceNote_(params.placeNote, srcFixedPlace, serviceType);
 
     // ── 1-c. 料金・所要時間の合算 ──
     const baseDuration = plan ? getDurationFor(plan, vehicleType) : 0;
@@ -866,6 +868,7 @@ function createBookingLocked_(params, after) {
       '車種: ' + vehicleType + '\n' +
       '顧客: ' + params.name + ' (chat_id=' + params.chatId + ')\n' +
       '場所: ' + locationStr + '\n' +
+      (placeNote ? '場所メモ: ' + placeNote + '\n' : '') +
       (srcCfg ? '流入元: ' + sourceDisplay_(srcCfg) + (unitNo ? '・部屋 ' + unitNo : '') + '\n特典: ' + srcPerkText + '\n' : '') +
       (carModel ? '車: ' + carModel + '\n' : '') +
       '料金: ' + calPriceParts.join(' + ') +
@@ -894,7 +897,7 @@ function createBookingLocked_(params, after) {
       '緯度':           loc.lat || '',
       '経度':           loc.lng || '',
       '住所':           '',
-      '場所補足':       '',
+      '場所補足':       placeNote ? "'" + placeNote : '',   // 文字として書く（「3/4」を日付にしない）
       'マップリンク':   loc.mapsUrl || '',
       'カレンダーID':   calendarEventId,
       '予約登録日時':   new Date(),
@@ -972,6 +975,7 @@ function createBookingLocked_(params, after) {
       srcPerkText: srcPerkText,
       unitNo: unitNo,
       carModel: carModel,
+      placeNote: placeNote,
       // 2026-10-26: 個人提携の紹介（管理通知に1行）
       referralAdminLine: selfPartner
         ? '🙋 紹介者ご本人のご予約: ' + selfPartner.name + '（' + selfPartner.pct + '%引き・紹介料なし・お支払いは当社へ）\n'
@@ -1239,6 +1243,7 @@ function notifyBookingCreated(info) {
   }
   adminText +=
     '\n場所: ' + (isInStore ? '🏪 店舗 (Samurai Motors 事務所)' : info.mapsUrl) + '\n' +
+    (info.placeNote ? '📝 場所メモ: ' + info.placeNote + '\n' : '') +
     '━━━━━━━━━━━━━━━━';
 
   try {
@@ -1289,6 +1294,21 @@ function toPhnomPenhHM(date) {
  */
 function formatHHmm(h, m) {
   return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+}
+
+/**
+ * 予約画面の「場所のメモ」（2026-10-29・任意）。出張だけ使い、店舗・流入元の固定場所（Picasso 等）は空。
+ * - 先頭の - + は消さない（「-2 parking」=地下2階、「+855…」）。数式にならない対策はシートに書く appendRow（sheetSafeValue_）
+ * - 改行・制御文字・行区切り・文字の向きを変える記号は空白に。ゼロ幅の文字（U+200B〜200D）はクメール語で使うので残す
+ * - 200字まで（絵文字の途中で切らない）
+ */
+function bookingPlaceNote_(raw, srcFixedPlace, serviceType) {
+  if (srcFixedPlace || serviceType !== '出張') return '';
+  var s = String(raw == null ? '' : raw)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/\s{2,}/g, ' ').trim();
+  var chars = Array.from(s);
+  return chars.length > 200 ? chars.slice(0, 200).join('').trim() : s;
 }
 
 /**
