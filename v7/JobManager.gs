@@ -129,6 +129,9 @@ function apiBookingToday() {
         source: (headers['流入元'] && row[headers['流入元'] - 1] && typeof sourceStaffLabel_ === 'function')
           ? sourceStaffLabel_(String(row[headers['流入元'] - 1])) : '',
         room: headers['部屋番号'] ? String(row[headers['部屋番号'] - 1] || '') : '',
+        // 2026-10-29: 予約の中身（現場アプリ）に住所の文字と場所のメモ（お客様が予約画面で書く・任意）
+        address: headers['住所'] ? String(row[headers['住所'] - 1] || '') : '',
+        placeNote: headers['場所補足'] ? String(row[headers['場所補足'] - 1] || '') : '',
         perk: headers['特典'] ? String(row[headers['特典'] - 1] || '') : ''
       });
     }
