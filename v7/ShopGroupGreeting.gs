@@ -50,6 +50,10 @@ function buildShopGroupGreeting_(shopName, shopId) {
   }
   // 個人提携は専用文（IndividualPartner.gs・英語＋クメール語が標準・2026-10-28〜）
   var indiv = (shopId && typeof individualPartnerInfo_ === 'function') ? individualPartnerInfo_(shopId) : null;
+  // 飲食店は専用文（RestaurantPartner.gs・本人登録・チラシの案内なし・2026-10-29）
+  if (indiv && indiv.kind === 'restaurant' && typeof buildRestaurantGroupGreeting_ === 'function') {
+    return buildRestaurantGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate, individualGroupLangs_(shopId, true));
+  }
   if (indiv) {
     return buildIndividualGroupGreeting_(String(shopName || '').trim() || indiv.name, indiv.rate,
       (typeof effectiveReferralDiscount_ === 'function') ? effectiveReferralDiscount_(indiv, shopId) : 0,
@@ -106,8 +110,10 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   }
   // 個人提携: はじめのご案内のすぐあとに、チラシ（店マスター「紹介チラシURL」の画像・最大10枚）＋紹介URL → 本人登録リンク（2026-10-27 PartnerSelfRegister.gs）。
   //   ロックを外してから送る（予約などを待たせない）。失敗しても毎時の安全網が送る
+  //   飲食店はチラシ・本人登録リンクを送らない（チラシは Daisuke がグループに手で送る・2026-10-29）
   if (sentNow && typeof sendIndividualOnboardingRest_ === 'function' &&
-      typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true) {
+      typeof individualPartnerState_ === 'function' && individualPartnerState_(shopId) === true &&
+      !(typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopId))) {
     sendIndividualOnboardingRest_(shopId, groupChatId);
   }
   return true;

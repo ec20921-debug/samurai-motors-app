@@ -19,7 +19,8 @@ const SCOUT_BOARD_TZ = 'Asia/Phnom_Penh';
 const SCOUT_BOARD_TABS = { today: '📅 今日', shops: '🏪 お店一覧', recent: '📝 最近の記録', weekly: '📈 週ごと',
                            links: '🔗 提携店QR・グループ連携',   // links は ScoutBoardShopLinks.gs（2026-10-22）
                            // 提携の種類ごと（2026-10-27 Daisuke「タブで個人提携、車屋提携、商業施設提携みたいにわける」・ScoutBoardShopLinks.gs）
-                           pIndiv: '🙋 個人提携', pShop: '🚗 車屋提携', pFacility: '🏢 商業施設提携' };
+                           pIndiv: '🙋 個人提携', pShop: '🚗 車屋提携', pFacility: '🏢 商業施設提携',
+                           pRestaurant: '🍽 飲食店提携' };   // 2026-10-29 飲食店の型（店マスター 提携種別=飲食店）
 const SCOUT_BOARD_RECENT_DAYS = 30;
 const SCOUT_BOARD_WEEKS = 8;
 const SCOUT_BOARD_HEAD_BG = '#fbeec9';

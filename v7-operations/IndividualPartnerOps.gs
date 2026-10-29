@@ -16,10 +16,13 @@
  *     予約タブ「紹介元shop_id」列が無い・記帳に失敗 → 個人提携の月報だけ止める（直したら sendIndividualPartnerReportsNow）
  *
  * 【個人提携の目印】店マスター「提携種別」=「個人提携」（v7/IndividualPartner.gs と同じ）
+ * 【飲食店（2026-10-29・第1号 PJ Restaurant）】「提携種別」=「飲食店」も同じ流れ（お客様は当社に払う・紹介料を台帳へ記帳・月報）。
+ *   違うのはあいさつ文（restaurantGroupGreetingText_）と、本人登録・チラシが無いこと（v7/RestaurantPartner.gs）
  * 決定ログ: Vault/01_Personal/Decisions/2026-10-26-motors-individual-partner-type.md
  */
 
 const INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7/IndividualPartner.gs と同じ値（別 GAS プロジェクトのため複製）
+const RESTAURANT_PARTNER_KIND = '飲食店';     // 2026-10-29 同上（個人提携と同じ紹介料の流れ）
 const INDIVIDUAL_PARTNER_KIND_COL = '提携種別';
 const INDIVIDUAL_LEDGER_BOOKING_COL = '予約ID';   // コミッション台帳の末尾に足す（自動記帳の重複防止）
 const INDIVIDUAL_BOOKING_REF_COL = '紹介元shop_id';   // v7 Database「予約」タブ（v7 が予約・手動ジョブ売上の時に書く）
@@ -31,7 +34,7 @@ const INDIVIDUAL_AUTO_RECORDER = '自動（個人提携）';
 const INDIVIDUAL_PARTNER_MASTER_COLS = ['紹介割引率(%)', '本人chat_id', '紹介チラシURL', '本人の名前（Telegram）', '本人登録日時', '本人登録リンク'];
 
 /**
- * 店マスターの個人提携 → { shop_id: { name, terms } }（terms = CommissionManager.shopCommissionTerms_）。
+ * 店マスターの個人提携・飲食店 → { shop_id: { name, terms, kind } }（terms = CommissionManager.shopCommissionTerms_・kind = 'individual' / 'restaurant'）。
  * 「提携種別」列が無い時は例外（「個人提携は無い」と決めつけない＝呼び元で月次レポートを止める）
  */
 function individualPartnersById_() {
@@ -42,8 +45,10 @@ function individualPartnersById_() {
   const out = {};
   readSheetObjects_(sheet).forEach(function(r) {
     const id = String(r.obj['shop_id'] || '').trim();
-    if (!id || String(r.obj[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() !== INDIVIDUAL_PARTNER_KIND) return;
-    out[id] = { name: String(r.obj['店名'] || '').trim() || id, terms: shopCommissionTerms_(r.obj) };
+    const kindVal = String(r.obj[INDIVIDUAL_PARTNER_KIND_COL] || '').trim();
+    if (!id || (kindVal !== INDIVIDUAL_PARTNER_KIND && kindVal !== RESTAURANT_PARTNER_KIND)) return;
+    out[id] = { name: String(r.obj['店名'] || '').trim() || id, terms: shopCommissionTerms_(r.obj),
+                kind: kindVal === RESTAURANT_PARTNER_KIND ? 'restaurant' : 'individual' };
   });
   return out;
 }
@@ -117,7 +122,7 @@ function syncIndividualPartnerCommissions_() {
         '記録者':              INDIVIDUAL_AUTO_RECORDER,
         '最終更新日時':         nowStr,
         '更新者':              INDIVIDUAL_AUTO_RECORDER,
-        'メモ':                '予約 ' + bookingId + '（個人提携の紹介・自動記帳）',
+        'メモ':                '予約 ' + bookingId + '（' + (p.kind === 'restaurant' ? '飲食店' : '個人提携') + 'の紹介・自動記帳）',
         '紹介者名':            intro.name,
         '紹介者率(%)':         intro.rate,
         '紹介者報酬(USD)':     intro.amount,
@@ -296,6 +301,40 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       (off ? '- ភ្ញៀវដែលអ្នកបានណែនាំមក នឹងបានបញ្ចុះតម្លៃ ' + off + ' លើសេវាទាំងអស់\n' : '') +
       '- ពេលមិត្តភក្តិកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
       '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n' +
+      'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
+  });
+}
+
+/**
+ * 飲食店のグループのあいさつ文（営業ボードの表示用・2026-10-29）。
+ * v7/RestaurantPartner.gs buildRestaurantGroupGreeting_（連携時に予約Botが送る文）と同じ文。直すときは両方を直す
+ * クメール語は Panha 校閲（2026-10-29・provisional・Run Kosal 確認待ち）
+ */
+function restaurantGroupGreetingText_(name, rate, langs) {
+  const n = String(name || '').trim() || 'Partner';
+  const r = Number(rate) >= 0 ? Number(rate) : 30;
+  const pct = r + '%';
+  return individualTextOps_(langs, {
+    ja: n + ' さん、SAMURAI MOTORS へようこそ！\nこのグループで、ご案内とお知らせをお送りします。\n\n' +
+      '【しくみ】\n' +
+      '・お店のお客様は、チラシの QR からご予約いただき、お支払いは SAMURAI MOTORS に直接いただきます\n' +
+      '・ご予約が入ると、ここでお知らせします（日時・メニュー・車種。お名前や写真はお送りしません）\n' +
+      (r > 0 ? '・毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、10日までに ABA でお支払いします\n\n'
+             : '・毎月はじめに、前月の件数と金額をまとめてお送りします\n\n') +
+      'ご不明な点は、このグループでお気軽にどうぞ。よろしくお願いします！',
+    en: 'Welcome to SAMURAI MOTORS, ' + n + '! We\'ll send updates in this group.\n\n' +
+      '[How it works]\n' +
+      '- Your guests book with the QR on our flyer and pay SAMURAI MOTORS directly.\n' +
+      '- When a guest books, we\'ll let you know here (date, time, menu and car — no names or photos).\n' +
+      (r > 0 ? '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th.\n\n'
+             : '- At the start of each month, we\'ll send last month\'s jobs and amounts.\n\n') +
+      'Feel free to ask anything in this group. Thank you!',
+    km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
+      '[របៀបដំណើរការ]\n' +
+      '- ភ្ញៀវហាងអ្នកកក់តាម QR លើខិត្តប័ណ្ណរបស់យើង។ ភ្ញៀវបង់ប្រាក់ឱ្យ SAMURAI MOTORS ដោយផ្ទាល់។\n' +
+      '- ពេលភ្ញៀវកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
+      (r > 0 ? '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n'
+             : '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ និងចំនួនទឹកប្រាក់ របស់ខែមុន\n\n') +
       'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }

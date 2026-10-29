@@ -280,6 +280,7 @@ function sendSelfRegLinkNow(shopId) {
   refreshPartnerKinds_();
   var info = individualPartnerInfo_(id);
   if (!info) { Logger.log('⚠️ 個人提携として読めない（店マスター）: ' + id); return false; }
+  if (info.kind === 'restaurant') { Logger.log('ℹ️ 飲食店には本人登録リンクを送らない（2026-10-29）: ' + id); return false; }
   if (info.selfChat) { Logger.log('ℹ️ 本人登録済み（作り直すなら先に店マスター「' + PARTNER_SELF_CHAT_COL + '」を消す）: ' + id); return false; }
   if (!(selfRegPctFor_(info) > 0)) { Logger.log('ℹ️ 本人割引が 0% の配分なので、本人登録リンクは送らない: ' + id); return false; }
   if (!rotateSelfRegToken_(id)) { Logger.log('⚠️ 本人登録リンクの送信中です。少し待ってからもう一度: ' + id); return false; }
@@ -332,6 +333,7 @@ function sendSelfRegLinkOnce_(shopId, groupChatId) {
   if (typeof individualPartnerState_ !== 'function' || individualPartnerState_(shopId) !== true) return true;   // 個人提携だけ
   var info = individualPartnerInfo_(shopId);
   if (!info || info.selfChat) return true;   // 登録済み
+  if (info.kind === 'restaurant') return true;   // 飲食店は本人登録なし（2026-10-29）
   var pct = selfRegPctFor_(info);
   if (!(pct > 0)) return true;   // 本人割引が無い配分（紹介料率0・割引0）は登録しても意味が無い
   var key = SELF_REG_SENT_PREFIX + shopId;
@@ -404,6 +406,7 @@ function sendIndividualFlyersOnce_(shopId, groupChatId, opts) {
   shopId = String(shopId || '').trim();
   if (!shopId || !groupChatId) return false;
   if (typeof individualPartnerState_ !== 'function' || individualPartnerState_(shopId) !== true) return true;
+  if (typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopId)) return true;   // 飲食店はチラシを Bot から送らない（2026-10-29）
   var key = PARTNER_FLYERS_SENT_PREFIX + shopId;
   var claim = partnerSendClaim_(key, !!opts.force);
   if (!claim) return true;   // 送信済み・ほかの実行が送信中（即時送信と毎時の安全網が重なっても1回だけ）
@@ -493,6 +496,10 @@ function partnerFlyerMismatch_(r, shopId, urls) {
 function resendPartnerFlyersNow(shopId) {
   var gid = partnerGroupChatId_(shopId);
   if (!gid) { Logger.log('⚠️ 連携済みのグループが無い: ' + shopId); return false; }
+  if (typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopId)) {
+    Logger.log('ℹ️ 飲食店のチラシは Bot から送らない（グループに手で送る・2026-10-29）: ' + shopId);
+    return false;
+  }
   var r = sendIndividualFlyersOnce_(shopId, gid, { force: true });
   Logger.log((r === 'sent' ? '📎 送り直した: ' : r ? '⚠️ ほかの実行が送信中か混み合っている。少し待ってもう一度: ' : '⚠️ 送れなかった（管理グループの知らせを見る）: ') + shopId);
   return r === 'sent';
@@ -563,7 +570,7 @@ function sendPendingIndividualOnboarding_() {
       if (!shopId || !gid) return;
       if (typeof individualPartnerState_ !== 'function' || individualPartnerState_(shopId) !== true) return;
       var info = individualPartnerInfo_(shopId);
-      if (!info) return;
+      if (!info || info.kind === 'restaurant') return;   // 飲食店はチラシ・本人登録リンクを送らない（2026-10-29）
       // 1. 取り消し → 作り直し（送信中の 'sending' は送ったとみなさない）
       if (!info.selfChat && props.getProperty(SELF_REG_SHOP_PREFIX + shopId) && partnerSentAt_(SELF_REG_SENT_PREFIX + shopId)) {
         var mr = partnerMasterRow_(shopId);
@@ -778,7 +785,8 @@ function handleSelfRegStart_(msg, text) {
     reply(individualText_(INDIVIDUAL_LANG_DEFAULT, SELF_REG_TEXT.unknown));
     return true;
   }
-  var valid = !!shopId && state === true && !!validPartnerShopId_(shopId);
+  var valid = !!shopId && state === true && !!validPartnerShopId_(shopId) &&
+    !(typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopId));   // 飲食店は本人登録なし（2026-10-29）
   if (!valid) {
     // 知らない token を何度も送られても管理グループを埋めない（同じ人は10分に1回）
     warnOncePer_('warn_selfreg_invalid_' + chatId, 10 * 60,

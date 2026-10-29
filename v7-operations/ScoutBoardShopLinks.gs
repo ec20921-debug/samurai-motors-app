@@ -52,7 +52,8 @@ const SCOUT_LINKS_GREETING_SOURCE_EN =
 //           あいさつ・予約確定・予約画面は英語＋日本語、作業の知らせ・リマインドなどはクメール語＋英語
 const SCOUT_LINKS_LANG_FIXED = {
   source:     { group: '英語（固定）',        customer: '英語＋日本語（あいさつ・予約確定・予約画面）／ほかはクメール語＋英語' },
-  individual: { group: '日本語（標準）', customer: 'クメール語＋英語' },   // group は店マスターの設定で表示（scoutLinksRows_）
+  individual: { group: '英語＋クメール語（標準）', customer: 'クメール語＋英語' },   // group は店マスターの設定で表示（scoutLinksRows_）
+  restaurant: { group: '英語＋クメール語（標準）', customer: 'クメール語＋英語' },   // 2026-10-29 飲食店（同上）
   unknown:    { group: '（判定できず: 流入元タブを読めません）', customer: '（判定できず）' }
 };
 const SCOUT_LINKS_SHOP_CUSTOMER_LANG = 'クメール語＋英語';
@@ -181,9 +182,11 @@ function scoutLinksRows_() {
     const rate = (typeof shopCommissionTerms_ === 'function' && shopById[id]) ? shopCommissionTerms_(shop).rate : 30;
     const shopShare = Math.round(sales * rate) / 100;   // お客さんの予約の分だけ
     const totalSales = Math.round((sales + fieldSales) * 100) / 100;
-    // 提携の種類（v7 ShopGroupGreeting.buildShopGroupGreeting_ と同じ順: レジデンス等 → 個人提携 → 車屋）
+    // 提携の種類（v7 ShopGroupGreeting.buildShopGroupGreeting_ と同じ順: レジデンス等 → 飲食店 → 個人提携 → 車屋）
+    const kindVal = String(shop[INDIVIDUAL_PARTNER_KIND_COL] || '').trim();
     const kind = (srcShopIds && srcShopIds[id]) ? 'source'
-      : String(shop[INDIVIDUAL_PARTNER_KIND_COL] || '').trim() === INDIVIDUAL_PARTNER_KIND ? 'individual'
+      : kindVal === RESTAURANT_PARTNER_KIND ? 'restaurant'
+      : kindVal === INDIVIDUAL_PARTNER_KIND ? 'individual'
       : srcShopIds ? 'shop' : 'unknown';
     const fill = function() { return name; };   // 店名に $& 等が入っても特殊展開しない
 
@@ -194,7 +197,7 @@ function scoutLinksRows_() {
       linked ? '✅ 連携済' : (code ? '⏳ 未連携' : '— コード未発行'),
       linked ? '（連携済み・送らなくてよい）' : (code ? '/register ' + code : '（コード未発行: アプリのお店の画面で「🔗 このお店のQRを出す」を押す）'),
       kind === 'shop' ? scoutLinksShopLangLabel_(shop)
-        : kind === 'individual' ? partnerLangsLabel_(individualGroupLangsOps_(shop)) + (String(shop['グループへの通知の言語'] || '').trim() ? '' : '（空欄＝英語＋クメール語）')
+        : (kind === 'individual' || kind === 'restaurant') ? partnerLangsLabel_(individualGroupLangsOps_(shop)) + (String(shop['グループへの通知の言語'] || '').trim() ? '' : '（空欄＝英語＋クメール語）')
         : SCOUT_LINKS_LANG_FIXED[kind].group,
       kind === 'shop' ? SCOUT_LINKS_SHOP_CUSTOMER_LANG : SCOUT_LINKS_LANG_FIXED[kind].customer,
       name + ' × SAMURAI MOTORS',
@@ -207,6 +210,8 @@ function scoutLinksRows_() {
       // レジデンス等は英語の専用文（SourceGroupNotify.gs）、個人提携は専用文（IndividualPartnerOps.gs・英語＋クメール語が標準・2026-10-28〜）
       kind === 'source'
         ? SCOUT_LINKS_GREETING_SOURCE_EN.replace(/\{shop\}/g, fill)
+        : kind === 'restaurant'
+        ? restaurantGroupGreetingText_(name, rate, individualGroupLangsOps_(shop))
         : kind === 'individual'
         ? individualGroupGreetingText_(name, rate, individualEffectiveDiscountOps_(shop, rate), individualGroupLangsOps_(shop),
             !!String(shop['本人chat_id'] || '').trim())
@@ -326,6 +331,14 @@ function scoutLinksWriteKindTabs_(board, items) {
     'お客様（住民）は当社に払う。特典・期間・言語は v7 Database「流入元」タブ、グループは店マスターの shop_id と Bot連携'
   ], headers, renumber(items.filter(function(o) { return o.kind === 'source'; })), widths);
   } catch (e) { Logger.log('⚠️ 営業ボード 🏢 商業施設提携タブ: ' + e); }
+  try {
+  scoutLinksWriteKindTab_(board, 'pRestaurant', [
+    '🍽 飲食店提携（1時間ごとに自動更新・見るだけ） / Restaurant partners',
+    'お客様は当社に直接払う。お店には紹介料（店マスター「紹介料率(%)」・空欄＝30%）を毎月はじめに ABA で。グループには予約の知らせと月次レポートだけ（写真なし）',
+    '入力は v7 Database「店マスター」（提携種別=飲食店・紹介料率・グループへの通知の言語＝空欄なら英語＋クメール語）。チラシは Day1 tools/motors_restaurant_flyer（Bot からは送らない）',
+    '「店の取り分 USD」の列＝紹介料の見込み（売上 × 紹介料率）'
+  ], headers, renumber(items.filter(function(o) { return o.kind === 'restaurant'; })), widths);
+  } catch (e) { Logger.log('⚠️ 営業ボード 🍽 飲食店提携タブ: ' + e); }
 }
 
 /** 種類ごとのタブを1つ書く（見出しの説明＋表） */

@@ -150,7 +150,10 @@ function handleShopGroupMessage_(msg) {
   // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）。
   // 返事とあいさつ文は取り消せないので、5分キャッシュを使わず設定を読み直す
   var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit, true) : null;
-  sendMessage(BOT_TYPE.BOOKING, msg.chat.id, indivPartner === true ? individualConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
+  var restaurantHit = indivPartner === true && typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopIdHit);
+  sendMessage(BOT_TYPE.BOOKING, msg.chat.id,
+    restaurantHit ? restaurantConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
+    indivPartner === true ? individualConnectedText_(shopName, individualGroupLangs_(shopIdHit, true)) :
     shopLangsHit ? shopGroupConnectedText_(shopLangsHit, shopName) :
     '✅ Connected! / 連携完了！\n' +
     (srcPartner === false ? 'Shop: ' : 'Partner: ') + shopName + '\n\n' +

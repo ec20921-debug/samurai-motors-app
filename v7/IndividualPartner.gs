@@ -13,7 +13,11 @@
  *     従来どおり紹介料・ReferralAttribution.gs ⑦）。全体キャンペーンは提携店と同じく対象外（紹介料と重なるため）
  *   決定ログ: Vault/01_Personal/Decisions/2026-10-26-motors-individual-partner-type.md
  *
- * 【設定】v7 Database「店マスター」の「提携種別」列が「個人提携」の行。紹介料率は「紹介料率(%)」（空欄=30）。
+ * 【飲食店（2026-10-29・第1号 PJ Restaurant）】「提携種別」=「飲食店」も同じ型で動く（お客様は当社に払う・紹介料は月初・
+ *   グループには予約の知らせと月次レポートだけ）。違うのは文面（RestaurantPartner.gs）と、本人登録・紹介チラシの自動送付が無いこと。
+ *   Daisuke「お客様が当社に直接払う形（Picasso・個人提携と同じ）にしたい」→「飲食店の型を新しく作る」・紹介料 30%・届けるのは予約の知らせ＋月次レポート
+ *
+ * 【設定】v7 Database「店マスター」の「提携種別」列が「個人提携」（または「飲食店」）の行。紹介料率は「紹介料率(%)」（空欄=30）。
  *   紹介されたお客様への割引は「紹介割引率(%)」（空欄=0・合計30%まで・配分の設定 2026-10-27 ReferralAttribution.gs）。
  *   店QR（t.me/<予約Bot>?start=shop_<shop_id>）・Bot連携（/register）・グループ名は車屋と同じ仕組みを使う
  *
@@ -26,6 +30,7 @@
  */
 
 var INDIVIDUAL_PARTNER_KIND = '個人提携';   // v7-operations/IndividualPartnerOps.gs と同じ値（別 GAS プロジェクトのため複製）
+var RESTAURANT_PARTNER_KIND = '飲食店';     // 2026-10-29 同上。個人提携と同じ型（紹介元の扱い・紹介料）で、文面だけ飲食店向け
 var PARTNER_KIND_COL = '提携種別';
 var REFERRAL_DISCOUNT_COL = '紹介割引率(%)';   // 店マスター（個人提携だけ使う・ReferralAttribution.gs）
 var PARTNER_SELF_CHAT_COL = '本人chat_id';   // 店マスター: 紹介者ご本人の Telegram chat_id（本人の予約は予約の時に割引・紹介料なし・ReferralAttribution.gs）
@@ -48,7 +53,8 @@ var INDIVIDUAL_DISCOUNT_KM = '🎁 បញ្ចុះតម្លៃ {pct}% ល�
 // ====== 判定 ======
 
 /**
- * 店マスター → { shop_id: { name, rate, discount, selfChat } | 0 }（個人提携だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
+ * 店マスター → { shop_id: { name, rate, discount, selfChat, kind } | 0 }（個人提携・飲食店だけ中身あり。全店の shop_id を持つ）。5分キャッシュ。
+ * kind = 'individual'（個人提携）/ 'restaurant'（飲食店）。2026-10-29 より前のキャッシュには kind が無い＝個人提携
  * 読めない時は最後に読めた内容（6時間）、それも無ければ null
  * @param {boolean} [fresh] - キャッシュを使わず読み直す
  */
@@ -77,8 +83,10 @@ function readPartnerKinds_(fresh) {
       sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(ci, ni, ki, ri, di, si) + 1).getValues().forEach(function(r) {
         var id = String(r[ci] || '').trim();
         if (!id) return;
-        var indiv = String(r[ki] || '').trim() === INDIVIDUAL_PARTNER_KIND;
+        var kindVal = String(r[ki] || '').trim();
+        var indiv = kindVal === INDIVIDUAL_PARTNER_KIND || kindVal === RESTAURANT_PARTNER_KIND;
         map[id] = indiv ? {
+          kind: kindVal === RESTAURANT_PARTNER_KIND ? 'restaurant' : 'individual',
           name: (ni >= 0 ? String(r[ni] || '').trim() : '') || id,
           rate: (ri >= 0 && typeof fieldParseRate_ === 'function') ? fieldParseRate_(r[ri]) : 30,
           discount: (di >= 0 && typeof referralParseDiscount_ === 'function') ? referralParseDiscount_(r[di]) : 0,
@@ -131,8 +139,15 @@ function individualPartnerInfo_(shopId) {
   return readPartnerKinds_()[String(shopId).trim()] || null;
 }
 
+/** 飲食店の型か（個人提携と同じ扱いで、文面と立ち上げの流れだけ違う・2026-10-29）。分からない時は false */
+function isRestaurantPartnerShop_(shopId) {
+  var p = individualPartnerInfo_(shopId);
+  return !!(p && p.kind === 'restaurant');
+}
+
 /**
  * 店マスター「本人chat_id」がこの chat_id の個人提携 → { shopId, name, rate, discount }。無い・分からない時は null。
+ * 飲食店は本人割引の対象にしない（本人登録の流れが無い・2026-10-29）
  * 停止中・店マスターから消えた紹介者は対象外（validPartnerShopId_）
  */
 function individualPartnerSelfFor_(chatId) {
@@ -143,7 +158,7 @@ function individualPartnerSelfFor_(chatId) {
   var keys = Object.keys(map);
   for (var i = 0; i < keys.length; i++) {
     var p = map[keys[i]];
-    if (!p || String(p.selfChat || '') !== id) continue;
+    if (!p || p.kind === 'restaurant' || String(p.selfChat || '') !== id) continue;
     if (typeof validPartnerShopId_ === 'function' && !validPartnerShopId_(keys[i])) continue;   // 停止中の紹介者は対象外（ほかの行も見る）
     return { shopId: keys[i], name: p.name, rate: p.rate, discount: p.discount || 0 };
   }
@@ -284,7 +299,8 @@ function notifyIndividualPartnerBooking_(shopId, info) {
     var chatId = (link && String(link.obj['状態']) === '連携済') ? String(link.obj['グループchat_id'] || '') : '';
     if (!chatId) return false;
     var langs = individualGroupLangs_(shopId);
-    var text = info.self ? individualSelfBookingNotice_(langs, info) : individualReferralBookingNotice_(langs, info);
+    var text = info.self ? individualSelfBookingNotice_(langs, info)
+      : individualReferralBookingNotice_(langs, info, isRestaurantPartnerShop_(shopId) ? RESTAURANT_TEXT.noticeHead : null);
     var res = sendMessage(BOT_TYPE.BOOKING, chatId, text);
     if (!(res && res.ok)) {
       warnSourceGroupFailed_(link, '予約 ' + info.bookingId + (info.self ? '（ご本人）' : ''), res);
@@ -378,7 +394,8 @@ function individualWelcomeReferralLine_(name, discountPct) {
  * 管理グループの新規予約通知に足す1行
  * @param {number} [rate] - 紹介料率(%)（予約に写した率）
  */
-function individualAdminLine_(name, rate) {
+function individualAdminLine_(name, rate, kind) {
   var r = (rate !== undefined && rate !== null && rate !== '' && isFinite(Number(rate))) ? '・紹介料 ' + Number(rate) + '%' : '';
-  return '🙋 紹介: ' + name + '（個人提携' + r + '・お支払いは当社へ・紹介料は月初に自動集計）\n';
+  var restaurant = kind === 'restaurant';
+  return (restaurant ? '🍽 紹介: ' : '🙋 紹介: ') + name + '（' + (restaurant ? '飲食店' : '個人提携') + r + '・お支払いは当社へ・紹介料は月初に自動集計）\n';
 }
