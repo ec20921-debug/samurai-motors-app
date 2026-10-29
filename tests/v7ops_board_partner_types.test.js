@@ -15,12 +15,15 @@ const ROOT = path.join(__dirname, '..');
 
 function fakeBoard(existing) {
   const sheets = existing.map((n, i) => ({ name: n, index: i + 1 }));
-  const log = { inserted: [], values: null, cleared: 0 };
+  const log = { inserted: [], values: null, cleared: 0, moves: [] };
+  let active = null;
   const range = () => new Proxy({}, { get: (t, k) => (k === 'setValues' ? (v) => { log.values = v; return range(); } : () => range()) });
   const sheetObj = (s) => ({ getIndex: () => s.index, getFilter: () => null, clear: () => { log.cleared++; },
-    getRange: range, setColumnWidth: () => {}, setFrozenRows: () => {} });
+    getRange: range, setColumnWidth: () => {}, setFrozenRows: () => {}, getMaxRows: () => 1000, _name: s.name });
   return { log, board: {
     getSheetByName: (n) => { const s = sheets.find((x) => x.name === n); return s ? sheetObj(s) : null; },
+    setActiveSheet: (sh) => { active = sh; },
+    moveActiveSheet: (pos) => { log.moves.push([active._name, pos]); },
     insertSheet: (n, idx) => { log.inserted.push([n, idx]); const s = { name: n, index: (idx || sheets.length) + 1 }; sheets.push(s); return sheetObj(s); }
   } };
 }
@@ -62,4 +65,12 @@ test('2回目から: 版が同じなら書き直さない（毎時の更新を�
   ctx.scoutBoardWritePartnerTypes_(board);
   assert.equal(log.cleared, 2);
   assert.equal(log.inserted.length, 1);
+});
+
+test('版を上げた時: 提携のタブを 🔗 → 📘 → 🚗 → 🏢 → 🏠 → 🍽 → 🙋 の順に並べる', () => {
+  const ctx = load({});
+  const { board, log } = fakeBoard(['📅 今日', '🔗 提携店QR・グループ連携', '🏠 レジデンス提携', '🍽 飲食店提携', '🙋 個人提携', '🚗 車屋提携', '🏢 商業施設提携']);
+  ctx.scoutBoardWritePartnerTypes_(board);
+  assert.deepEqual(log.moves, [['🔗 提携店QR・グループ連携', 1], ['📘 提携の型', 2], ['🚗 車屋提携', 3], ['🏢 商業施設提携', 4],
+    ['🏠 レジデンス提携', 5], ['🍽 飲食店提携', 6], ['🙋 個人提携', 7]]);
 });
