@@ -621,7 +621,9 @@ function getShopSheet_() {
       // グループへの通知の言語（プルダウン付き・PartnerLangOps.gs・2026-10-26）。列が無い間は v7 も標準の言語で送る
       ensurePartnerLangColumn_(sheet),
       // 個人提携の配分・本人登録・紹介チラシ（IndividualPartnerOps.gs・2026-10-27）。v7 は列が無いと書かないだけ
-      ensureColumnsAtEnd_(sheet, INDIVIDUAL_PARTNER_MASTER_COLS)
+      ensureColumnsAtEnd_(sheet, INDIVIDUAL_PARTNER_MASTER_COLS),
+      // 営業ボードの分類（相手の種類・タブの分け方だけ・ScoutBoardShopLinks.gs・2026-10-29）
+      ensureBoardCategoryColumn_(sheet)
     ].every(Boolean);
   };
   if (!sheet) {

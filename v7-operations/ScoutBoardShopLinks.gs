@@ -86,7 +86,7 @@ function scoutBoardWriteShopLinks_(board, d) {
     ['⑤「グループで送る文」（/register 6桁）を送る → Bot が「✅ Connected!」と「あいさつ文」（右端の列と同じ）を自動で送ったら完了。あいさつ文は手で貼らない / Send the /register line — the bot replies and posts the greeting automatically'],
     ['⚠️ コード（6桁）はその店のグループでだけ使う。社外に出さない（他の人が使うとお店の写真が別のグループに届く） / Never share the codes outside'],
     ['🌐 車屋のグループへの通知の言語は、v7 Database「店マスター」の「' + PARTNER_GROUP_LANG_COL + '」列で店ごとに変えられる（プルダウン・並べた順に出す・空欄＝クメール語＋英語＋日本語・最大5分で反映。あいさつ文は連携の1回だけなので ⑤ の前に決める）。レジデンス等は英語で固定・個人提携は空欄＝英語＋クメール語（同じ列で日本語にも） / Group language per shop: 店マスター'],
-    ['📑 種類ごとの一覧は「🙋 個人提携」「🚗 車屋提携」「🏢 商業施設提携」タブ（2026-10-27） / Per-type tabs']
+    ['📑 相手の種類ごとの一覧は「🚗 車屋提携」「🍽 飲食店提携」「🏠 レジデンス提携」「🏢 商業施設提携」「🙋 個人提携」タブ（2026-10-29〜。分類は店マスター「' + BOARD_CATEGORY_COL + '」・空欄は自動） / Per-type tabs']
   ];
   sh.getRange(1, 1, steps.length, 1).setValues(steps);
   sh.getRange(1, 1).setFontSize(14).setFontWeight('bold');
@@ -219,10 +219,61 @@ function scoutLinksRows_() {
           .map(function(t) { return t.replace(/\{shop\}/g, fill); }).join('\n\n'),
       id
     ];
-    // 種類ごとのタブ用（scoutLinksWriteKindTabs_）
-    return { cells: cells, kind: kind, shop: shop, link: link, id: id, name: name, linked: linked, code: code, qr: qr, rate: rate,
+    // 種類ごとのタブ用（scoutLinksWriteKindTabs_）。cat = 営業ボードの分類（相手の種類）・pay = お金の流れ（2026-10-29）
+    return { cells: cells, kind: kind, cat: scoutLinksCategory_(kind, shop), pay: SCOUT_LINKS_PAY_LABEL[kind] || '', shop: shop, link: link, id: id, name: name, linked: linked, code: code, qr: qr, rate: rate,
              scanned: chatIds.length, opened: opened, booked: booked, done: done, sales: totalSales, share: shopShare };
   });
+}
+
+// ====== 営業ボードの分類（相手の種類・2026-10-29） ======
+// Daisuke「車屋提携のタブの中にシティゴルフが入ってるけど、これは商業施設提携の方に入れてほしい」「ピカソはレジデンスだけど、商業施設ではないよね？」
+//   → タブは「相手の種類」で分ける（それまでは「お金の流れ」で分けていた）。お金の仕組み（提携種別・流入元タブ）は変えない。
+//   分類 = 店マスター「営業ボードの分類」（プルダウン）。空欄は自動: 飲食店の型→飲食店／業種の言葉（ゴルフ・ホテル等→商業施設、コンド等→レジデンス、
+//   飲食・レストラン等→飲食店）／流入元の提携先→レジデンス／ほか→車屋。個人提携はいつも「🙋 個人提携」（専用の列があるため）
+const BOARD_CATEGORY_COL = '営業ボードの分類';
+const BOARD_CATEGORY_OPTIONS = ['車屋', '飲食店', 'レジデンス', '商業施設'];
+const SCOUT_LINKS_PAY_LABEL = {
+  shop:       'お店に払う（店集金・当社は残りを施工時に）',
+  unknown:    'お店に払う（店集金・当社は残りを施工時に）',
+  restaurant: '当社に払う（紹介料は月初に ABA）',
+  individual: '当社に払う（紹介料は月初に ABA）',
+  source:     '当社に払う（特典は流入元タブ）'
+};
+
+/** 相手の種類（車屋・飲食店・レジデンス・商業施設・個人） */
+function scoutLinksCategory_(kind, shop) {
+  if (kind === 'individual') return '個人';
+  const set = String((shop || {})[BOARD_CATEGORY_COL] || '').trim();
+  if (BOARD_CATEGORY_OPTIONS.indexOf(set) >= 0) return set;
+  if (kind === 'restaurant') return '飲食店';
+  const biz = String((shop || {})['業種'] || '');
+  if (/ゴルフ|ホテル|モール|商業|オフィス|golf|hotel|mall/i.test(biz)) return '商業施設';
+  if (/コンド|レジデンス|マンション|アパート|condo|residence/i.test(biz)) return 'レジデンス';
+  if (/飲食|レストラン|カフェ|パブ|バー|restaurant|cafe/i.test(biz)) return '飲食店';
+  return kind === 'source' ? 'レジデンス' : '車屋';
+}
+
+/**
+ * 店マスターに「営業ボードの分類」列（末尾）とプルダウンを用意する（getShopSheet_ の列そろえから）。表示の分け方だけで、お金の仕組みには効かない
+ * @return {boolean} 常に true（プルダウンが付けられなくても列そろえは止めない）
+ */
+function ensureBoardCategoryColumn_(sheet) {
+  if (!ensureColumnsAtEnd_(sheet, [BOARD_CATEGORY_COL])) return true;
+  try {
+    const col = getSheetHeaders_(sheet).map(function(h) { return String(h).trim(); }).indexOf(BOARD_CATEGORY_COL) + 1;
+    if (col > 0 && sheet.getMaxRows() > 1) {
+      const range = sheet.getRange(2, col, sheet.getMaxRows() - 1, 1);
+      const rule = range.getDataValidation();
+      if (!rule || String(rule.getCriteriaValues()[0]) !== String(BOARD_CATEGORY_OPTIONS)) {
+        range.setDataValidation(SpreadsheetApp.newDataValidation()
+          .requireValueInList(BOARD_CATEGORY_OPTIONS, true).setAllowInvalid(true)
+          .setHelpText('営業ボードのどのタブに出すか（相手の種類）。空欄＝自動（業種・提携の型から）。お金の流れは「提携種別」と流入元タブで決まり、ここでは変わらない').build());
+      }
+    }
+  } catch (err) {
+    Logger.log('⚠️ 営業ボードの分類のプルダウン設定失敗（列はある）: ' + err);
+  }
+  return true;
 }
 
 // ====== 提携の種類ごとのタブ（2026-10-27） ======
@@ -311,33 +362,47 @@ function scoutLinksWriteKindTabs_(board, items) {
   [36, 140, 80, 260, 90, 140, 220, 200, 90, 260, 70, 80, 80, 140, 70, 80, 60, 60, 70, 90, 200, 200, 130, 220]);
   } catch (e) { Logger.log('⚠️ 営業ボード 🙋 個人提携タブ: ' + e); }
 
-  const renumber = function(list) { return list.map(function(o, i) { const c = o.cells.slice(); c[0] = i + 1; return c; }); };
+  // 相手の種類ごとのタブ（2026-10-29）: 全体タブと同じ列＋店名の右に「お金の流れ」
+  const renumber = function(list) { return list.map(function(o, i) { const c = o.cells.slice(); c[0] = i + 1; c.splice(2, 0, o.pay); return c; }); };
+  const byCat = function(cat) { return items.filter(function(o) { return o.cat === cat; }); };
   const headers = ['No', '店名 (Shop)', '予約QRのURL (QR link)', '連携 (Linked)', 'グループで送る文 (Send in group)',
     'グループへの通知の言語 (Group language)', 'お客様への通知の言語 (Customer language)',
     '作るグループ名 (Group name)', 'シール枚数 (Stickers)', 'シール最終日 (Last sticker)',
     'QRを読んだ人 (Scanned)', '予約画面を開いた人 (Opened)', '予約 (Bookings)',
     '施工完了 (Done)', '売上 USD（お店の車も含む）(Sales)', '店の取り分 USD (Shop share)', 'SAMURAI USD', '取り分の率 (Rate %)',
     '実際のグループ名 (Actual group)', '連携日時 (Linked at)', 'あいさつ文 (Greeting)', 'shop_id'];
-  const widths = [36, 160, 260, 90, 140, 240, 260, 230, 80, 100, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 360, 220];
+  headers.splice(2, 0, 'お金の流れ (Payment)');
+  const widths = [36, 160, 230, 260, 90, 140, 240, 260, 230, 80, 100, 80, 90, 70, 70, 80, 90, 80, 70, 200, 130, 360, 220];
+  const catNote = '分類は店マスター「' + BOARD_CATEGORY_COL + '」（プルダウン・空欄＝業種と提携の型から自動）。お金の流れは店ごとに「お金の流れ」列（提携種別・流入元タブで決まる）';
   try {
   scoutLinksWriteKindTab_(board, 'pShop', [
-    '🚗 車屋提携（1時間ごとに自動更新・見るだけ） / Car dealer partners',
-    'お客様は店に定価を払い、店が紹介料ぶんを取る（店集金）。入力は v7 Database「店マスター」。QRシール・グループの作り方は「🔗 提携店QR・グループ連携」タブ'
-  ], headers, renumber(items.filter(function(o) { return o.kind === 'shop' || o.kind === 'unknown'; })), widths);
+    '🚗 車屋提携（中古車販売・整備・ディーラー等・1時間ごとに自動更新・見るだけ） / Car dealer partners',
+    'ふつうはお客様が店に定価を払い、店が紹介料ぶんを取る（店集金）。QRシール・グループの作り方は「🔗 提携店QR・グループ連携」タブ',
+    catNote
+  ], headers, renumber(byCat('車屋')), widths);
   } catch (e) { Logger.log('⚠️ 営業ボード 🚗 車屋提携タブ: ' + e); }
   try {
   scoutLinksWriteKindTab_(board, 'pFacility', [
-    '🏢 商業施設提携（レジデンス等・1時間ごとに自動更新・見るだけ） / Facility partners (residences)',
-    'お客様（住民）は当社に払う。特典・期間・言語は v7 Database「流入元」タブ、グループは店マスターの shop_id と Bot連携'
-  ], headers, renumber(items.filter(function(o) { return o.kind === 'source'; })), widths);
+    '🏢 商業施設提携（ゴルフ場・ホテル・商業ビル等・1時間ごとに自動更新・見るだけ） / Commercial facility partners',
+    'お金の流れは施設ごとに違う（店集金 or 当社集金）→「お金の流れ」列を見る',
+    catNote
+  ], headers, renumber(byCat('商業施設')), widths);
   } catch (e) { Logger.log('⚠️ 営業ボード 🏢 商業施設提携タブ: ' + e); }
+  try {
+  scoutLinksWriteKindTab_(board, 'pResidence', [
+    '🏠 レジデンス提携（マンション・コンド等・1時間ごとに自動更新・見るだけ） / Residence partners',
+    'ふつうはお客様（住民）が当社に払う。特典・期間・言語は v7 Database「流入元」タブ、グループは店マスターの shop_id と Bot連携',
+    catNote
+  ], headers, renumber(byCat('レジデンス')), widths);
+  } catch (e) { Logger.log('⚠️ 営業ボード 🏠 レジデンス提携タブ: ' + e); }
   try {
   scoutLinksWriteKindTab_(board, 'pRestaurant', [
     '🍽 飲食店提携（1時間ごとに自動更新・見るだけ） / Restaurant partners',
     'お客様は当社に直接払う。お店には紹介料（店マスター「紹介料率(%)」・空欄＝30%）を毎月はじめに ABA で。グループには予約の知らせと月次レポートだけ（写真なし）',
     '入力は v7 Database「店マスター」（提携種別=飲食店・紹介料率・グループへの通知の言語＝空欄なら英語＋クメール語）。チラシは Day1 tools/motors_restaurant_flyer（Bot からは送らない）',
-    '「店の取り分 USD」の列＝紹介料の見込み（売上 × 紹介料率）'
-  ], headers, renumber(items.filter(function(o) { return o.kind === 'restaurant'; })), widths);
+    '「店の取り分 USD」の列＝紹介料の見込み（売上 × 紹介料率）',
+    catNote
+  ], headers, renumber(byCat('飲食店')), widths);
   } catch (e) { Logger.log('⚠️ 営業ボード 🍽 飲食店提携タブ: ' + e); }
 }
 
