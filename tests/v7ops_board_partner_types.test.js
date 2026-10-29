@@ -48,7 +48,8 @@ test('初めて: 🔗 タブのすぐ右に「📘 提携の型」を作り、�
   assert.deepEqual(log.inserted, [['📘 提携の型', 2]]);
   const text = log.values.map((r) => r.join('|')).join('\n');
   assert.ok(log.values.every((r) => r.length === 5));
-  ['① 型の選び方', '② 4つの型の違い', '③ どの型でも共通', 'motors-restaurant-partner', 'お客様が払う先', 'City Golf'].forEach((w) => assert.ok(text.includes(w), w));
+  ['① 型の選び方', '② 4つの型の違い', '③ どの型でも共通', 'motors-restaurant-partner', 'お客様が払う先', '店マスターに行が無い店'].forEach((w) => assert.ok(text.includes(w), w));
+  assert.ok(!text.includes('City Golf'));   // 2026-10-29 Bot連携から削除した店を例に出さない
   assert.ok(!/\b\d{6}\b/.test(text));   // 6桁の連携コードを書かない
   assert.equal(props.SCOUT_BOARD_TYPES_VERSION, vm.runInContext('SCOUT_TYPES_VERSION', ctx));
 });

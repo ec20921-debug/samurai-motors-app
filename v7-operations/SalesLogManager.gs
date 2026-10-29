@@ -632,8 +632,11 @@ function getShopSheet_() {
     Logger.log('🆕 v7 Database に「' + SALESLOG_SHOP_SHEET_NAME + '」タブを新規作成');
     ensureShopColumns(); // 作成直後はフラグに関係なく必ず列を揃える
   } else {
+    // 合図の文字列 = ensureShopColumns がそろえる列の名前（列を足したらここにも足す。変わると次の呼び出しですぐそろえる。
+    // 2026-10-29: 営業ボードの分類・提携種別が入っておらず、列とプルダウンが最大6時間遅れた）
     runAtMostEvery_(['schema', SALESLOG_SHOP_SHEET_NAME, '最新反応内容', '業種', 'Facebook']
-      .concat(SHOP_TERMS_HEADERS).concat(SALESLOG_SHOP_EXTRA_HEADERS).concat([PARTNER_GROUP_LANG_COL]).concat(INDIVIDUAL_PARTNER_MASTER_COLS).join('|'), 6 * 60 * 60, ensureShopColumns);
+      .concat(SHOP_TERMS_HEADERS).concat([INDIVIDUAL_PARTNER_KIND_COL]).concat(SALESLOG_SHOP_EXTRA_HEADERS).concat([PARTNER_GROUP_LANG_COL])
+      .concat(INDIVIDUAL_PARTNER_MASTER_COLS).concat([BOARD_CATEGORY_COL]).join('|'), 6 * 60 * 60, ensureShopColumns);
   }
   _salesLogSheetCache_[SALESLOG_SHOP_SHEET_NAME] = sheet;
   return sheet;
