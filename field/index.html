@@ -1167,18 +1167,6 @@ function jobHead() {
     '<div style="grid-column:1/-1"><small>📍</small><b>' + esc(placeText(j.place)) + '</b></div></div></div></div>';
 }
 
-// 始める前の「どの提携店？」（予約なしの作業・2026-10-25）。文言は支払い画面と同じ校閲済みの3つ
-function startShopCard(c) {
-  var shops = S.shops || [], cur = c.shopAtStart ? (c.shop || '') : '';
-  var known = !cur || shops.some(function (sp) { return sp.id === cur; });
-  return '<div class="card"><div class="band">🏪 ' + t('shop_pick') + '</div><div class="body">' +
-    '<select id="shopSelStart" style="width:100%;font-size:18px;padding:12px;border-radius:12px;border:2px solid #d0d5dd;background:#fff">' +
-    '<option value="">' + esc(t('shop_none')) + '</option>' +
-    (known ? '' : '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>') +
-    shops.map(function (sp) { return '<option value="' + esc(sp.id) + '"' + (cur === sp.id ? ' selected' : '') + '>' + esc(sp.name) + '</option>'; }).join('') +
-    '</select><div class="note">' + t('shop_need') + '</div></div></div>';
-}
-
 function renderJob() {
   var c = S.cur, j = c.job, html = '';
   if (timerId) { clearInterval(timerId); timerId = null; }
@@ -1190,14 +1178,7 @@ function renderJob() {
 
   else if (c.step === 'check') {
     html += jobHead();
-    var items = [['engine', '🔑', 'chk_engine'], ['lights', '💡', 'chk_lights'], ['windows', '🪟', 'chk_windows'], ['wipers', '🌧', 'chk_wipers'], ['ac', '❄️', 'chk_ac']];
-    html += '<div class="card"><div class="band">🔍 ' + t('job_precheck') + '<span class="r num">' + Object.keys(c.checks).length + '/5</span></div><div class="body" style="gap:0">' +
-      items.map(function (it) {
-        var v = c.checks[it[0]];
-        return '<div class="chk"><div class="l"><span class="ic">' + it[1] + '</span>' + t(it[2]) + '</div><div class="seg">' +
-          '<button type="button" class="ok ' + (v === 'ok' ? 'on' : '') + '" data-chk="' + it[0] + '" data-v="ok">✓ ' + t('chk_ok') + '</button>' +
-          '<button type="button" class="ng ' + (v === 'ng' ? 'on' : '') + '" data-chk="' + it[0] + '" data-v="ng">✕ ' + t('chk_ng') + '</button></div></div>';
-      }).join('') + '</div></div>';
+    // 電装5点（エンジン・ライト・窓・ワイパー・エアコン）は 2026-10-29 Daisuke「項目いらない」で外した。傷・へこみは残す
     html += '<div class="card"><div class="band">🩹 ' + t('damage_title') + '<span class="r num">' + c.dmg.length + '</span></div><div class="body">' +
       '<div class="note">👆 ' + t('damage_tap') + '</div><div class="dmap" id="dmap">' + CAR_TOP +
       c.dmg.map(function (d, i) { return '<span class="mk" style="left:' + d.x + '%;top:' + d.y + '%">' + (i + 1) + '</span>'; }).join('') + '</div>' +
@@ -1205,8 +1186,7 @@ function renderJob() {
         return '<div class="dmg"><span class="no">' + (i + 1) + '</span><span class="ph">' + (d.img ? '<img src="' + d.img + '" alt="">' : '📷') + '<input type="file" accept="image/*" capture="environment" data-dmgph="' + i + '"></span><input class="memo" data-dmgmemo="' + i + '" value="' + esc(d.memo) + '" placeholder="' + esc(t('note')) + '"><button type="button" class="x" data-dmgdel="' + i + '">✕</button></div>';
       }).join('') + '</div>' : '') +
       (c.dmg.length ? '' : '<button type="button" class="btn sm ' + (c.noDamage ? 'green' : 'ghost') + '" id="dmgNone">✓ ' + t('damage_none') + '</button>') + '</div></div>';
-    // 予約なしの作業（店の車など）は始める前に店を選べる。選ぶと Before もその店のグループへ届く（2026-10-25）
-    if (!j.bookingId) html += startShopCard(c);
+    // 始める前に店を選ぶカード（2026-10-25）は外した: お店の車・紹介は「お店の仕事」から（2026-10-29 Daisuke）
   }
 
   else if (c.step === 'before' || c.step === 'after') {
@@ -1293,7 +1273,6 @@ function renderJob() {
 
 function bindJob() {
   var c = S.cur;
-  document.querySelectorAll('[data-chk]').forEach(function (b) { b.onclick = function () { c.checks[b.getAttribute('data-chk')] = b.getAttribute('data-v'); saveDraft(); renderJob(); }; });
   var dm = $('dmap'); if (dm) dm.onclick = function (e) {
     var r = dm.getBoundingClientRect(); var x = Math.round((e.clientX - r.left) / r.width * 100), y = Math.round((e.clientY - r.top) / r.height * 100);
     if (x < 8 || x > 92 || y < 8 || y > 92) return; c.dmg.push({ x: x, y: y, img: '', memo: '' }); c.noDamage = false; saveDraft(); renderJob();
@@ -1324,12 +1303,6 @@ function bindJob() {
   }; });
   document.querySelectorAll('[data-src]').forEach(function (b) { b.onclick = function () { c.src = b.getAttribute('data-src'); saveDraft(); renderJob(); }; });
   var ss = $('shopSel'); if (ss) ss.onchange = function () { c.shop = ss.value || ''; applyShopAmount(c); saveDraft(); renderJob(); };
-  var ssStart = $('shopSelStart'); if (ssStart) ssStart.onchange = function () {
-    var id = ssStart.value || '', sp = (S.shops || []).filter(function (x) { return x.id === id; })[0];
-    c.shop = id; c.shopAtStart = !!id;
-    if (sp && sp.rate !== undefined) c.rate = sp.rate; else delete c.rate;   // 支払い画面の自動金額と同じ c.shop / c.rate
-    saveDraft(); renderJob();
-  };
   var am = $('amt'); if (am) am.oninput = function () { c.amount = parseFloat(am.value) || 0; saveDraft(); renderBar(); };
 
   if (c.step === 'work') {
@@ -1367,9 +1340,8 @@ function renderBar() {
   } else if (c.step === 'confirm') {
     html = '<button type="button" class="btn green" id="next" ' + (sjCanSend(c) ? '' : 'disabled') + '>' + t('sj_send') + '</button>';
   } else if (c.step === 'check') {
-    var n = Object.keys(c.checks).length, ready = n === 5 && (c.dmg.length > 0 || c.noDamage);
-    html = '<div class="prog"><span class="num">' + n + '/5</span><span class="b"><i style="width:' + (n * 20) + '%"></i></span><span>🩹 <span class="num">' + c.dmg.length + '</span></span></div>' +
-      '<button type="button" class="btn" id="next" ' + (ready ? '' : 'disabled') + '>' + t('btn_next') + ' › <small>' + t('photo_before') + '</small></button>';
+    var ready = c.dmg.length > 0 || c.noDamage;   // 電装5点は外した（2026-10-29）。「傷なし」か傷の記録で進む
+    html = '<button type="button" class="btn" id="next" ' + (ready ? '' : 'disabled') + '>' + t('btn_next') + ' › <small>' + t('photo_before') + '</small></button>';
   } else if (c.step === 'before') {
     pg = shotProg(shotsFor(j, 'before'), c.photos);
     html = '<div class="prog"><span>📷</span><span class="b"><i style="width:' + (pg.n ? Math.round(pg.got / pg.n * 100) : 0) + '%"></i></span><span class="num">' + pg.got + '/' + pg.n + '</span></div>' +
