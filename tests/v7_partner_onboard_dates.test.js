@@ -84,7 +84,7 @@ const hoursAgo = (h) => formatDate(new Date(Date.now() - h * 60 * 60 * 1000), 'A
 
 test('Hiro さんの不具合の再現: あいさつ文の日時（10/26・11時の線より前）が日付に化けていても、チラシ・リンクを送り直さない', () => {
   const r = runSafetyNet([['shop_greeting_sent_SHOP-HIRO', sheetDate('2026-10-26 15:25:36')]],
-    [{ shopId: 'SHOP-HIRO', selfChat: '1028338581' }]);
+    [{ shopId: 'SHOP-HIRO', selfChat: '1000000001' }]);
   assert.deepEqual(r.flyers, []);
   assert.deepEqual(r.links, []);
 });

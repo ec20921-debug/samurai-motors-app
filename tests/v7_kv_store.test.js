@@ -276,7 +276,7 @@ test('日時・数字の形の文字も、文字のまま書いて読める（�
   t.run(`kvSetAll_({
     'shop_greeting_sent_SHOP-H': '2026-10-26 15:25:36',
     'shopref_dates_migrated_v1': '2026-10-27',
-    'selfreg_used_SHOP-H': '1028338581',
+    'selfreg_used_SHOP-H': '1000000001',
     'selfreg_tok_12345678901234567890': 'SHOP-H'
   })`);
   rawRows(t).slice(1).forEach((r) => r.forEach((v) => assert.ok(isText(v), String(r))));   // セルは全部文字
@@ -284,7 +284,7 @@ test('日時・数字の形の文字も、文字のまま書いて読める（�
   t.cache.clear();                                             // Cache も無い＝タブを読み直す
   assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-H')`), '2026-10-26 15:25:36');
   assert.equal(t.run(`kvGet_('shopref_dates_migrated_v1')`), '2026-10-27');
-  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1028338581');
+  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1000000001');
   assert.equal(t.run(`kvGet_('selfreg_tok_12345678901234567890')`), 'SHOP-H');
 });
 
@@ -295,8 +295,8 @@ test('@105 で日付・数値に化けた値: 元の文字の形で読む（日�
   sh.rows.push(['shop_greeting_sent_SHOP-H', sheetDate('2026-10-26 15:25:36'), sheetDate('2026-10-30 23:14:09')]);
   sh.rows.push(['shopref_dates_migrated_v1', sheetDate('2026-10-27'), sheetDate('2026-10-30 23:14:09')]);
   sh.rows.push(['shop_greeting_sent_SHOP-K', new Date(sheetDate('2026-10-26 7:54:38').getTime() - 1), sheetDate('2026-10-30 23:14:09')]);
-  sh.rows.push(['selfreg_used_SHOP-H', 1028338581, sheetDate('2026-10-30 23:14:09')]);
-  sh.rows.push(['shop_ref_8616516118', 'SHOP-B', '2026-10-30 23:14:09']);
+  sh.rows.push(['selfreg_used_SHOP-H', 1000000001, sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['shop_ref_2000000002', 'SHOP-B', '2026-10-30 23:14:09']);
   const t = makeCtx({ ss });
   t.cache.set('kv_state_v1_meta', '1');                        // @105 が残した Cache（化けた値入り）
   t.cache.set('kv_state_v1_c0', JSON.stringify({ 'shop_greeting_sent_SHOP-H': 'Mon Oct 26 2026 15:25:36 GMT+0900 (Japan Standard Time)' }));
@@ -304,7 +304,7 @@ test('@105 で日付・数値に化けた値: 元の文字の形で読む（日�
   assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-H')`), '2026-10-26 15:25:36');
   assert.equal(t.run(`kvGet_('shopref_dates_migrated_v1')`), '2026-10-27');
   assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-K')`), '2026-10-26 07:54:38');   // 1ミリ秒前でも 1 秒ずれない
-  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1028338581');
+  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1000000001');
   assert.deepEqual(plain(t.run(`kvGetAll_('shop_greeting_sent_')`)),
     { 'shop_greeting_sent_SHOP-H': '2026-10-26 15:25:36', 'shop_greeting_sent_SHOP-K': '2026-10-26 07:54:38' });
 
@@ -313,8 +313,8 @@ test('@105 で日付・数値に化けた値: 元の文字の形で読む（日�
   assert.equal(m['shop_greeting_sent_SHOP-H'], '2026-10-26 15:25:36');
   assert.equal(m['shopref_dates_migrated_v1'], '2026-10-27');
   assert.equal(m['shop_greeting_sent_SHOP-K'], '2026-10-26 07:54:38');
-  assert.equal(m['selfreg_used_SHOP-H'], '1028338581');
-  assert.equal(m['shop_ref_8616516118'], 'SHOP-B');
+  assert.equal(m['selfreg_used_SHOP-H'], '1000000001');
+  assert.equal(m['shop_ref_2000000002'], 'SHOP-B');
   rawRows(t).slice(1).forEach((r) => r.forEach((v) => assert.ok(isText(v), String(r))));
   assert.equal(rawRows(t)[1][2], '2026-10-30 23:14:09');        // 更新日時も文字の形に戻す（書き直しで今の日時にしない）
 });
