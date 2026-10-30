@@ -81,7 +81,8 @@ function loadV7(opt) {
     notifyShopGroupByShopId_: (id, text, blobs) => { groups.push({ kind: 'shop', id, blobs: (blobs || []).length }); return id; },
     shopGroupLangs_: () => ['km'],
     shopGroupJobText_: () => 'shop text',
-    notifyShopDamage_: (id, body) => { groups.push({ kind: 'damage', id, damage: (body.v2 && body.v2.damage || []).length }); }
+    notifyShopDamage_: (id, body) => { groups.push({ kind: 'damage', id, damage: (body.v2 && body.v2.damage || []).length }); },
+    notifyIndividualSelfJob_: (phase, chatId, p) => { groups.push({ kind: 'self', phase, chatId, blobs: (p.blobs || []).length }); return ''; }
   };
   vm.createContext(ctx);
   FILES.forEach((f) => vm.runInContext(fs.readFileSync(path.join(V7, f), 'utf8'), ctx, { filename: f }));
@@ -165,8 +166,9 @@ test('② 写真: 保存・お客様へ文と写真・管理グループへ写�
   assert.equal(admin[0].thread, 77);
   assert.equal(admin[0].caption, '📷 Before 2枚（作業開始 15:27）\n🆔 BK-20261028-001\n👤 Sato Hirotaka');
   assert.deepEqual(toCustomer(sent).map((s) => s.type), ['text', 'album']);
-  assert.deepEqual(groups.map((g) => g.kind), ['qr', 'src']);
+  assert.deepEqual(groups.map((g) => g.kind), ['qr', 'src', 'self']);
   assert.equal(groups[0].blobs, 2);
+  assert.equal(groups[2].blobs, 2, '紹介者ご本人の車ならそのグループへも写真（IndividualSelfJob.gs）');
   assert.equal(tables.jobs[0]['Before写真URL'].split('\n').length, 2);
   assert.ok(tables.jobs[0]['Before写真配信日時']);
   assert.equal(tables.jobs.length, 1, '行は増えない');

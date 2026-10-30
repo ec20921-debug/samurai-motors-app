@@ -549,6 +549,7 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
   try {
     if (!shopId) return '';
     // 個人提携のグループには作業の通知・写真を送らない（予約の通知だけ・IndividualPartner.gs・2026-10-26）。分からない時も送らない
+    // （紹介者ご本人の車だけは IndividualSelfJob.gs が送る・2026-10-30）
     var indivState = (typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopId) : false;
     if (indivState === null) {
       Logger.log('⚠️ 提携種別が分からないため提携先グループへ送らない: ' + shopId);

@@ -50,7 +50,7 @@
 | 作業管理 | JobManager / JobIdempotency / JobStartPhotos | 作業開始/完了・写真3方向配信・リピーター判定・現場アプリ v2 の二重処理対策・開始の知らせと作業前の写真の分割（2026-10-30） |
 | 顧客コミュ | CustomerChat / CustomerContact / CustomerNotifier / ForumTopicManager | 転送・連絡先・通知・1顧客1トピック |
 | 決済 | PaymentManager | QR送信・スクショ受付・24h催促 |
-| 提携先 | ShopRouting / ShopGroupGreeting / ShopInvoice / SourceGroupNotify / IndividualPartner / RestaurantPartner / PartnerLang | 店QR・グループ連携・あいさつ文・請求・レジデンス等・個人提携・飲食店（2026-10-29）・グループへの通知の言語（2026-10-26） |
+| 提携先 | ShopRouting / ShopGroupGreeting / ShopInvoice / SourceGroupNotify / IndividualPartner / IndividualSelfJob / RestaurantPartner / PartnerLang | 店QR・グループ連携・あいさつ文・請求・レジデンス等・個人提携・紹介者ご本人の車の作業写真（2026-10-30）・飲食店（2026-10-29）・グループへの通知の言語（2026-10-26） |
 | キャンペーン | Campaign / CampaignAssets / CampaignBooking / CampaignScheduler / CampaignSheets | 配信・素材・予約連動・スケジュール・シート |
 | セットアップ系（本番外） | Setup / SetupProperties / GetGroupId / WebhookSetup | .claspignore で push 除外 |
 | ⚠️ 整理候補 | Setup_CampaignBooking / Setup_MenuV2 / Setup_MenuV3 / Migration_ServiceType | **claspignore 漏れで push 対象に残存**（docs/DEPLOY.md 参照） |

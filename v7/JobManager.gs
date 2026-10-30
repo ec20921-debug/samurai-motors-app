@@ -474,6 +474,12 @@ function apiJobStart(body, opts) {
         Logger.log('⚠️ 選んだ提携店への同報失敗(start): ' + e);
       }
     }
+    // 個人提携の紹介者ご本人の車: そのグループへ開始と Before 写真（2026-10-30 IndividualSelfJob.gs）
+    if (sendGroups && customerChatId && typeof notifyIndividualSelfJob_ === 'function') {
+      notifyIndividualSelfJob_('start', customerChatId, {
+        car: [body.carModel, body.plate].filter(Boolean).join(' / '), blobs: photoResult.blobs, opts: opts
+      });
+    }
 
     // v2: 管理通知が届かない／写真を1枚も保存できない場合は「配信済み」にしない（送り直しで再配信）
     if (opts.rowIndex) {
@@ -720,6 +726,12 @@ function apiJobEnd(body, opts) {
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(end): ' + e);
+    }
+    // 個人提携の紹介者ご本人の車: そのグループへ完了と After 写真（2026-10-30 IndividualSelfJob.gs）。店集金の判定には使わない
+    if (customerChatId && typeof notifyIndividualSelfJob_ === 'function') {
+      notifyIndividualSelfJob_('end', customerChatId, {
+        car: [body.carModel, body.plate].filter(Boolean).join(' / '), duration: duration, blobs: photoResult.blobs, opts: opts
+      });
     }
     // 店舗グループ未連携の店でも、QR経由の顧客なら店集金として扱う（2026-10-20）
     // 2026-10-26: 予約に紹介元（予約した時の店QR）が記録されていれば、それで判定する（個人提携は当社集金。
