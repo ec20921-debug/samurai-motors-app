@@ -49,7 +49,7 @@ var REFERRAL_DISCOUNT_KM = 'បញ្ចុះតម្លៃសម្រាប�
 
 var REFERRAL_TERM_MONTHS = 12;   // 紹介の期限（⑥）
 // 紹介元が付いた日 = Script Properties `shopref_at_<chatId>` に "<shop_id>|<yyyy-MM-dd>"。
-//   'shop_ref_' で始めない（CampaignShopFilter.gs が shop_ref_ で始まる Script Properties を全部読むため）。
+//   'shop_ref_' で始めない（CampaignShopFilter.gs が shop_ref_ で始まるキーを全部読むため）。置き場は状態タブ（KvStore.gs・2026-10-31）
 //   shop_id も一緒に持つ: shop_ref_ だけを手で付け替えた・片方の書き込みに失敗した時に、前の店の古い日付で新しい紹介元が
 //   すぐ切れないようにする（店が一致しない日付は無いのと同じ＝今日から数える）
 var SHOP_REF_AT_PREFIX = 'shopref_at_';
@@ -90,9 +90,8 @@ function parseShopRefAt_(v) {
 /** 今の紹介元（shop_ref_）が付いた日（yyyy-MM-dd）。無い・別の店の日付なら '' */
 function getShopRefTaggedAt_(chatId) {
   try {
-    var sp = PropertiesService.getScriptProperties();
-    var ref = sp.getProperty('shop_ref_' + String(chatId)) || '';
-    var at = parseShopRefAt_(sp.getProperty(SHOP_REF_AT_PREFIX + String(chatId)));
+    var ref = kvGet_('shop_ref_' + String(chatId)) || '';
+    var at = parseShopRefAt_(kvGet_(SHOP_REF_AT_PREFIX + String(chatId)));
     return (ref && at && at.shopId === ref) ? at.date : '';
   } catch (err) {
     return '';
@@ -117,22 +116,22 @@ function referralAddMonths_(ymd, n) {
  */
 function ensureShopRefDatesMigrated_() {
   try {
-    var sp = PropertiesService.getScriptProperties();
-    if (sp.getProperty(SHOP_REF_AT_MIGRATED_KEY)) return;
-    var all = sp.getProperties();
+    if (kvGet_(SHOP_REF_AT_MIGRATED_KEY)) return;
+    var all = kvGetAll_('shop_ref_');                 // 状態タブ（KvStore.gs）
+    var ats = kvGetAll_(SHOP_REF_AT_PREFIX);
     var today = referralToday_();
     var add = {};
     var n = 0;
     Object.keys(all).forEach(function(k) {
       if (k.indexOf('shop_ref_') !== 0 || !all[k]) return;
       var c = k.substring('shop_ref_'.length);
-      var at = parseShopRefAt_(all[SHOP_REF_AT_PREFIX + c]);
+      var at = parseShopRefAt_(ats[SHOP_REF_AT_PREFIX + c]);
       if (at && at.shopId === all[k]) return;
       add[SHOP_REF_AT_PREFIX + c] = all[k] + '|' + today;
       n++;
     });
     add[SHOP_REF_AT_MIGRATED_KEY] = today;
-    sp.setProperties(add);
+    kvSetAll_(add);
     Logger.log('🗓 紹介元の付いた日を一括で付けた: ' + n + '件（' + today + '）');
   } catch (err) {
     Logger.log('⚠️ ensureShopRefDatesMigrated_: ' + err);
@@ -153,10 +152,9 @@ function referralExpired_(chatId) {
       at = getShopRefTaggedAt_(chatId);
     }
     if (!at) {
-      var sp = PropertiesService.getScriptProperties();
-      var ref = sp.getProperty('shop_ref_' + String(chatId)) || '';
+      var ref = kvGet_('shop_ref_' + String(chatId)) || '';
       if (!ref) return false;
-      sp.setProperty(SHOP_REF_AT_PREFIX + String(chatId), ref + '|' + referralToday_());
+      kvSet_(SHOP_REF_AT_PREFIX + String(chatId), ref + '|' + referralToday_());
       Logger.log('🗓 紹介元の付いた日が無い（または別の店の日付）→ 今日から数える: chat_id=' + chatId + ' shop=' + ref);
       return false;
     }
@@ -173,13 +171,12 @@ function referralExpired_(chatId) {
  */
 function setReferralTag_(chatId, shopId) {
   var id = String(chatId);
-  var sp = PropertiesService.getScriptProperties();
-  var prev = sp.getProperty('shop_ref_' + id) || '';
+  var prev = kvGet_('shop_ref_' + id) || '';
   if (prev === String(shopId) && getShopRefTaggedAt_(id) && !referralExpired_(id)) return;
   var props = {};
   props['shop_ref_' + id] = String(shopId);
   props[SHOP_REF_AT_PREFIX + id] = String(shopId) + '|' + referralToday_();
-  sp.setProperties(props);
+  kvSetAll_(props);
 }
 
 /**

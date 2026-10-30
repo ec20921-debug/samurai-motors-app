@@ -11,7 +11,12 @@
  *
  * 【キーフォーマット】
  *   queue_{timestamp}_{update_id}       : キュー本体（JSON文字列）
- *   processed_{update_id}               : 重複排除マーカー（24h保持）
+ *   processed_ids_v1                    : 処理済み update_id の一覧（1つのキーに最新 400 件。2026-10-31〜）
+ *   processed_{update_id}               : 旧・重複排除マーカー（2026-10-31 まで。24h で消し切る）
+ *
+ * 【なぜ processed_* を1つのキーにまとめたか】（2026-10-31）
+ *   1日分のマーカーが数百個になり、Script Properties の設定画面（50個まで）が読み取り専用になっていた。
+ *   永続性は必要（v6 の教訓）なので Cache には移さず、1つのキーに最新 400 件を持つ（約 5KB・1件 9KB の上限内）
  *
  * 【トリガー】
  *   processTelegramQueue    : 1分間隔（キュー処理の本体）
@@ -58,6 +63,7 @@ function processTelegramQueue() {
 
   let success = 0;
   let failed = 0;
+  const seen = loadProcessedIds_(all);
 
   targets.forEach(function(key) {
     try {
@@ -67,8 +73,8 @@ function processTelegramQueue() {
       const updateId = update.update_id;
 
       // ── 重複排除マーカー（処理開始前にマーク） ──
-      const processedKey = STORAGE_KEYS.PROCESSED_PREFIX + updateId;
-      if (props.getProperty(processedKey)) {
+      const processedKey = STORAGE_KEYS.PROCESSED_PREFIX + updateId;   // 旧マーカー（移行期間だけ見る）
+      if (seen.indexOf(String(updateId)) >= 0 || props.getProperty(processedKey)) {
         // 既に処理済み → キューから削除のみ
         props.deleteProperty(key);
         return;
@@ -90,8 +96,10 @@ function processTelegramQueue() {
         }
       }
 
-      // ── 完了マーカー + キュー削除 ──
-      props.setProperty(processedKey, String(new Date().getTime()));
+      // ── 完了マーカー（1つのキーにまとめて保存）+ キュー削除 ──
+      seen.push(String(updateId));
+      if (seen.length > PROCESSED_IDS_MAX_) seen.splice(0, seen.length - PROCESSED_IDS_MAX_);
+      props.setProperty(STORAGE_KEYS.PROCESSED_IDS, JSON.stringify(seen));
       props.deleteProperty(key);
       success++;
 
@@ -108,8 +116,21 @@ function processTelegramQueue() {
   }
 }
 
+var PROCESSED_IDS_MAX_ = 400;
+
+/** 処理済み update_id の一覧（文字列の配列）。読めない・壊れている時は空から */
+function loadProcessedIds_(all) {
+  try {
+    const raw = (all && all[STORAGE_KEYS.PROCESSED_IDS]) || PropertiesService.getScriptProperties().getProperty(STORAGE_KEYS.PROCESSED_IDS);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
 /**
- * 24時間経過した processed_* マーカーを削除する
+ * 24時間経過した旧 processed_* マーカーを削除する（2026-10-31 からは新しく作られない。残りを消し切るまで動かす）
  *
  * トリガー: 1時間間隔
  */
@@ -155,17 +176,19 @@ function showQueueStatus() {
   const all = props.getProperties();
 
   let queueCount = 0;
-  let processedCount = 0;
+  let processedCount = 0;   // 旧マーカー（残っている数）
   Object.keys(all).forEach(function(k) {
     if (k.indexOf(STORAGE_KEYS.QUEUE_PREFIX) === 0) queueCount++;
     else if (k.indexOf(STORAGE_KEYS.PROCESSED_PREFIX) === 0) processedCount++;
   });
+  const seenCount = loadProcessedIds_(all).length;
 
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('📬 キュー状況');
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('処理待ちキュー: ' + queueCount + '件');
-  Logger.log('処理済みマーカー: ' + processedCount + '件');
+  Logger.log('処理済み一覧(processed_ids_v1): ' + seenCount + '件 / 旧マーカー残り: ' + processedCount + '件');
+  Logger.log('Script Properties 全体: ' + Object.keys(all).length + '個');
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
 }
 

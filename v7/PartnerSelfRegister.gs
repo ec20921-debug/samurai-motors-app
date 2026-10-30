@@ -45,7 +45,7 @@
  * 【呼び出し元】ShopGroupGreeting.gs（あいさつ文のあと・毎時の安全網）／ BookingBot.gs handleCustomerMessage（/start self_）
  */
 
-var SELF_REG_TOKEN_PREFIX = 'selfreg_tok_';   // Script Properties: token → shop_id
+var SELF_REG_TOKEN_PREFIX = 'selfreg_tok_';   // 状態タブ（KvStore.gs・2026-10-31。以前は Script Properties）: token → shop_id
 var SELF_REG_SHOP_PREFIX = 'selfreg_shop_';   // Script Properties: shop_id → token（送り直しても同じリンク）
 var SELF_REG_SENT_PREFIX = 'selfreg_sent_';   // Script Properties: 本人登録リンクをグループに送った日時
 var PARTNER_FLYERS_SENT_PREFIX = 'partner_flyers_sent_';   // Script Properties: チラシ・紹介URLをグループに送った日時
@@ -105,14 +105,13 @@ function partnerGroupChatId_(shopId) {
 /** 紹介者の本人登録用 token（無ければ作る）。リンク本体はグループにだけ送り、シートには書かない（2026-10-27 レビュー: 先に開いた人が本人になるため） */
 function selfRegTokenFor_(shopId) {
   var id = String(shopId || '').trim();
-  var props = PropertiesService.getScriptProperties();
-  var tok = props.getProperty(SELF_REG_SHOP_PREFIX + id);
+  var tok = kvGet_(SELF_REG_SHOP_PREFIX + id);
   if (tok) return tok;
   tok = Utilities.getUuid().replace(/-/g, '').substring(0, 20);
   var p = {};
   p[SELF_REG_SHOP_PREFIX + id] = tok;
   p[SELF_REG_TOKEN_PREFIX + tok] = id;
-  props.setProperties(p);
+  kvSetAll_(p);
   return tok;
 }
 
@@ -124,7 +123,7 @@ function markSelfLinkCell_(shopId, at) {
   try {
     var shown = String(at || '').indexOf('sending ') === 0 ? '' : String(at || '').substring(0, 16);
     if (partnerMasterSet_(partnerMasterRow_(shopId), PARTNER_SELF_LINK_COL, '送付済み ' + shown + '（リンクはグループだけ・消すと作り直し）')) {
-      PropertiesService.getScriptProperties().setProperty(SELF_REG_CELL_PREFIX + shopId, String(at || ''));
+      kvSet_(SELF_REG_CELL_PREFIX + shopId, String(at || ''));
       return true;
     }
   } catch (err) {
@@ -140,10 +139,9 @@ function markSelfLinkCell_(shopId, at) {
  *   - このリンクで登録した本人の「本人chat_id」を消した（違う人が登録された時はこれだけで取り消せる・2026-10-27 レビュー）
  */
 function selfLinkRevoked_(shopId) {
-  var props = PropertiesService.getScriptProperties();
-  var cellMark = props.getProperty(SELF_REG_CELL_PREFIX + shopId);
-  var used = props.getProperty(SELF_REG_USED_PREFIX + shopId);
-  var sentGid = props.getProperty(SELF_REG_GID_PREFIX + shopId);
+  var cellMark = kvGet_(SELF_REG_CELL_PREFIX + shopId);
+  var used = kvGet_(SELF_REG_USED_PREFIX + shopId);
+  var sentGid = kvGet_(SELF_REG_GID_PREFIX + shopId);
   try {
     if (sentGid) {
       var gid = partnerGroupChatId_(shopId);
@@ -169,15 +167,14 @@ function selfLinkRevoked_(shopId) {
 
 /** 取り消された人（このリンクで本人になり、あとで「本人chat_id」を消された人）。本人登録リンクでは二度と本人にしない */
 function selfRegDenied_(shopId, chatId) {
-  var v = String(PropertiesService.getScriptProperties().getProperty(SELF_REG_DENY_PREFIX + shopId) || '');
+  var v = String(kvGet_(SELF_REG_DENY_PREFIX + shopId) || '');
   return (',' + v + ',').indexOf(',' + String(chatId) + ',') >= 0;
 }
 
 function addSelfRegDeny_(shopId, chatId) {
   if (!chatId || selfRegDenied_(shopId, chatId)) return;
-  var props = PropertiesService.getScriptProperties();
-  var v = String(props.getProperty(SELF_REG_DENY_PREFIX + shopId) || '');
-  props.setProperty(SELF_REG_DENY_PREFIX + shopId, v ? v + ',' + chatId : String(chatId));
+  var v = String(kvGet_(SELF_REG_DENY_PREFIX + shopId) || '');
+  kvSet_(SELF_REG_DENY_PREFIX + shopId, v ? v + ',' + chatId : String(chatId));
 }
 
 /** 「送信中」の印がまだ新しいか（10分以内） */
@@ -190,7 +187,7 @@ function partnerSendingFresh_(v) {
 
 /** 送った日時（'sending …' は送信中＝まだ送っていないので ''） */
 function partnerSentAt_(key) {
-  var v = String(PropertiesService.getScriptProperties().getProperty(key) || '');
+  var v = String(kvGet_(key) || '');
   return v.indexOf('sending ') === 0 ? '' : v;
 }
 
@@ -202,14 +199,13 @@ function partnerSendClaim_(key, force) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5 * 1000)) return null;
   try {
-    var props = PropertiesService.getScriptProperties();
-    var cur = String(props.getProperty(key) || '');
+    var cur = String(kvGet_(key) || '');
     if (cur.indexOf('sending ') === 0) {
       if (partnerSendingFresh_(cur)) return null;
     } else if (cur && !force) {
       return null;
     }
-    props.setProperty(key, 'sending ' + Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
+    kvSet_(key, 'sending ' + Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
     return { prev: cur.indexOf('sending ') === 0 ? '' : cur };
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}
@@ -218,13 +214,12 @@ function partnerSendClaim_(key, force) {
 
 /** 印を確定する。送れたら送った日時（を返す）、送れなかったら印を元に戻して '' */
 function partnerSendDone_(key, claim, ok) {
-  var props = PropertiesService.getScriptProperties();
   if (ok) {
     var at = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
-    props.setProperty(key, at);
+    kvSet_(key, at);
     return at;
   }
-  if (claim && claim.prev) props.setProperty(key, claim.prev); else props.deleteProperty(key);
+  if (claim && claim.prev) kvSet_(key, claim.prev); else kvDelete_(key);
   return '';
 }
 
@@ -249,19 +244,18 @@ function rotateSelfRegToken_(shopId) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5 * 1000)) return false;
   try {
-    var props = PropertiesService.getScriptProperties();
-    if (partnerSendingFresh_(props.getProperty(SELF_REG_SENT_PREFIX + id))) return false;   // ほかの実行がリンクを送信中
-    var used = props.getProperty(SELF_REG_USED_PREFIX + id);
+    if (partnerSendingFresh_(kvGet_(SELF_REG_SENT_PREFIX + id))) return false;   // ほかの実行がリンクを送信中
+    var used = kvGet_(SELF_REG_USED_PREFIX + id);
     if (used) addSelfRegDeny_(id, used);
     // この紹介者の token をすべて消す（取り違えで2本できていても残さない）
-    var all = props.getProperties();
+    var all = kvGetAll_(SELF_REG_TOKEN_PREFIX);
     Object.keys(all).forEach(function(k) {
-      if (k.indexOf(SELF_REG_TOKEN_PREFIX) === 0 && String(all[k]) === id) props.deleteProperty(k);
+      if (String(all[k]) === id) kvDelete_(k);
     });
     [SELF_REG_SHOP_PREFIX, SELF_REG_SENT_PREFIX, SELF_REG_CELL_PREFIX, SELF_REG_GID_PREFIX, SELF_REG_USED_PREFIX].forEach(function(p) {
-      props.deleteProperty(p + id);
+      kvDelete_(p + id);
     });
-    props.setProperty(SELF_REG_NEED_PREFIX + id, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
+    kvSet_(SELF_REG_NEED_PREFIX + id, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
     return true;
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}
@@ -285,7 +279,7 @@ function sendSelfRegLinkNow(shopId) {
   if (!(selfRegPctFor_(info) > 0)) { Logger.log('ℹ️ 本人割引が 0% の配分なので、本人登録リンクは送らない: ' + id); return false; }
   if (!rotateSelfRegToken_(id)) { Logger.log('⚠️ 本人登録リンクの送信中です。少し待ってからもう一度: ' + id); return false; }
   var r = sendSelfRegLinkOnce_(id, gid);
-  if (r === 'sent') PropertiesService.getScriptProperties().deleteProperty(SELF_REG_NEED_PREFIX + id);
+  if (r === 'sent') kvDelete_(SELF_REG_NEED_PREFIX + id);
   Logger.log((r === 'sent' ? '🔑 本人登録リンクを作り直して送った: ' : '⚠️ いま送れなかった（毎時の安全網が送る）: ') + id);
   return r === 'sent';
 }
@@ -353,7 +347,7 @@ function sendSelfRegLinkOnce_(shopId, groupChatId) {
       '⚠️ ' + info.name + '（個人提携）のグループに本人登録リンクを送れていません（毎時再試行・6時間に1回お知らせ）。グループの連携・Bot がグループにいるかを確かめてください');
     return false;
   }
-  PropertiesService.getScriptProperties().setProperty(SELF_REG_GID_PREFIX + shopId, String(groupChatId));   // このリンクはこのグループ用
+  kvSet_(SELF_REG_GID_PREFIX + shopId, String(groupChatId));   // このリンクはこのグループ用
   markSelfLinkCell_(shopId, at);
   Logger.log('🔑 本人登録リンク 送信: ' + shopId + ' → ' + groupChatId);
   return 'sent';
@@ -559,7 +553,6 @@ function sendIndividualOnboardingRest_(shopId, groupChatId) {
  *   3. 最初の送り残し: この版より後にあいさつ文を送ったグループで、あいさつ文から7日以内なら、チラシ・本人登録リンクを送る
  */
 function sendPendingIndividualOnboarding_() {
-  var props = PropertiesService.getScriptProperties();
   var since = Utilities.formatDate(new Date(new Date().getTime() - PARTNER_ONBOARD_RETRY_DAYS * 24 * 60 * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
   var sent = 0;
   readShopLinks_().forEach(function(r) {
@@ -572,27 +565,27 @@ function sendPendingIndividualOnboarding_() {
       var info = individualPartnerInfo_(shopId);
       if (!info || info.kind === 'restaurant') return;   // 飲食店はチラシ・本人登録リンクを送らない（2026-10-29）
       // 1. 取り消し → 作り直し（送信中の 'sending' は送ったとみなさない）
-      if (!info.selfChat && props.getProperty(SELF_REG_SHOP_PREFIX + shopId) && partnerSentAt_(SELF_REG_SENT_PREFIX + shopId)) {
+      if (!info.selfChat && kvGet_(SELF_REG_SHOP_PREFIX + shopId) && partnerSentAt_(SELF_REG_SENT_PREFIX + shopId)) {
         var mr = partnerMasterRow_(shopId);
         var cellEmpty = !!mr && mr.head.indexOf(PARTNER_SELF_LINK_COL) >= 0 && !String(partnerMasterCell_(mr, PARTNER_SELF_LINK_COL) || '').trim();
-        if (cellEmpty && !props.getProperty(SELF_REG_CELL_PREFIX + shopId) && !props.getProperty(SELF_REG_USED_PREFIX + shopId)) {
+        if (cellEmpty && !kvGet_(SELF_REG_CELL_PREFIX + shopId) && !kvGet_(SELF_REG_USED_PREFIX + shopId)) {
           markSelfLinkCell_(shopId, partnerSentAt_(SELF_REG_SENT_PREFIX + shopId));   // 書き込みに失敗していただけ（消されたのではない）
         } else if (selfLinkRevoked_(shopId) === true) {
           rotateSelfRegToken_(shopId);   // 送り待ちの印を付ける（送信中なら次の回）
         }
       }
       // 2. 作り直したリンクの送り待ち（送れるまで毎時）
-      if (props.getProperty(SELF_REG_NEED_PREFIX + shopId)) {
-        if (info.selfChat) { props.deleteProperty(SELF_REG_NEED_PREFIX + shopId); return; }
+      if (kvGet_(SELF_REG_NEED_PREFIX + shopId)) {
+        if (info.selfChat) { kvDelete_(SELF_REG_NEED_PREFIX + shopId); return; }
         if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') {
-          props.deleteProperty(SELF_REG_NEED_PREFIX + shopId);
+          kvDelete_(SELF_REG_NEED_PREFIX + shopId);
           sent++;
           try { sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, '🔑 ' + info.name + '（個人提携）の本人登録リンクを作り直して送りました（前のリンクは使えません）'); } catch (ignore) {}
         }
         return;
       }
       // 3. 最初の送り残し（既存のグループ・7日より前は送らない）
-      var greetAt = String(props.getProperty(SHOP_GREETING_PROP_PREFIX + shopId) || '');
+      var greetAt = String(kvGet_(SHOP_GREETING_PROP_PREFIX + shopId) || '');
       if (!greetAt || greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;
       sendIndividualFlyersOnce_(shopId, gid);   // 送信済み・送信中なら何もしない（印は関数の中で取る）
       if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') sent++;
@@ -619,7 +612,7 @@ function writeSelfChatToMaster_(shopId, chatId, who) {
   if (cur) return 'taken:' + cur;
   if (!partnerMasterSet_(r, PARTNER_SELF_CHAT_COL, String(chatId))) return 'failed';
   // このリンクで本人になった人（「本人chat_id」を消したら、このリンクは取り消し・この人は本人登録リンクで戻れない）
-  PropertiesService.getScriptProperties().setProperty(SELF_REG_USED_PREFIX + shopId, String(chatId));
+  kvSet_(SELF_REG_USED_PREFIX + shopId, String(chatId));
   try {
     var at = Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm');
     partnerMasterSet_(r, PARTNER_SELF_NAME_COL, sheetSafeText_(who || ''));
@@ -765,8 +758,7 @@ function handleSelfRegStart_(msg, text) {
   if (!m) return false;
   var chatId = String(msg.chat.id);
   var who = selfRegWho_(msg);
-  var props = PropertiesService.getScriptProperties();
-  var shopId = String(props.getProperty(SELF_REG_TOKEN_PREFIX + m[1]) || '').trim();
+  var shopId = String(kvGet_(SELF_REG_TOKEN_PREFIX + m[1]) || '').trim();
   selfRegSafe_('ファネル', function() {
     if (typeof logFunnelEvent === 'function') logFunnelEvent(chatId, 'selfreg_start', 'selfreg:' + (shopId || '?'), '', null);
   });

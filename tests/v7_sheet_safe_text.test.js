@@ -16,7 +16,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const V7 = path.join(__dirname, '..', 'v7');
-const FILES = ['Config.gs', 'SheetHelpers.gs', 'ForumTopicManager.gs', 'ShopRouting.gs',
+const FILES = ['Config.gs', 'SheetHelpers.gs', 'KvStore.gs', 'ForumTopicManager.gs', 'ShopRouting.gs',
   'CustomerChat.gs', 'Router.gs', 'FunnelLog.gs', 'PartnerSelfRegister.gs'];
 // 営業ボード（v7-operations・別の GAS プロジェクト）は v7 のシートを読み戻して書く
 const OPS = path.join(__dirname, '..', 'v7-operations');

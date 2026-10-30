@@ -242,7 +242,7 @@ function sourceHasPerk_(cfg) {
 function getSourceRefForCustomer(chatId) {
   if (!chatId) return '';
   try {
-    return PropertiesService.getScriptProperties().getProperty(SOURCE_REF_PREFIX + String(chatId)) || '';
+    return kvGet_(SOURCE_REF_PREFIX + String(chatId)) || '';
   } catch (err) {
     return '';
   }
@@ -250,7 +250,7 @@ function getSourceRefForCustomer(chatId) {
 
 function setSourceRefForCustomer_(chatId, code) {
   try {
-    PropertiesService.getScriptProperties().setProperty(SOURCE_REF_PREFIX + String(chatId), code);
+    kvSet_(SOURCE_REF_PREFIX + String(chatId), code);
   } catch (err) {
     Logger.log('⚠️ src_ref 保存失敗: ' + err);
   }
@@ -296,9 +296,8 @@ function handleSourceStart_(msg, text) {
   // 個人提携の紹介元は外さない（当社集金なので流入元と両立する・最初の紹介者で固定・2026-10-27 ReferralAttribution.gs）
   if (cfg.active && (typeof shouldClearShopRefOnSourceScan_ !== 'function' || shouldClearShopRefOnSourceScan_(chatId))) {
     try {
-      var sp = PropertiesService.getScriptProperties();
-      sp.deleteProperty('shop_ref_' + chatId);
-      if (typeof SHOP_REF_AT_PREFIX !== 'undefined') sp.deleteProperty(SHOP_REF_AT_PREFIX + chatId);   // 紹介元が付いた日も
+      kvDelete_('shop_ref_' + chatId);
+      if (typeof SHOP_REF_AT_PREFIX !== 'undefined') kvDelete_(SHOP_REF_AT_PREFIX + chatId);   // 紹介元が付いた日も
     } catch (ignore) {}
   }
 

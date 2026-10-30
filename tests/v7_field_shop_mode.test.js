@@ -16,7 +16,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const V7 = path.join(__dirname, '..', 'v7');
-const FILES = ['PartnerLang.gs', 'FieldShopMode.gs', 'FieldPayment.gs', 'ShopRouting.gs'];
+const FILES = ['KvStore.gs', 'PartnerLang.gs', 'FieldShopMode.gs', 'FieldPayment.gs', 'ShopRouting.gs'];
 
 function loadV7() {
   const props = {}, cache = {}, sent = [];

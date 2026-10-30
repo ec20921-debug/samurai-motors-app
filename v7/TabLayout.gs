@@ -51,6 +51,7 @@ const TAB_LAYOUT = [
   ['キャンペーン台帳',   'LOG',   false, false],
   ['キャンペーン送信エラー', 'LOG', false, false],
   ['ファネルログ',       'LOG',   false, false],   // 使用中: 毎時の書き出し・QRを読んだ数
+  ['状態',               'LOG',   true,  true],    // 使用中: お客様ごとの紹介元・本人登録リンクの状態など（KvStore.gs・2026-10-31。以前は Script Properties）
   ['_経営キャッシュ',    'LOG',   false, false],
 ];
 

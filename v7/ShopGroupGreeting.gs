@@ -74,9 +74,8 @@ function buildShopGroupGreeting_(shopName, shopId) {
  */
 function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   if (!shopId || !groupChatId) return false;
-  var props = PropertiesService.getScriptProperties();
-  var key = SHOP_GREETING_PROP_PREFIX + shopId;
-  if (props.getProperty(key)) return true;
+  var key = SHOP_GREETING_PROP_PREFIX + shopId;   // 置き場は状態タブ（KvStore.gs・2026-10-31）
+  if (kvGet_(key)) return true;
   // 流入元タブが読めず、レジデンス等の提携先か判定できない時は送らない（車屋用の文を一度送ると戻せない。毎時の安全網が再試行）
   if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(shopId) === null) {
     Logger.log('⚠️ あいさつ文 保留（流入元タブを読めない）: ' + shopId);
@@ -96,7 +95,7 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   }
   var sentNow = false;
   try {
-    if (props.getProperty(key)) return true;
+    if (kvGet_(key)) return true;
     // 取り消せない1回きりの送信なので、提携種別（個人提携・飲食店・車屋）を読み直してから文を決める（/register と同じ・2026-10-29）。
     // 読み直しに失敗した時は送らない（最後に読めた内容が古い種別かもしれない）→ 毎時の安全網が再試行
     if (typeof readPartnerKinds_ === 'function') {
@@ -111,7 +110,7 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
       Logger.log('⚠️ あいさつ文 送信失敗: ' + shopId + ' ' + JSON.stringify(res));
       return false;
     }
-    props.setProperty(key, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
+    kvSet_(key, Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
     Logger.log('👋 あいさつ文 送信: ' + shopId + ' → ' + groupChatId);
     sentNow = true;
   } finally {
@@ -134,7 +133,6 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
  */
 function sendPendingShopGreetings() {
   var rows = readShopLinks_();
-  var props = PropertiesService.getScriptProperties();
   var since = new Date().getTime() - SHOP_GREETING_CATCHUP_DAYS * 24 * 60 * 60 * 1000;
   var sent = 0;
   rows.forEach(function(r) {
@@ -143,7 +141,7 @@ function sendPendingShopGreetings() {
     var shopId = String(o['shop_id'] || '');
     var groupChatId = String(o['グループchat_id'] || '');
     if (!shopId || !groupChatId) return;
-    if (props.getProperty(SHOP_GREETING_PROP_PREFIX + shopId)) return;
+    if (kvGet_(SHOP_GREETING_PROP_PREFIX + shopId)) return;
     var linkedAt = parseShopLinkedAt_(o['紐付け日時']);
     if (!linkedAt || linkedAt.getTime() < since) return;
     if (sendShopGroupGreetingOnce_(shopId, groupChatId, o['店名'])) sent++;

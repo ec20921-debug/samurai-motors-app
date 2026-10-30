@@ -48,7 +48,7 @@ function loadV7(master, opts) {
   const cache = {};
   const sent = [];
   const props = {};
-  const run = load('v7', ['PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs',
+  const run = load('v7', ['KvStore.gs', 'PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs',
     'BookingLogic.gs', 'RestaurantPartner.gs', 'ShopGroupGreeting.gs', 'PartnerSelfRegister.gs'], {
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     getSpreadsheet: () => {

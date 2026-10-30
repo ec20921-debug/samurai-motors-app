@@ -272,11 +272,10 @@ function handleShopStart_(msg, text) {
   // 車屋はレジデンス等の流入元（src_ref）を外す（2026-10-20）。個人提携は当社集金なので流入元と両立する（外さない・2026-10-27）
   // 紹介元が付いた日も残す（紹介の期限 12か月・読み直しでは延ばさない・ReferralAttribution.gs setReferralTag_）
   try {
-    var sp = PropertiesService.getScriptProperties();
     if (typeof setReferralTag_ === 'function') setReferralTag_(String(msg.chat.id), shopId);
-    else sp.setProperty('shop_ref_' + String(msg.chat.id), shopId);
+    else kvSet_('shop_ref_' + String(msg.chat.id), shopId);
     if (typeof shouldClearSourceRefOnShopTag_ !== 'function' || shouldClearSourceRefOnShopTag_(shopId)) {
-      sp.deleteProperty('src_ref_' + String(msg.chat.id));
+      kvDelete_('src_ref_' + String(msg.chat.id));
     }
   } catch (err) {
     Logger.log('⚠️ shop_ref 保存失敗: ' + err);
@@ -389,7 +388,7 @@ function findShopLinkByShopId_(shopId) {
  */
 function getShopRefForCustomer(chatId) {
   try {
-    return PropertiesService.getScriptProperties().getProperty('shop_ref_' + String(chatId)) || '';
+    return kvGet_('shop_ref_' + String(chatId)) || '';
   } catch (err) {
     return '';
   }

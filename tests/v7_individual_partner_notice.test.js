@@ -27,7 +27,7 @@ function load(dir, files) {
 }
 
 function loadV7(langByShop) {
-  const run = load('v7', ['PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs', 'BookingLogic.gs', 'PartnerSelfRegister.gs']);
+  const run = load('v7', ['KvStore.gs', 'PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs', 'BookingLogic.gs', 'PartnerSelfRegister.gs']);
   run('__partnerLangMemo_ = ' + JSON.stringify(langByShop || {}) + ';');
   return run;
 }

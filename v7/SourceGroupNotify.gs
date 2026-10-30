@@ -85,7 +85,7 @@ var SOURCE_GROUP_MARK_KEEP_DAYS = 30;   // 作業完了の通知が届かなか�
 function markSourceGroupBooking_(srcCfg, info) {
   try {
     if (!srcCfg || !srcCfg.shopId || !info || !info.bookingId) return;
-    PropertiesService.getScriptProperties().setProperty(SOURCE_GROUP_PROP_PREFIX + info.bookingId, JSON.stringify({
+    kvSet_(SOURCE_GROUP_PROP_PREFIX + info.bookingId, JSON.stringify({
       shopId: srcCfg.shopId, label: srcCfg.label, unitNo: info.unitNo || '', carModel: info.carModel || '',
       at: new Date().toISOString()
     }));
@@ -97,14 +97,12 @@ function markSourceGroupBooking_(srcCfg, info) {
 /** 古い印（SOURCE_GROUP_MARK_KEEP_DAYS 日より前）を消す。予約が入った時（ロックの外）に呼ぶ */
 function pruneSourceGroupMarks_() {
   try {
-    var sp = PropertiesService.getScriptProperties();
-    var all = sp.getProperties();
+    var all = kvGetAll_(SOURCE_GROUP_PROP_PREFIX);   // 状態タブ（KvStore.gs）
     var limit = Date.now() - SOURCE_GROUP_MARK_KEEP_DAYS * 24 * 60 * 60 * 1000;
     Object.keys(all).forEach(function(k) {
-      if (k.indexOf(SOURCE_GROUP_PROP_PREFIX) !== 0) return;
       var at = 0;
       try { at = Date.parse(JSON.parse(all[k]).at) || 0; } catch (ignore) {}
-      if (at && at < limit) sp.deleteProperty(k);
+      if (at && at < limit) kvDelete_(k);
     });
   } catch (err) {
     Logger.log('⚠️ pruneSourceGroupMarks_: ' + err);
@@ -115,7 +113,7 @@ function pruneSourceGroupMarks_() {
 function getSourceGroupBooking_(bookingId) {
   if (!bookingId) return null;
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty(SOURCE_GROUP_PROP_PREFIX + bookingId);
+    var raw = kvGet_(SOURCE_GROUP_PROP_PREFIX + bookingId);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
     Logger.log('⚠️ getSourceGroupBooking_: ' + err);
@@ -222,9 +220,9 @@ function notifySourceGroupJob_(phase, p) {
 
     if (!sendSourceGroup_(rec.shopId, lines.join('\n'), blobs, (phase === 'start' ? '作業開始 ' : '作業完了 ') + p.bookingId)) return '';
     jobMarkCustSent_(p.opts, key);
-    // 完了まで届いたら印は役目を終える（Script Properties を増やし続けない）
+    // 完了まで届いたら印は役目を終える（状態タブを増やし続けない）
     if (phase !== 'start') {
-      try { PropertiesService.getScriptProperties().deleteProperty(SOURCE_GROUP_PROP_PREFIX + p.bookingId); } catch (ignore) {}
+      try { kvDelete_(SOURCE_GROUP_PROP_PREFIX + p.bookingId); } catch (ignore) {}
     }
     return rec.shopId;
   } catch (err) {

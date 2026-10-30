@@ -57,14 +57,15 @@ const SHEET_NAMES = {
 // ====== キュー・重複排除のキープレフィックス ======
 const STORAGE_KEYS = {
   QUEUE_PREFIX:     'queue_',       // queue_{timestamp}_{update_id}
-  PROCESSED_PREFIX: 'processed_',   // processed_{update_id}（24h保持）
+  PROCESSED_PREFIX: 'processed_',   // processed_{update_id}（旧・2026-10-31 まで。cleanupOldProcessedIds が24hで消し切る）
+  PROCESSED_IDS:    'processed_ids_v1',   // 処理済み update_id の一覧（1つのキーに最新 400 件・2026-10-31）
   ADMIN_REPLY_PREFIX: 'admin_reply_', // admin_reply_{admin_chat_id}（Cache 300秒）
   POLL_OFFSET_PREFIX: 'poll_offset_'  // poll_offset_{botType} : 次回取得用 update_id（Polling方式）
 };
 
 // ====== TTL（秒） ======
 const TTL = {
-  PROCESSED_ID:      24 * 60 * 60,   // 24時間（ScriptProperties側で手動clean）
+  PROCESSED_ID:      24 * 60 * 60,   // 24時間（旧 processed_* の掃除に使う）
   ADMIN_REPLY_STATE: 300,            // 5分（CacheService）
   PLAN_PRICES_CACHE: 60,             // 1分（CacheService）
   AVAILABLE_SLOTS:   60              // 1分（CacheService）

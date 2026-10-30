@@ -18,12 +18,12 @@
 var CAMPAIGN_SHOP_REF_PREFIX_ = 'shop_ref_';
 
 /**
- * 一斉配信から外す chatId → shop_id。Script Properties はまとめて1回だけ読み、shop_ref のある人だけ判定する。
+ * 一斉配信から外す chatId → shop_id。状態タブをまとめて1回だけ読み、shop_ref のある人だけ判定する。
  * 読めない時は例外を投げる（呼び元で送信を止める。店のお客様に割引の配信が届くのを防ぐ）
  * @return {Object<string, string>}
  */
 function getShopRefChatIdsForBroadcast_() {
-  var all = PropertiesService.getScriptProperties().getProperties();
+  var all = kvGetAll_(CAMPAIGN_SHOP_REF_PREFIX_);   // 状態タブ（KvStore.gs）。読めない時は例外＝送信を止める
   var out = {};
   Object.keys(all).forEach(function(k) {
     if (k.indexOf(CAMPAIGN_SHOP_REF_PREFIX_) !== 0 || !all[k]) return;

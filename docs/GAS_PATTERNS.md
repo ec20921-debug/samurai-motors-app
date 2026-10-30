@@ -66,7 +66,10 @@ function doPost(e) {
 
 ```
 このデータは失われると業務影響が出る？ / GAS再起動・6時間後も保持が必要？
-├── YES → ScriptProperties（永続）
+├── YES → お客様ごと・お店ごと・予約ごとに増えるもの？
+│         ├── YES → v7 Database「状態」タブ（KvStore.gs: kvGet_ / kvSet_ / kvSetAll_ / kvGetAll_ / kvDelete_）
+│         │         （2026-10-31〜。Script Properties は設定画面が 50 個で読み取り専用になる。キーの名前は今までどおり shop_ref_ 等）
+│         └── NO  → ScriptProperties（永続・設定とキューだけ・20個以内）
 └── NO  → CacheService（揮発）
 ```
 
