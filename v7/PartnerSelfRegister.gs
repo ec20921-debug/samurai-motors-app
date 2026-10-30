@@ -201,10 +201,12 @@ function partnerSendClaim_(key, force) {
   try {
     var cur;
     try {
-      cur = String(kvGetStrict_(key) || '');
+      cur = String(kvGetStrict_(key, true) || '');   // ロックの中はタブを読み直す（直前に読んだ古い内容で「未送信」と読まない）
     } catch (err) {
       // 状態タブを読めない時は「未送信」と読まずに送らない（取り消せない送信・毎時の安全網が再試行。2026-10-31）
       Logger.log('⚠️ 送付印を読めないので送らない: ' + key + ' ' + err);
+      kvWarn_('warn_partner_send_kv_unreadable', '⚠️ v7 Database「状態」タブを読めないため、個人提携のグループへのチラシ・本人登録リンクを保留しました' +
+        '（毎時の安全網が再試行）。「状態」タブが開けるか確かめてください\n' + key);
       return null;
     }
     if (cur.indexOf('sending ') === 0) {

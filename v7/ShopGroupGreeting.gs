@@ -70,12 +70,15 @@ function buildShopGroupGreeting_(shopName, shopId) {
 
 /**
  * あいさつ文を送ったか: 'sent' / 'unsent' / 'unknown'（状態タブを読めない＝送らない側。2026-10-31）
+ * fresh=true はタブを読み直す（ロックの中の確かめ直し。ロックの前に読んだ古い内容で「未送信」と読まない）
  */
-function greetingSentState_(key) {
+function greetingSentState_(key, fresh) {
   try {
-    return kvGetStrict_(key) ? 'sent' : 'unsent';
+    return kvGetStrict_(key, fresh) ? 'sent' : 'unsent';
   } catch (err) {
     Logger.log('⚠️ あいさつ文 保留（状態タブを読めない・毎時の安全網で再試行）: ' + key + ' ' + err);
+    kvWarn_('warn_greeting_kv_unreadable', '⚠️ v7 Database「状態」タブを読めないため、提携先グループへのあいさつ文を保留しました' +
+      '（連携から7日以内なら毎時の安全網が送ります）。「状態」タブが開けるか確かめてください\n' + key);
     return 'unknown';
   }
 }
@@ -109,7 +112,7 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   }
   var sentNow = false;
   try {
-    var sentState = greetingSentState_(key);
+    var sentState = greetingSentState_(key, true);   // ロックの中はタブを読み直す
     if (sentState !== 'unsent') return sentState === 'sent';
     // 取り消せない1回きりの送信なので、提携種別（個人提携・飲食店・車屋）を読み直してから文を決める（/register と同じ・2026-10-29）。
     // 読み直しに失敗した時は送らない（最後に読めた内容が古い種別かもしれない）→ 毎時の安全網が再試行

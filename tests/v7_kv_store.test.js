@@ -98,14 +98,14 @@ function makeCtx(opts) {
   const props = new Map(Object.entries(opts.props || {}));
   const cache = new Map();
   const ss = opts.ss || fakeSpreadsheet();
-  const state = { sheetBroken: false, scriptLockHeld: false, kvLockBusy: false, log: [] };
+  const state = { sheetBroken: false, scriptLockHeld: false, kvLockBusy: false, propsBroken: false, log: [], warns: [] };
   const ctx = {
     console,
     Logger: { log: (m) => state.log.push(String(m)) },
     Utilities: { formatDate },
     PropertiesService: {
       getScriptProperties: () => ({
-        getProperty: (k) => (props.has(k) ? props.get(k) : null),
+        getProperty: (k) => { if (state.propsBroken) throw new Error('props unavailable'); return props.has(k) ? props.get(k) : null; },
         setProperty: (k, v) => props.set(k, String(v)),
         deleteProperty: (k) => props.delete(k),
         getProperties: () => Object.fromEntries(props),
@@ -122,11 +122,12 @@ function makeCtx(opts) {
     },
     LockService: {
       getScriptLock: () => ({ tryLock: () => !state.scriptLockHeld, waitLock: () => {}, releaseLock: () => {} }),
-      // 本番の v7 はシートに付いていないスクリプトなので DocumentLock は null（opts.boundToSheet で付いている場合も試す）
-      getDocumentLock: () => (opts.boundToSheet ? { tryLock: () => !state.kvLockBusy, releaseLock: () => {} } : null),
+      // 本番の v7 は v7 Database に付いた container-bound なので DocumentLock が取れる（opts.standalone で null の場合も試す）
+      getDocumentLock: () => (opts.standalone ? null : { tryLock: () => !state.kvLockBusy, releaseLock: () => {} }),
       getUserLock: () => ({ tryLock: () => !state.kvLockBusy, releaseLock: () => {} })
     },
-    getSpreadsheet: () => { if (state.sheetBroken) throw new Error('sheet unavailable'); return ss; }
+    getSpreadsheet: () => { if (state.sheetBroken) throw new Error('sheet unavailable'); return ss; },
+    warnOncePer_: (key, sec, text) => state.warns.push(key + ' ' + text)
   };
   vm.createContext(ctx);
   ['Config.gs', 'KvStore.gs', 'QueueManager.gs'].forEach((f) =>
@@ -217,7 +218,7 @@ test('タブが読めない時: 最後に読めた内容 → Script Properties �
   assert.equal(tabMap(t).shop_ref_7, 'FROM-RETREAT');
 });
 
-test('ScriptLock を持ったまま呼ばれても書ける（書き込みは DocumentLock → 無ければ UserLock）', () => {
+test('ScriptLock を持ったまま呼ばれても書ける（書き込みは DocumentLock）', () => {
   const t = makeCtx();
   t.state.scriptLockHeld = true;
   t.run(`kvSet_('shop_greeting_sent_SHOP-A', '2026-10-31 10:00:00')`);
@@ -389,15 +390,15 @@ test('化けた行の書き直しは行数によらずシートへの書き込�
 
 // ====== @105 からの弱点（2026-10-31 Daisuke「別の弱点直す」） ======
 
-test('ロック: シートに付いていないスクリプト（DocumentLock が null）で ScriptLock を持ったままでも、UserLock でタブに書ける（退避に回らない）', () => {
-  const t = makeCtx();                                          // 本番と同じ＝DocumentLock なし
+test('ロック: 本番（container-bound）は DocumentLock。取れない時だけ UserLock で、ScriptLock を持ったままでもタブに書ける（ログに出す）', () => {
+  assert.equal(makeCtx().run(`kvLockKind_()`), 'DocumentLock');
+  const t = makeCtx({ standalone: true });                      // DocumentLock が null の場合
   assert.equal(t.run(`kvLockKind_()`), 'UserLock');
   t.state.scriptLockHeld = true;                                // あいさつ文・送付印は ScriptLock を持ったまま書く
   t.run(`kvSet_('partner_flyers_sent_SHOP-H', 'sending 2026-10-31 10:00:00')`);
   assert.equal(tabMap(t)['partner_flyers_sent_SHOP-H'], 'sending 2026-10-31 10:00:00');
   assert.equal(t.props.has('kv_retreat_v1'), false);
-  const bound = makeCtx({ boundToSheet: true });
-  assert.equal(bound.run(`kvLockKind_()`), 'DocumentLock');
+  assert.ok(t.state.log.some((m) => m.indexOf('DocumentLock を取れない') >= 0));
 });
 
 test('消せなかった時: 退避に「消した」印。タブに残った古い値は読まれず、毎分の処理がタブの行を空にする', () => {
@@ -448,4 +449,45 @@ test('kvGetStrict_: タブも最後に読めた内容も無い時は例外（kvG
   t.state.sheetBroken = true;
   assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-A')`), null);   // kvGet_ は「無い」と読む（だから送る前には使わない）
   assert.throws(() => t.run(`kvGetStrict_('shop_greeting_sent_SHOP-A')`), /状態タブを読めません/);
+});
+
+test('kvGetStrict_(key, true): ロックの前に読んだ古い内容（同じ実行の 3 秒メモ）を使わず、タブを読み直す（二重送信を防ぐ）', () => {
+  const t = makeCtx();
+  t.run(`kvSet_('shop_ref_1', 'SHOP-A')`);
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-X')`), null);   // ロックの前の確認（メモができる）
+  t.ss.sheets['状態'].rows.push(['shop_greeting_sent_SHOP-X', '2026-10-31 10:00:00', '2026-10-31 10:00:00']);   // その間にほかの実行が送って印を付けた
+  assert.equal(t.run(`kvGetStrict_('shop_greeting_sent_SHOP-X')`), null);              // メモのままだと「未送信」に見える
+  assert.equal(t.run(`kvGetStrict_('shop_greeting_sent_SHOP-X', true)`), '2026-10-31 10:00:00');
+});
+
+test('kvGetStrict_: 退避を読めない時も例外（退避の「消した」印・書けなかった値を見落として送らない）。kvGet_ はタブの値を返す', () => {
+  const t = makeCtx();
+  t.run(`kvSet_('shop_greeting_sent_SHOP-A', '2026-10-31 10:00:00')`);
+  t.newExecution();
+  t.run(`__kvRetreatMemo_ = null;`);
+  t.state.propsBroken = true;
+  assert.throws(() => t.run(`kvGetStrict_('shop_greeting_sent_SHOP-A', true)`), /退避/);
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-A')`), '2026-10-31 10:00:00');
+});
+
+test('「消した」印のあとに同じキーを書けば、その値が読める（印は書いた時にロックの中で外す）', () => {
+  const t = makeCtx();
+  t.run(`kvSet_('src_ref_1', 'PICASSO')`);
+  t.state.kvLockBusy = true;
+  t.run(`kvDelete_('src_ref_1')`);
+  assert.equal(t.run(`kvGet_('src_ref_1')`), null);
+  t.state.kvLockBusy = false;
+  t.run(`kvSet_('src_ref_1', 'PICASSO-2')`);
+  assert.equal(t.props.has('kv_retreat_v1'), false);
+  t.newExecution();
+  assert.equal(t.run(`kvGet_('src_ref_1')`), 'PICASSO-2');
+  t.run(`processTelegramQueue()`);                             // 毎分の移行が古い印でタブを空にしない
+  assert.equal(tabMap(t).src_ref_1, 'PICASSO-2');
+});
+
+test('退避が大きくなったら管理グループに知らせる（Script Properties 1 キーは 9KB まで）', () => {
+  const t = makeCtx();
+  t.state.kvLockBusy = true;                                    // タブに書けない状態が続く
+  for (let i = 0; i < 200; i++) t.run(`kvSet_('shop_ref_' + ${'1000000000'} + ${i}, 'SHOP-20261031-000000-abcdef' + ${i})`);
+  assert.ok(t.state.warns.some((w) => w.indexOf('warn_kv_retreat_big') === 0));
 });

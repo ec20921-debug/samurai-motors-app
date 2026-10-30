@@ -244,7 +244,9 @@ test('状態タブを読めない時: あいさつ文・送付印は「未送信
   assert.equal(run('individualPartnerState_("SHOP-PJ")'), true);
   assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), false);
   assert.equal(sent.filter((m) => m.chat === '-100PJ').length, 0);
+  assert.ok(sent.some((m) => m.chat === 'ADMIN' && /あいさつ文を保留/.test(m.text)));   // 黙って遅らせない
   assert.equal(run('partnerSendClaim_("partner_flyers_sent_SHOP-HIRO", false)'), null);   // チラシ・本人登録リンクも送らない
+  assert.ok(sent.some((m) => m.chat === 'ADMIN' && /チラシ・本人登録リンクを保留/.test(m.text)));
 
   broken = false;
   run('__kvMemo_ = null; __kvMemoAt_ = 0;');
