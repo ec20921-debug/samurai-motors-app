@@ -260,7 +260,7 @@ test('photos_follow の値: 0・負・大きすぎ・文字は「分けない」
   assert.equal(ctx.startPhotosFollow_({ photos_follow: '3' }), 3);
   [0, -1, 31, 'x', null, undefined].forEach((v) => assert.equal(ctx.startPhotosFollow_({ photos_follow: v }), 0, String(v)));
   assert.equal(ctx.startPhotosFollow_(null), 0);
-  assert.deepEqual(JSON.parse(JSON.stringify(ctx.fieldAppCaps_())), { startPhotos: 1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.fieldAppCaps_())), { startPhotos: 1, startPhotosMax: 30 });
 });
 
 test('② の client_id・job_client_id がおかしい時は「要確認」（送り直さない）', () => {
@@ -269,4 +269,116 @@ test('② の client_id・job_client_id がおかしい時は「要確認」（�
   assert.equal(r.retryable, false);
   const r2 = ctx.apiJobStartPhotosV2(photosBody({ job_client_id: 'bad id!' }));
   assert.equal(r2.retryable, false);
+});
+
+// ── 2026-10-30 コードレビューの指摘への対応 ──
+
+test('② ①の記録（v2記録(JSON)）が読めない時は、②の本文の店へ送らない（安全側）', () => {
+  const { ctx, groups, tables } = loadV7();
+  const shopV2 = { mode: 'shop', shop_id: 'SHOP-A', damage: [] };
+  ctx.apiJobStartV2(startBody({ bookingId: '', photos_follow: 2, beforePhotos: [], v2: shopV2 }));
+  tables.jobs[0]['v2記録(JSON)'] = JSON.stringify({ truncated: true, size: 50000 });
+  ctx.apiJobStartPhotosV2(photosBody({ bookingId: '', v2: { mode: 'shop', shop_id: 'SHOP-A', damage: [] } }));
+  assert.equal(groups.filter((g) => g.kind === 'shop').length, 0);
+});
+
+test('② キャプションの作業開始時刻は①の行の開始時刻（②の本文の時刻は使わない）', () => {
+  const { ctx, sent } = loadV7();
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  sent.length = 0;
+  ctx.apiJobStartPhotosV2(photosBody({ startTime: '2026-10-30T10:00:00.000Z' }));   // 押し直しで時刻が変わった本文
+  assert.ok(toAdmin(sent)[0].caption.includes('（作業開始 15:27）'));
+});
+
+test('② 写真は上限（30枚）まで', () => {
+  const { ctx, tables } = loadV7();
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  const many = Array.from({ length: 35 }, (_, i) => 'data:image/jpeg;base64,P' + i);
+  ctx.apiJobStartPhotosV2(photosBody({ beforePhotos: many }));
+  assert.equal(tables.jobs[0]['Before写真URL'].split('\n').length, 30);
+});
+
+test('② 送り直しの上限で先へ進めた時は、管理グループへ「送り切れませんでした」', () => {
+  const { ctx, sent } = loadV7();
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  ctx.DriveApp.getFolderById = () => ({ createFile: () => { throw new Error('drive down'); } });
+  sent.length = 0;
+  ctx.apiJobStartPhotosV2(photosBody());
+  ctx.apiJobStartPhotosV2(photosBody());
+  assert.equal(toAdmin(sent).filter((s) => s.type === 'text').length, 0, '上限までは知らせない');
+  ctx.apiJobStartPhotosV2(photosBody());
+  const warn = toAdmin(sent).filter((s) => s.type === 'text');
+  assert.equal(warn.length, 1);
+  assert.ok(warn[0].text.startsWith('⚠️ 作業前の写真を送り切れませんでした（🆔 BK-20261028-001 ／ 👤 Sato Hirotaka・保存 0/2枚）'));
+});
+
+test('② の途中で例外になっても「配信中」の印を残さない（すぐ送り直せる）', () => {
+  const { ctx, cache } = loadV7();
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  ctx.jobBumpTries_ = () => { throw new Error('cache down'); };
+  const r = ctx.apiJobStartPhotosV2(photosBody());
+  assert.equal(r.status, 'error');
+  assert.equal(r.retryable, true);
+  assert.ok(!('jobdeliv:startphotos:job-cid-0001' in cache));
+});
+
+test('② 送り直しで保存できた枚数が減っても、前回の Before写真URL を残す', () => {
+  const { ctx, tables } = loadV7({ albumFails: 2 });   // 1回目: 写真は保存できたが管理グループへ届かない
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  ctx.apiJobStartPhotosV2(photosBody());
+  assert.equal(tables.jobs[0]['Before写真URL'].split('\n').length, 2);
+  let n = 0;
+  ctx.DriveApp.getFolderById = () => ({ createFile: (blob) => {
+    if (n++ > 0) throw new Error('drive partial');
+    return { setSharing: () => {}, getUrl: () => 'https://drive/retry/' + blob.name };
+  } });
+  ctx.apiJobStartPhotosV2(photosBody());
+  assert.equal(tables.jobs[0]['Before写真URL'].split('\n').length, 2);
+  assert.ok(!tables.jobs[0]['Before写真URL'].includes('retry'));
+});
+
+test('店の QR のお客様: ② の送り直しで店のグループへ二重に送らない', () => {
+  const { ctx, groups } = loadV7({ albumFails: 2 });
+  ctx.notifyShopGroupJobPhotos = (chatId, text, blobs) => { groups.push({ kind: 'qr', blobs: (blobs || []).length }); return 'SHOP-QR'; };
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  ctx.apiJobStartPhotosV2(photosBody());   // 管理グループへの写真が届かず送り直し
+  ctx.apiJobStartPhotosV2(photosBody());
+  assert.equal(groups.filter((g) => g.kind === 'qr').length, 1);
+  assert.equal(groups.filter((g) => g.kind === 'src').length, 0, '店の QR のお客様には流入元のグループへ送らない（送り直しでも）');
+});
+
+test('作業終了の時に作業前の写真がまだ届いていなければ、管理グループへ知らせる', () => {
+  const { ctx, sent, tables } = loadV7();
+  ctx.apiJobEnd = () => ({ status: 'ok' });
+  ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  assert.equal(JSON.parse(tables.jobs[0]['v2記録(JSON)']).start_photos_follow, 2);
+  sent.length = 0;
+  const endBody = { action: 'job_end', client_id: 'end-cid-0001', job_client_id: 'job-cid-0001', name: 'Sato Hirotaka', v2: {} };
+  const r = ctx.apiJobEndV2(endBody);
+  assert.equal(r.status, 'ok');
+  const warn = toAdmin(sent).filter((s) => s.type === 'text');
+  assert.equal(warn.length, 1);
+  assert.ok(warn[0].text.startsWith('⚠️ 作業前の写真がまだ届いていません（🆔 BK-20261028-001 ／ 👤 Sato Hirotaka）'));
+});
+
+test('作業終了: 作業前の写真が届いていれば・分けて送っていなければ知らせない', () => {
+  const a = loadV7();
+  a.ctx.apiJobEnd = () => ({ status: 'ok' });
+  a.ctx.apiJobStartV2(startBody({ photos_follow: 2, beforePhotos: [] }));
+  a.ctx.apiJobStartPhotosV2(photosBody());
+  a.sent.length = 0;
+  a.ctx.apiJobEndV2({ action: 'job_end', client_id: 'end-cid-0001', job_client_id: 'job-cid-0001', v2: {} });
+  assert.equal(toAdmin(a.sent).length, 0);
+  const b = loadV7();
+  b.ctx.apiJobEnd = () => ({ status: 'ok' });
+  b.ctx.apiJobStartV2(startBody());
+  b.sent.length = 0;
+  b.ctx.apiJobEndV2({ action: 'job_end', client_id: 'end-cid-0001', job_client_id: 'job-cid-0001', v2: {} });
+  assert.equal(toAdmin(b.sent).length, 0);
+});
+
+test('apiJobStart の part の綴り違いは例外（黙って全部送らない）', () => {
+  const { ctx, sent } = loadV7();
+  assert.throws(() => ctx.apiJobStart(startBody(), { part: 'photo' }), /unknown part/);
+  assert.equal(sent.length, 0);
 });

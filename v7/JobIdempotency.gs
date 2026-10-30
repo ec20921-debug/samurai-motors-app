@@ -8,7 +8,8 @@
  *   - body.client_id がある送信（v2）だけここを通す。無い送信（旧 job-manager.html）は従来どおり
  *   - ロックは「列の確認 → client_id で行を探す → ジョブID採番 → 行を書く」の短い区間だけ。
  *     ScriptLock は予約確定・決済QR・手動売上と共有なので、写真保存・通知・売上計上はロックの外で行う
- *   - 配信（顧客・管理・店舗への通知）は「開始配信日時 / 終了配信日時」列で1回だけ。
+ *   - 配信（顧客・管理・店舗への通知）は「開始配信日時 / 終了配信日時」列で1回だけ（作業前の写真を分けて送る作業の写真は
+ *     「Before写真配信日時」・JobStartPhotos.gs・2026-10-30）。
  *     管理通知が届かない・写真を1枚も保存できない場合は配信済みにせず、送り直しで再配信する
  *   - 同時に同じ送信が2本来た場合は CacheService の「配信中」印で片方だけが配信し、
  *     もう片方には IN_PROGRESS（再送してよい）を返す＝アプリは「送信済み」にしない
@@ -186,7 +187,8 @@ function apiJobStartV2(body) {
         '受信日時':           new Date(),
         '送信日時(端末)':     jobDate_(body.sent_at, ''),
         'スタッフチャットID': jobStaffChatId_(body),
-        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null })
+        // start_photos_follow: 写真はあとから届く枚数（作業終了の時に、届いていなければ知らせる・JobStartPhotos.gs）
+        'v2記録(JSON)':       jobV2Json_('', photosFollow ? { start: body.v2 || null, start_photos_follow: photosFollow } : { start: body.v2 || null })
       });
       SpreadsheetApp.flush();
       row = findRow(SHEET_NAMES.JOBS, 'client_id', cid);
@@ -310,6 +312,8 @@ function apiJobEndV2(body) {
     try { updateRow(SHEET_NAMES.JOBS, row.rowIndex, { '終了配信日時': new Date() }); } catch (e2) {
       Logger.log('⚠️ 終了配信日時の記録失敗: ' + e2);
     }
+    // 「写真はあとから届きます」と知らせた作業で、作業前の写真がまだ届いていなければ管理グループへ（JobStartPhotos.gs）
+    if (typeof warnIfStartPhotosMissing_ === 'function') warnIfStartPhotosMissing_(row.data, body.bookingId, body.name);
   }
   cache.remove('jobdeliv:end:' + cid);
   res = res || { status: 'error', message: 'unknown' };

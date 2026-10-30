@@ -66,7 +66,7 @@
 3. **トークン・ID類のハードコード禁止**。すべて PropertiesService から取得。コミット前チェック必須
 4. **1顧客 = 1トピック**。`CUSTOMERS.thread_id` を先に検索、`createForumTopic` は存在しない時のみ
 5. **`status`（作業進行）と `payment_status`（決済）は完全独立**。`status=paid` は使わない。全フロー完了 = `completed` かつ `清算済み`
-6. **3方向配信**: 作業開始・完了・写真は必ず 顧客 / Admin / シート へ同時配信
+6. **3方向配信**: 作業開始・完了・写真は必ず 顧客 / Admin / シート へ同時配信（例外 2026-10-30: 現場アプリ v2 が作業前の写真を分けて送る作業は、Admin への文字の知らせとシートが先・顧客と写真はあとから。docs/HANDOFF_StartPhotosSplit_2026-10-30.md）
 7. **QR は1予約1回のみ**。24h催促にQR再添付しない。QRは `QR_CODES` シートの `active=TRUE` 行から
 8. **設定はシート連動**（Plan_Prices、60秒キャッシュ）。料金・営業時間をコードにハードコードしない
 

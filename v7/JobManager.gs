@@ -11,8 +11,9 @@
  *   GET:
  *     - booking_today    : 本日＋明日の予約一覧
  *   POST:
- *     - job_start        : 作業開始通知（リアルタイム）
- *     - job_end          : 作業終了通知（リアルタイム）
+ *     - job_start        : 作業開始通知（現場アプリ v2 は端末から送れた時点。photos_follow があれば文字の通知だけ）
+ *     - job_start_photos : 作業前の写真（作業開始の知らせのあとに別に届く・JobStartPhotos.gs・2026-10-30）
+ *     - job_end          : 作業終了通知（現場アプリ v2 は端末から送れた時点）
  *     - job              : 最終データ送信（バックアップ）
  *     - chat_history     : 顧客チャット履歴取得
  *     - chat_send        : ミニアプリからメッセージ送信
@@ -21,7 +22,7 @@
  *   顧客: 開始時 → Before写真アルバム（キャプション: 「開始しました」）
  *         終了時 → After写真アルバム（キャプション: 「終わりました」）
  *         Phase 5 で QR コードを続けて送る予定
- *   管理: トピックに開始/終了メッセージ＋写真アルバム
+ *   管理: トピックに開始/終了メッセージ＋写真アルバム（作業前の写真を分けて送る作業は、開始の文字 → あとから写真）
  *   シート: 作業記録に1行（Before写真URL/After写真URL は Drive リンク）
  */
 
@@ -260,6 +261,7 @@ function apiJobStart(body, opts) {
   // opts（2026-10-08 v2）: { rowIndex, jobId } … JobIdempotency.gs が先に書いた行を使う
   opts = opts || {};
   var part = opts.part || '';
+  if (part && part !== 'text' && part !== 'photos') throw new Error('apiJobStart: unknown part ' + part);   // 綴り違いで黙って全部送らない
   var adminDelivered = false;
   try {
     var bookingId = body.bookingId || '';
@@ -320,7 +322,11 @@ function apiJobStart(body, opts) {
       if (!linkedChatId && existingRow[JOBS_COL_CUSTOMER_CHAT]) linkedChatId = String(existingRow[JOBS_COL_CUSTOMER_CHAT]);
       var v2StartUpdates = {};
       // 文字だけの回は Before写真URL を書かない（写真の回が書く）。写真の回は Before写真URL だけ（ほかは文字の回で書いた）
-      if (part !== 'text') v2StartUpdates['Before写真URL'] = jobRowObj['Before写真URL'];
+      // 写真の回の送り直しで前回より保存できた枚数が少ない時（Drive の一部失敗）は、前回の分を残す
+      var prevBeforeCount = String(existingRow['Before写真URL'] || '').split('\n').filter(String).length;
+      if (part !== 'text' && !(part === 'photos' && photoResult.urls.length < prevBeforeCount)) {
+        v2StartUpdates['Before写真URL'] = jobRowObj['Before写真URL'];
+      }
       if (part !== 'photos') {
         v2StartUpdates['車種'] = jobRowObj['車種'];
         if (hasAmountValue_(body.amount)) v2StartUpdates['料金(USD)'] = body.amount;
@@ -433,13 +439,16 @@ function apiJobStart(body, opts) {
     // ── 6. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
     // 文字だけの回は店・提携先のグループへ送らない（写真の回で文と写真をそろえて送る＝グループへの届き方は今までどおり）
     var sendGroups = part !== 'text';
-    var startShopSent = '';
+    // 同じ送信の再実行（管理グループへの写真だけ失敗した等）で店のグループへ二重に送らない（送った shop_id を覚える・2026-10-30）
+    var startQrKey = opts.cid ? 'jobcust:startqr:' + opts.cid : '';
+    var startShopSent = startQrKey ? (CacheService.getScriptCache().get(startQrKey) || '') : '';
     try {
-      if (sendGroups && customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
+      if (sendGroups && !startShopSent && customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
         // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
         startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
           return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', name: body.name || '', car: body.carModel || '', photos: 'before' });
         }, photoResult.blobs, bkRow ? bkRow.data : null);   // 予約の紹介元を優先（2026-10-27 紹介の期限）
+        if (startShopSent && startQrKey) CacheService.getScriptCache().put(startQrKey, startShopSent, 21600);
       }
     } catch (e) {
       Logger.log('⚠️ 店舗グループ同報失敗(start): ' + e);

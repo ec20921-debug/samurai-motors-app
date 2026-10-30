@@ -755,8 +755,12 @@ function queueStart(c) {
   }
   // 2026-10-30: 作業開始の知らせ（数KB）を先に、写真をあとに分けて送る（電波の弱い所でも知らせはすぐ届く）。
   //   サーバーが対応している時だけ（booking_today の caps）。写真の記録は知らせが届いてから送る（after）
-  //   写真が多すぎる時（サーバーの上限 30 枚・JobStartPhotos.gs）は今までどおり1回で
-  if (!(S.caps && S.caps.startPhotos) || !photos.length || photos.length > 30) return Outbox.enqueue('job_start', p);
+  //   写真が多すぎる時（サーバーの上限・caps.startPhotosMax）は今までどおり1回で。
+  //   更新直後の1回目は outbox.js だけ古い版のことがある（Service Worker）→ enqueueAll が無ければ今までどおり
+  var maxSplit = Number(S.caps && S.caps.startPhotosMax) || 30;
+  if (!(S.caps && S.caps.startPhotos) || !photos.length || photos.length > maxSplit || typeof Outbox.enqueueAll !== 'function') {
+    return Outbox.enqueue('job_start', p);
+  }
   var pcid = c.photosCid || (c.photosCid = Outbox.uuid());
   var head = Object.assign({}, p, { beforePhotos: [], photos_follow: photos.length });
   var tail = Object.assign({}, p, { client_id: pcid, request_id: pcid, job_client_id: c.jobCid });
@@ -1389,8 +1393,9 @@ function renderBar() {
     else if (c.step === 'confirm') sjSend(c, btn);
     else if (c.step === 'check') goStep('before');
     else if (c.step === 'before') {
-      c.startAt = new Date().toISOString();
-      setActive(c, j.menu[0]);
+      // 押し直し（保存の直後に落ちて開始前の画面に戻った等）では開始時刻と作業時間を数え直さない
+      c.startAt = c.startAt || new Date().toISOString();
+      if (c.active !== j.menu[0]) setActive(c, j.menu[0]);
       queueStart(c).then(function () { c.startQueued = true; saveDraft(); toast('📥 ' + t('offline_saved'), 'ok'); goStep('work'); })
         .catch(function () { btn.disabled = false; toast('⚠ IndexedDB', 'warn'); });
     }
@@ -1616,8 +1621,8 @@ function sjDamageHtml(c) {
 }
 function sjStartWork(c, btn) {
   if (!sjDamageReady(c)) { btn.disabled = false; return; }
-  c.startAt = new Date().toISOString();
-  setActive(c, c.job.menu[0]);
+  c.startAt = c.startAt || new Date().toISOString();   // 押し直しでは数え直さない
+  if (c.active !== c.job.menu[0]) setActive(c, c.job.menu[0]);
   queueStart(c).then(function () { c.startQueued = true; sjBumpFreq(c.shop); saveDraft(); toast('📥 ' + t('offline_saved'), 'ok'); goStep('work'); })
     .catch(function () { btn.disabled = false; toast('⚠ IndexedDB', 'warn'); });
 }

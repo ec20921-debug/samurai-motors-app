@@ -5,6 +5,7 @@
  * サーバーが client_id を返したときだけ「送信済み」にする（中身の無い ok は失敗扱い）。
  *
  *   - 送る順番: 同じ仕事（job_client_id）の中だけ「開始 → 終了」を守る。仕事どうしは独立
+ *     （作業前の写真を分けて送る仕事は「開始の知らせ → 作業前の写真 → 終了」・after で順番を指定・2026-10-30）
  *     （1件が失敗し続けても、ほかの仕事の記録は送れる）
  *   - 再送: 5秒 → 15秒 → 1分 → 5分（以後5分おき）。8回失敗したら「要確認」にして本人に見せる
  *   - サーバーが retryable:false を返したら「要確認」（例: 不正なID）
@@ -174,7 +175,11 @@
       // 先に送るべき記録が「要確認」なら、待っている記録も「要確認」に出す（黙って保留し続けない）
       function blockedBy(r) {
         if (r.kind === 'job_end' && startKnown[r.job_client_id] && !sentStart[r.job_client_id]) return startRec[r.job_client_id];
-        if (r.after && byId[r.after] && byId[r.after].status !== 'sent') return byId[r.after];
+        if (r.after && byId[r.after] && byId[r.after].status !== 'sent') {
+          // 作業前の写真が「要確認」になっても作業終了は止めない（売上を止めない。サーバーが管理グループへ知らせる・2026-10-30）
+          if (r.kind === 'job_end' && byId[r.after].kind === 'job_start_photos' && byId[r.after].status === 'review') return null;
+          return byId[r.after];
+        }
         return null;
       }
       list.forEach(function (r) {

@@ -21,9 +21,9 @@
 var JOBS_COL_START_PHOTOS_SENT_ = 'Before写真配信日時';   // JobIdempotency.gs JOBS_V2_COLS_ に含める
 var START_PHOTOS_MAX_ = 30;
 
-/** 現場アプリに知らせる「このサーバーでできること」（booking_today の応答に入れる） */
+/** 現場アプリに知らせる「このサーバーでできること」（booking_today の応答に入れる）。写真の上限もここから（アプリと一本化） */
 function fieldAppCaps_() {
-  return { startPhotos: 1 };
+  return { startPhotos: 1, startPhotosMax: START_PHOTOS_MAX_ };
 }
 
 /** ①の本文の「写真はあとから届く」枚数。無い・おかしい値は 0（今までどおり1回で受ける） */
@@ -66,38 +66,87 @@ function apiJobStartPhotosV2(body) {
   }
 
   // ── ロックの外: 写真保存・配信（apiJobStart の写真の回） ──
-  if (row.data['予約ID'] !== undefined) body.bookingId = String(row.data['予約ID'] || '').replace(/^'/, '');
-  try {
-    var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start;
-    if (startV2) body.v2 = startV2;   // 傷・へこみの文章と開始で選んだ店は①の記録から
-  } catch (eJson) {
-    Logger.log('⚠️ apiJobStartPhotosV2: 開始の記録を読めず ' + eJson);
-  }
-  var fieldShop = (!body.bookingId && typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
-  var lastChance = jobBumpTries_('startphotos', jcid);
   var res;
   try {
+    startPhotosFromRow_(body, row.data);
+    var fieldShop = (!body.bookingId && typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2.shop_id) : '';
+    var lastChance = jobBumpTries_('startphotos', jcid);
     // cid は①と同じ（お客様・店のグループへの「送り済み」の印を①と共有する）
     res = apiJobStart(body, { part: 'photos', rowIndex: row.rowIndex, jobId: jobId, cid: jcid,
                               skipCustomer: !!row.data['完了イベントID'], lastChance: lastChance, fieldShopId: fieldShop });
+    if (res && res.status === 'ok' && res.warning === 'DELIVERY_PARTIAL') {
+      jobFlagNeedsCheck_(row.rowIndex, row.data['v2記録(JSON)'], 'startphotos', res);
+      warnStartPhotos_('partial', body.bookingId, body.name, res);
+    }
+    if (res && res.status === 'ok') {
+      var sent = {};
+      sent[JOBS_COL_START_PHOTOS_SENT_] = new Date();
+      try { updateRow(SHEET_NAMES.JOBS, row.rowIndex, sent); } catch (e2) {
+        Logger.log('⚠️ Before写真配信日時の記録失敗: ' + e2);
+      }
+    }
   } catch (e) {
     res = { status: 'error', message: String(e) };
+  } finally {
+    cache.remove(key);   // 途中で例外になっても「配信中」の印を残さない
   }
-  if (res && res.status === 'ok' && res.warning === 'DELIVERY_PARTIAL') {
-    jobFlagNeedsCheck_(row.rowIndex, row.data['v2記録(JSON)'], 'startphotos', res);
-  }
-  if (res && res.status === 'ok') {
-    var sent = {};
-    sent[JOBS_COL_START_PHOTOS_SENT_] = new Date();
-    try { updateRow(SHEET_NAMES.JOBS, row.rowIndex, sent); } catch (e2) {
-      Logger.log('⚠️ Before写真配信日時の記録失敗: ' + e2);
-    }
-  }
-  cache.remove(key);
   res = res || { status: 'error', message: 'unknown' };
   res.jobId = jobId;
   if (res.status === 'error') res.retryable = true;
   return jobEcho_(res, body);
+}
+
+/**
+ * ②の本文のうち、①で記録した値で置き換えるもの（②の本文の値は信じない）
+ *   予約ID・開始時刻（キャプション）・v2（開始で選んだ店・傷の文章）。①の記録が読めない時は店へ送らない側に倒す
+ *   写真は上限まで（①の宣言の上限と同じ）
+ */
+function startPhotosFromRow_(body, rowData) {
+  body.bookingId = String(rowData['予約ID'] || '').replace(/^'/, '');
+  var rowStart = rowData['開始時刻'];
+  if (rowStart && typeof rowStart.getTime === 'function' && !isNaN(rowStart.getTime())) body.startTime = rowStart.toISOString();
+  var startV2 = null;
+  try {
+    startV2 = JSON.parse(String(rowData['v2記録(JSON)'] || '{}')).start || null;
+  } catch (eJson) {
+    Logger.log('⚠️ apiJobStartPhotosV2: 開始の記録を読めず（店へは送らない） ' + eJson);
+  }
+  body.v2 = startV2 || { damage: [] };
+  body.beforePhotos = (body.beforePhotos || []).slice(0, START_PHOTOS_MAX_);
+}
+
+/**
+ * 「写真はあとから届きます」と知らせた作業で、写真がそろわなかった時に管理グループへ一言（一般スレッド）
+ * @param {string} why - 'partial'（送り直しの上限で先へ進めた）/ 'missing'（作業終了の時点で写真がまだ届いていない）
+ */
+function warnStartPhotos_(why, bookingId, name, res) {
+  try {
+    var who = [bookingId ? '🆔 ' + bookingId : '', '👤 ' + (name || '-')].filter(String).join(' ／ ');
+    var text = why === 'missing'
+      ? '⚠️ 作業前の写真がまだ届いていません（' + who + '）\n現場アプリに「未送信」が残っていないか、Run Kosal さんに確認してください'
+      : '⚠️ 作業前の写真を送り切れませんでした（' + who + '・保存 ' + ((res && res.photosSaved) || 0) + '/' + ((res && res.photosExpected) || 0) + '枚）\n作業記録の Before写真URL と Drive を確認してください';
+    sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, text);
+  } catch (e) {
+    Logger.log('⚠️ warnStartPhotos_(' + why + '): ' + e);
+  }
+}
+
+/**
+ * 作業終了の時（apiJobEndV2）: ①で「写真はあとから」と知らせたのに②がまだ届いていなければ管理グループへ知らせる
+ * （現場アプリは②が「要確認」になっても作業終了を止めない＝売上を止めないため・2026-10-30）
+ */
+function warnIfStartPhotosMissing_(rowData, bookingId, name) {
+  try {
+    if (!rowData || rowData[JOBS_COL_START_PHOTOS_SENT_]) return false;
+    var follow = 0;
+    try { follow = Number(JSON.parse(String(rowData['v2記録(JSON)'] || '{}')).start_photos_follow) || 0; } catch (e) {}
+    if (follow <= 0) return false;
+    warnStartPhotos_('missing', bookingId, name, null);
+    return true;
+  } catch (err) {
+    Logger.log('⚠️ warnIfStartPhotosMissing_: ' + err);
+    return false;
+  }
 }
 
 /**
