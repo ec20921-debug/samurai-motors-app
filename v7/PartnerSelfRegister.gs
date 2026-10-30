@@ -192,7 +192,8 @@ function partnerSentAt_(key) {
 }
 
 /**
- * 送る前に印を取る（即時送信と毎時の安全網が重なっても1回だけ送る）。取れたら { prev } / 取れなければ null（送信済み・ほかの実行が送信中・状態タブを読めない）
+ * 送る前に印を取る（即時送信と毎時の安全網が重なっても1回だけ送る）。取れたら { prev } / 取れなければ null
+ * （送信済み・ほかの実行が送信中・状態タブか退避を読めない・印を残せない）
  *   印は 'sending <日時>' → 送れたら送った日時、送れなかったら元に戻す（partnerSendDone_）。止まった実行の 'sending' は10分で取り直せる
  */
 function partnerSendClaim_(key, force) {
@@ -205,8 +206,8 @@ function partnerSendClaim_(key, force) {
     } catch (err) {
       // 状態タブを読めない時は「未送信」と読まずに送らない（取り消せない送信・毎時の安全網が再試行。2026-10-31）
       Logger.log('⚠️ 送付印を読めないので送らない: ' + key + ' ' + err);
-      kvWarn_('warn_partner_send_kv_unreadable', '⚠️ v7 Database「状態」タブを読めないため、個人提携のグループへのチラシ・本人登録リンクを保留しました' +
-        '（毎時の安全網が再試行）。「状態」タブが開けるか確かめてください\n' + key);
+      kvWarn_('warn_partner_send_kv_unreadable', '⚠️ v7 Database「状態」タブ（または退避 kv_retreat_v1）を読めないため、個人提携のグループへの' +
+        'チラシ・本人登録リンクを保留しました（毎時の安全網が再試行）。「状態」タブが開けるか確かめてください\n' + key + '\n' + err);
       return null;
     }
     if (cur.indexOf('sending ') === 0) {
@@ -214,7 +215,8 @@ function partnerSendClaim_(key, force) {
     } else if (cur && !force) {
       return null;
     }
-    kvSet_(key, 'sending ' + Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'));
+    // 印を残せなかった時は送らない（送ったあとに印も残せないと、毎時の安全網が送り直す）
+    if (!kvSet_(key, 'sending ' + Utilities.formatDate(new Date(), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss'))) return null;
     return { prev: cur.indexOf('sending ') === 0 ? '' : cur };
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}

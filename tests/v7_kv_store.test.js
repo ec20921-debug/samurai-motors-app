@@ -13,6 +13,10 @@
  *   - kvMigrateFromProperties: 対象のキーだけタブへ移して Script Properties から消す。設定・キューは触らない。2回実行しても同じ
  *   - processTelegramQueue: 処理済みの update_id は processed_ids_v1（1つのキー）で見る。旧 processed_* も移行期間は見る
  *   - 日時・数字の形の文字も文字のまま（書式 @ で書く）。@105 で日付・数値に化けた値は元の文字の形で読み、文字に書き直す
+ *   - ロックは DocumentLock（v7 は container-bound）。取れない時だけ UserLock
+ *   - 消せなかった時は退避に「消した」印。退避を読めない時は「空」と読んで上書きしない。退避が大きくなったら知らせる
+ *   - kvGetStrict_（取り消せない送信の前の確認）: 読めない時は例外・fresh はタブと退避を読み直す
+ *   - 行が足りない時は足してから書く
  *     （シートのスタブは本物と同じく、書式が @ でなければ日時の文字を Date・数字の文字を数値に変える。2026-10-31）
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
@@ -490,4 +494,17 @@ test('退避が大きくなったら管理グループに知らせる（Script P
   t.state.kvLockBusy = true;                                    // タブに書けない状態が続く
   for (let i = 0; i < 200; i++) t.run(`kvSet_('shop_ref_' + ${'1000000000'} + ${i}, 'SHOP-20261031-000000-abcdef' + ${i})`);
   assert.ok(t.state.warns.some((w) => w.indexOf('warn_kv_retreat_big') === 0));
+});
+
+test('退避を読めない時: 「空」と読んで退避を上書きしない（ほかの退避・消した印を消さない）。書けなかったことは戻り値で分かる', () => {
+  const t = makeCtx({ props: { kv_retreat_v1: JSON.stringify({ 'shop_greeting_sent_SHOP-A': '2026-10-31 09:00:00', 'src_ref_9': '' }) } });
+  t.state.kvLockBusy = true;                                    // タブに書けない
+  t.state.propsBroken = true;                                   // 退避も読めない
+  assert.equal(t.run(`kvSet_('shop_ref_1', 'SHOP-A')`), false);
+  assert.deepEqual(JSON.parse(t.props.get('kv_retreat_v1')),    // 元の退避はそのまま
+    { 'shop_greeting_sent_SHOP-A': '2026-10-31 09:00:00', 'src_ref_9': '' });
+  assert.ok(t.state.warns.some((w) => w.indexOf('warn_kv_retreat_lost') === 0));
+  t.state.propsBroken = false;
+  t.state.kvLockBusy = false;
+  assert.equal(t.run(`kvSet_('shop_ref_1', 'SHOP-A')`), true);
 });

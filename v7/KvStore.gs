@@ -67,7 +67,8 @@ var KV_LOCK_MS_ = 10 * 1000;
 var KV_RETREAT_KEY_ = 'kv_retreat_v1';   // タブに書けなかった値の退避先（Script Properties の 1 キー・JSON）
 var KV_MIGRATE_PER_RUN_ = 100;
 var KV_GROW_ROWS_ = 200;   // 行が足りない時に足す行数
-var KV_RETREAT_WARN_CHARS_ = 7000;   // 退避（Script Properties 1 キー・9KB まで）がこれを超えたら知らせる
+var KV_RETREAT_WARN_BYTES_ = 7000;   // 退避（Script Properties 1 キー・9KB まで）がこれを超えたら知らせる
+var KV_RETREAT_PER_RUN_ = 30;        // 毎分の移行で 1 回に退避からタブへ移す上限（ロックを長く持たない）
 var __kvLockLogged_ = false;
 var __kvMemo_ = null;
 var __kvMemoAt_ = 0;
@@ -109,9 +110,10 @@ function kvGetFrom_(key, strict, fresh) {
   }
 }
 
-/** prefix で始まるキーを全部 { key: value } で返す。タブが読めず最後に読めた内容も無い時は例外（呼び元で送信などを止める） */
+/** prefix で始まるキーを全部 { key: value } で返す。タブ（最後に読めた内容も無い時）か退避を読めない時は例外（呼び元で送信などを止める） */
 function kvGetAll_(prefix) {
   prefix = String(prefix || '');
+  var retreat = kvRetreatLoad_(false, true);   // 退避を先に読む（kvGetFrom_ と同じ順）
   var map = kvLoad_(false);
   if (!map) throw new Error('状態タブを読めません（' + KV_SHEET_NAME_ + '）');
   var out = {};
@@ -125,23 +127,23 @@ function kvGetAll_(prefix) {
   Object.keys(map).forEach(function(k) {
     if (k.indexOf(prefix) === 0 && map[k]) out[k] = map[k];
   });
-  var retreat = kvRetreatLoad_();
   Object.keys(retreat).forEach(function(k) {
     if (k.indexOf(prefix) === 0) { if (retreat[k]) out[k] = retreat[k]; else delete out[k]; }
   });
   return out;
 }
 
+/** 書けたら true（タブか退避のどちらかに残せた）。どちらにも書けなかった時は false */
 function kvSet_(key, value) {
   var obj = {};
   obj[String(key)] = value;
-  kvSetAll_(obj);
+  return kvSetAll_(obj);
 }
 
 /** まとめて書く（{ key: value }）。null / undefined は空文字で書く */
 function kvSetAll_(obj) {
   var keys = Object.keys(obj || {});
-  if (!keys.length) return;
+  if (!keys.length) return true;
   var written = kvWrite_(function(sheet, state) {
     var now = kvNow_();
     keys.forEach(function(k) {
@@ -155,13 +157,13 @@ function kvSetAll_(obj) {
   if (written) {
     // 移行前の置き場に同じキーが残っていたら消す（消したあとに古い値が顔を出さないように）
     keys.forEach(function(k) { kvLegacyDelete_(k); });
-    return;
+    return true;
   }
   // タブに書けなかった → 退避（値を失わない。毎分の kvAutoMigrate_ が後でタブへ移す）
   Logger.log('⚠️ 状態タブに書けないので退避（' + KV_RETREAT_KEY_ + '）: ' + keys.join(','));
   var add = {};
   keys.forEach(function(k) { add[k] = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]); });
-  kvRetreatAdd_(add);
+  return kvRetreatAdd_(add);
 }
 
 function kvDelete_(key) {
@@ -217,9 +219,10 @@ function kvRetreatSave_(map) {
   var props = PropertiesService.getScriptProperties();
   if (Object.keys(map).length) {
     var json = JSON.stringify(map);
-    if (json.length > KV_RETREAT_WARN_CHARS_) {
-      kvWarn_('warn_kv_retreat_big', '⚠️ 状態タブに書けない値が退避にたまっています（' + Object.keys(map).length + '件・' + json.length +
-        '文字。上限は約 9KB で、超えると値を失います）。v7 Database「状態」タブが開けるか・行が多すぎないかを確かめてください');
+    var bytes = json.replace(/[^\x00-\x7F]/g, 'xxx').length;   // おおよそのバイト数（ASCII 以外は 3 バイトとみなす）
+    if (bytes > KV_RETREAT_WARN_BYTES_) {
+      kvWarn_('warn_kv_retreat_big', '⚠️ 状態タブに書けない値が退避にたまっています（' + Object.keys(map).length + '件・約' + bytes +
+        'バイト。上限は約 9KB で、超えると値を失います）。v7 Database「状態」タブが開けるか・行が多すぎないかを確かめてください');
     }
     props.setProperty(KV_RETREAT_KEY_, json);
   } else {
@@ -231,13 +234,15 @@ function kvRetreatSave_(map) {
 
 function kvRetreatAdd_(obj) {
   try {
-    var map = kvRetreatLoad_(true);
+    var map = kvRetreatLoad_(true, true);   // 読めない時に「空」と読んで上書きしない（ほかの退避・消した印を消してしまう）
     Object.keys(obj).forEach(function(k) { map[k] = obj[k]; });
     kvRetreatSave_(map);
+    return true;
   } catch (err) {
     Logger.log('❌ 退避にも書けません（値が失われます）: ' + err + ' ' + JSON.stringify(obj));
     kvWarn_('warn_kv_retreat_lost', '❌ 状態タブにも退避にも書けず、値を失いました: ' + Object.keys(obj).join(', ') +
       '\n（あいさつ文・チラシの送付印などなら、二重に送られることがあります）' + err);
+    return false;
   }
 }
 
@@ -248,13 +253,15 @@ function kvWarn_(key, text) {
   } catch (ignore) {}
 }
 
+/**
+ * 退避から外す（kvWrite_ のロックの中から呼ぶ）。読めない・書けない時は例外を投げる
+ * （黙って残すと、退避が最優先で読まれて新しい値が隠れる。kvWrite_ が false を返し、呼び元が新しい値・消した印を退避に置く）
+ */
 function kvRetreatRemove_(keys) {
-  try {
-    var map = kvRetreatLoad_(true);
-    var hit = false;
-    keys.forEach(function(k) { if (Object.prototype.hasOwnProperty.call(map, k)) { delete map[k]; hit = true; } });
-    if (hit) kvRetreatSave_(map);
-  } catch (ignore) {}
+  var map = kvRetreatLoad_(true, true);
+  var hit = false;
+  keys.forEach(function(k) { if (Object.prototype.hasOwnProperty.call(map, k)) { delete map[k]; hit = true; } });
+  if (hit) kvRetreatSave_(map);
 }
 
 // ====== 読み ======
@@ -269,7 +276,9 @@ function kvLoad_(fresh) {
     try {
       var state = kvReadSheet_(true);
       map = state.map;
-      kvCachePut_(map);
+      // fresh（ロックの中の確かめ直し等）は Cache に入れない: ロックを取らずに読んだ直後にほかの実行が書いて Cache を新しくした時、
+      // 古い内容で戻してしまうため（Cache は書いた実行が更新する）
+      if (!fresh) kvCachePut_(map);
     } catch (err) {
       Logger.log('⚠️ 状態タブを読めません: ' + err);
       map = fresh ? null : kvCacheGet_();
@@ -534,9 +543,9 @@ function kvMigrateFromProperties(limit) {
     // ロックの中で退避を読み直して移す（ロックの前に読んだ値だと、そのあとに書かれた新しい値を古い退避で上書きする）。
     // 退避から外すのも同じロックの中で、外す直前に読み直して「移した値のまま」のものだけ
     var res = { applied: 0, moved: 0 };
-    var limitRetreat = max;
+    var limitRetreat = Math.min(max, KV_RETREAT_PER_RUN_);
     var ok1 = kvWrite_(function(sheet, state) {
-      var cur = kvRetreatLoad_(true);
+      var cur = kvRetreatLoad_(true, true);
       var rk = Object.keys(cur).sort().slice(0, limitRetreat);
       var now = kvNow_();
       rk.forEach(function(k) {
@@ -545,7 +554,7 @@ function kvMigrateFromProperties(limit) {
       });
       res.applied = rk.length;
       var check1 = kvReadSheet_(false).map;
-      var latest = kvRetreatLoad_(true);
+      var latest = kvRetreatLoad_(true, true);   // 読めない時に「空」で保存して退避を消さない（例外 → 何も外さない）
       rk.forEach(function(k) {
         var done = cur[k] === '' ? !check1[k] : check1[k] === String(cur[k]);
         if (done && latest[k] === cur[k]) {
@@ -627,8 +636,8 @@ function kvStatus() {
   var state = kvReadSheet_(false);
   var all = PropertiesService.getScriptProperties().getProperties();
   var legacy = Object.keys(all).filter(function(k) { return kvIsManaged_(k); });
-  __kvRetreatMemo_ = null;
-  var retreatN = Object.keys(kvRetreatLoad_()).length;
+  var retreatN;
+  try { retreatN = Object.keys(kvRetreatLoad_(true, true)).length; } catch (err) { retreatN = '読めない（' + err + '）'; }
   var byPrefix = {};
   Object.keys(state.map).forEach(function(k) {
     var p = (k.match(/^[a-z_]+?_/) || [k])[0];

@@ -69,7 +69,7 @@ function buildShopGroupGreeting_(shopName, shopId) {
 }
 
 /**
- * あいさつ文を送ったか: 'sent' / 'unsent' / 'unknown'（状態タブを読めない＝送らない側。2026-10-31）
+ * あいさつ文を送ったか: 'sent' / 'unsent' / 'unknown'（状態タブか退避を読めない＝送らない側。2026-10-31）
  * fresh=true はタブを読み直す（ロックの中の確かめ直し。ロックの前に読んだ古い内容で「未送信」と読まない）
  */
 function greetingSentState_(key, fresh) {
@@ -77,8 +77,8 @@ function greetingSentState_(key, fresh) {
     return kvGetStrict_(key, fresh) ? 'sent' : 'unsent';
   } catch (err) {
     Logger.log('⚠️ あいさつ文 保留（状態タブを読めない・毎時の安全網で再試行）: ' + key + ' ' + err);
-    kvWarn_('warn_greeting_kv_unreadable', '⚠️ v7 Database「状態」タブを読めないため、提携先グループへのあいさつ文を保留しました' +
-      '（連携から7日以内なら毎時の安全網が送ります）。「状態」タブが開けるか確かめてください\n' + key);
+    kvWarn_('warn_greeting_kv_unreadable', '⚠️ v7 Database「状態」タブ（または退避 kv_retreat_v1）を読めないため、提携先グループへの' +
+      'あいさつ文を保留しました（連携から7日以内なら毎時の安全網が送ります）。「状態」タブが開けるか確かめてください\n' + key + '\n' + err);
     return 'unknown';
   }
 }
