@@ -51,6 +51,7 @@ var KV_CACHE_META_ = 'kv_state_v2_meta';
 var KV_CACHE_CHUNK_ = 'kv_state_v2_c';
 var KV_TEXT_CHECKED_KEY_ = 'kv_text_checked_v1';   // Cache: 日付・数値に化けた行を確かめた印（6時間）
 var KV_TEXT_CHECK_SEC_ = 6 * 60 * 60;
+var KV_TEXT_RETRY_SEC_ = 10 * 60;                    // 確かめに失敗した時は 10 分あける（毎分やり直さない）
 var KV_CACHE_SEC_ = 5 * 60;
 var KV_CACHE_CHUNK_CHARS_ = 90000;   // CacheService は 1件 100KB まで
 var KV_MEMO_MS_ = 3000;              // 同じ実行の中で何度も読む時の使い回し（3秒。別の実行の書き込みを長く見落とさない）
@@ -216,25 +217,29 @@ function kvLoad_(fresh) {
 }
 
 /**
- * タブを読んで { map, rows: {key: 行番号}, blanks: [空いている行番号], fix: [文字でない行], sheet } を返す。無ければ作る。
- * 日付・数値に化けたセルは元の文字の形に戻して読む（fix に入れ、次に書く時に文字で書き直す）
+ * タブを読んで { map, rows: {key: 行番号}, blanks: [空いている行番号], fix: [文字でない行], cells: [文字に戻した2行目以降], sheet } を返す。
+ * 無ければ作る。日付・数値に化けたセルは元の文字の形に戻して読む（fix に入れ、次に書く時に文字で書き直す）
  */
 function kvReadSheet_(create) {
   var sheet = kvSheet_(create);
   if (!sheet) throw new Error('状態タブがありません');
   var values = sheet.getDataRange().getValues();
   var tz = kvSheetTimeZone_(sheet);
-  var map = {}, rows = {}, blanks = [], fix = [];
+  var map = {}, rows = {}, blanks = [], fix = [], cells = [];
   for (var i = 1; i < values.length; i++) {
-    var k = kvCellText_(values[i][0], tz);
-    if (!k) { blanks.push(i + 1); continue; }
-    map[k] = kvCellText_(values[i][1], tz);
-    rows[k] = i + 1;
+    var cell = [kvCellText_(values[i][0], tz), kvCellText_(values[i][1], tz), kvCellText_(values[i][2], tz)];
+    cells.push(cell);
     if (!kvIsText_(values[i][0]) || !kvIsText_(values[i][1]) || !kvIsText_(values[i][2])) {
-      fix.push({ row: i + 1, key: k, at: kvCellText_(values[i][2], tz) });
+      // 値が数値・真偽値だった行は、先頭の 0 や長い数字の桁が戻せていないかもしれない（ログでキーを出す）
+      var v = values[i][1];
+      fix.push({ key: cell[0] || ('(空の行 ' + (i + 1) + ')'), lossy: typeof v === 'number' || typeof v === 'boolean' });
     }
+    var k = cell[0];
+    if (!k) { blanks.push(i + 1); continue; }
+    map[k] = cell[1];
+    rows[k] = i + 1;
   }
-  return { map: map, rows: rows, blanks: blanks, fix: fix, sheet: sheet, lastRow: values.length };
+  return { map: map, rows: rows, blanks: blanks, fix: fix, cells: cells, sheet: sheet, lastRow: values.length };
 }
 
 /** セルの値を文字に戻す。Date はシートのタイムゾーンで yyyy-MM-dd HH:mm:ss（時刻 0:00:00 は yyyy-MM-dd）・数値は String */
@@ -322,17 +327,22 @@ function kvSetTextRow_(sheet, row, vals) {
   range.setValues([vals]);
 }
 
-/** kvReadSheet_ が見つけた「文字でない行」を、読んだ値（元の文字の形）のまま文字で書き直す。書き直した数 */
+/**
+ * kvReadSheet_ が見つけた「文字でない行」があれば、2行目以降を読んだ値（元の文字の形）のまま、まとめて文字で書き直す
+ * （書式・値の 2 回だけ。行ごとに書くと行数ぶん時間がかかり、その間ロックを持ち続けるため）。書き直した「文字でない行」の数
+ */
 function kvFixTextRows_(state) {
-  var n = 0;
-  (state.fix || []).forEach(function(f) {
-    if (state.rows[f.key] !== f.row) return;
-    kvSetTextRow_(state.sheet, f.row, [f.key, state.map[f.key], f.at]);
-    n++;
-  });
-  if (n) Logger.log('🔤 状態タブ: 日付・数値に化けていた ' + n + ' 行を文字に書き直した');
+  var fix = state.fix || [];
   state.fix = [];
-  return n;
+  if (!fix.length || !state.cells.length) return 0;
+  var range = state.sheet.getRange(2, 1, state.cells.length, KV_HEADERS_.length);
+  range.setNumberFormat('@');
+  range.setValues(state.cells);
+  var lossy = fix.filter(function(f) { return f.lossy; }).map(function(f) { return f.key; });
+  Logger.log('🔤 状態タブ: 日付・数値に化けていた ' + fix.length + ' 行を文字に書き直した' +
+    (lossy.length ? '（値が数値だった行: ' + lossy.slice(0, 20).join(', ') + (lossy.length > 20 ? ' ほか' + (lossy.length - 20) + '行' : '') +
+      '。先頭の 0 や 16 桁以上の数字は戻せないので、気になる時は元の値を確かめる）' : ''));
+  return fix.length;
 }
 
 /** 書き込み用のロック。ScriptLock を持ったまま呼ばれる場所（あいさつ文・本人登録リンク）があるので DocumentLock を使う */
@@ -477,6 +487,7 @@ function kvAutoFixText_() {
   try {
     var cache = CacheService.getScriptCache();
     if (cache.get(KV_TEXT_CHECKED_KEY_)) return;
+    cache.put(KV_TEXT_CHECKED_KEY_, 'trying', KV_TEXT_RETRY_SEC_);   // 途中で止まっても毎分やり直さない
     if (kvWrite_(function() {})) cache.put(KV_TEXT_CHECKED_KEY_, '1', KV_TEXT_CHECK_SEC_);
   } catch (err) {
     Logger.log('⚠️ kvAutoFixText_（次回に持ち越し）: ' + err);

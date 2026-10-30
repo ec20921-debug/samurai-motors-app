@@ -20,6 +20,14 @@ const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 
+// 時計は不具合の時刻に固定（2026-10-31 01:53 JST = プノンペン 10/30 23:53）。実際の日付が進むと 7 日の枠だけで弾かれて、
+// 「2026-10-27 11:00 より前は送らない」が壊れても気づけなくなるため
+const NOW = Date.UTC(2026, 9, 30, 16, 53, 0);
+class FixedDate extends Date {
+  constructor(...a) { if (a.length) super(...a); else super(NOW); }
+  static now() { return NOW; }
+}
+
 // シートが「yyyy-MM-dd H:mm:ss」を日付に変えた時の Date（スプレッドシートのタイムゾーン Asia/Tokyo）
 function sheetDate(text) {
   const m = String(text).match(/^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2}):(\d{2})$/);
@@ -48,9 +56,11 @@ function runSafetyNet(stateRows, partners) {
     getRange: () => ({ setNumberFormat: () => ({}), setValues: () => ({}) })
   };
   const cache = new Map();
+  const log = [];
   const ctx = {
     console,
-    Logger: { log: () => {} },
+    Date: FixedDate,
+    Logger: { log: (m) => log.push(String(m)) },
     Utilities: { formatDate },
     getSpreadsheet: () => ss,
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, getProperties: () => ({}) }) },
@@ -77,15 +87,17 @@ function runSafetyNet(stateRows, partners) {
     function sendSelfRegLinkOnce_(shopId) { __links.push(shopId); return 'sent'; }
   `, ctx);
   vm.runInContext('sendPendingIndividualOnboarding_()', ctx);
-  return { flyers: flyers.slice(), links: links.slice() };
+  const greet = (shopId) => vm.runInContext(`kvGet_('shop_greeting_sent_' + ${JSON.stringify(shopId)})`, ctx);
+  return { flyers: flyers.slice(), links: links.slice(), greet, log };
 }
 
-const hoursAgo = (h) => formatDate(new Date(Date.now() - h * 60 * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
+const hoursAgo = (h) => formatDate(new Date(NOW - h * 60 * 60 * 1000), 'Asia/Phnom_Penh', 'yyyy-MM-dd HH:mm:ss');
 
 test('Hiro さんの不具合の再現: あいさつ文の日時（10/26・11時の線より前）が日付に化けていても、チラシ・リンクを送り直さない', () => {
   const r = runSafetyNet([['shop_greeting_sent_SHOP-HIRO', sheetDate('2026-10-26 15:25:36')]],
     [{ shopId: 'SHOP-HIRO', selfChat: '1000000001' }]);
-  assert.deepEqual(r.flyers, []);
+  assert.equal(r.greet('SHOP-HIRO'), '2026-10-26 15:25:36');   // 元の文字の形で読めている（KvStore の修正）
+  assert.deepEqual(r.flyers, []);                              // → 「11時より前」で止まる（7 日の枠の内側でも）
   assert.deepEqual(r.links, []);
 });
 
@@ -106,4 +118,5 @@ test('あいさつ文から 7 日を過ぎたグループ・日時として読�
   ], [{ shopId: 'SHOP-OLD' }, { shopId: 'SHOP-BAD' }]);
   assert.deepEqual(r.flyers, []);
   assert.deepEqual(r.links, []);
+  assert.ok(r.log.some((m) => m.indexOf('あいさつ文の日時が読めない') >= 0 && m.indexOf('SHOP-BAD') >= 0));   // 黙って止めない
 });

@@ -587,7 +587,10 @@ function sendPendingIndividualOnboarding_() {
       // 3. 最初の送り残し（既存のグループ・7日より前は送らない）
       var greetAt = String(kvGet_(SHOP_GREETING_PROP_PREFIX + shopId) || '');
       // 日時は文字の並びで比べるので、yyyy-MM-dd HH:mm:ss の形でなければ送らない（安全側。2026-10-31 日付に化けた値で再送した不具合）
-      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(greetAt)) return;
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(greetAt)) {
+        if (greetAt) Logger.log('⚠️ チラシ・本人登録リンク保留（あいさつ文の日時が読めない）: ' + shopId + ' ' + greetAt);
+        return;
+      }
       if (greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;
       sendIndividualFlyersOnce_(shopId, gid);   // 送信済み・送信中なら何もしない（印は関数の中で取る）
       if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') sent++;

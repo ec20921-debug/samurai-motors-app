@@ -43,6 +43,7 @@ function fakeSpreadsheet() {
   const sheets = {};
   const ss = {
     sheets,
+    calls: { setValues: 0, setNumberFormat: 0 },   // シートへの書き込み回数（まとめて書けているかの確認用）
     getSheetByName: (n) => sheets[n] || null,
     insertSheet: (n) => { sheets[n] = make(n); return sheets[n]; },
     getSpreadsheetTimeZone: () => 'Asia/Tokyo'
@@ -56,10 +57,12 @@ function fakeSpreadsheet() {
       getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
       getRange: (r, c, nr, nc) => ({
         setNumberFormat: (f) => {
+          ss.calls.setNumberFormat++;
           for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) formats[(r + i) + ',' + (c + j)] = f;
           return {};
         },
         setValues: (vals) => {
+          ss.calls.setValues++;
           for (let i = 0; i < nr; i++) {
             while (rows.length < r + i) rows.push(['', '', '']);
             rows[r - 1 + i] = vals[i].map((v, j) => (formats[(r + i) + ',' + (c + j)] === '@' ? v : sheetAutoConvert(v)));
@@ -345,6 +348,33 @@ test('毎分のキュー処理: 6 時間に 1 回、化けた行を文字に書�
   t.run(`processTelegramQueue()`);
   assert.ok(!isText(rawRows(t)[1][1]));
   t.cache.delete('kv_text_checked_v1');                        // 6 時間たった
+  t.state.sheetBroken = true;                                  // 確かめに失敗した時は 10 分あける（毎分やり直さない）
+  t.run(`processTelegramQueue()`);
+  assert.equal(t.cache.get('kv_text_checked_v1'), 'trying');
+  t.state.sheetBroken = false;
+  t.cache.delete('kv_text_checked_v1');                        // 10 分たった
   t.run(`processTelegramQueue()`);
   assert.equal(rawRows(t)[1][1], '2026-10-26 15:25:36');
+});
+
+test('化けた行の書き直しは行数によらずシートへの書き込み 2 回（本番は @105 の移行で全行の更新日時が日付に化けている）', () => {
+  const ss = fakeSpreadsheet();
+  const sh = ss.insertSheet('状態');
+  sh.rows.push(['キー(key)', '値(value)', '更新日時(updated_at)']);
+  for (let i = 0; i < 300; i++) sh.rows.push(['shop_ref_' + (1000 + i), 'SHOP-' + i, sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['', '', '']);                                  // 消した行（空）もそのまま
+  sh.rows.push(['selfreg_used_SHOP-H', 1000000001, sheetDate('2026-10-30 23:14:09')]);
+  const t = makeCtx({ ss });
+  assert.equal(t.run(`kvRepairTextValues()`), true);
+  assert.equal(ss.calls.setValues, 1);
+  assert.equal(ss.calls.setNumberFormat, 1);
+  rawRows(t).slice(1).forEach((r) => r.forEach((v) => assert.ok(isText(v), String(r))));
+  assert.equal(rawRows(t)[1][2], '2026-10-30 23:14:09');
+  assert.deepEqual(plain(rawRows(t)[301]), ['', '', '']);
+  assert.equal(rawRows(t)[302][1], '1000000001');
+  assert.ok(t.state.log.some((m) => m.indexOf('301 行を文字に書き直した') >= 0 && m.indexOf('selfreg_used_SHOP-H') >= 0));   // 値が数値だった行はキーを出す
+
+  ss.calls.setValues = 0;
+  t.run(`kvRepairTextValues()`);                               // 2回目: 直すものが無いので書かない
+  assert.equal(ss.calls.setValues, 0);
 });
