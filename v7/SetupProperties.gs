@@ -142,3 +142,36 @@ function testBotTokens() {
     }
   });
 }
+
+// ════════════════════════════════════════════════════════════
+// StaffGate 用（2026-10-31）: OPERATIONS_SPREADSHEET_ID / FIELD_LINK_SECRET を v7 に登録
+//   v7 の Script Properties は 50 個を超えている（shopref_at_* 等）ため、
+//   設定画面は読み取り専用になり手で足せない → この関数で登録する。
+//   【手順】v7 の GAS エディタに新規ファイルを作り、この節だけ貼る → 下の2定数に
+//   v7-operations の設定画面と同じ値を貼る（エディタ上のみ。チャット・GitHub に貼らない）
+//   → `setupStaffGateProperties` を ▶ 実行 → ログの「長さ / 照合用」を確認 → ファイルを削除。
+//   TG_AUTH_MODE / STAFF_AUTH_MAX_AGE_SEC はここでは入れない（audit のまま）。
+// ════════════════════════════════════════════════════════════
+const STAFFGATE_OPERATIONS_SPREADSHEET_ID = '';  // v7-operations と同じ値（44文字）
+const STAFFGATE_FIELD_LINK_SECRET         = '';  // v7-operations と同じ値（72文字）
+
+function setupStaffGateProperties() {
+  if (!STAFFGATE_OPERATIONS_SPREADSHEET_ID || !STAFFGATE_FIELD_LINK_SECRET) {
+    Logger.log('❌ 2つの定数が空です。v7-operations の設定画面の値を貼ってから再実行してください');
+    return;
+  }
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('TG_AUTH_MODE')) Logger.log('⚠️ TG_AUTH_MODE が既に入っています: ' + props.getProperty('TG_AUTH_MODE'));
+  props.setProperties({
+    OPERATIONS_SPREADSHEET_ID: STAFFGATE_OPERATIONS_SPREADSHEET_ID,
+    FIELD_LINK_SECRET: STAFFGATE_FIELD_LINK_SECRET
+  });
+  // 値は出さず、長さと SHA-256 の先頭8桁だけログに出す（v7-operations 側と照合する用）
+  ['OPERATIONS_SPREADSHEET_ID', 'FIELD_LINK_SECRET'].forEach(function (k) {
+    const v = props.getProperty(k) || '';
+    const d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, v, Utilities.Charset.UTF_8);
+    const hex = d.map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
+    Logger.log('✅ ' + k + ': 長さ=' + v.length + ' 照合用=' + hex.slice(0, 8));
+  });
+  Logger.log('✅ StaffGate 用プロパティ 2件 登録完了 → この定数を空に戻すかファイルを削除');
+}
