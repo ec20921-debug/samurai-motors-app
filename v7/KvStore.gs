@@ -23,6 +23,14 @@
  *   - 書いたら Cache も同時に更新する（別の実行が1分以内に読んでも古い値にならない）
  *   - 移行前の Script Properties にまだ残っている値は、タブに無い時だけ読む（kvMigrateFromProperties で全部タブへ）
  *
+ * 【値は文字のまま】（2026-10-31 不具合の修正）
+ *   シートは「2026-10-26 15:25:36」のような文字を、そのまま書くと日付に変えてしまう（数字だけの文字は数値に）。
+ *   読むと Date になり、String() すると「Mon Oct 26 2026 …」の形になって、日時の前後比べが狂う
+ *   （@105 で Hiro さんのグループにチラシが再送された原因。毎時の安全網の「11時より前のグループには送らない」が効かなかった）。
+ *   → 書く時は書式を書式なしテキスト（@）にしてから書く。読む時、日付・数値になっていたら元の文字の形に戻す
+ *     （日付はシートのタイムゾーンで yyyy-MM-dd HH:mm:ss・時刻 0:00:00 は yyyy-MM-dd）。戻した行は次に書く時に文字で書き直す
+ *     （毎分のキュー処理も 6 時間に 1 回確かめて書き直す・エディタからは kvRepairTextValues()）
+ *
  * 【移行】本番へ入れると、毎分のキュー処理（processTelegramQueue）が kvAutoMigrate_ で自動的に 1 回 100 件ずつタブへ移す
  *   （移行前の値はタブに無い時だけ移す＝タブの方が新しい。退避した値はタブより新しいので上書き）。
  *   エディタで kvMigrateFromProperties() を手で実行してもよい（何度実行しても同じ結果）。kvStatus() で確認
@@ -38,8 +46,11 @@ var KV_PREFIXES_ = [
   'selfreg_', 'partner_flyers_sent_',                         // PartnerSelfRegister.gs
   'shop_greeting_sent_'                                       // ShopGroupGreeting.gs
 ];
-var KV_CACHE_META_ = 'kv_state_v1_meta';
-var KV_CACHE_CHUNK_ = 'kv_state_v1_c';
+// v2: v1 の Cache には日付に化けた値（「Mon Oct 26 2026 …」）が入っているので読まない（2026-10-31）
+var KV_CACHE_META_ = 'kv_state_v2_meta';
+var KV_CACHE_CHUNK_ = 'kv_state_v2_c';
+var KV_TEXT_CHECKED_KEY_ = 'kv_text_checked_v1';   // Cache: 日付・数値に化けた行を確かめた印（6時間）
+var KV_TEXT_CHECK_SEC_ = 6 * 60 * 60;
 var KV_CACHE_SEC_ = 5 * 60;
 var KV_CACHE_CHUNK_CHARS_ = 90000;   // CacheService は 1件 100KB まで
 var KV_MEMO_MS_ = 3000;              // 同じ実行の中で何度も読む時の使い回し（3秒。別の実行の書き込みを長く見落とさない）
@@ -204,19 +215,53 @@ function kvLoad_(fresh) {
   return map;
 }
 
-/** タブを読んで { map, rows: {key: 行番号}, blanks: [空いている行番号], sheet } を返す。無ければ作る */
+/**
+ * タブを読んで { map, rows: {key: 行番号}, blanks: [空いている行番号], fix: [文字でない行], sheet } を返す。無ければ作る。
+ * 日付・数値に化けたセルは元の文字の形に戻して読む（fix に入れ、次に書く時に文字で書き直す）
+ */
 function kvReadSheet_(create) {
   var sheet = kvSheet_(create);
   if (!sheet) throw new Error('状態タブがありません');
   var values = sheet.getDataRange().getValues();
-  var map = {}, rows = {}, blanks = [];
+  var tz = kvSheetTimeZone_(sheet);
+  var map = {}, rows = {}, blanks = [], fix = [];
   for (var i = 1; i < values.length; i++) {
-    var k = String(values[i][0] || '');
+    var k = kvCellText_(values[i][0], tz);
     if (!k) { blanks.push(i + 1); continue; }
-    map[k] = String(values[i][1] === null || values[i][1] === undefined ? '' : values[i][1]);
+    map[k] = kvCellText_(values[i][1], tz);
     rows[k] = i + 1;
+    if (!kvIsText_(values[i][0]) || !kvIsText_(values[i][1]) || !kvIsText_(values[i][2])) {
+      fix.push({ row: i + 1, key: k, at: kvCellText_(values[i][2], tz) });
+    }
   }
-  return { map: map, rows: rows, blanks: blanks, sheet: sheet, lastRow: values.length };
+  return { map: map, rows: rows, blanks: blanks, fix: fix, sheet: sheet, lastRow: values.length };
+}
+
+/** セルの値を文字に戻す。Date はシートのタイムゾーンで yyyy-MM-dd HH:mm:ss（時刻 0:00:00 は yyyy-MM-dd）・数値は String */
+function kvCellText_(v, tz) {
+  if (v === null || v === undefined) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    if (isNaN(v.getTime())) return '';
+    var d = new Date(Math.round(v.getTime() / 1000) * 1000);   // シートの日時の端数（ミリ秒）で 1 秒ずれないように
+    var s = Utilities.formatDate(d, tz, 'yyyy-MM-dd HH:mm:ss');
+    return s.slice(-9) === ' 00:00:00' ? s.slice(0, -9) : s;
+  }
+  return String(v);
+}
+
+/** 文字（または空）として入っているか。日付・数値・真偽値に化けていたら false */
+function kvIsText_(v) {
+  return v === null || v === undefined || typeof v === 'string';
+}
+
+/** シートが日付に変えた時のタイムゾーン（＝スプレッドシートの設定・本番は Asia/Tokyo）。読めなければスクリプトの設定 */
+function kvSheetTimeZone_(sheet) {
+  try {
+    var tz = sheet.getParent().getSpreadsheetTimeZone();
+    if (tz) return tz;
+  } catch (ignore) {}
+  try { return Session.getScriptTimeZone(); } catch (ignore) {}
+  return 'Asia/Tokyo';
 }
 
 function kvSheet_(create) {
@@ -246,6 +291,7 @@ function kvWrite_(fn) {
       return false;
     }
     var state = kvReadSheet_(true);
+    kvFixTextRows_(state);   // 日付・数値に化けていた行を文字で書き直す（fn が同じ行を書く・消すのはこのあと）
     fn(state.sheet, state);
     kvCachePut_(state.map);
     __kvMemo_ = state.map;
@@ -266,7 +312,27 @@ function kvWriteRow_(sheet, state, key, value, now) {
     if (row > state.lastRow) state.lastRow = row;
     state.rows[key] = row;
   }
-  sheet.getRange(row, 1, 1, KV_HEADERS_.length).setValues([[key, value, now]]);
+  kvSetTextRow_(sheet, row, [key, value, now]);
+}
+
+/** 1行を書式なしテキスト（@）にしてから書く（シートに日時・数字の文字を日付・数値に変えさせない） */
+function kvSetTextRow_(sheet, row, vals) {
+  var range = sheet.getRange(row, 1, 1, KV_HEADERS_.length);
+  range.setNumberFormat('@');
+  range.setValues([vals]);
+}
+
+/** kvReadSheet_ が見つけた「文字でない行」を、読んだ値（元の文字の形）のまま文字で書き直す。書き直した数 */
+function kvFixTextRows_(state) {
+  var n = 0;
+  (state.fix || []).forEach(function(f) {
+    if (state.rows[f.key] !== f.row) return;
+    kvSetTextRow_(state.sheet, f.row, [f.key, state.map[f.key], f.at]);
+    n++;
+  });
+  if (n) Logger.log('🔤 状態タブ: 日付・数値に化けていた ' + n + ' 行を文字に書き直した');
+  state.fix = [];
+  return n;
 }
 
 /** 書き込み用のロック。ScriptLock を持ったまま呼ばれる場所（あいさつ文・本人登録リンク）があるので DocumentLock を使う */
@@ -396,8 +462,30 @@ function kvMigrateFromProperties(limit) {
   return remain;
 }
 
+/**
+ * 日付・数値に化けた行を文字に書き直す（エディタから実行してよい・何度実行しても同じ）。
+ * 書き直しは kvWrite_ がタブを読み直した時に行う（kvFixTextRows_）。書けたら true
+ */
+function kvRepairTextValues() {
+  var ok = kvWrite_(function() {});
+  Logger.log(ok ? '✅ 状態タブ: 文字でない行の確認・書き直しを終えた（書き直した行があれば上に件数）' : '⚠️ 状態タブに書けない（あとで毎分の処理が再試行）');
+  return ok;
+}
+
+/** 毎分のキュー処理から。6 時間に 1 回だけ、化けた行が無いか確かめて書き直す（本番へ入れた直後の 1 回で既存の行が直る） */
+function kvAutoFixText_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (cache.get(KV_TEXT_CHECKED_KEY_)) return;
+    if (kvWrite_(function() {})) cache.put(KV_TEXT_CHECKED_KEY_, '1', KV_TEXT_CHECK_SEC_);
+  } catch (err) {
+    Logger.log('⚠️ kvAutoFixText_（次回に持ち越し）: ' + err);
+  }
+}
+
 /** 毎分のキュー処理から呼ぶ。移すものがある時だけ、1回 KV_MIGRATE_PER_RUN_ 件まで（本処理を長く待たせない） */
 function kvAutoMigrate_(all) {
+  kvAutoFixText_();
   try {
     var has = false;
     if (all) {

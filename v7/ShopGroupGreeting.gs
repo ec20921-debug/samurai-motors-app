@@ -10,7 +10,7 @@
  *   2. 安全網: send24HoursFeedback（毎時）に相乗りした sendPendingShopGreetings()。
  *      連携から SHOP_GREETING_CATCHUP_DAYS 日以内で未送信の店にだけ送る（即時送信の失敗・この機能より前に連携した店の救済）
  *
- * 【送信済みの印】Script Properties `shop_greeting_sent_<shop_id>`（失うと二重送信になるため Cache ではなく永続側）
+ * 【送信済みの印】v7 Database「状態」タブの `shop_greeting_sent_<shop_id>`（KvStore.gs・2026-10-31〜。失うと二重送信になるため Cache ではなく永続側）
  *
  * 【文言】v7-operations/ScoutBoardShopLinks.gs の SCOUT_LINKS_GREETING_KM / _EN / _JA と同じ文（営業ボードと同じ形: 言語ごとに空行で区切る）。
  *   2026-10-26〜 店マスター「グループへの通知の言語」の順に並べる（標準 クメール語 → 英語 → 日本語・PartnerLang.gs）。

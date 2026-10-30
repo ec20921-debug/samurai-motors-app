@@ -23,7 +23,7 @@
  *   - 有効=FALSE にすると歓迎・予約画面は通常版に戻る（流入元の記録は残る）
  *   - 読み取りは CacheService 60秒＋実行内メモ（OPS_LESSONS #8）
  *
- * 【顧客→流入元の紐付け】Script Properties `src_ref_<chatId>`（永続。提携店の shop_ref_ と同じ方式）
+ * 【顧客→流入元の紐付け】v7 Database「状態」タブの `src_ref_<chatId>`（KvStore.gs・2026-10-31〜。永続。提携店の shop_ref_ と同じ方式）
  *
  * 【呼び出し元】
  *   BookingBot.gs  : handleCustomerMessage（/start <コード>）・ensureBookingMenuButton_・sendBookingMiniApp

@@ -46,14 +46,14 @@
  */
 
 var SELF_REG_TOKEN_PREFIX = 'selfreg_tok_';   // 状態タブ（KvStore.gs・2026-10-31。以前は Script Properties）: token → shop_id
-var SELF_REG_SHOP_PREFIX = 'selfreg_shop_';   // Script Properties: shop_id → token（送り直しても同じリンク）
-var SELF_REG_SENT_PREFIX = 'selfreg_sent_';   // Script Properties: 本人登録リンクをグループに送った日時
-var PARTNER_FLYERS_SENT_PREFIX = 'partner_flyers_sent_';   // Script Properties: チラシ・紹介URLをグループに送った日時
-var SELF_REG_CELL_PREFIX = 'selfreg_cell_';   // Script Properties: 店マスター「本人登録リンク」に「送付済み」を書けた印（消されたら＝取り消し）
-var SELF_REG_GID_PREFIX = 'selfreg_gid_';     // Script Properties: リンクを送った紹介者グループの chat_id（グループが変わったら＝取り消し）
-var SELF_REG_USED_PREFIX = 'selfreg_used_';   // Script Properties: このリンクで本人になった chat_id（「本人chat_id」を消したら＝取り消し）
-var SELF_REG_DENY_PREFIX = 'selfreg_deny_';   // Script Properties: 取り消された人（カンマ区切り）。本人登録リンクでは二度と本人にしない（手で「本人chat_id」に入れれば戻せる）
-var SELF_REG_NEED_PREFIX = 'selfreg_need_';   // Script Properties: 作り直したリンクの送り待ち（毎時、送れるまで送る・7日の枠に関係なく）
+var SELF_REG_SHOP_PREFIX = 'selfreg_shop_';   // 状態タブ: shop_id → token（送り直しても同じリンク）
+var SELF_REG_SENT_PREFIX = 'selfreg_sent_';   // 状態タブ: 本人登録リンクをグループに送った日時
+var PARTNER_FLYERS_SENT_PREFIX = 'partner_flyers_sent_';   // 状態タブ: チラシ・紹介URLをグループに送った日時
+var SELF_REG_CELL_PREFIX = 'selfreg_cell_';   // 状態タブ: 店マスター「本人登録リンク」に「送付済み」を書けた印（消されたら＝取り消し）
+var SELF_REG_GID_PREFIX = 'selfreg_gid_';     // 状態タブ: リンクを送った紹介者グループの chat_id（グループが変わったら＝取り消し）
+var SELF_REG_USED_PREFIX = 'selfreg_used_';   // 状態タブ: このリンクで本人になった chat_id（「本人chat_id」を消したら＝取り消し）
+var SELF_REG_DENY_PREFIX = 'selfreg_deny_';   // 状態タブ: 取り消された人（カンマ区切り）。本人登録リンクでは二度と本人にしない（手で「本人chat_id」に入れれば戻せる）
+var SELF_REG_NEED_PREFIX = 'selfreg_need_';   // 状態タブ: 作り直したリンクの送り待ち（毎時、送れるまで送る・7日の枠に関係なく）
 var PARTNER_SEND_STALE_MIN = 10;   // 「送信中」の印がこれより古ければ、止まった実行の残りとみなして送り直してよい
 var PARTNER_ONBOARD_SINCE = '2026-10-27 11:00:00';   // プノンペン時刻。この時刻より後にあいさつ文を送ったグループだけ、毎時の安全網でチラシ・リンクを送る
 var PARTNER_ONBOARD_RETRY_DAYS = 7;
@@ -586,7 +586,9 @@ function sendPendingIndividualOnboarding_() {
       }
       // 3. 最初の送り残し（既存のグループ・7日より前は送らない）
       var greetAt = String(kvGet_(SHOP_GREETING_PROP_PREFIX + shopId) || '');
-      if (!greetAt || greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;
+      // 日時は文字の並びで比べるので、yyyy-MM-dd HH:mm:ss の形でなければ送らない（安全側。2026-10-31 日付に化けた値で再送した不具合）
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(greetAt)) return;
+      if (greetAt < PARTNER_ONBOARD_SINCE || greetAt < since) return;
       sendIndividualFlyersOnce_(shopId, gid);   // 送信済み・送信中なら何もしない（印は関数の中で取る）
       if (sendSelfRegLinkOnce_(shopId, gid) === 'sent') sent++;
     } catch (err) {

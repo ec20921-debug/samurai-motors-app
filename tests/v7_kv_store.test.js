@@ -12,6 +12,8 @@
  *   - ScriptLock を持ったまま呼ばれても書ける（DocumentLock を使う）
  *   - kvMigrateFromProperties: 対象のキーだけタブへ移して Script Properties から消す。設定・キューは触らない。2回実行しても同じ
  *   - processTelegramQueue: 処理済みの update_id は processed_ids_v1（1つのキー）で見る。旧 processed_* も移行期間は見る
+ *   - 日時・数字の形の文字も文字のまま（書式 @ で書く）。@105 で日付・数値に化けた値は元の文字の形で読み、文字に書き直す
+ *     （シートのスタブは本物と同じく、書式が @ でなければ日時の文字を Date・数字の文字を数値に変える。2026-10-31）
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
 const test = require('node:test');
@@ -24,18 +26,43 @@ const ROOT = path.join(__dirname, '..');
 
 // ====== スタブ ======
 
+// 本物のシートと同じく、書式が書式なしテキスト（@）でないセルに書いた日時・数字の文字は Date・数値に変わる
+const SHEET_TZ_OFFSET_H = 9;   // スプレッドシートのタイムゾーン（本番は Asia/Tokyo）
+function sheetDate(text) {      // シートが「yyyy-MM-dd[ H:mm[:ss]]」を日付に変えた時の Date（Asia/Tokyo）
+  const m = String(text).match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?: (\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0) - SHEET_TZ_OFFSET_H, +(m[5] || 0), +(m[6] || 0)));
+}
+function sheetAutoConvert(v) {
+  if (typeof v !== 'string') return v;
+  if (/^\d{4}-\d{1,2}-\d{1,2}( \d{1,2}:\d{2}(:\d{2})?)?$/.test(v)) return sheetDate(v);
+  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+  return v;
+}
+
 function fakeSpreadsheet() {
   const sheets = {};
+  const ss = {
+    sheets,
+    getSheetByName: (n) => sheets[n] || null,
+    insertSheet: (n) => { sheets[n] = make(n); return sheets[n]; },
+    getSpreadsheetTimeZone: () => 'Asia/Tokyo'
+  };
   const make = (name) => {
     const rows = [];
+    const formats = {};   // 'r,c' → 書式
     return {
-      name, rows,
+      name, rows, formats,
+      getParent: () => ss,
       getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
       getRange: (r, c, nr, nc) => ({
+        setNumberFormat: (f) => {
+          for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) formats[(r + i) + ',' + (c + j)] = f;
+          return {};
+        },
         setValues: (vals) => {
           for (let i = 0; i < nr; i++) {
             while (rows.length < r + i) rows.push(['', '', '']);
-            rows[r - 1 + i] = vals[i].slice();
+            rows[r - 1 + i] = vals[i].map((v, j) => (formats[(r + i) + ',' + (c + j)] === '@' ? v : sheetAutoConvert(v)));
           }
           return { setFontWeight: () => ({}) };
         }
@@ -44,11 +71,17 @@ function fakeSpreadsheet() {
       setColumnWidth: () => {}
     };
   };
-  return {
-    sheets,
-    getSheetByName: (n) => sheets[n] || null,
-    insertSheet: (n) => { sheets[n] = make(n); return sheets[n]; }
-  };
+  return ss;
+}
+
+// Utilities.formatDate のスタブ（タイムゾーンと yyyy/MM/dd/HH/mm/ss に対応）
+function formatDate(d, tz, fmt) {
+  const parts = {};
+  new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    .formatToParts(d).forEach((p) => { parts[p.type] = p.value; });
+  return String(fmt || 'yyyy-MM-dd HH:mm:ss').replace('yyyy', parts.year).replace('MM', parts.month).replace('dd', parts.day)
+    .replace('HH', parts.hour).replace('mm', parts.minute).replace('ss', parts.second);
 }
 
 function makeCtx(opts) {
@@ -60,7 +93,7 @@ function makeCtx(opts) {
   const ctx = {
     console,
     Logger: { log: (m) => state.log.push(String(m)) },
-    Utilities: { formatDate: (d) => d.toISOString().slice(0, 19).replace('T', ' ') },
+    Utilities: { formatDate },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (k) => (props.has(k) ? props.get(k) : null),
@@ -94,6 +127,8 @@ function makeCtx(opts) {
 
 const plain = (v) => JSON.parse(JSON.stringify(v));   // vm の中のオブジェクトは deepEqual で別物扱いになる
 const tabRows = (t) => plain(t.ss.sheets['状態'] ? t.ss.sheets['状態'].rows : []);
+const rawRows = (t) => t.ss.sheets['状態'].rows;               // plain() は Date を文字にしてしまうので、セルの型はこちらで見る
+const isText = (v) => typeof v === 'string';
 const tabMap = (t) => Object.fromEntries(tabRows(t).slice(1).filter((r) => r[0]).map((r) => [r[0], r[1]]));
 
 // ====== 基本 ======
@@ -232,4 +267,84 @@ test('processTelegramQueue: 処理済みは processed_ids_v1（1つのキー）�
   assert.equal(ids.length, 400);
   assert.equal(ids[0], '1001');
   assert.equal(ids[399], '5000');
+});
+
+// ====== 値は文字のまま（2026-10-31 @105 で Hiro さんのグループにチラシが再送された不具合） ======
+
+test('日時・数字の形の文字も、文字のまま書いて読める（書式を @ にしてから書く。別の実行が読んでも同じ文字）', () => {
+  const t = makeCtx();
+  t.run(`kvSetAll_({
+    'shop_greeting_sent_SHOP-H': '2026-10-26 15:25:36',
+    'shopref_dates_migrated_v1': '2026-10-27',
+    'selfreg_used_SHOP-H': '1028338581',
+    'selfreg_tok_12345678901234567890': 'SHOP-H'
+  })`);
+  rawRows(t).slice(1).forEach((r) => r.forEach((v) => assert.ok(isText(v), String(r))));   // セルは全部文字
+  t.newExecution();
+  t.cache.clear();                                             // Cache も無い＝タブを読み直す
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-H')`), '2026-10-26 15:25:36');
+  assert.equal(t.run(`kvGet_('shopref_dates_migrated_v1')`), '2026-10-27');
+  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1028338581');
+  assert.equal(t.run(`kvGet_('selfreg_tok_12345678901234567890')`), 'SHOP-H');
+});
+
+test('@105 で日付・数値に化けた値: 元の文字の形で読む（日付はシートのタイムゾーン・端数は丸める）。次に書く時に文字へ書き直す。v1 の Cache は読まない', () => {
+  const ss = fakeSpreadsheet();
+  const sh = ss.insertSheet('状態');
+  sh.rows.push(['キー(key)', '値(value)', '更新日時(updated_at)']);
+  sh.rows.push(['shop_greeting_sent_SHOP-H', sheetDate('2026-10-26 15:25:36'), sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['shopref_dates_migrated_v1', sheetDate('2026-10-27'), sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['shop_greeting_sent_SHOP-K', new Date(sheetDate('2026-10-26 7:54:38').getTime() - 1), sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['selfreg_used_SHOP-H', 1028338581, sheetDate('2026-10-30 23:14:09')]);
+  sh.rows.push(['shop_ref_8616516118', 'SHOP-B', '2026-10-30 23:14:09']);
+  const t = makeCtx({ ss });
+  t.cache.set('kv_state_v1_meta', '1');                        // @105 が残した Cache（化けた値入り）
+  t.cache.set('kv_state_v1_c0', JSON.stringify({ 'shop_greeting_sent_SHOP-H': 'Mon Oct 26 2026 15:25:36 GMT+0900 (Japan Standard Time)' }));
+
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-H')`), '2026-10-26 15:25:36');
+  assert.equal(t.run(`kvGet_('shopref_dates_migrated_v1')`), '2026-10-27');
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-K')`), '2026-10-26 07:54:38');   // 1ミリ秒前でも 1 秒ずれない
+  assert.equal(t.run(`kvGet_('selfreg_used_SHOP-H')`), '1028338581');
+  assert.deepEqual(plain(t.run(`kvGetAll_('shop_greeting_sent_')`)),
+    { 'shop_greeting_sent_SHOP-H': '2026-10-26 15:25:36', 'shop_greeting_sent_SHOP-K': '2026-10-26 07:54:38' });
+
+  t.run(`kvSet_('shop_ref_1', 'SHOP-A')`);                    // 何か1つ書くと、化けていた行も文字に書き直す
+  const m = tabMap(t);
+  assert.equal(m['shop_greeting_sent_SHOP-H'], '2026-10-26 15:25:36');
+  assert.equal(m['shopref_dates_migrated_v1'], '2026-10-27');
+  assert.equal(m['shop_greeting_sent_SHOP-K'], '2026-10-26 07:54:38');
+  assert.equal(m['selfreg_used_SHOP-H'], '1028338581');
+  assert.equal(m['shop_ref_8616516118'], 'SHOP-B');
+  rawRows(t).slice(1).forEach((r) => r.forEach((v) => assert.ok(isText(v), String(r))));
+  assert.equal(rawRows(t)[1][2], '2026-10-30 23:14:09');        // 更新日時も文字の形に戻す（書き直しで今の日時にしない）
+});
+
+test('化けた行の書き直しは、同じ実行で消したキーを生き返らせない', () => {
+  const ss = fakeSpreadsheet();
+  const sh = ss.insertSheet('状態');
+  sh.rows.push(['キー(key)', '値(value)', '更新日時(updated_at)']);
+  sh.rows.push(['selfreg_need_SHOP-H', sheetDate('2026-10-30 10:00:00'), sheetDate('2026-10-30 10:00:00')]);
+  const t = makeCtx({ ss });
+  t.run(`kvDelete_('selfreg_need_SHOP-H')`);
+  assert.deepEqual(tabRows(t)[1], ['', '', '']);
+  assert.equal(t.run(`kvGet_('selfreg_need_SHOP-H')`), null);
+});
+
+test('毎分のキュー処理: 6 時間に 1 回、化けた行を文字に書き直す（何も書かない時間帯でも本番へ入れた直後に直る）', () => {
+  const ss = fakeSpreadsheet();
+  const sh = ss.insertSheet('状態');
+  sh.rows.push(['キー(key)', '値(value)', '更新日時(updated_at)']);
+  sh.rows.push(['shop_greeting_sent_SHOP-H', sheetDate('2026-10-26 15:25:36'), sheetDate('2026-10-30 23:14:09')]);
+  const t = makeCtx({ ss });
+  assert.ok(!isText(rawRows(t)[1][1]));
+  t.run(`processTelegramQueue()`);
+  assert.equal(rawRows(t)[1][1], '2026-10-26 15:25:36');
+  assert.equal(t.cache.get('kv_text_checked_v1'), '1');
+
+  sh.rows[1][1] = sheetDate('2026-10-26 15:25:36');           // 6 時間の間は確かめ直さない（毎分タブを読まない）
+  t.run(`processTelegramQueue()`);
+  assert.ok(!isText(rawRows(t)[1][1]));
+  t.cache.delete('kv_text_checked_v1');                        // 6 時間たった
+  t.run(`processTelegramQueue()`);
+  assert.equal(rawRows(t)[1][1], '2026-10-26 15:25:36');
 });

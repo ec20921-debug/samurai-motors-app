@@ -7,7 +7,7 @@
  *
  * 【データ】v7 Database の「Bot連携」シート（v7-operations/ShopProvisioningManager.gs が行を作成）。
  *   読み取りは CacheService 60秒キャッシュ（OPS_LESSONS #8: openById/全読みをリクエスト毎に繰り返さない）。
- *   顧客→店の紐付けは Script Properties `shop_ref_<chatId>`（予約成立時の shop_id 参照用・Phase 2 で予約へ記録）。
+ *   顧客→店の紐付けは v7 Database「状態」タブの `shop_ref_<chatId>`（KvStore.gs・2026-10-31〜）（予約成立時の shop_id 参照用・Phase 2 で予約へ記録）。
  *
  * 【呼び出し元】BookingBot.gs
  *   - dispatchBookingMessage: グループメッセージのとき handleShopGroupMessage_(msg)
@@ -191,7 +191,7 @@ function handleShopGroupMessage_(msg) {
 /**
  * 店舗専用QR経由の /start を処理。
  *   1. 顧客に通常どおり歓迎メッセージ（既存フローを再利用）
- *   2. 顧客→店の参照タグを Script Properties に保存（予約成立時に利用）
+ *   2. 顧客→店の参照タグを「状態」タブに保存（予約成立時に利用）
  *   3. 店舗グループへ「QR経由でお客様が来ました」通知（見える化の第一歩）
  *
  * @return {boolean} 処理した場合 true
@@ -345,7 +345,7 @@ function handleShopStartNotTagged_(msg, shopId, scannedName, custName, decision)
       ? '🔁 別の紹介元のQRを読んだが、最初の紹介元のまま（最初の紹介者で固定）\n' +
         '読んだQR: ' + (scannedName || shopId) + '\n紹介元（変えない）: ' + (getShopNameById_(keptId) || keptId) + '\n顧客: ' + custName +
         ' (chat_id=' + msg.chat.id + ')\n（紹介料は最初の紹介元へ。最初の紹介元が「付け替えてよい」と言った時だけ、' +
-        'Script Properties の shop_ref_<chat_id> を直す。付いた日は自動で今日から）'
+        'v7 Database「状態」タブの shop_ref_<chat_id> の値を直す。付いた日は自動で今日から）'
       : (decision.expired
         ? 'ℹ️ 紹介QRを読んだが、前の紹介の期限（12か月）が過ぎて当社を使ってきたお客様のため紹介扱いにしない（既存客は対象外）\n'
         : 'ℹ️ 紹介QRを読んだが、紹介なしで使ったことがあるお客様のため紹介扱いにしない（既存客は対象外）\n') +

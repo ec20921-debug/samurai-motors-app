@@ -10,7 +10,7 @@
  *      2026-10-27 Daisuke「12ヶ月で良い」）。車屋も個人提携も同じ。期限が過ぎたら紹介元は無いのと同じ
  *      （紹介料・紹介割引なし・全体キャンペーンと一斉配信は通常どおり・決済は当社）。期限の内側に入った予約は、
  *      作業が期限の後でも予約の「紹介元shop_id」で紹介料が付く。期限が過ぎたお客様は、予約があれば既存客
- *      （別の紹介者の QR を読んでも付けない）。付いた日は Script Properties `shopref_at_<chatId>`（"<shop_id>|<yyyy-MM-dd>"）。
+ *      （別の紹介者の QR を読んでも付けない）。付いた日は v7 Database「状態」タブの `shopref_at_<chatId>`（"<shop_id>|<yyyy-MM-dd>"）。
  *      付いた日のちょうど12か月後の日に切れる（2026-10-28 に付いたら 2027-10-27 まで有効）。
  *      この版より前の紐付けは日付が無いので、本番に出したあと最初の確認（毎時の処理か最初の読み取り）で一括して今日を付ける
  *   ③ 個人提携は当社集金なので、レジデンス等の流入元（Picasso 等・SourceCampaign.gs）と両立する:
@@ -31,7 +31,7 @@
  * 【2026-10-27 Daisuke 決定（まだ決めていなかった4点）】
  *   - 紹介の期限 = 12か月（⑥）
  *   - 紹介されたお客様が紹介者になった時: 本人の利用は最初の紹介者のまま（①のとおり）。最初の紹介者が「本人で良い」と
- *     言った時だけ、手で付け替える（Script Properties `shop_ref_<chatId>` を直せば、付いた日は自動で今日から）
+ *     言った時だけ、手で付け替える（「状態」タブの `shop_ref_<chatId>` の値を直せば、付いた日は自動で今日から）
  *   - 高額メニューも同じ率。メニューは組み合わせて予約でき、割引は組み合わせた合計（WASH＋GLASS＋HEADLIGHT 等）に効く
  *   - 標準の配分 = 紹介料 30%（紹介割引率は空欄=0）。紹介者が希望した時だけ、紹介料の一部をお客様の割引に回す（④）
  *
@@ -48,7 +48,7 @@ var REFERRAL_DISCOUNT_LABEL_EN = 'Referral discount';
 var REFERRAL_DISCOUNT_KM = 'បញ្ចុះតម្លៃសម្រាប់ភ្ញៀវដែលគេណែនាំមក';
 
 var REFERRAL_TERM_MONTHS = 12;   // 紹介の期限（⑥）
-// 紹介元が付いた日 = Script Properties `shopref_at_<chatId>` に "<shop_id>|<yyyy-MM-dd>"。
+// 紹介元が付いた日 = 「状態」タブの `shopref_at_<chatId>` に "<shop_id>|<yyyy-MM-dd>"。
 //   'shop_ref_' で始めない（CampaignShopFilter.gs が shop_ref_ で始まるキーを全部読むため）。置き場は状態タブ（KvStore.gs・2026-10-31）
 //   shop_id も一緒に持つ: shop_ref_ だけを手で付け替えた・片方の書き込みに失敗した時に、前の店の古い日付で新しい紹介元が
 //   すぐ切れないようにする（店が一致しない日付は無いのと同じ＝今日から数える）
@@ -212,7 +212,7 @@ function isExistingCustomer_(chatId, countReferred) {
     if (typeof warnOncePer_ === 'function') {
       warnOncePer_('warn_existing_customer_unreadable', 60 * 60,
         '⚠️ 予約タブを読めず、紹介QRのお客様が既存客か判定できませんでした（新しいお客様として紹介元を付けています）。\n' +
-        '既存客に紹介元が付いていたら、Script Properties の shop_ref_<chat_id> と予約タブの「紹介元shop_id」を直してください（1時間に1回だけ知らせます）\n' + err);
+        '既存客に紹介元が付いていたら、v7 Database「状態」タブの shop_ref_<chat_id> と予約タブの「紹介元shop_id」を直してください（1時間に1回だけ知らせます）\n' + err);
     }
     return false;
   }

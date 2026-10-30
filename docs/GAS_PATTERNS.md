@@ -69,6 +69,8 @@ function doPost(e) {
 ├── YES → お客様ごと・お店ごと・予約ごとに増えるもの？
 │         ├── YES → v7 Database「状態」タブ（KvStore.gs: kvGet_ / kvSet_ / kvSetAll_ / kvGetAll_ / kvDelete_）
 │         │         （2026-10-31〜。Script Properties は設定画面が 50 個で読み取り専用になる。キーの名前は今までどおり shop_ref_ 等）
+│         │         （値は KvStore が書式なしテキスト（@）で書く。シートに直接書くと日時・数字の文字が日付・数値に化け、
+│         │           日時の前後比べが狂う＝2026-10-31 Hiro さんへのチラシ再送。状態タブに手で書かない・書く時は先頭に ' を付ける）
 │         └── NO  → ScriptProperties（永続・設定とキューだけ・20個以内）
 └── NO  → CacheService（揮発）
 ```
