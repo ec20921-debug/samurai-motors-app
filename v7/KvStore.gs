@@ -17,12 +17,15 @@
  *
  * 【安全側の作り】（日々の営業に支障を出さない・2026-10-31 Daisuke）
  *   - タブが読めない時: 読みは「最後に読めた内容」（Cache・5分）→ それも無ければ Script Properties（移行前の置き場）→ null
- *   - タブに書けない時: Script Properties に退避して記録に残す（後で kvMigrateFromProperties が拾う）。値は失わない
+ *   - タブに書けない時: Script Properties の 1 キー（kv_retreat_v1・JSON）に退避して記録に残す。値は失わない。
+ *     読む時は退避が最優先（退避した値の方が新しい）。毎分のキュー処理が自動でタブへ移す（kvAutoMigrate_）
  *   - 書きはロック（getDocumentLock）で順番に。ScriptLock を持ったまま呼ばれても固まらない（別のロック）
  *   - 書いたら Cache も同時に更新する（別の実行が1分以内に読んでも古い値にならない）
  *   - 移行前の Script Properties にまだ残っている値は、タブに無い時だけ読む（kvMigrateFromProperties で全部タブへ）
  *
- * 【移行】本番へ入れたあと、エディタで kvMigrateFromProperties() を1回実行（何度実行しても同じ結果）。kvStatus() で確認
+ * 【移行】本番へ入れると、毎分のキュー処理（processTelegramQueue）が kvAutoMigrate_ で自動的に 1 回 100 件ずつタブへ移す
+ *   （移行前の値はタブに無い時だけ移す＝タブの方が新しい。退避した値はタブより新しいので上書き）。
+ *   エディタで kvMigrateFromProperties() を手で実行してもよい（何度実行しても同じ結果）。kvStatus() で確認
  */
 
 var KV_SHEET_NAME_ = '状態';
@@ -41,15 +44,21 @@ var KV_CACHE_SEC_ = 5 * 60;
 var KV_CACHE_CHUNK_CHARS_ = 90000;   // CacheService は 1件 100KB まで
 var KV_MEMO_MS_ = 3000;              // 同じ実行の中で何度も読む時の使い回し（3秒。別の実行の書き込みを長く見落とさない）
 var KV_LOCK_MS_ = 10 * 1000;
+var KV_RETREAT_KEY_ = 'kv_retreat_v1';   // タブに書けなかった値の退避先（Script Properties の 1 キー・JSON）
+var KV_MIGRATE_PER_RUN_ = 100;
 var __kvMemo_ = null;
 var __kvMemoAt_ = 0;
+var __kvRetreatMemo_ = null;
+var __kvRetreatMemoAt_ = 0;
 
 // ====== 公開（_ 付きの内部関数だが、他ファイルから呼ぶ） ======
 
-/** 値を返す（無ければ null）。タブ → 最後に読めた内容 → Script Properties（移行前） の順 */
+/** 値を返す（無ければ null）。退避 → タブ → 最後に読めた内容 → Script Properties（移行前） の順 */
 function kvGet_(key) {
   key = String(key || '');
   if (!key) return null;
+  var retreat = kvRetreatLoad_();
+  if (Object.prototype.hasOwnProperty.call(retreat, key)) return retreat[key];
   var map = kvLoad_(false);
   if (map && Object.prototype.hasOwnProperty.call(map, key)) return map[key];
   if (!kvIsManaged_(key)) return null;
@@ -76,6 +85,10 @@ function kvGetAll_(prefix) {
   Object.keys(map).forEach(function(k) {
     if (k.indexOf(prefix) === 0 && map[k]) out[k] = map[k];
   });
+  var retreat = kvRetreatLoad_();
+  Object.keys(retreat).forEach(function(k) {
+    if (k.indexOf(prefix) === 0) { if (retreat[k]) out[k] = retreat[k]; else delete out[k]; }
+  });
   return out;
 }
 
@@ -98,17 +111,16 @@ function kvSetAll_(obj) {
     });
   });
   if (written) {
-    // 移行前の置き場に同じキーが残っていたら消す（消したあとに古い値が顔を出さないように）
+    // 移行前の置き場・退避に同じキーが残っていたら消す（消したあとに古い値が顔を出さないように）
     keys.forEach(function(k) { kvLegacyDelete_(k); });
+    kvRetreatRemove_(keys);
     return;
   }
-  // タブに書けなかった → Script Properties へ退避（値を失わない。kvMigrateFromProperties が後でタブへ移す）
-  Logger.log('⚠️ 状態タブに書けないので Script Properties へ退避: ' + keys.join(','));
-  var props = PropertiesService.getScriptProperties();
-  keys.forEach(function(k) {
-    var v = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]);
-    props.setProperty(k, v);
-  });
+  // タブに書けなかった → 退避（値を失わない。毎分の kvAutoMigrate_ が後でタブへ移す）
+  Logger.log('⚠️ 状態タブに書けないので退避（' + KV_RETREAT_KEY_ + '）: ' + keys.join(','));
+  var add = {};
+  keys.forEach(function(k) { add[k] = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]); });
+  kvRetreatAdd_(add);
 }
 
 function kvDelete_(key) {
@@ -123,6 +135,51 @@ function kvDelete_(key) {
     delete state.map[key];
   });
   kvLegacyDelete_(key);
+  kvRetreatRemove_([key]);
+}
+
+// ====== 退避（タブに書けなかった値・Script Properties の 1 キー） ======
+
+function kvRetreatLoad_() {
+  var now = Date.now();
+  if (__kvRetreatMemo_ && now - __kvRetreatMemoAt_ < KV_MEMO_MS_) return __kvRetreatMemo_;
+  var map = {};
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(KV_RETREAT_KEY_);
+    if (raw) map = JSON.parse(raw) || {};
+  } catch (ignore) {}
+  __kvRetreatMemo_ = map;
+  __kvRetreatMemoAt_ = now;
+  return map;
+}
+
+function kvRetreatSave_(map) {
+  var props = PropertiesService.getScriptProperties();
+  if (Object.keys(map).length) props.setProperty(KV_RETREAT_KEY_, JSON.stringify(map));
+  else props.deleteProperty(KV_RETREAT_KEY_);
+  __kvRetreatMemo_ = map;
+  __kvRetreatMemoAt_ = Date.now();
+}
+
+function kvRetreatAdd_(obj) {
+  try {
+    __kvRetreatMemo_ = null;
+    var map = kvRetreatLoad_();
+    Object.keys(obj).forEach(function(k) { map[k] = obj[k]; });
+    kvRetreatSave_(map);
+  } catch (err) {
+    Logger.log('❌ 退避にも書けません（値が失われます）: ' + err + ' ' + JSON.stringify(obj));
+  }
+}
+
+function kvRetreatRemove_(keys) {
+  try {
+    __kvRetreatMemo_ = null;
+    var map = kvRetreatLoad_();
+    var hit = false;
+    keys.forEach(function(k) { if (Object.prototype.hasOwnProperty.call(map, k)) { delete map[k]; hit = true; } });
+    if (hit) kvRetreatSave_(map);
+  } catch (ignore) {}
 }
 
 // ====== 読み ======
@@ -283,33 +340,77 @@ function kvNow_() {
 // ====== 移行・確認（エディタから実行） ======
 
 /**
- * 移行前に Script Properties に残っている対象キーを「状態」タブへ移し、Script Properties から消す。
- * 何度実行しても同じ結果。Script Properties の値を優先する（タブに書けず退避した値は新しい方なので）
+ * 移行前に Script Properties に残っている対象キーと、退避した値を「状態」タブへ移し、Script Properties から消す。
+ * 何度実行しても同じ結果。移行前の値はタブに無い時だけ（タブの方が新しい）。退避した値はタブより新しいので上書き。
+ * @param {number=} limit 1回に移す上限（省略時は全部）
+ * @return {number} 残り（まだ移していない件数）
  */
-function kvMigrateFromProperties() {
+function kvMigrateFromProperties(limit) {
   var props = PropertiesService.getScriptProperties();
   var all = props.getProperties();
-  var keys = Object.keys(all).filter(function(k) { return kvIsManaged_(k); }).sort();
-  Logger.log('🚚 移す対象: ' + keys.length + '件');
-  if (!keys.length) { Logger.log('✅ 移すものはありません'); return; }
-  var moved = 0;
-  for (var i = 0; i < keys.length; i += 50) {
-    var batch = keys.slice(i, i + 50);
-    var obj = {};
-    batch.forEach(function(k) { obj[k] = all[k]; });
+  var legacy = Object.keys(all).filter(function(k) { return kvIsManaged_(k); }).sort();
+  __kvRetreatMemo_ = null;
+  var retreat = kvRetreatLoad_();
+  var retreatKeys = Object.keys(retreat).sort();
+  var total = legacy.length + retreatKeys.length;
+  Logger.log('🚚 移す対象: 移行前 ' + legacy.length + '件・退避 ' + retreatKeys.length + '件');
+  if (!total) { Logger.log('✅ 移すものはありません'); return 0; }
+  var max = (typeof limit === 'number' && limit > 0) ? limit : total;
+  var moved = 0, skipped = 0;
+  // 退避した値（新しい）→ 上書き
+  if (retreatKeys.length) {
+    var rk = retreatKeys.slice(0, max);
+    var ok1 = kvWrite_(function(sheet, state) {
+      var now = kvNow_();
+      rk.forEach(function(k) { kvWriteRow_(sheet, state, k, retreat[k], now); state.map[k] = retreat[k]; });
+    });
+    if (!ok1) throw new Error('状態タブに書けないので中止しました（退避の分）。Script Properties はそのまま');
+    var check1 = kvReadSheet_(false).map;
+    var rest = {};
+    retreatKeys.forEach(function(k) {
+      if (rk.indexOf(k) >= 0 && check1[k] === String(retreat[k])) { props.deleteProperty(k); moved++; }
+      else rest[k] = retreat[k];
+    });
+    kvRetreatSave_(rest);
+    max -= rk.length;
+  }
+  // 移行前の値 → タブに無いものだけ
+  for (var i = 0; i < legacy.length && max > 0; i += 50) {
+    var batch = legacy.slice(i, Math.min(i + 50, i + max));
+    var current = kvReadSheet_(true).map;
+    var toWrite = batch.filter(function(k) { return !Object.prototype.hasOwnProperty.call(current, k); });
     var ok = kvWrite_(function(sheet, state) {
       var now = kvNow_();
-      batch.forEach(function(k) { kvWriteRow_(sheet, state, k, obj[k], now); state.map[k] = obj[k]; });
+      toWrite.forEach(function(k) { kvWriteRow_(sheet, state, k, all[k], now); state.map[k] = all[k]; });
     });
     if (!ok) throw new Error('状態タブに書けないので中止しました（' + i + '件目から）。Script Properties はそのまま');
-    // 書けたことをタブから読み直して確かめてから消す
     var check = kvReadSheet_(false).map;
     batch.forEach(function(k) {
-      if (check[k] === String(all[k])) { props.deleteProperty(k); moved++; }
+      if (Object.prototype.hasOwnProperty.call(check, k)) { props.deleteProperty(k); if (toWrite.indexOf(k) >= 0) moved++; else skipped++; }
       else Logger.log('⚠️ 確認できず残しました: ' + k);
     });
+    max -= batch.length;
   }
-  Logger.log('✅ 移行完了: ' + moved + '/' + keys.length + '件を状態タブへ。残りの Script Properties: ' + Object.keys(props.getProperties()).length + '個');
+  var remain = Object.keys(props.getProperties()).filter(function(k) { return kvIsManaged_(k); }).length + Object.keys(kvRetreatLoad_()).length;
+  Logger.log('✅ 移行: ' + moved + '件を状態タブへ・' + skipped + '件はタブの値を優先（Script Properties 側だけ消した）・残り ' + remain + '件。Script Properties 全体: ' + Object.keys(props.getProperties()).length + '個');
+  return remain;
+}
+
+/** 毎分のキュー処理から呼ぶ。移すものがある時だけ、1回 KV_MIGRATE_PER_RUN_ 件まで（本処理を長く待たせない） */
+function kvAutoMigrate_(all) {
+  try {
+    var has = false;
+    if (all) {
+      has = Object.prototype.hasOwnProperty.call(all, KV_RETREAT_KEY_) ||
+        Object.keys(all).some(function(k) { return kvIsManaged_(k); });
+    } else {
+      has = true;
+    }
+    if (!has) return;
+    kvMigrateFromProperties(KV_MIGRATE_PER_RUN_);
+  } catch (err) {
+    Logger.log('⚠️ kvAutoMigrate_（次回に持ち越し）: ' + err);
+  }
 }
 
 /** 状態タブと Script Properties の件数を表示する */
@@ -317,6 +418,8 @@ function kvStatus() {
   var state = kvReadSheet_(false);
   var all = PropertiesService.getScriptProperties().getProperties();
   var legacy = Object.keys(all).filter(function(k) { return kvIsManaged_(k); });
+  __kvRetreatMemo_ = null;
+  var retreatN = Object.keys(kvRetreatLoad_()).length;
   var byPrefix = {};
   Object.keys(state.map).forEach(function(k) {
     var p = (k.match(/^[a-z_]+?_/) || [k])[0];
@@ -324,6 +427,6 @@ function kvStatus() {
   });
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
   Logger.log('🗂 状態タブ: ' + Object.keys(state.map).length + '件 ' + JSON.stringify(byPrefix));
-  Logger.log('🔑 Script Properties: 全部 ' + Object.keys(all).length + '個／まだ移していない対象 ' + legacy.length + '個' + (legacy.length ? ' → kvMigrateFromProperties() を実行' : ''));
+  Logger.log('🔑 Script Properties: 全部 ' + Object.keys(all).length + '個／まだ移していない対象 ' + legacy.length + '個／退避 ' + retreatN + '件' + ((legacy.length || retreatN) ? '（毎分のキュー処理が自動で移す。急ぐなら kvMigrateFromProperties()）' : ''));
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
 }

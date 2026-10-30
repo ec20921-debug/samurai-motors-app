@@ -56,6 +56,9 @@ function processTelegramQueue() {
     .filter(function(k) { return k.indexOf(STORAGE_KEYS.QUEUE_PREFIX) === 0; })
     .sort();
 
+  // 2026-10-31: Script Properties に残る小さな状態（移行前・退避）を「状態」タブへ少しずつ移す（KvStore.gs。無ければ何もしない）
+  if (typeof kvAutoMigrate_ === 'function') kvAutoMigrate_(all);
+
   if (queueKeys.length === 0) return;
 
   const MAX_PER_RUN = 20;

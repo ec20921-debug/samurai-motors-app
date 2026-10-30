@@ -156,14 +156,19 @@ test('タブが読めない時: 最後に読めた内容 → Script Properties �
   assert.throws(() => t.run(`kvGetAll_('shop_ref_')`), /状態タブを読めません/);   // まとめ読みは止める側
 
   t.run(`kvSet_('shop_ref_7', 'SHOP-X')`);
-  assert.equal(t.props.get('shop_ref_7'), 'SHOP-X');          // 退避
+  assert.deepEqual(JSON.parse(t.props.get('kv_retreat_v1')), { shop_ref_7: 'SHOP-X' });   // 退避は 1 キー
+  assert.equal(t.props.has('shop_ref_7'), false);
   assert.equal(t.run(`kvGet_('shop_ref_7')`), 'SHOP-X');
   assert.ok(t.state.log.some((m) => m.indexOf('退避') >= 0));
 
-  t.state.sheetBroken = false;                                  // 直ったら移行で拾える
-  t.run(`kvMigrateFromProperties()`);
-  assert.equal(t.props.has('shop_ref_7'), false);
-  assert.equal(tabMap(t).shop_ref_7, 'SHOP-X');
+  t.state.sheetBroken = false;                                  // 直ったら毎分の処理が拾う（退避はタブより新しいので上書き）
+  t.run(`kvSet_('shop_ref_7', 'OLDER-IN-TAB')`);              // ※ この書き込みは退避も消す（最新を書いたので）
+  assert.equal(t.props.has('kv_retreat_v1'), false);
+  t.run(`kvRetreatAdd_({ shop_ref_7: 'FROM-RETREAT' })`);     // 退避だけ残った状態を作る
+  assert.equal(t.run(`kvGet_('shop_ref_7')`), 'FROM-RETREAT');   // 読む時は退避が最優先
+  t.run(`processTelegramQueue()`);                             // 毎分の処理が自動で移す
+  assert.equal(t.props.has('kv_retreat_v1'), false);
+  assert.equal(tabMap(t).shop_ref_7, 'FROM-RETREAT');
 });
 
 test('ScriptLock を持ったまま呼ばれても書ける（書き込みは DocumentLock）', () => {
@@ -174,19 +179,22 @@ test('ScriptLock を持ったまま呼ばれても書ける（書き込みは Do
   assert.equal(t.props.has('shop_greeting_sent_SHOP-A'), false);   // 退避ではなくタブに書けている
 });
 
-test('kvMigrateFromProperties: 対象のキーだけタブへ移して Script Properties から消す。設定・キュー・監査は触らない。2回実行しても同じ', () => {
+test('kvMigrateFromProperties: 対象のキーだけタブへ移して Script Properties から消す（タブにある値は優先）。設定・キュー・監査は触らない。2回実行しても同じ・1回の上限', () => {
   const t = makeCtx({ props: {
     BOT_TOKEN_BOOKING: 'tok', SPREADSHEET_ID: 'id', queue_1_1: '{}', processed_1: '1', STAFF_GATE_AUDIT_20261031: '{}',
     shop_ref_1: 'S1', shopref_at_1: 'S1|2026-10-01', src_ref_2: 'PICASSO', srcgrp_B1: '{"at":"x"}',
     selfreg_tok_abc: 'SHOP-H', selfreg_shop_SHOP_H: 'abc', partner_flyers_sent_SHOP_H: '2026-10-27', shop_greeting_sent_SHOP_H: '2026-10-27',
     shopref_dates_migrated_v1: '2026-10-27'
   } });
-  t.run(`kvMigrateFromProperties()`);
+  t.run(`kvSet_('shop_ref_1', 'S1-NEWER')`);                  // タブにある値は移行で上書きしない
+  t.props.set('shop_ref_1', 'S1');
+  assert.equal(t.run(`kvMigrateFromProperties(3)`), 6);        // 上限 3 件 → 残り 6
+  assert.equal(t.run(`kvMigrateFromProperties()`), 0);
   const left = Array.from(t.props.keys()).sort();
   assert.deepEqual(left, ['BOT_TOKEN_BOOKING', 'SPREADSHEET_ID', 'STAFF_GATE_AUDIT_20261031', 'processed_1', 'queue_1_1']);
   const m = tabMap(t);
   assert.equal(Object.keys(m).length, 9);
-  assert.equal(m.shop_ref_1, 'S1');
+  assert.equal(m.shop_ref_1, 'S1-NEWER');
   assert.equal(m.selfreg_tok_abc, 'SHOP-H');
   assert.equal(m.shopref_dates_migrated_v1, '2026-10-27');
   assert.equal(t.run(`kvGet_('shopref_dates_migrated_v1')`), '2026-10-27');
