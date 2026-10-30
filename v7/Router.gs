@@ -24,7 +24,8 @@
  *   POST:
  *     - booking_register_customer   : 新規顧客登録
  *     - booking_create              : 予約確定
- *     - job_start                   : 作業開始通知
+ *     - job_start                   : 作業開始通知（photos_follow があれば文字の通知だけ・JobStartPhotos.gs）
+ *     - job_start_photos            : 作業前の写真（作業開始のあとに別に届く・JobStartPhotos.gs）
  *     - job_end                     : 作業終了通知
  *     - job                         : 最終データ送信（写真付き）
  *     - chat_history                : 顧客チャット履歴取得
@@ -33,7 +34,7 @@
  *     - manual_campaign_settle      : 手動特価予約の清算（決済状態→清算済み）
  *     - manual_campaign_sale        : 手動特価の売上記録
  *   ★スタッフ専用（StaffGate.gs）: booking_today / field_partner_shops / manual_campaign_list /
- *     job_start / job_end / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
+ *     job_start / job_start_photos / job_end / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
  *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）。判定の記録は GAS エディタで
  *     showStaffGateAudit() を実行して見る（公開しない）
  */
@@ -174,6 +175,11 @@ function doPost(e) {
       // 2026-10-08: client_id 付き（現場アプリ v2）は二重処理対策つきの入口へ（JobIdempotency.gs）
       case 'job_start':
         result = body.client_id ? apiJobStartV2(body) : apiJobStart(body);
+        break;
+
+      // 2026-10-30: 作業前の写真を作業開始の知らせと分けて受ける（JobStartPhotos.gs）
+      case 'job_start_photos':
+        result = apiJobStartPhotosV2(body);
         break;
 
       case 'job_end':

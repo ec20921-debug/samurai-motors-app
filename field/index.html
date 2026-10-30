@@ -556,14 +556,16 @@ function toast(msg, kind) { var el = $('toast'); el.textContent = msg; el.classN
 function openUrl(u) { if (!u) return; try { if (SURFACE === 'telegram' && TG.openLink) { TG.openLink(u); return; } } catch (e) {} window.open(u, '_blank'); }
 function mapUrl(place) { if (!place) return ''; return /^https?:\/\//.test(place) ? place : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place); }
 function placeText(place) { if (!place) return '—'; return /^https?:\/\//.test(place) ? '📍 Google Maps' : place; }
-function readShrunk(file, cb) {
+// 作業の写真（作業前後・傷）は少し軽く（電波の弱い所でも送り切れるように・2026-10-30）。レシート・車台番号は文字を読むので今までどおり
+var PHOTO_JOB = { max: 1080, q: 0.66 };
+function readShrunk(file, cb, size) {
   var fr = new FileReader();
   fr.onload = function () {
     var im = new Image();
     im.onload = function () {
-      var max = 1200, sc = Math.min(1, max / Math.max(im.width, im.height));
+      var max = (size && size.max) || 1200, sc = Math.min(1, max / Math.max(im.width, im.height));
       var c = document.createElement('canvas'); c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
-      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); cb(c.toDataURL('image/jpeg', 0.72));
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); cb(c.toDataURL('image/jpeg', (size && size.q) || 0.72));
     };
     im.onerror = function () { cb(fr.result); }; im.src = fr.result;
   };
@@ -599,6 +601,7 @@ function applyToday(res) {
   var list = (res && res.bookings || []).map(mapBooking);
   S.items = list.filter(function (i) { return i.date === today; });
   S.tomorrow = list.filter(function (i) { return i.date === tom; });
+  S.caps = (res && res.caps) || {};   // サーバーでできること（古いサーバーは空＝今までどおりの送り方・2026-10-30）
 }
 function allToday() {
   var today = ppDate(0);
@@ -750,7 +753,17 @@ function queueStart(c) {
   if (c.mode === 'shop') {   // お店の仕事（2026-10-27）。サーバーは知らない項目を v2記録(JSON) に残すだけ
     p.v2.mode = 'shop'; p.v2.who = c.who; p.v2.agreed_price = sjNum(c.price); p.v2.repainted = c.repaint || ''; p.v2.new_shop_name = c.newShop ? c.shopName : '';
   }
-  return Outbox.enqueue('job_start', p);
+  // 2026-10-30: 作業開始の知らせ（数KB）を先に、写真をあとに分けて送る（電波の弱い所でも知らせはすぐ届く）。
+  //   サーバーが対応している時だけ（booking_today の caps）。写真の記録は知らせが届いてから送る（after）
+  //   写真が多すぎる時（サーバーの上限 30 枚・JobStartPhotos.gs）は今までどおり1回で
+  if (!(S.caps && S.caps.startPhotos) || !photos.length || photos.length > 30) return Outbox.enqueue('job_start', p);
+  var pcid = c.photosCid || (c.photosCid = Outbox.uuid());
+  var head = Object.assign({}, p, { beforePhotos: [], photos_follow: photos.length });
+  var tail = Object.assign({}, p, { client_id: pcid, request_id: pcid, job_client_id: c.jobCid });
+  // 先に下書きへ photosCid を保存（作業終了が写真のあとに送られるように・queueEnd と同じ）
+  return Outbox.kvSet('draft', c).then(function () {
+    return Outbox.enqueueAll([{ kind: 'job_start', payload: head }, { kind: 'job_start_photos', payload: tail, opts: { after: c.jobCid } }]);
+  });
 }
 // 2026-10-25 支払いの区分: 提携店の仕事（紹介客 shopref・店の車 shop）は店を選ぶと 当社の受け取り＝定価×(100−店の率)% を入れる（直せる）
 function isShopPay(pt) { return pt === 'shop' || pt === 'shopref'; }
@@ -784,7 +797,8 @@ function queueEnd(c) {
            duration_sec: Math.round(workSec(c)), work_start: c.startAt, work_end: c.endAt, photo_slots: slots };
   if (c.mode === 'shop') { p.v2.mode = 'shop'; p.v2.price_mode = 'agreed'; p.v2.agreed_price = sjNum(c.price); p.v2.guide_price = sjGuide(c.job, c.who, c.rate); p.v2.new_shop_name = c.newShop ? c.shopName : ''; }
   // 先に下書きへ endCid を保存（送信待ち箱に入れた後に落ちても、同じ client_id で上書きされるだけ）
-  return Outbox.kvSet('draft', c).then(function () { return Outbox.enqueue('job_end', p); });
+  // 作業前の写真を分けて送った作業は、写真のあとに送る（管理グループで Before → After の順・2026-10-30）
+  return Outbox.kvSet('draft', c).then(function () { return Outbox.enqueue('job_end', p, c.photosCid ? { after: c.photosCid } : undefined); });
 }
 
 function getGps() {
@@ -1284,7 +1298,7 @@ function bindJob() {
     var r = dm.getBoundingClientRect(); var x = Math.round((e.clientX - r.left) / r.width * 100), y = Math.round((e.clientY - r.top) / r.height * 100);
     if (x < 8 || x > 92 || y < 8 || y > 92) return; c.dmg.push({ x: x, y: y, img: '', memo: '' }); c.noDamage = false; saveDraft(); renderJob();
   };
-  document.querySelectorAll('[data-dmgph]').forEach(function (inp) { inp.onchange = function () { if (!inp.files[0]) return; readShrunk(inp.files[0], function (u) { c.dmg[+inp.getAttribute('data-dmgph')].img = u; saveDraft(); renderJob(); }); }; });
+  document.querySelectorAll('[data-dmgph]').forEach(function (inp) { inp.onchange = function () { if (!inp.files[0]) return; readShrunk(inp.files[0], function (u) { c.dmg[+inp.getAttribute('data-dmgph')].img = u; saveDraft(); renderJob(); }, PHOTO_JOB); }; });
   document.querySelectorAll('[data-dmgmemo]').forEach(function (inp) { inp.oninput = function () { c.dmg[+inp.getAttribute('data-dmgmemo')].memo = inp.value; saveDraft(); }; });
   document.querySelectorAll('[data-dmgdel]').forEach(function (b) { b.onclick = function () { c.dmg.splice(+b.getAttribute('data-dmgdel'), 1); saveDraft(); renderJob(); }; });
   var dn = $('dmgNone'); if (dn) dn.onclick = function () { c.noDamage = !c.noDamage; saveDraft(); renderJob(); };
@@ -1293,7 +1307,7 @@ function bindJob() {
     var id = shots[c.shotIdx].id, had = !!c.photos[id];
     c.photos[id] = u; saveDraft();
     if (had) renderJob(); else advanceShot();   // 撮り直しはその枠に残る・新しく撮ったら次の枠へ
-  }); };
+  }, PHOTO_JOB); };
   var sk = $('skipShot'); if (sk) sk.onclick = function () { advanceShot(); };
   document.querySelectorAll('[data-shot]').forEach(function (b) { b.onclick = function () { c.shotIdx = +b.getAttribute('data-shot'); renderJob(); }; });
 

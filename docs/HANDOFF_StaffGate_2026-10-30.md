@@ -21,7 +21,7 @@
 | `tests/v7_staff_gate.test.js`・`tests/tg_auth.test.js`（新規） | 全102件合格（`node --test "tests/*.test.js"`） |
 
 ### 判定のしくみ
-- スタッフ専用: `booking_today` / `field_partner_shops` / `manual_campaign_list` / `job_start` / `job_end` / `job` / `chat_history` / `chat_send` / `manual_campaign_create` / `manual_campaign_settle` / `manual_campaign_sale`
+- スタッフ専用: `booking_today` / `field_partner_shops` / `manual_campaign_list` / `job_start` / `job_start_photos`（10/30 追加・HANDOFF_StartPhotosSplit） / `job_end` / `job` / `chat_history` / `chat_send` / `manual_campaign_create` / `manual_campaign_settle` / `manual_campaign_sale`
 - スタッフ = 署名が正しく **24時間以内**の Telegram ユーザーで、スタッフマスター（有効=TRUE）にいる人か管理グループのメンバー／またはホーム画面アプリの専用リンク（鍵が正しく、スタッフマスターにいる人）
 - スタッフマスターが一時的に読めない時は、6時間以内に読めた一覧を使う。何も無ければ通さない
 - **モード = ScriptProperty `TG_AUTH_MODE`**: 未設定・`audit` は記録だけ（今までどおり動く）／`enforce` で止める。**設定が読めない時は止める側**
@@ -67,6 +67,7 @@ GAS エディタ（v7）で `showStaffGateAudit` を実行 → 実行ログ:
 | booking_today | ☐ | ☐ | ☐ | ☐ |
 | field_partner_shops | ☐ | ☐ | — | — |
 | job_start / job_end | ☐ | ☐ | ☐ | ☐ |
+| job_start_photos（10/30 追加） | ☐ | ☐ | — | — |
 | job | — | — | ☐ | ☐ |
 | chat_history / chat_send | — | — | ☐ | ☐ |
 | manual_campaign_list / _settle / _sale | — | — | ☐ | ☐ |

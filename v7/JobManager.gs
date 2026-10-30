@@ -34,8 +34,10 @@ function apiBookingToday() {
   try {
     var sheet = getSheet(SHEET_NAMES.BOOKINGS);
     var lastRow = sheet.getLastRow();
+    // caps: 現場アプリに「このサーバーでできること」を知らせる（JobStartPhotos.gs・2026-10-30）
+    var caps = (typeof fieldAppCaps_ === 'function') ? fieldAppCaps_() : {};
     if (lastRow < 2) {
-      return { status: 'ok', bookings: [] };
+      return { status: 'ok', bookings: [], caps: caps };
     }
     var headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
     var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
@@ -141,7 +143,7 @@ function apiBookingToday() {
       return (a.startTime || '') < (b.startTime || '') ? -1 : 1;
     });
 
-    return { status: 'ok', bookings: bookings };
+    return { status: 'ok', bookings: bookings, caps: caps };
   } catch (err) {
     Logger.log('❌ apiBookingToday error: ' + err);
     return { status: 'error', message: String(err) };
@@ -248,20 +250,27 @@ function calcEndTime(startHHmm, durationMin) {
  *   3. 予約ステータス更新
  *   4. 顧客へ: Before写真アルバム（キャプション: 「開始しました」）
  *   5. 管理グループへ: Before写真アルバム（キャプション: 「▶️ 作業開始」詳細付き）
+ *
+ * 2026-10-30 開始を2回に分けて受ける（現場アプリ v2・JobStartPhotos.gs）: opts.part
+ *   'text'   … 2〜3 と管理グループへの文字の通知だけ（写真はあとから。顧客・店のグループへは送らない）
+ *   'photos' … 1 と行の Before写真URL・4・管理グループへ写真・6（行・予約ステータス・文字の通知はもう済んでいる）
+ *   ''       … 今までどおり全部
  */
 function apiJobStart(body, opts) {
   // opts（2026-10-08 v2）: { rowIndex, jobId } … JobIdempotency.gs が先に書いた行を使う
   opts = opts || {};
+  var part = opts.part || '';
   var adminDelivered = false;
   try {
     var bookingId = body.bookingId || '';
     var cfg = getConfig();
     // 手入力ジョブのQR連携コード（2026-08-28 ManualCustomerLink.gs）
-    var linkToken = String(body.linkToken || '');
+    // 写真だけの回は開始（文字）の回で連携を済ませている（行の値を使う）
+    var linkToken = part === 'photos' ? '' : String(body.linkToken || '');
 
     // ── 1. 写真を Drive に保存 & Blob 取得 ──
     var photoResult = { urls: [], blobs: [] };
-    if (body.beforePhotos && body.beforePhotos.length > 0) {
+    if (part !== 'text' && body.beforePhotos && body.beforePhotos.length > 0) {
       photoResult = saveBase64PhotosToDrive(body.beforePhotos, bookingId || 'manual', 'before');
     }
 
@@ -309,23 +318,25 @@ function apiJobStart(body, opts) {
       // 作業状態・完了時刻・After写真・施工時間は書かない（終了が先に届いた行を「作業中」に戻さない）
       var existingRow = readRow(SHEET_NAMES.JOBS, opts.rowIndex);
       if (!linkedChatId && existingRow[JOBS_COL_CUSTOMER_CHAT]) linkedChatId = String(existingRow[JOBS_COL_CUSTOMER_CHAT]);
-      var v2StartUpdates = {
-        'Before写真URL': jobRowObj['Before写真URL'],
-        '車種':          jobRowObj['車種']
-      };
-      if (hasAmountValue_(body.amount)) v2StartUpdates['料金(USD)'] = body.amount;
-      v2StartUpdates[JOBS_COL_SERVICE] = jobRowObj[JOBS_COL_SERVICE];
-      if (jobSource) v2StartUpdates['流入元'] = jobSource;
-      if (linkToken) v2StartUpdates[JOBS_COL_LINK_TOKEN] = linkToken;
-      if (linkedChatId) v2StartUpdates[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
+      var v2StartUpdates = {};
+      // 文字だけの回は Before写真URL を書かない（写真の回が書く）。写真の回は Before写真URL だけ（ほかは文字の回で書いた）
+      if (part !== 'text') v2StartUpdates['Before写真URL'] = jobRowObj['Before写真URL'];
+      if (part !== 'photos') {
+        v2StartUpdates['車種'] = jobRowObj['車種'];
+        if (hasAmountValue_(body.amount)) v2StartUpdates['料金(USD)'] = body.amount;
+        v2StartUpdates[JOBS_COL_SERVICE] = jobRowObj[JOBS_COL_SERVICE];
+        if (jobSource) v2StartUpdates['流入元'] = jobSource;
+        if (linkToken) v2StartUpdates[JOBS_COL_LINK_TOKEN] = linkToken;
+        if (linkedChatId) v2StartUpdates[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
+      }
       updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2StartUpdates);
     } else {
       appendRow(SHEET_NAMES.JOBS, jobRowObj);
     }
 
     // ── 3. 予約ステータス更新（ドロップダウン値に合わせる） ──
-    // v2: 予約がすでに「作業完了」なら巻き戻さない（開始の遅延到着）
-    if (bkRow && !(opts.rowIndex && String(bkRow.data['進行状態'] || '') === '作業完了')) {
+    // v2: 予約がすでに「作業完了」なら巻き戻さない（開始の遅延到着）。写真だけの回は文字の回で更新済み
+    if (bkRow && part !== 'photos' && !(opts.rowIndex && String(bkRow.data['進行状態'] || '') === '作業完了')) {
       try {
         updateRow(SHEET_NAMES.BOOKINGS, bkRow.rowIndex, {
           '進行状態': '作業中'
@@ -359,7 +370,8 @@ function apiJobStart(body, opts) {
     // ── 4. 顧客へ: メッセージ先 → 写真（各処理を個別 try で囲む） ──
     // 有償の手動ジョブ（予約なし・料金>0）のみ費用を表示（無償は金額を出さない・2026-08-28 A案）
     var manualPaidStart = (!bookingId && Number(body.amount) > 0) ? Number(body.amount) : 0;
-    if (customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'start'))) {
+    // 文字だけの回はお客様へ送らない（写真の回で文と写真をそろえて送る＝お客様への届き方は今までどおり）
+    if (part !== 'text' && customerChatId && !(typeof jobCustSent_ === 'function' && jobCustSent_(opts, 'start'))) {
       if (typeof jobMarkCustSent_ === 'function') jobMarkCustSent_(opts, 'start');   // v2: 再送で顧客に重複させない
       try {
         var custText =
@@ -381,41 +393,49 @@ function apiJobStart(body, opts) {
     }
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
-    try {
-      var adminText = '▶️ 作業開始\n' +
-        '━━━━━━━━━━━━━━━━━\n' +
-        (bookingId ? '🆔 ' + bookingId + '\n' : '') +
-        (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
-        (opts.fieldShopId ? '🏪 提携店: ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(opts.fieldShopId)) || opts.fieldShopId) + '\n' : '') +
-        '👤 ' + (body.name || '-') + '\n' +
-        '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
-        '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
-        jobServiceLine_(body) +
-        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
-        '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
-        '📷 Before ' + photoResult.urls.length + '枚';
+    if (part === 'photos') {
+      // 写真だけの回: 文字の通知は開始の回で送り済み。どの作業の写真かを添えて写真だけ送る（JobStartPhotos.gs）
+      adminDelivered = sendStartPhotosToAdmin_(cfg.adminGroupId, threadId, photoResult, body, bookingId);
+    } else {
+      try {
+        var adminText = '▶️ 作業開始\n' +
+          '━━━━━━━━━━━━━━━━━\n' +
+          (bookingId ? '🆔 ' + bookingId + '\n' : '') +
+          (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
+          (opts.fieldShopId ? '🏪 提携店: ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(opts.fieldShopId)) || opts.fieldShopId) + '\n' : '') +
+          '👤 ' + (body.name || '-') + '\n' +
+          '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
+          '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
+          jobServiceLine_(body) +
+          (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
+          '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
+          (part === 'text' ? '📷 Before ' + (Number(opts.photosFollow) || 0) + '枚（写真はあとから届きます）'
+                           : '📷 Before ' + photoResult.urls.length + '枚');
 
-      var adminOpts = {};
-      if (threadId) adminOpts.message_thread_id = threadId;
+        var adminOpts = {};
+        if (threadId) adminOpts.message_thread_id = threadId;
 
-      var adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
-      if (opts.rowIndex && !(adminRes && adminRes.ok) && adminOpts.message_thread_id) {
-        adminOpts = {};   // v2: トピックが消えている等 → 一般スレッドに送る
-        adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+        var adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+        if (opts.rowIndex && !(adminRes && adminRes.ok) && adminOpts.message_thread_id) {
+          adminOpts = {};   // v2: トピックが消えている等 → 一般スレッドに送る
+          adminRes = sendMessage(BOT_TYPE.BOOKING, cfg.adminGroupId, adminText, adminOpts);
+        }
+        adminDelivered = !!(adminRes && adminRes.ok);
+        if (photoResult.blobs.length > 0) {
+          var albumRes = sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
+          if (!(albumRes && albumRes.ok)) adminDelivered = false;
+        }
+      } catch (e) {
+        Logger.log('⚠️ 管理グループ通知失敗: ' + e);
       }
-      adminDelivered = !!(adminRes && adminRes.ok);
-      if (photoResult.blobs.length > 0) {
-        var albumRes = sendPhotoAlbum(BOT_TYPE.BOOKING, cfg.adminGroupId, photoResult.blobs, '', adminOpts);
-        if (!(albumRes && albumRes.ok)) adminDelivered = false;
-      }
-    } catch (e) {
-      Logger.log('⚠️ 管理グループ通知失敗: ' + e);
     }
 
     // ── 6. 紹介元の店舗グループへ同報（提携店経由の顧客のみ・2026-08-10） ──
+    // 文字だけの回は店・提携先のグループへ送らない（写真の回で文と写真をそろえて送る＝グループへの届き方は今までどおり）
+    var sendGroups = part !== 'text';
     var startShopSent = '';
     try {
-      if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
+      if (sendGroups && customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
         // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
         startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
           return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', name: body.name || '', car: body.carModel || '', photos: 'before' });
@@ -428,10 +448,10 @@ function apiJobStart(body, opts) {
     // 「共有されます」を伝えた予約だけ。提携店 QR のお客様（グループ未連携の店も含む＝終了側の shopRef と同じ判定）には送らない
     var startSrcSent = '';
     var startIsShopCust = !!startShopSent;
-    if (!startIsShopCust && customerChatId && typeof getValidShopRef_ === 'function') {
+    if (sendGroups && !startIsShopCust && customerChatId && typeof getValidShopRef_ === 'function') {
       try { startIsShopCust = !!getValidShopRef_(customerChatId); } catch (e) { Logger.log('⚠️ 提携店判定失敗(start): ' + e); }
     }
-    if (bookingId && !startIsShopCust && typeof notifySourceGroupJob_ === 'function') {
+    if (sendGroups && bookingId && !startIsShopCust && typeof notifySourceGroupJob_ === 'function') {
       startSrcSent = notifySourceGroupJob_('start', {
         bookingId: bookingId, carModel: body.carModel, blobs: photoResult.blobs, opts: opts
       });
@@ -439,7 +459,7 @@ function apiJobStart(body, opts) {
     // 現場アプリで作業開始の前に選んだ店（店の車など・2026-10-25）: その店のグループへ開始と Before 写真を送る
     // shop_id は apiJobStartV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
     var startFieldShop = String(opts.fieldShopId || '');
-    if (startFieldShop && startFieldShop !== startShopSent && startFieldShop !== startSrcSent) {
+    if (sendGroups && startFieldShop && startFieldShop !== startShopSent && startFieldShop !== startSrcSent) {
       try {
         if (!jobCustSent_(opts, 'startshop:' + startFieldShop) && typeof notifyShopGroupByShopId_ === 'function') {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);

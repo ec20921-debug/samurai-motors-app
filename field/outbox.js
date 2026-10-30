@@ -91,7 +91,22 @@
   /** 記録を箱に入れる（保存できたら resolve ＝「保存しました」を出してよい）
    *  opts.url: 送り先（既定は現場の GAS。勤怠・日報は勤務Bot側の GAS） */
   function enqueue(kind, payload, opts) {
-    var rec = {
+    return enqueueAll([{ kind: kind, payload: payload, opts: opts }]).then(function (recs) { return recs[0]; });
+  }
+
+  /** いくつかの記録を1回でまとめて箱に入れる（途中で落ちても片方だけ残らない・2026-10-30 作業開始の知らせと写真）
+   *  items: [{ kind, payload, opts }]。並べた順に送る */
+  function enqueueAll(items) {
+    var recs = items.map(function (it) { return makeRec(it.kind, it.payload, it.opts); });
+    return tx('outbox', 'readwrite', function (s) { recs.forEach(function (r) { s.put(r); }); }).then(function () {
+      notify();
+      setTimeout(flush, 50);
+      return recs;
+    });
+  }
+
+  function makeRec(kind, payload, opts) {
+    return {
       url: (opts && opts.url) || '',
       after: (opts && opts.after) || '',   // この記録より先に送り終えるべき記録の client_id（例: 退勤 → 出勤）
       client_id: payload.client_id,
@@ -107,11 +122,6 @@
       last_error: '',
       payload: payload
     };
-    return put(rec).then(function () {
-      notify();
-      setTimeout(flush, 50);
-      return rec;
-    });
   }
 
   function counts(list) {
@@ -276,7 +286,7 @@
   }
 
   global.Outbox = {
-    start: start, enqueue: enqueue, flush: flush, retryAll: retryAll, all: getAll, supersede: supersede,
+    start: start, enqueue: enqueue, enqueueAll: enqueueAll, flush: flush, retryAll: retryAll, all: getAll, supersede: supersede,
     kvGet: kvGet, kvSet: kvSet, kvDel: kvDel, uuid: uuid
   };
 })(window);

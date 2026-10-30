@@ -34,7 +34,7 @@
 
 var STAFF_ONLY_ACTIONS_ = {
   booking_today: 1, field_partner_shops: 1, manual_campaign_list: 1,
-  job_start: 1, job_end: 1, job: 1,
+  job_start: 1, job_start_photos: 1, job_end: 1, job: 1,
   chat_history: 1, chat_send: 1,
   manual_campaign_create: 1, manual_campaign_settle: 1, manual_campaign_sale: 1
 };

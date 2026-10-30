@@ -201,7 +201,7 @@ test('スタッフ専用でない操作は判定しない', () => {
   const { ctx } = makeCtx(Object.assign({}, BASE_PROPS, { TG_AUTH_MODE: 'enforce' }));
   ['booking_init', 'booking_create', 'booking_register_customer', 'booking_slots', 'menu_prices', 'ping', 'constructor']
     .forEach((a) => assert.equal(ctx.isStaffOnlyAction_(a), false, a));
-  ['chat_send', 'chat_history', 'job', 'job_start', 'job_end', 'booking_today'].forEach((a) => assert.equal(ctx.isStaffOnlyAction_(a), true, a));
+  ['chat_send', 'chat_history', 'job', 'job_start', 'job_start_photos', 'job_end', 'booking_today'].forEach((a) => assert.equal(ctx.isStaffOnlyAction_(a), true, a));
 });
 
 test('booking_init: 電話番号は署名で確かめた本人にだけ返す（24時間以内）', () => {

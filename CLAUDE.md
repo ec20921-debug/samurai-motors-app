@@ -47,7 +47,7 @@
 |---|---|---|
 | 基盤 | Config / Router / QueueManager / TelegramAPI / SheetHelpers / Holidays / BotPoller | 設定・ルーティング・キュー・API・シートIO・祝日・ポーリング |
 | 予約 | BookingBot / BookingLogic / BookingDashboard | 会話フロー・空き検索/料金・予約ダッシュボード |
-| 作業管理 | JobManager | 作業開始/完了・写真3方向配信・リピーター判定 |
+| 作業管理 | JobManager / JobIdempotency / JobStartPhotos | 作業開始/完了・写真3方向配信・リピーター判定・現場アプリ v2 の二重処理対策・開始の知らせと作業前の写真の分割（2026-10-30） |
 | 顧客コミュ | CustomerChat / CustomerContact / CustomerNotifier / ForumTopicManager | 転送・連絡先・通知・1顧客1トピック |
 | 決済 | PaymentManager | QR送信・スクショ受付・24h催促 |
 | 提携先 | ShopRouting / ShopGroupGreeting / ShopInvoice / SourceGroupNotify / IndividualPartner / RestaurantPartner / PartnerLang | 店QR・グループ連携・あいさつ文・請求・レジデンス等・個人提携・飲食店（2026-10-29）・グループへの通知の言語（2026-10-26） |
