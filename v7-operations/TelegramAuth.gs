@@ -13,6 +13,8 @@
  *   - Results are aggregated per day in ScriptProperties (TG_AUTH_AUDIT_yyyyMMdd).
  *   - View: GET ?action=auth_audit  (counts + failure reasons only, no user IDs)
  *   - Phase 2 (enforce) flips TG_AUTH_MODE to 'enforce' after the audit is clean.
+ *     2026-10-30: TG_AUTH_MODE is read only by v7/StaffGate.gs (the 11 staff-only actions of v7).
+ *     Customer actions in v7 and everything in v7-operations still only record (this file never blocks).
  *
  * NOTE: this file is identical in v7/ and v7-operations/. Keep them in sync.
  *

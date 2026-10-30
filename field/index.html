@@ -497,6 +497,9 @@ var ME = { chatId: '', key: '', via: '', staff: null, keyOk: null, state: 'unkno
     try { var m = JSON.parse(localStorage.getItem('sm_field_me') || 'null'); if (m) { ME.chatId = m.u; ME.key = m.k; } } catch (e) {}
   }
   if (!ME.chatId) ME.state = 'need_link';
+  // 2026-10-30: tg-auth.js が v7 への送信のたびに専用リンクの chatId と鍵を付ける（送信時に付けるので、
+  //   送信待ち箱の古い記録や旧アプリへの移動でも最新の鍵になる。v7/StaffGate.gs）
+  else { try { sessionStorage.setItem('sm_field_link', JSON.stringify({ u: ME.chatId, k: ME.key })); } catch (e) {} }
 })();
 function postOps(action, data, ms) {
   var ctrl = window.AbortController ? new AbortController() : null;

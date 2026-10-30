@@ -7,6 +7,8 @@
  *   - 鍵 = HMAC-SHA256(秘密, 'field-link-v1:' + chatId) の先頭 24 文字
  *   - 秘密は ScriptProperties「FIELD_LINK_SECRET」。無ければ初回に自動生成（コード・リポジトリには書かない）
  *   - 全員の鍵を無効にする: FIELD_LINK_SECRET を削除（次の発行で新しい秘密になる）
+ *     ⚠️ 2026-10-30〜 v7 の ScriptProperties にも同じ値を置く（v7/StaffGate.gs が専用リンクの鍵を確かめる）。
+ *        削除・差し替えは v7 と v7-operations の両方を同時に行う（片方だけだと、取り消した鍵が v7 で通り続ける）
  *   - 発行できるのは管理者（スタッフマスターの役割 admin）だけ。Telegram 署名（initData）で本人を確認する
  *   - 署名必須化（Phase 2）までは鍵の確認結果を whoami で返すだけ（ブロックはしない）
  */
@@ -70,7 +72,7 @@ function fieldLinkIssue_(initDataRaw, body) {
 /**
  * スタッフ全員の現場アプリ専用リンクを実行ログに出す（GAS エディタから実行・管理者だけが使える場所・2026-10-23）
  * Daisuke「本人用リンクの出し方がよくわからない」→ Telegram の管理者カードを使わず PC だけで作れるように（ScoutBoard.scoutHomeLinks と同じ形）
- * - リンクは本人だけに送る（他人に渡すとその人として打刻・日報できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除
+ * - リンクは本人だけに送る（他人に渡すとその人として打刻・日報できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除（2026-10-30〜 v7 にも同じ値を置く＝v7/StaffGate.gs。削除・差し替えは v7 と v7-operations の両方を同時に）
  */
 function fieldHomeLinks() {
   getActiveStaff().forEach(function (s) {
