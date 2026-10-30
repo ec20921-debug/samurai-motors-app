@@ -192,14 +192,21 @@ function partnerSentAt_(key) {
 }
 
 /**
- * 送る前に印を取る（即時送信と毎時の安全網が重なっても1回だけ送る）。取れたら { prev } / 取れなければ null（送信済み・ほかの実行が送信中）
+ * 送る前に印を取る（即時送信と毎時の安全網が重なっても1回だけ送る）。取れたら { prev } / 取れなければ null（送信済み・ほかの実行が送信中・状態タブを読めない）
  *   印は 'sending <日時>' → 送れたら送った日時、送れなかったら元に戻す（partnerSendDone_）。止まった実行の 'sending' は10分で取り直せる
  */
 function partnerSendClaim_(key, force) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5 * 1000)) return null;
   try {
-    var cur = String(kvGet_(key) || '');
+    var cur;
+    try {
+      cur = String(kvGetStrict_(key) || '');
+    } catch (err) {
+      // 状態タブを読めない時は「未送信」と読まずに送らない（取り消せない送信・毎時の安全網が再試行。2026-10-31）
+      Logger.log('⚠️ 送付印を読めないので送らない: ' + key + ' ' + err);
+      return null;
+    }
     if (cur.indexOf('sending ') === 0) {
       if (partnerSendingFresh_(cur)) return null;
     } else if (cur && !force) {

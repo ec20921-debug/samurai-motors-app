@@ -69,13 +69,27 @@ function buildShopGroupGreeting_(shopName, shopId) {
 }
 
 /**
+ * あいさつ文を送ったか: 'sent' / 'unsent' / 'unknown'（状態タブを読めない＝送らない側。2026-10-31）
+ */
+function greetingSentState_(key) {
+  try {
+    return kvGetStrict_(key) ? 'sent' : 'unsent';
+  } catch (err) {
+    Logger.log('⚠️ あいさつ文 保留（状態タブを読めない・毎時の安全網で再試行）: ' + key + ' ' + err);
+    return 'unknown';
+  }
+}
+
+/**
  * 未送信なら1回だけあいさつ文を送り、送信済みの印を付ける。
- * @return {boolean} 今回送った、または送信済みだった場合 true
+ * @return {boolean} 今回送った、または送信済みだった場合 true（状態タブを読めず送らなかった時は false）
  */
 function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   if (!shopId || !groupChatId) return false;
   var key = SHOP_GREETING_PROP_PREFIX + shopId;   // 置き場は状態タブ（KvStore.gs・2026-10-31）
-  if (kvGet_(key)) return true;
+  // 状態タブが読めない時は「未送信」と読まずに送らない（1回きりの送信・毎時の安全網が再試行）
+  var pre = greetingSentState_(key);
+  if (pre !== 'unsent') return pre === 'sent';
   // 流入元タブが読めず、レジデンス等の提携先か判定できない時は送らない（車屋用の文を一度送ると戻せない。毎時の安全網が再試行）
   if (typeof sourcePartnerState_ === 'function' && sourcePartnerState_(shopId) === null) {
     Logger.log('⚠️ あいさつ文 保留（流入元タブを読めない）: ' + shopId);
@@ -95,7 +109,8 @@ function sendShopGroupGreetingOnce_(shopId, groupChatId, shopName) {
   }
   var sentNow = false;
   try {
-    if (kvGet_(key)) return true;
+    var sentState = greetingSentState_(key);
+    if (sentState !== 'unsent') return sentState === 'sent';
     // 取り消せない1回きりの送信なので、提携種別（個人提携・飲食店・車屋）を読み直してから文を決める（/register と同じ・2026-10-29）。
     // 読み直しに失敗した時は送らない（最後に読めた内容が古い種別かもしれない）→ 毎時の安全網が再試行
     if (typeof readPartnerKinds_ === 'function') {

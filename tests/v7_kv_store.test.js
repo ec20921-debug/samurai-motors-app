@@ -51,11 +51,16 @@ function fakeSpreadsheet() {
   const make = (name) => {
     const rows = [];
     const formats = {};   // 'r,c' → 書式
+    const grid = { maxRows: 1000 };   // 本物と同じく、新しいシートは 1,000 行で、範囲の外には書けない
     return {
-      name, rows, formats,
+      name, rows, formats, grid,
       getParent: () => ss,
+      getMaxRows: () => grid.maxRows,
+      insertRowsAfter: (after, n) => { grid.maxRows += n; },
       getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
-      getRange: (r, c, nr, nc) => ({
+      getRange: (r, c, nr, nc) => {
+        if (r + (nr || 1) - 1 > grid.maxRows) throw new Error('Exception: The coordinates of the range are outside the dimensions of the sheet.');
+        return {
         setNumberFormat: (f) => {
           ss.calls.setNumberFormat++;
           for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) formats[(r + i) + ',' + (c + j)] = f;
@@ -69,7 +74,8 @@ function fakeSpreadsheet() {
           }
           return { setFontWeight: () => ({}) };
         }
-      }),
+        };
+      },
       setFrozenRows: () => {},
       setColumnWidth: () => {}
     };
@@ -92,7 +98,7 @@ function makeCtx(opts) {
   const props = new Map(Object.entries(opts.props || {}));
   const cache = new Map();
   const ss = opts.ss || fakeSpreadsheet();
-  const state = { sheetBroken: false, scriptLockHeld: false, log: [] };
+  const state = { sheetBroken: false, scriptLockHeld: false, kvLockBusy: false, log: [] };
   const ctx = {
     console,
     Logger: { log: (m) => state.log.push(String(m)) },
@@ -116,7 +122,9 @@ function makeCtx(opts) {
     },
     LockService: {
       getScriptLock: () => ({ tryLock: () => !state.scriptLockHeld, waitLock: () => {}, releaseLock: () => {} }),
-      getDocumentLock: () => ({ tryLock: () => true, releaseLock: () => {} })
+      // 本番の v7 はシートに付いていないスクリプトなので DocumentLock は null（opts.boundToSheet で付いている場合も試す）
+      getDocumentLock: () => (opts.boundToSheet ? { tryLock: () => !state.kvLockBusy, releaseLock: () => {} } : null),
+      getUserLock: () => ({ tryLock: () => !state.kvLockBusy, releaseLock: () => {} })
     },
     getSpreadsheet: () => { if (state.sheetBroken) throw new Error('sheet unavailable'); return ss; }
   };
@@ -209,7 +217,7 @@ test('タブが読めない時: 最後に読めた内容 → Script Properties �
   assert.equal(tabMap(t).shop_ref_7, 'FROM-RETREAT');
 });
 
-test('ScriptLock を持ったまま呼ばれても書ける（書き込みは DocumentLock）', () => {
+test('ScriptLock を持ったまま呼ばれても書ける（書き込みは DocumentLock → 無ければ UserLock）', () => {
   const t = makeCtx();
   t.state.scriptLockHeld = true;
   t.run(`kvSet_('shop_greeting_sent_SHOP-A', '2026-10-31 10:00:00')`);
@@ -377,4 +385,67 @@ test('化けた行の書き直しは行数によらずシートへの書き込�
   ss.calls.setValues = 0;
   t.run(`kvRepairTextValues()`);                               // 2回目: 直すものが無いので書かない
   assert.equal(ss.calls.setValues, 0);
+});
+
+// ====== @105 からの弱点（2026-10-31 Daisuke「別の弱点直す」） ======
+
+test('ロック: シートに付いていないスクリプト（DocumentLock が null）で ScriptLock を持ったままでも、UserLock でタブに書ける（退避に回らない）', () => {
+  const t = makeCtx();                                          // 本番と同じ＝DocumentLock なし
+  assert.equal(t.run(`kvLockKind_()`), 'UserLock');
+  t.state.scriptLockHeld = true;                                // あいさつ文・送付印は ScriptLock を持ったまま書く
+  t.run(`kvSet_('partner_flyers_sent_SHOP-H', 'sending 2026-10-31 10:00:00')`);
+  assert.equal(tabMap(t)['partner_flyers_sent_SHOP-H'], 'sending 2026-10-31 10:00:00');
+  assert.equal(t.props.has('kv_retreat_v1'), false);
+  const bound = makeCtx({ boundToSheet: true });
+  assert.equal(bound.run(`kvLockKind_()`), 'DocumentLock');
+});
+
+test('消せなかった時: 退避に「消した」印。タブに残った古い値は読まれず、毎分の処理がタブの行を空にする', () => {
+  const t = makeCtx();
+  t.run(`kvSet_('selfreg_need_SHOP-H', '2026-10-31 10:00:00'); kvSet_('selfreg_need_SHOP-K', '2026-10-31 11:00:00')`);
+  t.state.kvLockBusy = true;                                    // ほかの実行が書いている（10秒待っても取れない）
+  t.run(`kvDelete_('selfreg_need_SHOP-H')`);
+  assert.equal(tabMap(t)['selfreg_need_SHOP-H'], '2026-10-31 10:00:00');   // タブには残っている
+  assert.deepEqual(JSON.parse(t.props.get('kv_retreat_v1')), { 'selfreg_need_SHOP-H': '' });
+  t.newExecution();
+  assert.equal(t.run(`kvGet_('selfreg_need_SHOP-H')`), null);   // 消えたものとして読む（送り待ちが残って送り直さない）
+  assert.equal(t.run(`kvGetStrict_('selfreg_need_SHOP-H')`), null);
+  assert.deepEqual(plain(t.run(`kvGetAll_('selfreg_need_')`)), { 'selfreg_need_SHOP-K': '2026-10-31 11:00:00' });
+
+  t.state.kvLockBusy = false;
+  t.run(`processTelegramQueue()`);                             // 毎分の処理がタブの行を空にして印を外す
+  assert.equal(t.props.has('kv_retreat_v1'), false);
+  assert.equal(tabMap(t)['selfreg_need_SHOP-H'], undefined);
+  t.newExecution();
+  t.cache.clear();
+  assert.equal(t.run(`kvGet_('selfreg_need_SHOP-H')`), null);
+  assert.equal(t.run(`kvGet_('selfreg_need_SHOP-K')`), '2026-10-31 11:00:00');
+});
+
+test('行が足りない時は足してから書く（シートの範囲の外には書けない）', () => {
+  const ss = fakeSpreadsheet();
+  const sh = ss.insertSheet('状態');
+  sh.rows.push(['キー(key)', '値(value)', '更新日時(updated_at)']);
+  sh.rows.push(['shop_ref_1', 'SHOP-A', '2026-10-31 10:00:00']);
+  sh.rows.push(['shop_ref_2', 'SHOP-B', '2026-10-31 10:00:00']);
+  sh.grid.maxRows = 3;                                          // 行がいっぱい
+  const t = makeCtx({ ss });
+  t.run(`kvSetAll_({ shop_ref_3: 'SHOP-C', shop_ref_4: 'SHOP-D' })`);
+  assert.equal(t.props.has('kv_retreat_v1'), false);            // 退避に回らずタブに書けた
+  assert.equal(tabMap(t).shop_ref_3, 'SHOP-C');
+  assert.equal(tabMap(t).shop_ref_4, 'SHOP-D');
+  assert.equal(sh.grid.maxRows, 203);                           // 200 行足した（1 回だけ）
+  assert.ok(t.state.log.some((m) => m.indexOf('200 行を足した') >= 0));
+});
+
+test('kvGetStrict_: タブも最後に読めた内容も無い時は例外（kvGet_ は null）。読めれば kvGet_ と同じ', () => {
+  const t = makeCtx();
+  t.run(`kvSet_('shop_greeting_sent_SHOP-A', '2026-10-31 10:00:00')`);
+  assert.equal(t.run(`kvGetStrict_('shop_greeting_sent_SHOP-A')`), '2026-10-31 10:00:00');
+  assert.equal(t.run(`kvGetStrict_('shop_greeting_sent_SHOP-B')`), null);
+  t.newExecution();
+  t.cache.clear();
+  t.state.sheetBroken = true;
+  assert.equal(t.run(`kvGet_('shop_greeting_sent_SHOP-A')`), null);   // kvGet_ は「無い」と読む（だから送る前には使わない）
+  assert.throws(() => t.run(`kvGetStrict_('shop_greeting_sent_SHOP-A')`), /状態タブを読めません/);
 });

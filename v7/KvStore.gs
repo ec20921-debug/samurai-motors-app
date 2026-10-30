@@ -14,12 +14,17 @@
  *   kvSetAll_({k: v, …})   : まとめて書く
  *   kvDelete_(key)         : 消す
  *   kvGetAll_(prefix)      : prefix で始まるキーを { key: value } で全部（読めない時は例外＝呼び元で止める）
+ *   kvGetStrict_(key)      : kvGet_ と同じだが、タブも最後に読めた内容も無い時は例外（取り消せない送信の「送ったか」の確認用）
  *
  * 【安全側の作り】（日々の営業に支障を出さない・2026-10-31 Daisuke）
  *   - タブが読めない時: 読みは「最後に読めた内容」（Cache・5分）→ それも無ければ Script Properties（移行前の置き場）→ null
  *   - タブに書けない時: Script Properties の 1 キー（kv_retreat_v1・JSON）に退避して記録に残す。値は失わない。
  *     読む時は退避が最優先（退避した値の方が新しい）。毎分のキュー処理が自動でタブへ移す（kvAutoMigrate_）
- *   - 書きはロック（getDocumentLock）で順番に。ScriptLock を持ったまま呼ばれても固まらない（別のロック）
+ *   - 書きはロック（DocumentLock → 無ければ UserLock）で順番に。ScriptLock を持ったまま呼ばれても固まらない（別のロック）
+ *     （v7 はシートに付いていないスクリプトなので DocumentLock は null。実行はすべて同じアカウント＝トリガーの持ち主・
+ *       Web アプリは USER_DEPLOYING なので、UserLock がスクリプト全体の順番待ちになる。2026-10-31）
+ *   - 消せなかった時は退避に「消した」印（空文字）を置く（タブに残った古い値が読まれない。毎分の処理がタブの行を空にする）
+ *   - タブの行が足りなければ足す（新しいシートは 1,000 行。範囲の外には書けない）
  *   - 書いたら Cache も同時に更新する（別の実行が1分以内に読んでも古い値にならない）
  *   - 移行前の Script Properties にまだ残っている値は、タブに無い時だけ読む（kvMigrateFromProperties で全部タブへ）
  *
@@ -58,6 +63,7 @@ var KV_MEMO_MS_ = 3000;              // 同じ実行の中で何度も読む時�
 var KV_LOCK_MS_ = 10 * 1000;
 var KV_RETREAT_KEY_ = 'kv_retreat_v1';   // タブに書けなかった値の退避先（Script Properties の 1 キー・JSON）
 var KV_MIGRATE_PER_RUN_ = 100;
+var KV_GROW_ROWS_ = 200;   // 行が足りない時に足す行数
 var __kvMemo_ = null;
 var __kvMemoAt_ = 0;
 var __kvRetreatMemo_ = null;
@@ -69,14 +75,31 @@ var __kvRetreatMemoAt_ = 0;
 function kvGet_(key) {
   key = String(key || '');
   if (!key) return null;
+  return kvGetFrom_(key, false);
+}
+
+/**
+ * kvGet_ と同じだが、タブを読めず最後に読めた内容も無い時は例外。
+ * 取り消せない送信（あいさつ文・チラシ・本人登録リンク）の前に「もう送ったか」を見る時に使う
+ * （読めない時に「未送信」と読んで送ってしまわないように。呼び元は送らずに、あとの再試行に任せる）
+ */
+function kvGetStrict_(key) {
+  key = String(key || '');
+  if (!key) return null;
+  return kvGetFrom_(key, true);
+}
+
+function kvGetFrom_(key, strict) {
   var retreat = kvRetreatLoad_();
-  if (Object.prototype.hasOwnProperty.call(retreat, key)) return retreat[key];
+  if (Object.prototype.hasOwnProperty.call(retreat, key)) return retreat[key] === '' ? null : retreat[key];   // '' = 消した印
   var map = kvLoad_(false);
   if (map && Object.prototype.hasOwnProperty.call(map, key)) return map[key];
+  if (!map && strict) throw new Error('状態タブを読めません（' + KV_SHEET_NAME_ + '）: ' + key);
   if (!kvIsManaged_(key)) return null;
   try {
     return PropertiesService.getScriptProperties().getProperty(key);
   } catch (err) {
+    if (strict) throw err;
     return null;
   }
 }
@@ -138,16 +161,28 @@ function kvSetAll_(obj) {
 function kvDelete_(key) {
   key = String(key || '');
   if (!key) return;
-  kvWrite_(function(sheet, state) {
-    if (state.rows[key]) {
-      sheet.getRange(state.rows[key], 1, 1, KV_HEADERS_.length).setValues([['', '', '']]);
-      state.blanks.push(state.rows[key]);
-      delete state.rows[key];
-    }
-    delete state.map[key];
-  });
+  var written = kvWrite_(function(sheet, state) { kvBlankRow_(sheet, state, key); });
   kvLegacyDelete_(key);
-  kvRetreatRemove_([key]);
+  if (written) {
+    kvRetreatRemove_([key]);
+    return;
+  }
+  // タブから消せなかった → 退避に「消した」印（空文字）。読む時は退避が最優先なので、タブに残った古い値は読まれない
+  //   （送り待ちの印などが残って送り直すのを防ぐ）。毎分の kvAutoMigrate_ がタブの行を空にして印を外す
+  Logger.log('⚠️ 状態タブから消せないので退避に「消した」印（' + KV_RETREAT_KEY_ + '）: ' + key);
+  var t = {};
+  t[key] = '';
+  kvRetreatAdd_(t);
+}
+
+/** その行を空にする（行は消さない＝行番号がずれない。空いた行は次に使い回す） */
+function kvBlankRow_(sheet, state, key) {
+  if (state.rows[key]) {
+    sheet.getRange(state.rows[key], 1, 1, KV_HEADERS_.length).setValues([['', '', '']]);
+    state.blanks.push(state.rows[key]);
+    delete state.rows[key];
+  }
+  delete state.map[key];
 }
 
 // ====== 退避（タブに書けなかった値・Script Properties の 1 キー） ======
@@ -314,10 +349,23 @@ function kvWriteRow_(sheet, state, key, value, now) {
   var row = state.rows[key];
   if (!row) {
     row = state.blanks.length ? state.blanks.shift() : (state.lastRow + 1);
-    if (row > state.lastRow) state.lastRow = row;
+    if (row > state.lastRow) {
+      state.lastRow = row;
+      kvEnsureRows_(sheet, state, row);
+    }
     state.rows[key] = row;
   }
   kvSetTextRow_(sheet, row, [key, value, now]);
+}
+
+/** row 行目まで書けるように、足りなければ行を足す（シートの範囲の外には書けない。新しいシートは 1,000 行） */
+function kvEnsureRows_(sheet, state, row) {
+  if (!state.maxRows) state.maxRows = sheet.getMaxRows();
+  if (row <= state.maxRows) return;
+  var add = Math.max(KV_GROW_ROWS_, row - state.maxRows);
+  sheet.insertRowsAfter(state.maxRows, add);
+  state.maxRows += add;
+  Logger.log('➕ 状態タブに ' + add + ' 行を足した（' + state.maxRows + ' 行）');
 }
 
 /** 1行を書式なしテキスト（@）にしてから書く（シートに日時・数字の文字を日付・数値に変えさせない） */
@@ -345,7 +393,13 @@ function kvFixTextRows_(state) {
   return fix.length;
 }
 
-/** 書き込み用のロック。ScriptLock を持ったまま呼ばれる場所（あいさつ文・本人登録リンク）があるので DocumentLock を使う */
+/**
+ * 書き込み用のロック。ScriptLock を持ったまま呼ばれる場所（あいさつ文・チラシ・本人登録リンクの送付印）があるので、
+ * ScriptLock とは別のロックを使う: DocumentLock（シートに付いたスクリプトの時）→ UserLock。
+ * v7 はシートに付いていない（openById）ので DocumentLock は null。以前（@105）はここで ScriptLock に落ちていた
+ * ＝ ScriptLock を持ったまま同じロックを取りに行き、取れずに退避へ回るか、内側の解放で外側のロックまで外れるおそれ（2026-10-31）。
+ * 実行はすべて同じアカウント（トリガーの持ち主・Web アプリは USER_DEPLOYING）なので UserLock で全体の順番待ちになる
+ */
 function kvLock_() {
   try {
     if (typeof LockService.getDocumentLock === 'function') {
@@ -353,8 +407,21 @@ function kvLock_() {
       if (dl) return dl;
     }
   } catch (ignore) {}
+  try {
+    if (typeof LockService.getUserLock === 'function') {
+      var ul = LockService.getUserLock();
+      if (ul) return ul;
+    }
+  } catch (ignore) {}
   try { return LockService.getScriptLock(); } catch (ignore) {}
   return null;
+}
+
+/** どのロックで書いているか（kvStatus 用） */
+function kvLockKind_() {
+  try { if (typeof LockService.getDocumentLock === 'function' && LockService.getDocumentLock()) return 'DocumentLock'; } catch (ignore) {}
+  try { if (typeof LockService.getUserLock === 'function' && LockService.getUserLock()) return 'UserLock'; } catch (ignore) {}
+  return 'ScriptLock';
 }
 
 function kvLegacyDelete_(key) {
@@ -438,13 +505,19 @@ function kvMigrateFromProperties(limit) {
     var rk = retreatKeys.slice(0, max);
     var ok1 = kvWrite_(function(sheet, state) {
       var now = kvNow_();
-      rk.forEach(function(k) { kvWriteRow_(sheet, state, k, retreat[k], now); state.map[k] = retreat[k]; });
+      rk.forEach(function(k) {
+        if (retreat[k] === '') kvBlankRow_(sheet, state, k);   // 「消した」印 → タブの行を空にする
+        else { kvWriteRow_(sheet, state, k, retreat[k], now); state.map[k] = retreat[k]; }
+      });
     });
     if (!ok1) throw new Error('状態タブに書けないので中止しました（退避の分）。Script Properties はそのまま');
     var check1 = kvReadSheet_(false).map;
     var rest = {};
     retreatKeys.forEach(function(k) {
-      if (rk.indexOf(k) >= 0 && check1[k] === String(retreat[k])) { props.deleteProperty(k); moved++; }
+      var done = retreat[k] === ''
+        ? !check1[k]
+        : check1[k] === String(retreat[k]);
+      if (rk.indexOf(k) >= 0 && done) { props.deleteProperty(k); moved++; }
       else rest[k] = retreat[k];
     });
     kvRetreatSave_(rest);
@@ -525,7 +598,7 @@ function kvStatus() {
     byPrefix[p] = (byPrefix[p] || 0) + 1;
   });
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
-  Logger.log('🗂 状態タブ: ' + Object.keys(state.map).length + '件 ' + JSON.stringify(byPrefix));
+  Logger.log('🗂 状態タブ: ' + Object.keys(state.map).length + '件 ' + JSON.stringify(byPrefix) + '・書き込みのロック: ' + kvLockKind_());
   Logger.log('🔑 Script Properties: 全部 ' + Object.keys(all).length + '個／まだ移していない対象 ' + legacy.length + '個／退避 ' + retreatN + '件' + ((legacy.length || retreatN) ? '（毎分のキュー処理が自動で移す。急ぐなら kvMigrateFromProperties()）' : ''));
   Logger.log('━━━━━━━━━━━━━━━━━━━━');
 }

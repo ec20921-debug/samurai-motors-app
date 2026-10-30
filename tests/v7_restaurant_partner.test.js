@@ -48,12 +48,27 @@ function loadV7(master, opts) {
   const cache = {};
   const sent = [];
   const props = {};
+  // v7 Database「状態」タブ（KvStore.gs・あいさつ文の送付印などの置き場）
+  const stateRows = [['キー(key)', '値(value)', '更新日時(updated_at)']];
+  const stateSheet = {
+    getParent: () => ({ getSpreadsheetTimeZone: () => 'Asia/Tokyo' }),
+    getMaxRows: () => 1000,
+    insertRowsAfter: () => {},
+    getDataRange: () => {
+      if (opts.stateBroken && opts.stateBroken()) throw new Error('状態タブを読めない');
+      return { getValues: () => stateRows.map((r) => r.slice()) };
+    },
+    getRange: (r, c, nr) => ({
+      setNumberFormat: () => ({}),
+      setValues: (vals) => { for (let i = 0; i < (nr || 1); i++) { while (stateRows.length < r + i) stateRows.push(['', '', '']); stateRows[r - 1 + i] = vals[i].slice(); } }
+    })
+  };
   const run = load('v7', ['KvStore.gs', 'PartnerLang.gs', 'IndividualPartner.gs', 'IndividualPartnerNotice.gs', 'SourceGroupNotify.gs',
     'BookingLogic.gs', 'RestaurantPartner.gs', 'ShopGroupGreeting.gs', 'PartnerSelfRegister.gs'], {
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     getSpreadsheet: () => {
       if (opts.sheetBroken && opts.sheetBroken()) throw new Error('読めない');
-      return { getSheetByName: (n) => (n === '店マスター' ? fakeSheet(master || MASTER) : null) };
+      return { getSheetByName: (n) => (n === '店マスター' ? fakeSheet(master || MASTER) : (n === '状態' ? stateSheet : null)) };
     },
     getConfig: () => ({ adminGroupId: 'ADMIN' }),
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
@@ -222,3 +237,19 @@ test('あいさつ文: 送る直前に店マスターを読み直せない時は
   assert.equal(sent.filter((m) => m.chat === '-100PJ').length, 0);
 });
 
+
+test('状態タブを読めない時: あいさつ文・送付印は「未送信」と読まずに送らない。読めるようになったら1回だけ送る（2026-10-31）', () => {
+  let broken = true;
+  const { run, sent } = loadV7(null, { stateBroken: () => broken });
+  assert.equal(run('individualPartnerState_("SHOP-PJ")'), true);
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), false);
+  assert.equal(sent.filter((m) => m.chat === '-100PJ').length, 0);
+  assert.equal(run('partnerSendClaim_("partner_flyers_sent_SHOP-HIRO", false)'), null);   // チラシ・本人登録リンクも送らない
+
+  broken = false;
+  run('__kvMemo_ = null; __kvMemoAt_ = 0;');
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), true);
+  assert.equal(run('sendShopGroupGreetingOnce_("SHOP-PJ", "-100PJ", "PJ Restaurant")'), true);
+  assert.equal(sent.filter((m) => m.chat === '-100PJ').length, 1);
+  assert.equal(run('JSON.stringify(partnerSendClaim_("partner_flyers_sent_SHOP-HIRO", false))'), '{"prev":""}');
+});
