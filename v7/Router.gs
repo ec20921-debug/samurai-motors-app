@@ -13,10 +13,15 @@
  * 【action 一覧】
  *   GET:
  *     - ping                        : ヘルスチェック
- *     - booking_init                : 予約画面初期データ（顧客情報+プラン+出張料）
+ *     - auth_audit                  : 署名検証の記録（件数のみ・TelegramAuth.gs）
+ *     - staff_gate_audit            : スタッフ専用操作の判定の記録（件数のみ・StaffGate.gs）
+ *     - booking_init                : 予約画面初期データ（顧客情報+プラン+出張料。電話番号は署名で確かめた本人にだけ返す）
  *     - booking_slots               : 指定日・プラン・車種の空き枠
- *     - booking_today               : 本日＋明日の予約一覧（業務ミニアプリ用）
- *     - manual_campaign_list        : 有効＆期間内の手動特価キャンペーン一覧
+ *     - booking_slots_range         : 12日分の空き枠（件数のみ）
+ *     - menu_prices                 : メニュー価格（業務ミニアプリ用）
+ *     - booking_today               : 本日＋明日の予約一覧（業務ミニアプリ用）★スタッフ専用
+ *     - field_partner_shops         : 現場アプリの提携店の選択肢 ★スタッフ専用
+ *     - manual_campaign_list        : 有効＆期間内の手動特価キャンペーン一覧 ★スタッフ専用
  *   POST:
  *     - booking_register_customer   : 新規顧客登録
  *     - booking_create              : 予約確定
@@ -27,6 +32,10 @@
  *     - chat_send                   : ミニアプリからメッセージ送信
  *     - manual_campaign_create      : 手動特価予約の作成（店舗/出張）
  *     - manual_campaign_settle      : 手動特価予約の清算（決済状態→清算済み）
+ *     - manual_campaign_sale        : 手動特価の売上記録
+ *   ★スタッフ専用（StaffGate.gs）: booking_today / field_partner_shops / manual_campaign_list /
+ *     job_start / job_end / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
+ *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）
  */
 
 /**
@@ -38,7 +47,13 @@ function doGet(e) {
     let result;
 
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
+    // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
+    if (e && e.parameter && isStaffOnlyAction_(action)) {
+      var gateG = staffGate_(action, extractInitData_(e.parameter), e.parameter._fu || '', e.parameter._fk || '');
+      if (!gateG.allowed && staffGateEnforced_()) return jsonResponse(staffGateDenied_());
+    }
     if (e && e.parameter) {
+      delete e.parameter._fu; delete e.parameter._fk;   // field link credentials stop here
       auditTelegramAuth_(action, e.parameter.chatId || '', extractInitData_(e.parameter));
       // 2026-10-27: 紹介者ご本人の割引は、署名で確かめた本人だけ（ReferralAttribution.gs selfPartnerDiscount_）。
       //   画面やURLが送った _authUserId は使わない（必ずここで入れ直す）
@@ -55,6 +70,10 @@ function doGet(e) {
     switch (action) {
       case 'auth_audit':
         result = apiAuthAudit_(e.parameter);
+        break;
+
+      case 'staff_gate_audit':
+        result = apiStaffGateAudit_(e.parameter);
         break;
 
       case 'ping':
@@ -124,6 +143,13 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     const action = body.action || '';
     let result;
+
+    // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
+    if (isStaffOnlyAction_(action)) {
+      var gateP = staffGate_(action, extractInitData_(body), body._fu || '', body._fk || '');
+      if (!gateP.allowed && staffGateEnforced_()) return jsonResponse(staffGateDenied_());
+    }
+    delete body._fu; delete body._fk;   // field link credentials stop here
 
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
@@ -226,7 +252,9 @@ function apiBookingInit(params) {
       customerId: row.data['顧客ID'],
       chatId: String(row.data['チャットID']),
       name: row.data['氏名'] || row.data['ユーザー名'] || '',
-      phone: row.data['電話番号'] || '',
+      // 2026-10-30: the phone number only goes back to the customer themself (signature verified in doGet).
+      //   booking.html does not use it; anyone else asking with someone's chatId gets ''.
+      phone: (params._authUserId && String(params._authUserId) === chatId) ? (row.data['電話番号'] || '') : '',
       username: row.data['ユーザー名'] || ''
     };
   }
