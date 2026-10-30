@@ -410,20 +410,6 @@ test('JETRO フォーム（誰でも書ける）: 氏名・会社名は \' 付�
   sh.assertNoFormula((v) => /^\+[\d\s().\-]*$/.test(v));   // 電話らしい形は計算か #ERROR! になるだけ
 });
 
-test('見込み取込の確認タブ（prospectImportPreview）: 見込みリストから読み戻した店名・住所は \' 付き、電話の列はそのまま', () => {
-  const { ctx, run, v7 } = loadOps();
-  v7['店マスター'] = new FakeSheet('店マスター', [run('SALESLOG_SHOP_HEADERS')]);
-  ctx.readProspectList_ = () => [{ no: '1', name: EVIL, type: '整備', tier: 'A', status: '', lat: null, lng: null,
-    phone: PHONE, facebook: '', address: '+addr', nextAction: '-call', memo: '@m', shopId: '' }];
-  ctx.prospectImportPreview();
-  const sh = v7['見込み取込_確認'];
-  assert.equal(sh.rawAt(2, '店名'), "'" + EVIL);
-  assert.equal(sh.rawAt(2, '住所'), "'+addr");
-  assert.equal(sh.rawAt(2, 'メモ'), "'@m");
-  assert.equal(sh.rawAt(2, '電話'), PHONE, '電話の列（書式なしテキスト）は \' を付けない');
-  assert.equal(sh.rawAt(2, '判定'), '追加');
-});
-
 test('パートナー精算（v7 Database）: 台帳から読み戻した支払先・メモが \' 付き、月・金額はそのまま', () => {
   const { ctx, run } = loadOps();
   const headers = run('PS_HEADERS');

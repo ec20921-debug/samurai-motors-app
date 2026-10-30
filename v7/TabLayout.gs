@@ -38,20 +38,19 @@ const TAB_LAYOUT = [
   ['設定',               'SETUP', true,  true],
   ['チャット履歴',       'LOG',   true,  true],
   // ここから下は非表示（2026-10-27 時点で1か月以上更新なし・または役目を終えたタブ）
-  ['休業日',             'SETUP', false, false],   // 最後の登録 9/2
-  ['スタッフ',           'SETUP', false, false],   // 登録1名のまま変更なし
-  ['QRコード',           'SETUP', false, false],   // 2026-04-23 から変更なし
-  ['見込み取込_確認',    'LOG',   false, false],   // 10/20 の取り込みで役目終了
-  ['ヒアリングメモ',     'SALES', false, false],   // 元から非表示
+  // ※ 非表示でもプログラムは名前で読み書きする。QRコード・ヒアリングメモ・特価キャンペーン・ファネルログは今も使用中（消さない）
+  // ※ 2026-10-30 Daisuke 決定で スタッフ（経費・勤務関連「スタッフマスター」が正本）・車両（空）・見込み取込_確認（役目終了）は削除した
+  ['休業日',             'SETUP', false, false],   // 最後の登録 9/2（休業日の反映はメニューから）
+  ['QRコード',           'SETUP', false, false],   // 使用中: 支払いQR（PaymentManager・店への請求）
+  ['ヒアリングメモ',     'SALES', false, false],   // 使用中: 営業アプリが書き、日報が読む
   ['パートナー仮申込み', 'LOG',   false, false],   // 元から非表示（回答0件）
-  ['特価キャンペーン',   'LOG',   false, false],
+  ['特価キャンペーン',   'LOG',   false, false],   // 使用中: 現場アプリの特価の選択肢
   ['キャンペーン配信予約', 'LOG', false, false],
   ['キャンペーン素材',   'LOG',   false, false],
   ['キャンペーン下書き', 'LOG',   false, false],
   ['キャンペーン台帳',   'LOG',   false, false],
   ['キャンペーン送信エラー', 'LOG', false, false],
-  ['ファネルログ',       'LOG',   false, false],
-  ['車両',               'LOG',   false, false],
+  ['ファネルログ',       'LOG',   false, false],   // 使用中: 毎時の書き出し・QRを読んだ数
   ['_経営キャッシュ',    'LOG',   false, false],
 ];
 
