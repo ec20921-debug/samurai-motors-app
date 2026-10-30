@@ -349,12 +349,16 @@ function syncMissingManualJobSales() {
   }
 }
 
-/** 作業記録「v2記録(JSON)」の作業終了の部分（定価 list_price・店の率 shop_rate）。読めない時は {} */
+/**
+ * 作業記録「v2記録(JSON)」の作業終了の部分（定価 list_price・店の率 shop_rate）。読めない時は {}
+ * 2026-10-30: お店と決めた金額（price_mode）も渡す。渡さないと毎時シンクで作り直した行だけ
+ *   「定価・お店の率」と出て、実時間の job_end（お店と決めた金額）と表示が食い違っていた
+ */
 function syncV2EndOf_(cell) {
   try {
     var o = JSON.parse(String(cell || '{}'));
     var e = (o && o.end) || {};
-    return { list_price: e.list_price, shop_rate: e.shop_rate, payment_type: e.payment_type };
+    return { list_price: e.list_price, shop_rate: e.shop_rate, payment_type: e.payment_type, price_mode: e.price_mode };
   } catch (err) { return {}; }
 }
 
