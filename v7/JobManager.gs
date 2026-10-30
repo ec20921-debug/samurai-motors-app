@@ -284,11 +284,13 @@ function apiJobStart(body, opts) {
       Logger.log('⚠️ apiJobStart: 予約行の検索失敗（作業記録は続行）: ' + e);
     }
     var jobSource = (bkRow && bkRow.data['流入元']) ? String(bkRow.data['流入元']) : '';
+    // 2026-10-31: 送り主（署名・専用リンクで確かめたスタッフ）を スタッフID・スタッフ名 に（StaffLookup.gs。特定できない時は空のまま）
+    var staffCols = (typeof jobStaffColumns_ === 'function') ? jobStaffColumns_(body) : {};
     var jobRowObj = {
       'ジョブID':       jobId,
       '予約ID':         bookingId,
-      'スタッフID':     '',
-      'スタッフ名':     '',
+      'スタッフID':     staffCols['スタッフID'] || '',
+      'スタッフ名':     staffCols['スタッフ名'] || '',
       '作業状態':       '作業中',
       '開始時刻':       body.startTime ? new Date(body.startTime) : new Date(),
       '完了時刻':       '',
@@ -318,6 +320,7 @@ function apiJobStart(body, opts) {
       if (jobSource) v2StartUpdates['流入元'] = jobSource;
       if (linkToken) v2StartUpdates[JOBS_COL_LINK_TOKEN] = linkToken;
       if (linkedChatId) v2StartUpdates[JOBS_COL_CUSTOMER_CHAT] = linkedChatId;
+      if (typeof jobStaffFill_ === 'function') jobStaffFill_(v2StartUpdates, existingRow, body);
       updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2StartUpdates);
     } else {
       appendRow(SHEET_NAMES.JOBS, jobRowObj);
@@ -485,6 +488,7 @@ function apiJobStart(body, opts) {
  *   4. 顧客へ: After写真アルバム（キャプション: 「終わりました」）
  *   5. 管理グループへ: After写真アルバム（キャプション: 「⏹ 作業終了」詳細付き）
  *   [Phase 5: 続けて QR コード送信]
+ * 戻り値: { status:'ok', manualSaleId?: 今回作った手動ジョブ売上の予約ID（2026-10-31・無ければ省略） }
  */
 function apiJobEnd(body, opts) {
   // opts（2026-10-08 v2）: { rowIndex, jobId, rowData } … JobIdempotency.gs が特定した行
@@ -516,6 +520,7 @@ function apiJobEnd(body, opts) {
         var svcV2 = jobServiceCsv_(body);
         if (svcV2) v2Updates[JOBS_COL_SERVICE] = svcV2;
         if (hasAmountValue_(body.amount)) v2Updates['料金(USD)'] = body.amount;
+        if (typeof jobStaffFill_ === 'function') jobStaffFill_(v2Updates, opts.rowData, body);   // 開始で埋まらなかった時の保険（2026-10-31）
         updateRow(SHEET_NAMES.JOBS, opts.rowIndex, v2Updates);
       } catch (e) {
         Logger.log('⚠️ 作業記録更新失敗(v2): ' + e);
@@ -535,6 +540,7 @@ function apiJobEnd(body, opts) {
           };
           var svcEnd = jobServiceCsv_(body);
           if (svcEnd) { ensureJobsServiceColumn_(); endUpdates[JOBS_COL_SERVICE] = svcEnd; }
+          if (typeof jobStaffFill_ === 'function') jobStaffFill_(endUpdates, jobRow.data, body);
           updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, endUpdates);
         } catch (e) {
           Logger.log('⚠️ 作業記録更新失敗: ' + e);
@@ -575,11 +581,13 @@ function apiJobEnd(body, opts) {
       var v2Cust = findCustomerRow(customerChatId);
       if (v2Cust && v2Cust.data['トピックID']) threadId = v2Cust.data['トピックID'];
     }
+    var linkJobRowIndex = 0;   // 旧アプリの手動ジョブ（連携コードで見つけた行）。売上行の番号の書き戻し先（2026-10-31）
     if (!opts.rowIndex && !bookingId && linkToken && typeof findJobsRowsByLinkToken_ === 'function') {
       try {
         var linkRows = findJobsRowsByLinkToken_(linkToken);
         if (linkRows.length > 0) {
           var linkJobRow = linkRows[linkRows.length - 1];
+          linkJobRowIndex = linkJobRow.rowIndex;
           try {
             var linkUpdates = {
               '完了時刻':     body.endTime ? new Date(body.endTime) : new Date(),
@@ -589,6 +597,7 @@ function apiJobEnd(body, opts) {
             };
             var svcLink = jobServiceCsv_(body);
             if (svcLink) { ensureJobsServiceColumn_(); linkUpdates[JOBS_COL_SERVICE] = svcLink; }
+            if (typeof jobStaffFill_ === 'function') jobStaffFill_(linkUpdates, linkJobRow.data, body);
             updateRow(SHEET_NAMES.JOBS, linkJobRow.rowIndex, linkUpdates);
           } catch (eUpd) {
             Logger.log('⚠️ 手動ジョブ作業記録更新失敗: ' + eUpd);
@@ -807,7 +816,8 @@ function apiJobEnd(body, opts) {
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
         manualSaleId = recordManualJobSaleIfNeeded_(body, 'job_end', {
           shopId: saleShopId,
-          jobId: opts.jobId || ''
+          jobId: opts.jobId || '',
+          linkRowIndex: opts.rowIndex || linkJobRowIndex   // 2026-10-31: 売上行の番号を作業記録「売上予約ID」に書き戻す（作業↔売上を番号で結ぶ）
         });
       }
     } catch (e) {
@@ -820,7 +830,7 @@ function apiJobEnd(body, opts) {
       sendShopInvoiceForJob_(body, opts, {
         shopId:    saleShopId,
         pt:        ptEnd,
-        refId:     bookingId || manualSaleId || opts.jobId || '',
+        refId:     bookingId || manualSaleId || (opts.rowData && opts.rowData['売上予約ID']) || opts.jobId || '',   // 再送でも同じ番号（2026-10-31）
         adminOpts: adminShopOpts
       });
     }
@@ -858,8 +868,8 @@ function apiJobEnd(body, opts) {
       }
     }
 
-    if (endPartial) { endPartial.status = 'ok'; return endPartial; }
-    return { status: 'ok' };
+    if (endPartial) { endPartial.status = 'ok'; if (manualSaleId) endPartial.manualSaleId = manualSaleId; return endPartial; }
+    return manualSaleId ? { status: 'ok', manualSaleId: manualSaleId } : { status: 'ok' };
   } catch (err) {
     Logger.log('❌ apiJobEnd error: ' + err + ' stack=' + (err.stack || ''));
     return { status: 'error', message: String(err) };
@@ -912,6 +922,7 @@ function apiJobFinal(body) {
       }
       var svcFinal = jobServiceCsv_(body);
       if (svcFinal && !jobRow.data[JOBS_COL_SERVICE]) { ensureJobsServiceColumn_(); updates[JOBS_COL_SERVICE] = svcFinal; }
+      if (typeof jobStaffFill_ === 'function') jobStaffFill_(updates, jobRow.data, body);
       updateRow(SHEET_NAMES.JOBS, jobRow.rowIndex, updates);
     } else {
       // job_start が届かなかったケース
@@ -923,11 +934,12 @@ function apiJobFinal(body) {
         linkedChatIdFinal = consumePendingLink_(linkToken);
       }
       var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
+      var staffColsFinal = (typeof jobStaffColumns_ === 'function') ? jobStaffColumns_(body) : {};
       var finalRowObj = {
         'ジョブID':       jobId,
         '予約ID':         bookingId,
-        'スタッフID':     '',
-        'スタッフ名':     '',
+        'スタッフID':     staffColsFinal['スタッフID'] || '',
+        'スタッフ名':     staffColsFinal['スタッフ名'] || '',
         '作業状態':       '完了',
         '開始時刻':       body.startTime ? new Date(body.startTime) : '',
         '完了時刻':       body.endTime ? new Date(body.endTime) : new Date(),
@@ -960,7 +972,12 @@ function apiJobFinal(body) {
     // ── 手動ジョブ売上のバックアップ計上（job_end 不達時の保険・重複キーで冪等） ──
     try {
       if (typeof recordManualJobSaleIfNeeded_ === 'function') {
-        recordManualJobSaleIfNeeded_(body, 'job');
+        // 2026-10-31: 売上行の番号を作業記録「売上予約ID」へ（行は上で更新 or 追加済み。追加した行はジョブIDで探す）
+        // ※ jobId は重複キーに入れない（旧アプリは job_end 側も入れていないため・キーがずれると二重計上）
+        var finalLinkRow = jobRow ? jobRow.rowIndex : 0;
+        var finalLinkJobId = jobRow ? String(jobRow.data['ジョブID'] || '') : String(jobId || '');
+        if (!finalLinkRow && jobId) { var addedRow = findRow(SHEET_NAMES.JOBS, 'ジョブID', jobId); if (addedRow) finalLinkRow = addedRow.rowIndex; }
+        recordManualJobSaleIfNeeded_(body, 'job', { linkRowIndex: finalLinkRow, linkJobId: finalLinkJobId });
       }
     } catch (e) {
       Logger.log('⚠️ 手動ジョブ売上 自動計上失敗(job): ' + e);

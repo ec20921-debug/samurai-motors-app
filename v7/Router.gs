@@ -142,18 +142,24 @@ function doPost(e) {
     let result;
 
     // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
+    // 2026-10-31: StaffGate が「スタッフ」と確かめた送り主（署名＝24時間以内＋スタッフマスター照合／専用リンク）を
+    //   body._staffUserId に残す（作業記録の スタッフID・スタッフ名 用・StaffLookup.gs）。_authUserId（署名だけ）とは別の変数にして意味を混ぜない
+    var staffUserId = '';
     if (isStaffOnlyAction_(action)) {
       var gateP = staffGate_(action, extractInitData_(body), body._fu || '', body._fk || '', body.client_id ? 'cid' : '');
       if (!gateP.allowed && staffGateEnforced_(action)) return jsonResponse(staffGateDenied_(body.client_id || ''));
+      if (gateP.allowed) staffUserId = String(gateP.userId || '');
     }
     delete body._fu; delete body._fk;   // field link credentials stop here
 
     // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     auditTelegramAuth_(action, body.chatId || '', extractInitData_(body));
     // 2026-10-08: 現場アプリ v2（client_id 付き）は送り主を署名から確定して記録する
-    // 2026-10-27: 予約作成も（紹介者ご本人の割引は署名で確かめた本人だけ）。画面が送った _authUserId は使わない
+    // 2026-10-27: 予約作成も（紹介者ご本人の割引は署名で確かめた本人だけ）。画面が送った _authUserId / _staffUserId は使わない
+    // 2026-10-31: スタッフ専用の操作（旧 job-manager.html 含む）も署名を見る
     body._authUserId = '';
-    if (body.client_id || action === 'booking_create') {
+    body._staffUserId = staffUserId;
+    if (body.client_id || action === 'booking_create' || isStaffOnlyAction_(action)) {
       try {
         var vAuth = verifyTelegramInitData_(extractInitData_(body));
         body._authUserId = (vAuth && vAuth.ok) ? String(vAuth.userId || '') : '';

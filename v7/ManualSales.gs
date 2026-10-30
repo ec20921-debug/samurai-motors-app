@@ -25,6 +25,78 @@
 // 提携店払いを計上するのは、この日（yyyyMMdd）以降に終わった作業だけ（毎時シンクで過去分を遡って作らない）
 var MANUAL_SALES_SHOP_SINCE_ = '20261023';
 
+// 2026-10-31（中核の表の設計 v0.1 7章）: 作った売上行（予約）の番号を作業記録に書き戻す列。
+//   作業↔売上を「管理者メモの目印 MS:…」ではなく番号で結ぶ。
+//   「予約ID」（お客様の予約）とは別の列にする＝「予約ID が空＝手動ジョブ」で動いている既存の処理
+//   （毎時シンク・日報の未計上チェック・営業ボードの店別集計・QR連携の後追い・v2 の再送判定）を変えない
+var JOBS_COL_SALE_BOOKING_ = '売上予約ID';
+
+/** 作業記録に「売上予約ID」列を冪等確保する（失敗しても計上は続ける） */
+function ensureJobsSaleBookingColumn_() {
+  try {
+    var sheet = getSheet(SHEET_NAMES.JOBS);
+    var headers = getHeaderMap(SHEET_NAMES.JOBS);
+    if (!headers[JOBS_COL_SALE_BOOKING_]) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue(JOBS_COL_SALE_BOOKING_);
+    }
+  } catch (e) {
+    Logger.log('⚠️ ensureJobsSaleBookingColumn_ 失敗（計上は継続）: ' + e);
+  }
+}
+
+/**
+ * 売上行（予約）の番号を作業記録の行に書き戻す。売上は計上済みなので、ここが失敗しても業務は止めない
+ * @param {number} rowIndex - 作業記録の行番号（0・空なら何もしない）
+ * @param {string} bookingId - 売上行の予約ID（作った番号・または計上済みで見つかった番号）
+ * @param {string=} expectJobId - 分かっていれば、行のジョブIDがこれと一致する時だけ書く（一括読みの後に行がずれた時の取り違え防止）
+ * @return {boolean} 書けた（列が無い・行が違う・例外 は false）
+ */
+function manualSaleLinkJob_(rowIndex, bookingId, expectJobId) {
+  if (!rowIndex || !bookingId) return false;
+  try {
+    ensureJobsSaleBookingColumn_();
+    if (!getHeaderMap(SHEET_NAMES.JOBS)[JOBS_COL_SALE_BOOKING_]) {
+      Logger.log('⚠️ manualSaleLinkJob_: 作業記録に「' + JOBS_COL_SALE_BOOKING_ + '」列が無い（売上は計上済み）');
+      return false;
+    }
+    if (expectJobId) {
+      var cur = readRow(SHEET_NAMES.JOBS, rowIndex);
+      if (String(cur['ジョブID'] || '') !== String(expectJobId)) {
+        Logger.log('⚠️ manualSaleLinkJob_: 行' + rowIndex + ' のジョブIDが ' + expectJobId + ' ではないため書かない');
+        return false;
+      }
+    }
+    var upd = {};
+    upd[JOBS_COL_SALE_BOOKING_] = String(bookingId);
+    updateRow(SHEET_NAMES.JOBS, rowIndex, upd);
+    return true;
+  } catch (e) {
+    Logger.log('⚠️ manualSaleLinkJob_ 失敗（売上は計上済み・作業記録 行' + rowIndex + ' に ' + bookingId + ' を書けず）: ' + e);
+    return false;
+  }
+}
+
+/** 予約シートの予約IDの集合 { id: true }（毎時シンクが「売上予約ID」の行き先がまだあるか確かめる用）。読めない時は null */
+function manualSalesBookingIdSet_() {
+  try {
+    var sheet = getSheet(SHEET_NAMES.BOOKINGS);
+    var lastRow = sheet.getLastRow();
+    var col = getHeaderMap(SHEET_NAMES.BOOKINGS)['予約ID'];
+    if (!col) return null;
+    var set = {};
+    if (lastRow >= 2) {
+      sheet.getRange(2, col, lastRow - 1, 1).getValues().forEach(function(r) {
+        var id = String(r[0] || '').trim();
+        if (id) set[id] = true;
+      });
+    }
+    return set;
+  } catch (e) {
+    Logger.log('⚠️ manualSalesBookingIdSet_: ' + e);
+    return null;
+  }
+}
+
 /**
  * 手入力ジョブの optionCodes(配列) と旧 glassOption(単一) を CSV に正規化する
  * Menu v4 (2026-09-22): job-manager.html は両方を送る(新: optionCodes / 互換: glassOption)
@@ -47,8 +119,10 @@ function manualOptionCodesCsv_(body) {
  *
  * @param {Object} body - job_end / job の受信ペイロード
  * @param {string} sourceAction - 'job_end' | 'job'（ログ用）
- * @param {Object=} opts - { shopId: 提携店払いの店（確かめ済みの shop_id・空なら不明）, jobId: 作業記録のジョブID }
- * @return {string|null} 作成した予約ID（スキップ時は null）
+ * @param {Object=} opts - { shopId: 提携店払いの店（確かめ済みの shop_id・空なら不明）, jobId: 作業記録のジョブID,
+ *                          linkRowIndex: 作業記録の行番号（あれば売上行の番号を「売上予約ID」に書き戻す。計上済みで見つかった番号も書く＝後から直る・2026-10-31）,
+ *                          linkJobId: 書き戻す行のジョブID（省略時は jobId。行がずれていたら書かない） }
+ * @return {string|null} 作成した予約ID（スキップ時は null。計上済みの時も null＝通知・件数の意味を変えない）
  */
 function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
   try {
@@ -145,9 +219,15 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
       Logger.log('⚠️ recordManualJobSaleIfNeeded_ ロック取得失敗（' + sourceAction + '）');
       return null;
     }
+    var linkRowIndex = Number(opts.linkRowIndex) || 0;
+    var linkJobId = String(opts.linkJobId || opts.jobId || '');
     try {
-      if (findBookingMemoContains_(dedupeKey)) {
-        Logger.log('ℹ️ 手動ジョブ売上は計上済み（' + dedupeKey + '）');
+      var existingId = findBookingIdByMemoKey_(dedupeKey);
+      if (existingId) {
+        Logger.log('ℹ️ 手動ジョブ売上は計上済み（' + dedupeKey + ' → ' + existingId + '）');
+        // 2026-10-31: 以前の書き戻しが失敗した行・導入前の行は、ここで番号を結ぶ（ロックの外で）
+        lock.releaseLock(); lock = null;
+        if (linkRowIndex && existingId.indexOf('BK-') === 0) manualSaleLinkJob_(linkRowIndex, existingId, linkJobId);
         return null;
       }
 
@@ -220,9 +300,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
 
       Logger.log('✅ 手動ジョブ売上 計上: ' + newBookingId + ' $' + amount +
                  '（' + sourceAction + '・' + dedupeKey + '）');
+      // 2026-10-31: 作った売上行の番号を作業記録「売上予約ID」へ（作業↔売上を番号で結ぶ。ロックの外で・失敗しても売上は計上済み）
+      lock.releaseLock(); lock = null;
+      if (linkRowIndex) manualSaleLinkJob_(linkRowIndex, newBookingId, linkJobId);
       return newBookingId;
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
   } catch (err) {
     Logger.log('❌ recordManualJobSaleIfNeeded_ error: ' + err + ' stack=' + (err.stack || ''));
@@ -276,9 +359,14 @@ function syncMissingManualJobSales() {
     var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
     var cutoff = new Date(new Date().getTime() - MANUAL_SALES_SYNC_LOOKBACK_DAYS_ * 24 * 60 * 60 * 1000);
     var count = 0;
+    // 2026-10-31: 「売上予約ID」が書いてある行は、その予約がまだあれば計上済み（管理者メモの走査を省く）。
+    //   売上行を手で消していたら（番号の行き先が無い）従来どおり見直す
+    var bkIds = (idx[JOBS_COL_SALE_BOOKING_] !== undefined) ? manualSalesBookingIdSet_() : null;
 
-    rows.forEach(function(r) {
+    rows.forEach(function(r, ri) {
       if (String(r[idx['予約ID']] || '').trim()) return;      // 予約経由は対象外
+      var linked = idx[JOBS_COL_SALE_BOOKING_] !== undefined ? String(r[idx[JOBS_COL_SALE_BOOKING_]] || '').trim() : '';
+      if (linked && (!bkIds || bkIds[linked])) return;
       if (String(r[idx['作業状態']] || '') !== '完了') return; // 作業中・中断は対象外
       var amount = Number(r[idx['料金(USD)']]);
       if (!(amount > 0)) return;                               // 無料・未入力は対象外
@@ -337,7 +425,7 @@ function syncMissingManualJobSales() {
         chatId: linkedChat,
         paymentType: payTypeCell,
         v2: v2End   // 定価・店の率（2026-10-25）
-      }, 'hourly_sync:' + jobId, { shopId: shopCell, jobId: jobId });
+      }, 'hourly_sync:' + jobId, { shopId: shopCell, jobId: jobId, linkRowIndex: ri + 2 });   // 2026-10-31: 作業↔売上を番号で結ぶ（rows は2行目から・ジョブIDを確かめて書く）
       if (created) count++;
     });
 
@@ -387,17 +475,30 @@ function debugSyncMissingManualJobSales() {
  * @return {boolean}
  */
 function findBookingMemoContains_(needle) {
+  return !!findBookingIdByMemoKey_(needle);
+}
+
+/**
+ * 管理者メモに重複キーが「そのまま」入っている予約行の予約ID（無ければ ''）。2026-10-31: 計上済みの行の番号を作業記録へ結ぶ用
+ * @param {string} needle
+ * @return {string}
+ */
+function findBookingIdByMemoKey_(needle) {
   var sheet = getSheet(SHEET_NAMES.BOOKINGS);
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return false;
+  if (lastRow < 2) return '';
   var headers = getHeaderMap(SHEET_NAMES.BOOKINGS);
   var memoCol = headers['管理者メモ'];
-  if (!memoCol) return false;
+  var idCol = headers['予約ID'];
+  if (!memoCol) return '';
   var memos = sheet.getRange(2, memoCol, lastRow - 1, 1).getValues();
   for (var i = 0; i < memos.length; i++) {
-    if (memoHasKey_(String(memos[i][0] || ''), needle)) return true;
+    if (memoHasKey_(String(memos[i][0] || ''), needle)) {
+      var id = idCol ? String(sheet.getRange(i + 2, idCol).getValue() || '').trim() : '';
+      return id || '(計上済み)';   // 予約IDが読めなくても「計上済み」は伝える（書き戻しは行わない）
+    }
   }
-  return false;
+  return '';
 }
 
 /**

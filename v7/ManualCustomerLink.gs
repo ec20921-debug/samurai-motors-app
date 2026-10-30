@@ -140,12 +140,16 @@ function linkTokenScan_(token, chatId) {
 
   // 予約行があれば チャットID / 顧客ID をバックフィル（台帳一元化）
   var bookingId = '';
+  var saleBookingId = '';   // 2026-10-31: 手動ジョブの売上行の番号（作業記録「売上予約ID」・ManualSales.gs が書き戻す）
+  var saleCol = (typeof JOBS_COL_SALE_BOOKING_ !== 'undefined') ? JOBS_COL_SALE_BOOKING_ : '売上予約ID';
   rows.forEach(function(r) {
     if (!bookingId) bookingId = String(r.data['予約ID'] || '').trim();
+    if (!saleBookingId) saleBookingId = String(r.data[saleCol] || '').trim();
   });
   var bkRow = bookingId
     ? findRow(SHEET_NAMES.BOOKINGS, '予約ID', bookingId)
-    : findManualSaleBookingRowForJobs_(rows); // 売上自動計上行（ManualSales）を重複キーで逆引き
+    : (saleBookingId && findRow(SHEET_NAMES.BOOKINGS, '予約ID', saleBookingId))   // 番号で直接（2026-10-31）
+      || findManualSaleBookingRowForJobs_(rows); // 番号の無い古い行・番号の行き先が消えた行: 売上自動計上行（ManualSales）を重複キーで逆引き
   if (bkRow) {
     bookingId = String(bkRow.data['予約ID'] || bookingId);
     backfillBookingChat_(bkRow, chatId);

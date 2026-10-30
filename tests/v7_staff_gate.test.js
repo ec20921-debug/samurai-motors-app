@@ -197,6 +197,18 @@ test('enforce: 本人確認の無い呼び出しは止め、スタッフは通�
   assert.equal(t.calls[0]._fk, undefined);
 });
 
+test('送り主: _authUserId は署名で確かめた本人だけ・_staffUserId は StaffGate が通したスタッフ（署名／専用リンク）。画面が送った値は使わない（2026-10-31）', () => {
+  const t = makeCtx(BASE_PROPS);
+  const post = (body) => t.ctx.doPost({ postData: { contents: JSON.stringify(body) } });
+  post({ action: 'chat_send', chatId: '999', message: 'tg', _tg: initData(STAFF_ID) });
+  post({ action: 'chat_send', chatId: '999', message: 'link', _fu: STAFF_ID, _fk: linkKey(STAFF_ID) });
+  post({ action: 'chat_send', chatId: '999', message: 'none', _authUserId: STAFF_ID, _staffUserId: STAFF_ID });
+  post({ action: 'chat_send', chatId: '999', message: 'badlink', _fu: STAFF_ID, _fk: linkKey(STRANGER_ID) });
+  post({ action: 'chat_send', chatId: '999', message: 'stranger', _tg: initData(STRANGER_ID) });   // 署名は本物だがスタッフではない
+  assert.deepEqual(t.calls.map((c) => c._authUserId), [STAFF_ID, '', '', '', STRANGER_ID]);
+  assert.deepEqual(t.calls.map((c) => c._staffUserId), [STAFF_ID, STAFF_ID, '', '', '']);
+});
+
 test('スタッフ専用でない操作は判定しない', () => {
   const { ctx } = makeCtx(Object.assign({}, BASE_PROPS, { TG_AUTH_MODE: 'enforce' }));
   ['booking_init', 'booking_create', 'booking_register_customer', 'booking_slots', 'menu_prices', 'ping', 'constructor']

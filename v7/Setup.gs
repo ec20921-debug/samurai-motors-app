@@ -16,7 +16,7 @@ const SHEETS = {
   BOOKINGS:   '予約',
   VEHICLES:   '車両',
   JOBS:       '作業記録',
-  STAFF:      'スタッフ',
+  // STAFF（'スタッフ'）は 2026-10-30 Daisuke 決定で削除。スタッフの正本は経費・勤務関連「スタッフマスター」（v7-operations）
   CHAT_LOG:   'チャット履歴',
   QR_CODES:   'QRコード',
   PLAN_PRICES:'料金設定'
@@ -42,9 +42,7 @@ const SHEET_DEFINITIONS = {
   '作業記録': [
     'ジョブID', '予約ID', 'スタッフID', 'スタッフ名', '作業状態',
     '開始時刻', '完了時刻', 'Before写真URL', 'After写真URL'
-  ],
-  'スタッフ': [
-    'スタッフID', 'クメール語名', '日本語名', '有効'
+    // 以降の列（料金(USD)・サービス・連携コード・v2 の列・売上予約ID 等）は各モジュールが冪等に足す
   ],
   'チャット履歴': [
     '日時', '方向', 'チャットID', 'トピックID',
@@ -70,10 +68,6 @@ const PLAN_PRICES_INITIAL_DATA = [
   ['【設定】移動バッファ(分)', 30, '', '', '', '洗車と洗車の間の移動時間'],
   ['【設定】営業開始時刻',      9, '', '', '', '例: 9 = 9:00'],
   ['【設定】営業終了時刻',     18, '', '', '', '例: 18 = 18:00']
-];
-
-const STAFF_INITIAL_DATA = [
-  ['', '', 'ロン', true]   // スタッフID, クメール語名 は後で追記
 ];
 
 // ====== プルダウン選択肢（日本語） ======
@@ -103,7 +97,6 @@ function setupV7Initial() {
 
   createOrUpdateAllSheets(ss);
   seedPlanPrices(ss);
-  seedStaff(ss);
   setupDataValidations(ss);
   setupConditionalFormatting(ss);
   deleteDefaultSheet1(ss);
@@ -161,18 +154,6 @@ function seedPlanPrices(ss) {
   Logger.log('💰 料金設定 初期データ投入: ' + PLAN_PRICES_INITIAL_DATA.length + '行');
 }
 
-// ====== スタッフ 初期データ ======
-function seedStaff(ss) {
-  var sheet = ss.getSheetByName(SHEETS.STAFF);
-  if (sheet.getLastRow() >= 2) {
-    Logger.log('♻️ スタッフは既にデータあり、スキップ');
-    return;
-  }
-  sheet.getRange(2, 1, STAFF_INITIAL_DATA.length, STAFF_INITIAL_DATA[0].length)
-    .setValues(STAFF_INITIAL_DATA);
-  Logger.log('👷 スタッフ 初期データ投入: ロン');
-}
-
 // ====== プルダウン（データ検証）設定 ======
 function setupDataValidations(ss) {
   // 予約シート
@@ -186,9 +167,6 @@ function setupDataValidations(ss) {
 
   // 作業記録シート
   applyDropdown(ss, SHEETS.JOBS,      5, DROPDOWNS.JOB_STATUS);              // E列: 作業状態
-
-  // スタッフシート
-  applyCheckbox(ss, SHEETS.STAFF,     4);                                    // D列: 有効
 
   // QRコードシート
   applyCheckbox(ss, SHEETS.QR_CODES,  5);                                    // E列: 有効
