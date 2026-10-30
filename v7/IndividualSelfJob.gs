@@ -16,7 +16,8 @@
  *   言語は individualGroupLangs_（店マスター「グループへの通知の言語」・空欄＝英語＋クメール語）。言語ごとに1行（車屋のグループと同じ形）。
  *   同じ送信の再実行では送り直さない（JobIdempotency.gs の印・届いた後にだけ付ける）。
  *
- * クメール語は Panha 校閲中（2026-10-30・草案。校閲が済むまで main に入れない）。文言を直すときは Panha を通す（Red Line #7）。
+ * クメール語は Panha 校閲済み（2026-10-30・47/50・provisional・Run Kosal 確認待ち: native-check-queue W1・W2）。
+ *   អ្នក（既存のグループ通知と同じ・លោកអ្នក は硬い）。ចាប់ផ្តើម の脚字 ត/ដ は v7 全体の方針待ち（R1）。文言を直すときは Panha を通す（Red Line #7）。
  *   写真の行・所要時間は PartnerLang.gs の校閲済みの文（shopGroupPhotosLine_・SHOP_GROUP_TEXT.minutes）を使う。
  */
 
