@@ -86,3 +86,15 @@ GAS エディタ（v7）で `showStaffGateAudit` を実行 → 実行ログ:
 - 専用リンクの鍵の確かめ方を、秘密を2か所に置かない形（スタッフマスターに鍵のハッシュの列を v7-operations が書き、v7 は照合だけ）に変える（田中の推奨）
 - v7-operations の `exec_chat` / `exec_dashboard` / `exec_share_url` は名乗った管理者の chatId だけで通る（お客様の名前を外部の AI に送る経路を含む）。`fieldLinkIssue_` と同じ「署名＋admin＋24時間」にそろえる（別途 Daisuke 判断）
 - 誰がやったかの記録（gate の結果の userId を下流の `_authUserId` に入れる）は enforce と同時に
+
+---
+
+## 実施記録（2026-10-31 未明・Claude）
+
+- 手順2: `INTERNAL_MINIAPP_URL` の `?gas=` と `SCOUT_GAS_URL` はどちらも `OPS_URL` と同じ → `KNOWN_GAS` の変更なし
+- 手順1は**設定画面では不可能**: v7 の Script Properties は 50 個超（`shopref_at_*` / `shop_ref_*` / `selfreg_*` 等が増える設計）のため、設定画面が読み取り専用になり行を足せない。
+  → `v7/SetupProperties.gs` に `setupStaffGateProperties()` を追加（clasp 対象外。GAS エディタに貼って一度だけ実行し、値は定数に貼る。ログには長さと SHA-256 先頭8桁だけ出す）。照合用: OPERATIONS_SPREADSHEET_ID = 長さ44・`8d194d7c`、FIELD_LINK_SECRET = 長さ72
+- 手順3: `node --test` 101/101 → `v7/deploy.cmd` → **本番 @104・build `v7-20261031-002349`**（ping 確認済み）
+- 手順4: miniapp 同期（差分 = `tg-auth.js` / `job-manager.html` / `saleslog-internal.html`、他20ファイルは同一）→ field v2 `field-20261031-002437` を本体に commit → `miniapp/field/` 同期・push
+- 手順5: `?action=auth_audit`（v7）は 10/28〜10/30 に `chat_send` / `chat_history` の記録が**1件もない**（旧フロントは署名を付けておらず他アクションは全て `missing`）。新フロント配信後の実利用を待ってから手順6を判断する
+- 補足: 予約画面・社内画面は配信リポではなく **開発リポ（公開）の GitHub Pages** から出ている（`BOOKING_MINIAPP_URL` / `INTERNAL_MINIAPP_URL` が `ec20921-debug.github.io/samurai-motors-app/`）→ main push の時点で新フロントは公開済み。DEPLOY.md の「配信は miniapp のみ」と食い違う
