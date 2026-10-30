@@ -276,7 +276,7 @@ function scoutBoardWriteWeekly_(board, d) {
  * Daisuke「Safari でホーム画面に追加したい。1タップで立ち上げ」「拡張機能も使ってすべて自動で」
  * - 鍵は現場アプリ v2 と同じ（FieldLink.gs・スタッフごと）。Telegram を開かなくても PC だけで作れる
  * - リンクの gas= は、スクリプトプロパティ SCOUT_GAS_URL（本番の /exec URL）。無ければ ScriptApp の URL
- * - リンクは本人だけに送る（他人に渡すとその人として記録できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除
+ * - リンクは本人だけに送る（他人に渡すとその人として記録できてしまう）。全員分を無効にする時は FIELD_LINK_SECRET を削除（2026-10-30〜 v7 にも同じ値を置く＝v7/StaffGate.gs。削除・差し替えは v7 と v7-operations の両方を同時に）
  */
 function scoutHomeLinks() {
   var gas = PropertiesService.getScriptProperties().getProperty('SCOUT_GAS_URL') || ScriptApp.getService().getUrl();

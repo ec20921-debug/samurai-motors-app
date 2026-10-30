@@ -497,6 +497,9 @@ var ME = { chatId: '', key: '', via: '', staff: null, keyOk: null, state: 'unkno
     try { var m = JSON.parse(localStorage.getItem('sm_field_me') || 'null'); if (m) { ME.chatId = m.u; ME.key = m.k; } } catch (e) {}
   }
   if (!ME.chatId) ME.state = 'need_link';
+  // 2026-10-30: tg-auth.js が v7 への送信のたびに専用リンクの chatId と鍵を付ける（送信時に付けるので、
+  //   送信待ち箱の古い記録や旧アプリへの移動でも最新の鍵になる。v7/StaffGate.gs）
+  else { try { sessionStorage.setItem('sm_field_link', JSON.stringify({ u: ME.chatId, k: ME.key })); } catch (e) {} }
 })();
 function postOps(action, data, ms) {
   var ctrl = window.AbortController ? new AbortController() : null;
@@ -566,11 +569,6 @@ function readShrunk(file, cb) {
   };
   fr.readAsDataURL(file);
 }
-// 2026-10-30: スタッフ専用の操作（予約一覧・作業の開始/終了など）は、ホーム画面アプリ（専用リンク）なら
-//   chatId と鍵を v7 にも送る（Telegram から開いた時は tg-auth.js が署名を付けるので不要）。v7/StaffGate.gs
-function gasLinkQs() {
-  return (ME.via === 'link' && ME.chatId && ME.key) ? '&_fu=' + encodeURIComponent(ME.chatId) + '&_fk=' + encodeURIComponent(ME.key) : '';
-}
 function fetchJSON(url, ms) {
   var ctrl = window.AbortController ? new AbortController() : null;
   var to = setTimeout(function () { if (ctrl) ctrl.abort(); }, ms || 25000);
@@ -629,13 +627,13 @@ function loadData(manual) {
   var p1 = fetchJSON(GAS_URL + '?action=menu_prices').then(function (m) {
     if (m && m.status === 'ok') { applyMenu(m); Outbox.kvSet('menu', m); }
   }).catch(function () {});
-  var p2 = fetchJSON(GAS_URL + '?action=booking_today' + gasLinkQs()).then(function (r) {
+  var p2 = fetchJSON(GAS_URL + '?action=booking_today').then(function (r) {
     if (!r || r.status !== 'ok') throw new Error((r && r.message) || 'load failed');
     applyToday(r); S.load = 'ok'; Outbox.kvSet('today', { at: Date.now(), res: r });
   }).catch(function () { S.load = S.items.length ? 'cached' : 'failed'; });
   var p3 = loadMe().then(loadAttendance);
   // 提携店の一覧（「どの提携店？」の選択肢・2026-10-22）
-  var p4 = fetchJSON(GAS_URL + '?action=field_partner_shops' + gasLinkQs()).then(function (r) {
+  var p4 = fetchJSON(GAS_URL + '?action=field_partner_shops').then(function (r) {
     if (r && r.status === 'ok' && Array.isArray(r.shops)) { S.shops = r.shops; Outbox.kvSet('shops', r.shops); }
   }).catch(function () {});
   return Promise.all([p1, p2, p3, p4]).then(function () {
@@ -734,8 +732,7 @@ function basePayload(c) {
     name: j.name || '', building: j.store ? 'Samurai Motors' : (j.src || j.place || ''), room: j.room || '', carModel: j.car || '', plate: j.plate || '',
     plan: codes.indexOf('WASH') >= 0 ? 'SAMURAI WASH (W)' : '', glassOption: glass,
     optionCodes: codes.filter(function (k) { return k !== 'WASH'; }),
-    vehicleType: j.size === 'SUV' ? 'SUV' : 'セダン', bookingId: j.bookingId || '', linkToken: '', surface: SURFACE,
-    _fu: ME.via === 'link' ? ME.chatId : '', _fk: ME.via === 'link' ? ME.key : ''   // v7/StaffGate.gs（2026-10-30）
+    vehicleType: j.size === 'SUV' ? 'SUV' : 'セダン', bookingId: j.bookingId || '', linkToken: '', surface: SURFACE
   };
 }
 function queueStart(c) {

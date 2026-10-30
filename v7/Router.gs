@@ -14,7 +14,6 @@
  *   GET:
  *     - ping                        : ヘルスチェック
  *     - auth_audit                  : 署名検証の記録（件数のみ・TelegramAuth.gs）
- *     - staff_gate_audit            : スタッフ専用操作の判定の記録（件数のみ・StaffGate.gs）
  *     - booking_init                : 予約画面初期データ（顧客情報+プラン+出張料。電話番号は署名で確かめた本人にだけ返す）
  *     - booking_slots               : 指定日・プラン・車種の空き枠
  *     - booking_slots_range         : 12日分の空き枠（件数のみ）
@@ -35,7 +34,8 @@
  *     - manual_campaign_sale        : 手動特価の売上記録
  *   ★スタッフ専用（StaffGate.gs）: booking_today / field_partner_shops / manual_campaign_list /
  *     job_start / job_end / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
- *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）
+ *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）。判定の記録は GAS エディタで
+ *     showStaffGateAudit() を実行して見る（公開しない）
  */
 
 /**
@@ -46,14 +46,14 @@ function doGet(e) {
     const action = (e && e.parameter && e.parameter.action) || '';
     let result;
 
-    // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
     // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
     if (e && e.parameter && isStaffOnlyAction_(action)) {
-      var gateG = staffGate_(action, extractInitData_(e.parameter), e.parameter._fu || '', e.parameter._fk || '');
-      if (!gateG.allowed && staffGateEnforced_()) return jsonResponse(staffGateDenied_());
+      var gateG = staffGate_(action, extractInitData_(e.parameter), e.parameter._fu || '', e.parameter._fk || '', '');
+      if (!gateG.allowed && staffGateEnforced_(action)) return jsonResponse(staffGateDenied_(''));
     }
     if (e && e.parameter) {
       delete e.parameter._fu; delete e.parameter._fk;   // field link credentials stop here
+      // なりすまし対策 Phase 1: 署名検証の結果を記録するだけ（ブロックしない。TelegramAuth.gs）
       auditTelegramAuth_(action, e.parameter.chatId || '', extractInitData_(e.parameter));
       // 2026-10-27: 紹介者ご本人の割引は、署名で確かめた本人だけ（ReferralAttribution.gs selfPartnerDiscount_）。
       //   画面やURLが送った _authUserId は使わない（必ずここで入れ直す）
@@ -62,7 +62,8 @@ function doGet(e) {
         try {
           const vg = verifyTelegramInitData_(extractInitData_(e.parameter));
           e.parameter._authUserId = (vg && vg.ok) ? String(vg.userId || '') : '';
-        } catch (eg) { e.parameter._authUserId = ''; }
+          e.parameter._authAgeSec = (vg && vg.ok) ? String(vg.ageSec) : '';
+        } catch (eg) { e.parameter._authUserId = ''; e.parameter._authAgeSec = ''; }
       }
       delete e.parameter._tg; // 下流（ファネルログ等）に署名データを残さない
     }
@@ -70,10 +71,6 @@ function doGet(e) {
     switch (action) {
       case 'auth_audit':
         result = apiAuthAudit_(e.parameter);
-        break;
-
-      case 'staff_gate_audit':
-        result = apiStaffGateAudit_(e.parameter);
         break;
 
       case 'ping':
@@ -146,8 +143,8 @@ function doPost(e) {
 
     // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
     if (isStaffOnlyAction_(action)) {
-      var gateP = staffGate_(action, extractInitData_(body), body._fu || '', body._fk || '');
-      if (!gateP.allowed && staffGateEnforced_()) return jsonResponse(staffGateDenied_());
+      var gateP = staffGate_(action, extractInitData_(body), body._fu || '', body._fk || '', body.client_id ? 'cid' : '');
+      if (!gateP.allowed && staffGateEnforced_(action)) return jsonResponse(staffGateDenied_(body.client_id || ''));
     }
     delete body._fu; delete body._fk;   // field link credentials stop here
 
@@ -252,9 +249,10 @@ function apiBookingInit(params) {
       customerId: row.data['顧客ID'],
       chatId: String(row.data['チャットID']),
       name: row.data['氏名'] || row.data['ユーザー名'] || '',
-      // 2026-10-30: the phone number only goes back to the customer themself (signature verified in doGet).
-      //   booking.html does not use it; anyone else asking with someone's chatId gets ''.
-      phone: (params._authUserId && String(params._authUserId) === chatId) ? (row.data['電話番号'] || '') : '',
+      // 2026-10-30: the phone number only goes back to the customer themself (signature verified in doGet,
+      //   at most 24h old). booking.html does not use it; anyone else asking with someone's chatId gets ''.
+      phone: (params._authUserId && String(params._authUserId) === chatId &&
+              Number(params._authAgeSec) >= -300 && Number(params._authAgeSec) <= 86400) ? (row.data['電話番号'] || '') : '',
       username: row.data['ユーザー名'] || ''
     };
   }
