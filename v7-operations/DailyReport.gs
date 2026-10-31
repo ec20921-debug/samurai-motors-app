@@ -13,6 +13,8 @@
  *   毎時トリガーでは分指定ができないため、1分トリガー（pollInternalBot）起点の
  *   maybeSendDailyReport_() が 20:30-20:59 JST の窓で1日1回だけ発火する
  *   （重複防止 = Script Properties の日付マーカー。時刻窓外は時刻判定のみで即 return）。
+ *   曜日の区別はしない（土日も送る）。その日の更新（予約・車屋の訪問・未計上の手動ジョブ）が
+ *   何もない日は送らない（2026-10-31 Daisuke 指示・dailyReportActivity_）。
  *
  * 【グレースフル・デグラデーション】
  *   V7_SPREADSHEET_ID が未設定なら売上セクションをスキップしてタスクのみ送る。
@@ -49,9 +51,18 @@ function sendDailyReport() {
   const jstToday = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd (E)');
   const ppToday  = Utilities.formatDate(new Date(), OPS_TZ,       'yyyy-MM-dd');
 
+  const uncountedSection = buildManualJobUncountedSection_(ppToday); // 手動ジョブ未計上チェック（2026-08-25 Incident対策）
+
+  // 2026-10-31 Daisuke「土日も稼働しているので毎日通知で。祝日など休みの日もあるので、更新が何もない時は通知なしで OK」
+  // 曜日では決めない。その日の 予約0・車屋の訪問0・未計上の手動ジョブなし なら送らない（読めなかった時は送る側に倒す＝不具合を隠さない）
+  const activity = dailyReportActivity_(ppToday);
+  if (activity.bookings === 0 && activity.visits === 0 && !uncountedSection) {
+    Logger.log('📭 日報: 本日の更新なし（予約0・訪問0・未計上なし）→ 送信しない (JST ' + jstToday + ')');
+    return;
+  }
+
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
-  const uncountedSection = buildManualJobUncountedSection_(ppToday); // 手動ジョブ未計上チェック（2026-08-25 Incident対策）
   // ⏸ 2026-10-31: 在庫セクション（金曜の棚卸し）一時停止（Daisuke「在庫の部分はまだしっかりできてないので通知なしに」）
   // 在庫の運用が整ったら下記1行のコメントを外す（InventoryManager.gs の buildInventorySection_ はそのまま）:
   //   const inventorySection = buildInventorySection_(ppToday); // 金曜のみ: 在庫の少ない品目（2026-09-27 Daisuke 指示）
@@ -75,6 +86,29 @@ function sendDailyReport() {
     disable_web_page_preview: true
   });
   Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスク・在庫セクション停止中]');
+}
+
+/**
+ * その日に「更新」があったか（日報を送るかの判定・2026-10-31）
+ *   bookings: v7 予約シートの当日の行数 / visits: 営業ログの当日の訪問数
+ *   読めなかった時は -1（「0 ではない」扱い＝日報を送って、本文側で読取失敗が見えるようにする）
+ */
+function dailyReportActivity_(ppToday) {
+  const out = { bookings: -1, visits: -1 };
+  try {
+    const cfg = getConfig();
+    out.bookings = cfg.v7SpreadsheetId ? readV7BookingsForDate_(cfg.v7SpreadsheetId, ppToday).length : -1;
+  } catch (e) {
+    Logger.log('⚠️ 日報: 更新判定（予約）の読取失敗 → 送る側に倒す: ' + e);
+  }
+  try {
+    out.visits = readSheetObjects_(getSalesLogSheet_())
+      .map(function(r) { return visitRowToApi_(r.obj); })
+      .filter(function(v) { return v.visitId && String(v.datetime).substring(0, 10) === ppToday; }).length;
+  } catch (e) {
+    Logger.log('⚠️ 日報: 更新判定（訪問）の読取失敗 → 送る側に倒す: ' + e);
+  }
+  return out;
 }
 
 // ============================================================
