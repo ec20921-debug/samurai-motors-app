@@ -189,3 +189,10 @@ test('予約一覧: カレンダーの部品が無い（古い本番）時も ca
   assert.equal(res.bookings.length, 1);
   assert.deepEqual(Array.from(res.calendar), []);
 });
+
+test('手で入れた予定: シートのタイムゾーンが日本時間でも時刻はカンボジア時間（2026-10-31 本番で2時間ずれを確認）', () => {
+  const ctx = loadCal([ev({ id: 'm1', title: 'ピカソ', start: '2026-11-02 09:30', end: '2026-11-02 17:30' })]);
+  const out = ctx.fieldCalendarNotes_(TODAY, TOM, 'Asia/Tokyo', {});
+  assert.equal(out[0].startTime, '09:30');
+  assert.equal(out[0].endTime, '17:30');
+});

@@ -22,7 +22,7 @@ var FIELD_CAL_PLACE_MAX_ = 200; // 場所の最大文字数
  */
 function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
   // 予約一覧を開くたびにカレンダーを読まない（60秒。予約が作った予定は説明文でも除くのでキャッシュ中に増えても出ない）
-  var cacheKey = 'field_cal_v1_' + todayStr;
+  var cacheKey = 'field_cal_v2_' + todayStr;   // v2: 時刻をカンボジア時間に直した版（v1 の古いキャッシュを使わない）
   try {
     var hit = (typeof CacheService !== 'undefined') ? CacheService.getScriptCache().get(cacheKey) : null;
     if (hit) return JSON.parse(hit);
@@ -38,6 +38,8 @@ function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
     });
     // 終日の予定の日付はスクリプトのタイムゾーン（日本時間）で読む。開始が日本の 0:00 でもカンボジアの 0:00 でも同じ日付になる
     var dayTz = (typeof Session !== 'undefined' && Session.getScriptTimeZone) ? Session.getScriptTimeZone() : tz;
+    // 時刻は必ずカンボジア時間で出す（シートのタイムゾーンは日本時間のため tz を使うと2時間ずれる・2026-10-31 本番で確認）
+    var ppTz = (typeof BOOKING_TZ !== 'undefined' && BOOKING_TZ) || 'Asia/Phnom_Penh';
     var events = cal.getEvents(days[0].start, days[1].end);
     var out = [];
     events.forEach(function(ev) {
@@ -58,8 +60,8 @@ function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
         out.push({
           id: 'CAL-' + ev.getId() + '-' + d.date,
           date: d.date,
-          startTime: (!allDay && evStart >= d.start) ? Utilities.formatDate(evStart, tz, 'HH:mm') : '',
-          endTime: (!allDay && evEnd <= d.end) ? Utilities.formatDate(evEnd, tz, 'HH:mm') : '',
+          startTime: (!allDay && evStart >= d.start) ? Utilities.formatDate(evStart, ppTz, 'HH:mm') : '',
+          endTime: (!allDay && evEnd <= d.end) ? Utilities.formatDate(evEnd, ppTz, 'HH:mm') : '',
           allDay: allDay || (evStart <= d.start && evEnd >= d.end),
           title: fieldCalText_(ev.getTitle(), FIELD_CAL_TITLE_MAX_),
           location: fieldCalText_(ev.getLocation(), FIELD_CAL_PLACE_MAX_)
