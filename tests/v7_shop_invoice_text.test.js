@@ -6,7 +6,7 @@
  *   - 店マスターの言語が空欄（標準＝クメール語＋英語＋日本語）でも、請求には日本語を出さない
  *   - 言語の順は店マスターの設定どおり。日本語だけの設定でも空にせず クメール語 → 英語
  *   - 見出し・手順は言語ごとに1行、金額は「👉 30$」の1行、区切り線は11本（スマホで折り返さない）
- *   - 最後に「わからない時の聞き方（当社スタッフ／このグループに文字か声）」・お礼・「自動送信です」
+ *   - 手順のあとに「自動送信です」→「わからない時の聞き方（当社スタッフ／このグループにメッセージ・声でも可）」→ お礼で閉じる
  *   - 紹介のお客さん（shopref）は定価・店の紹介料の内訳つき・説明文の上限 1024 字に収まる
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
@@ -51,10 +51,12 @@ test('見た目: 見出しは言語ごとに1行・金額は1行・手順に 1�
   assert.ok(lines.includes('👉 30$'));
   assert.ok(lines.some((l) => l.startsWith('1️⃣ 📱 សូមស្កេន QR ខាងលើ')));
   assert.ok(lines.some((l) => l.startsWith('2️⃣ 📸 បន្ទាប់ពីបង់រួច')));
-  assert.ok(lines.some((l) => l.startsWith('💬 ')));
-  assert.ok(lines.includes('If you have any questions, please ask our staff, or send a text or voice message to this group.'));
-  assert.equal(lines[lines.length - 2], '🙏 សូមអរគុណ! / Thank you!');
-  assert.match(lines[lines.length - 1], /^🤖 .+ \/ This is an automatic message\.$/);
+  // 順番: 2️⃣ のあと 🤖 自動送信 → 💬 わからない時 → 🙏 お礼で閉じる（Panha 推奨・2026-10-31）
+  const iAuto = lines.indexOf('🤖 សារនេះផ្ញើដោយស្វ័យប្រវត្តិ។ / This is an automatic message.');
+  const iAsk = lines.indexOf('💬 បើមានសំណួរ សូមសួរបុគ្គលិករបស់យើង ឬផ្ញើសារមកក្នុងក្រុមនេះ (សារសំឡេងក៏បាន)។');
+  assert.ok(iAuto > 0 && iAsk > iAuto, 'auto=' + iAuto + ' ask=' + iAsk);
+  assert.equal(lines[iAsk + 1], 'If you have any questions, please ask our staff or send a message to this group (voice messages are fine).');
+  assert.equal(lines[lines.length - 1], '🙏 សូមអរគុណ! / Thank you!');
   lines.filter((l) => l.startsWith('━')).forEach((l) => assert.equal([...l].length, 11));
 });
 

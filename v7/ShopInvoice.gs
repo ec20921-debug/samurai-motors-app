@@ -17,11 +17,12 @@
  *   2026-10-26〜 店マスター「グループへの通知の言語」の順に出す（PartnerLang.gs）。
  *   2026-10-31〜 請求は**クメール語＋英語だけ**（日本語は出さない）。見出し・手順は言語ごとに1行、金額は1行で大きく、
  *   手順に 1️⃣ 2️⃣ を付けた。Daisuke「日本語はいらないな。長くて見にくいわ／絵文字つきでカンボジア人にもわかりやすく」
- *   あわせて「わからない時は当社スタッフに聞くか、このグループに文字か声で」と「自動送信です」を最後に足した（同日 Daisuke）。
+ *   あわせて「自動送信です」と「わからない時は当社スタッフに聞くか、このグループにメッセージで（声でも可）」を
+ *   手順のあとに足し、お礼で閉じる（同日 Daisuke。順番は Panha 推奨: 自動送信を最後にすると「返信不要」に読めるため）。
  *   全部の車屋（提携店）で同じ型（この関数を共通で使う）
  */
 
-// Panha 校閲 2026-10-25（44/50・native_check_required: Run Kosal 確認待ち）。
+// Panha 校閲 2026-10-25（44/50）・ask / thanks / auto は 2026-10-31（45/50）。native_check_required: Run Kosal 確認待ち（O1〜O5・AB1〜AB4）。
 // 店の取り分は ចំណែក（売上分配とも読める）を使わず កម្រៃជើងសារ（紹介手数料）＝ 2026-08-10 提携店プライスリストと同じ語
 var SHOP_INVOICE_KM_ = {
   title:      'ការស្នើសុំទូទាត់ប្រាក់',
@@ -30,8 +31,8 @@ var SHOP_INVOICE_KM_ = {
   due:        'ទឹកប្រាក់ត្រូវបង់',
   scan:       'សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់ឱ្យ Samurai Motors។',   // 支払先を明示（QR は個人名義のため・Daisuke 2026-10-25）
   screenshot: 'បន្ទាប់ពីបង់រួច សូមផ្ញើរូបថតអេក្រង់នៃការបង់ប្រាក់ មកក្នុងក្រុមនេះ។',
-  ask:        'បើមានសំណួរ សូមសួរបុគ្គលិករបស់យើង ឬផ្ញើសារជាអក្សរ ឬសារសំឡេង មកក្នុងក្រុមនេះ។',
-  thanks:     'សូមអរគុណ!',   // 既存の確定あいさつ（PaymentManager.gs・BookingLogic.gs と同じ）
+  ask:        'បើមានសំណួរ សូមសួរបុគ្គលិករបស់យើង ឬផ្ញើសារមកក្នុងក្រុមនេះ (សារសំឡេងក៏បាន)។',   // ឬ を2回続けない（Panha）。声は括弧で補う＝BookingBot.gs と同じ言い方
+  thanks:     'សូមអរគុណ!',   // 既存の確定あいさつ（🙏 付きの形は PaymentManager.gs のお客様向けと同じ）
   auto:       'សារនេះផ្ញើដោយស្វ័យប្រវត្តិ។'
 };
 var SHOP_INVOICE_EN_ = {
@@ -41,7 +42,7 @@ var SHOP_INVOICE_EN_ = {
   due:        'Amount to pay',
   scan:       'Please scan the QR above to pay Samurai Motors.',
   screenshot: 'After paying, please send a screenshot of the payment to this group.',
-  ask:        'If you have any questions, please ask our staff, or send a text or voice message to this group.',
+  ask:        'If you have any questions, please ask our staff or send a message to this group (voice messages are fine).',
   thanks:     'Thank you!',
   auto:       'This is an automatic message.'
 };
@@ -103,9 +104,10 @@ function buildShopInvoiceText_(p) {
   lines.push('💰 ' + langJoin_(langs, t('due')));
   lines.push('👉 ' + shopInvoiceUsd_(p.due));   // 金額は1行で目立たせる
   lines.push(L);
-  lines = lines.concat(block('1️⃣ 📱', 'scan'), [''], block('2️⃣ 📸', 'screenshot'), [''], block('💬', 'ask'), ['']);
-  lines.push('🙏 ' + langJoin_(langs, t('thanks')));
-  lines.push('🤖 ' + langJoin_(langs, t('auto')));
+  lines = lines.concat(block('1️⃣ 📱', 'scan'), [''], block('2️⃣ 📸', 'screenshot'), ['']);
+  lines.push('🤖 ' + langJoin_(langs, t('auto')), '');
+  lines = lines.concat(block('💬', 'ask'), ['']);
+  lines.push('🙏 ' + langJoin_(langs, t('thanks')));   // 最後はお礼で閉じる
   return lines.join('\n');
 }
 
