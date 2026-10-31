@@ -23,13 +23,11 @@ var RESTAURANT_TEXT = {
 
 /**
  * 飲食店のグループの「はじめのご案内」（連携直後に1回）
- * @param {number} rate - 紹介料率(%)（0 の時は紹介料の行を出さない）
+ * @param {number} rate - 紹介料率(%)（2026-10-31〜 あいさつ文では紹介料・月次レポートの行を出さないので本文では使わない。呼び元との互換のため引数は残す）
  * @param {Array<string>} [langs] - individualGroupLangs_
  */
 function buildRestaurantGroupGreeting_(name, rate, langs) {
   var n = String(name || '').trim() || 'Partner';
-  var r = Number(rate) >= 0 ? Number(rate) : 30;
-  var pct = r + '%';
   return individualText_(langs, {
     ja: n + ' さん、SAMURAI MOTORS へようこそ！\nこのグループで、ご案内とお知らせをお送りします。\n\n' +
       '【しくみ】\n' +

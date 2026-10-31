@@ -264,7 +264,7 @@ function individualEffectiveDiscountOps_(shopObj, rate) {
  */
 function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
   const n = String(name || '').trim() || 'Partner';
-  const pct = (Number(rate) >= 0 ? Number(rate) : 30) + '%';
+  // rate は本人の割引（selfPct）にだけ使う。紹介料の行は 2026-10-31〜 出さない（月次レポート停止）
   const off = Number(discount) > 0 ? Number(discount) + '%' : '';   // 紹介割引（配分の設定・2026-10-27）
   // ご本人の予約は予約の時に（紹介料率＋紹介割引）% 引き・紹介料なし（v7/ReferralAttribution.gs ⑦）。率が 0 なら本人の登録の案内を出さない
   const selfPct = Math.min(30, (Number(rate) >= 0 ? Number(rate) : 30) + (Number(discount) > 0 ? Number(discount) : 0));
@@ -291,7 +291,7 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       '- When a friend books, we\'ll let you know here (date, time, menu and car — no names or photos)\n' +
       '\n' +
       'Feel free to ask anything in this group. Thank you!',
-    // クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。pct / off / selfOff は % 込みの文字列
+    // クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。off / selfOff は % 込みの文字列
     km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
       (selfDone && selfPct > 0 ? '[ការកក់របស់អ្នកផ្ទាល់] អ្នកបានចុះឈ្មោះរួចហើយ។ ការកក់របស់អ្នកផ្ទាល់ នឹងបានបញ្ចុះតម្លៃ ' + selfOff + ' ពេលកក់។\n\n' : '') +
       (showSelf ? '[ធ្វើតែម្តងគត់]\n1. ចុះឈ្មោះខ្លួនអ្នក៖ សូមបើក «🔑 តំណភ្ជាប់ចុះឈ្មោះ» ដែលនឹងមកដល់បន្ទាប់ (បើមានប៊ូតុង «START» បង្ហាញ សូមចុច)។ ' +
@@ -312,8 +312,7 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
  */
 function restaurantGroupGreetingText_(name, rate, langs) {
   const n = String(name || '').trim() || 'Partner';
-  const r = Number(rate) >= 0 ? Number(rate) : 30;
-  const pct = r + '%';
+  // rate は 2026-10-31〜 使わない（紹介料・月次レポートの行を出さない）。呼び元との互換のため引数は残す
   return individualTextOps_(langs, {
     ja: n + ' さん、SAMURAI MOTORS へようこそ！\nこのグループで、ご案内とお知らせをお送りします。\n\n' +
       '【しくみ】\n' +
