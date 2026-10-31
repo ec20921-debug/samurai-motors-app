@@ -52,7 +52,10 @@ function sendDailyReport() {
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
   const uncountedSection = buildManualJobUncountedSection_(ppToday); // 手動ジョブ未計上チェック（2026-08-25 Incident対策）
-  const inventorySection = buildInventorySection_(ppToday); // 金曜のみ: 在庫の少ない品目（2026-09-27 Daisuke 指示・InventoryManager.gs）
+  // ⏸ 2026-10-31: 在庫セクション（金曜の棚卸し）一時停止（Daisuke「在庫の部分はまだしっかりできてないので通知なしに」）
+  // 在庫の運用が整ったら下記1行のコメントを外す（InventoryManager.gs の buildInventorySection_ はそのまま）:
+  //   const inventorySection = buildInventorySection_(ppToday); // 金曜のみ: 在庫の少ない品目（2026-09-27 Daisuke 指示）
+  const inventorySection = '';
   // ⏸ 2026-05-21: タスクセクション一時停止 (ユーザー要望「日次アラートうざい」)
   // タスク機能の運用を整理 → 再開時に下記2行のコメントを外す:
   //   const taskSection = buildTaskSection_();
@@ -71,7 +74,7 @@ function sendDailyReport() {
     message_thread_id: Number(cfg.adminDailyReportThreadId),
     disable_web_page_preview: true
   });
-  Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスクセクション停止中]');
+  Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスク・在庫セクション停止中]');
 }
 
 // ============================================================
