@@ -94,6 +94,20 @@ test('システム変更だけの日も送る（休みの日でも変更は伝�
   assert.match(sent[0].text, /本日の売上[\s\S]*車屋営業状況[\s\S]*本日のシステム変更<\/b>（1件）\n　🧾 作業記録に名前が入るようになりました$/);
 });
 
+test('日報全体が 4000 字を超える時だけ、システム変更の欄を続きのメッセージで送る（省略はしない）', () => {
+  const changes = [];
+  for (let i = 0; i < 60; i++) changes.push({ emoji: '🔧', text: '長い説明の変更 ' + i + ' '.padEnd(60, 'あ') });
+  const { ctx, sent } = makeCtx({ bookings: [BK], changes });
+  ctx.sendDailyReport();
+  assert.equal(sent.length, 2);
+  assert.match(sent[0].text, /本日の売上/);
+  assert.doesNotMatch(sent[0].text, /本日のシステム変更/);
+  assert.match(sent[1].text, /^🛠 <b>本日のシステム変更<\/b>（60件）/);
+  assert.match(sent[1].text, /変更 59/);
+  assert.equal(sent[1].o.message_thread_id, 77);
+  assert.ok(sent[0].text.length <= 4000);
+});
+
 test('予約や営業ログが読めない時は送る（不具合を隠さない）', () => {
   let r = makeCtx({ bookingsThrow: true });
   r.ctx.sendDailyReport();

@@ -73,22 +73,32 @@ function sendDailyReport() {
   //   const taskSection = buildTaskSection_();
   //   text += '\n\n' + taskSection;
 
-  const text =
+  let text =
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection +
     (uncountedSection ? '\n\n' + uncountedSection : '') +
     (inventorySection ? '\n\n' + inventorySection : '') +
-    (salesLogSection ? '\n\n' + salesLogSection : '') +
-    (changesSection ? '\n\n' + changesSection : '');
+    (salesLogSection ? '\n\n' + salesLogSection : '');
 
-  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
+  // システム変更は全件出す（省略しない）。日報全体が Telegram の上限（4096字）に近い時だけ、続きのメッセージで送る
+  const sendOpts = {
     parse_mode: 'HTML',
     message_thread_id: Number(cfg.adminDailyReportThreadId),
     disable_web_page_preview: true
-  });
-  Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスク・在庫セクション停止中]');
+  };
+  let changesSeparately = false;
+  if (changesSection) {
+    if ((text + '\n\n' + changesSection).length <= DAILY_REPORT_MAX_CHARS_) text += '\n\n' + changesSection;
+    else changesSeparately = true;
+  }
+
+  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, sendOpts);
+  if (changesSeparately) sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, changesSection, sendOpts);
+  Logger.log('📤 日報送信完了 (JST ' + jstToday + ') [タスク・在庫セクション停止中]' + (changesSeparately ? '（システム変更は続きのメッセージ）' : ''));
 }
+
+const DAILY_REPORT_MAX_CHARS_ = 4000; // Telegram の 4096 字に少し余裕
 
 /**
  * その日に「更新」があったか（日報を送るかの判定・2026-10-31）

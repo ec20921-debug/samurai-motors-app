@@ -44,7 +44,7 @@ function makeCtx(opts) {
 
 const D = '2026-10-31';
 
-test('当日分だけを時刻順に、絵文字＋ひとこと（対象）で出す。前日・翌日は出さない', () => {
+test('当日分だけを時刻順に、絵文字＋ひとこと で出す（対象は行に出さない）。前日・翌日は出さない', () => {
   const { ctx } = makeCtx({ rows: [
     [D, '17:40', '🌙', '日報の在庫の通知を止めました', '日報', 'Claude', 'ops'],
     ['2026-10-30', '10:00', '🧾', '前日の変更', '', 'Claude', ''],
@@ -53,7 +53,7 @@ test('当日分だけを時刻順に、絵文字＋ひとこと（対象）で�
     [D, '12:00', '', '', '', '', ''] // ひとことが空の行は無視
   ] });
   assert.equal(ctx.buildSystemChangesSection_(D),
-    '🛠 <b>本日のシステム変更</b>（2件）\n　🧾 作業記録に名前が入ります（現場アプリ）\n　🌙 日報の在庫の通知を止めました（日報）');
+    '🛠 <b>本日のシステム変更</b>（2件）\n　🧾 作業記録に名前が入ります\n　🌙 日報の在庫の通知を止めました');
 });
 
 test('日付・時刻が Date（シートが自動で変えた）でも同じに読める。絵文字が空なら「・」', () => {
@@ -64,14 +64,15 @@ test('日付・時刻が Date（シートが自動で変えた）でも同じに
   assert.equal(ctx.readSystemChangesForDate_(D)[0].time, '09:05');
 });
 
-test('最大行数を超えたら「…他N件」', () => {
+test('何件あっても全部を1行ずつ出す（「…他N件」で省略しない・Daisuke 2026-10-31）', () => {
   const rows = [];
   for (let i = 0; i < 11; i++) rows.push([D, '10:' + pad(i), '🔧', '変更 ' + i, '', 'Claude', '']);
   const { ctx } = makeCtx({ rows });
   const out = ctx.buildSystemChangesSection_(D);
   assert.match(out, /（11件）/);
-  assert.equal(out.split('\n').length, 1 + 8 + 1);
-  assert.match(out, /…他 3 件（シート「システム変更」）$/);
+  assert.equal(out.split('\n').length, 1 + 11);
+  assert.doesNotMatch(out, /他 \d+ 件/);
+  assert.match(out, /\n　🔧 変更 10$/);
 });
 
 test('ゼロ件・読めない時は空文字（日報は止めない）', () => {

@@ -3,7 +3,7 @@
  *
  * 【責務】
  *   経費・勤務関連 GSS の「システム変更」タブ（日付／時刻／絵文字／ひとこと／対象／記録者／補足（内部））を読み、
- *   日報に「🛠 本日のシステム変更」として、その日の分を絵文字つきの1行ずつで出す。
+ *   日報に「🛠 本日のシステム変更」として、その日の分を**全件**・絵文字つきの1行ずつで出す（省略しない）。
  *
  * 【書く人】
  *   本番に変更を反映した Claude のセッション（または人）が1行ずつ書く（ルールはリポの CLAUDE.md）。
@@ -15,7 +15,8 @@
 
 const SYSCHANGE_SHEET_NAME = 'システム変更';
 const SYSCHANGE_HEADERS = ['日付', '時刻', '絵文字', 'ひとこと', '対象', '記録者', '補足（内部）'];
-const SYSCHANGE_MAX_LINES = 8; // 日報に出す最大行数（超えた分は「…他N件」）
+// 件数の上限は置かない（Daisuke 2026-10-31「…他N件は困る。全部を1行ずつ」）。
+// 日報全体が Telegram の長さ上限に近い時だけ、DailyReport.gs がこの欄を続きのメッセージで送る
 
 /** 「システム変更」タブ（無ければヘッダー付きで作る） */
 function getSystemChangeSheet_() {
@@ -72,14 +73,10 @@ function buildSystemChangesSection_(ppToday) {
     const changes = readSystemChangesForDate_(ppToday);
     if (!changes.length) return '';
     const lines = ['🛠 <b>本日のシステム変更</b>（' + changes.length + '件）'];
-    changes.slice(0, SYSCHANGE_MAX_LINES).forEach(function(c) {
-      let line = '　' + (c.emoji || '・') + ' ' + escapeHtml_(c.text);
-      if (c.target) line += '（' + escapeHtml_(c.target) + '）';
-      lines.push(line);
+    changes.forEach(function(c) {
+      // 1変更＝1行（絵文字＋ひとこと）。対象はシートで見る（行を短く保つ）
+      lines.push('　' + (c.emoji || '・') + ' ' + escapeHtml_(c.text));
     });
-    if (changes.length > SYSCHANGE_MAX_LINES) {
-      lines.push('　…他 ' + (changes.length - SYSCHANGE_MAX_LINES) + ' 件（シート「' + SYSCHANGE_SHEET_NAME + '」）');
-    }
     return lines.join('\n');
   } catch (e) {
     Logger.log('⚠️ 日報: システム変更セクション生成失敗（スキップ）: ' + e);
