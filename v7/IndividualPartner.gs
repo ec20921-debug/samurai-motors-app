@@ -7,7 +7,7 @@
  *   - 紹介者のグループには「予約が入った」だけを送る（2026-10-28〜 英語＋クメール語が標準。店マスター「グループへの通知の言語」で日本語にも）。
  *     紹介者ご本人の予約も送る（金額・地図・駐車のお願い入り・2026-10-28 IndividualPartnerNotice.gs）。作業の開始・完了と写真・請求は送らない
  *   - 紹介料は、月初に v7-operations/IndividualPartnerOps.gs が完了・清算済みの予約から台帳へ記帳し、
- *     月次レポート（グループの言語）をグループへ送る → 紹介料は ABA で支払う
+ *     月次レポート（グループの言語）をグループへ送る → 紹介料は ABA で支払う（2026-10-31〜 グループへの月次レポートは停止中・あいさつ文からも月次レポートと10日払いの文を外した。ShopProvisioningManager.gs PARTNER_MONTHLY_REPORT_TO_GROUPS）
  *   - 紹介者本人の利用: 2026-10-26 は紹介料の対象 → 2026-10-27 Daisuke「本人の予約は予約の時に30%引き・紹介料なし。
  *     紹介した友達の予約は、あとでまとめて30%バック」に変更（店マスター「本人chat_id」に登録した時。未登録の間は
  *     従来どおり紹介料・ReferralAttribution.gs ⑦）。全体キャンペーンは提携店と同じく対象外（紹介料と重なるため）
@@ -346,7 +346,7 @@ function buildIndividualGroupGreeting_(name, rate, discount, langs, selfDone) {
       'お友達には、このあと届く紹介用のチラシ・URL をお渡しください' + (showSelf ? '（本人登録リンクは渡さないでください）' : '') + '。\n' +
       (off ? '・ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます\n' : '') +
       '・お友達のご予約が入ると、ここでお知らせします（日時・メニュー・車種。お名前や写真はお送りしません）\n' +
-      '・毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、10日までに ABA でお支払いします\n\n' +
+      '\n' +
       'ご不明な点は、このグループでお気軽にどうぞ。よろしくお願いします！',
     en: 'Welcome to SAMURAI MOTORS, ' + n + '! We\'ll send updates in this group.\n\n' +
       (selfDone && selfPct > 0 ? '[Your own bookings] You are already registered. Your own bookings get ' + selfOff + ' off when you book.\n\n' : '') +
@@ -356,7 +356,7 @@ function buildIndividualGroupGreeting_(name, rate, discount, langs, selfDone) {
       'Share the referral flyers / URL coming next with your friends' + (showSelf ? ' (not the registration link)' : '') + '.\n' +
       (off ? '- People you refer get ' + off + ' off all services\n' : '') +
       '- When a friend books, we\'ll let you know here (date, time, menu and car — no names or photos)\n' +
-      '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th\n\n' +
+      '\n' +
       'Feel free to ask anything in this group. Thank you!',
     // クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。pct / off / selfOff は % 込みの文字列
     km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
@@ -367,7 +367,7 @@ function buildIndividualGroupGreeting_(name, rate, discount, langs, selfDone) {
       'សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ ដែលនឹងមកដល់បន្ទាប់ ទៅកាន់មិត្តភក្តិរបស់អ្នក' + (showSelf ? ' (មិនមែនតំណភ្ជាប់ចុះឈ្មោះទេ)' : '') + '។\n' +
       (off ? '- ភ្ញៀវដែលអ្នកបានណែនាំមក នឹងបានបញ្ចុះតម្លៃ ' + off + ' លើសេវាទាំងអស់\n' : '') +
       '- ពេលមិត្តភក្តិកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
-      '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n' +
+      '\n' +
       'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }

@@ -165,7 +165,9 @@
 > 車屋のグループ宛の通知は、店マスター「グループへの通知の言語」列の順に出す（空欄＝クメール語 → 英語・2026-10-31〜。それまでは＋日本語）。仕組み = v7/PartnerLang.gs ＋ v7-operations/PartnerLangOps.gs（同じ決まりを複製）
 
 - [ ] **文面を足す・変える**: v7 の `SHOP_GROUP_TEXT`（連携完了・来店・作業の開始/完了・写真）/ `SHOP_GREETING_KM/EN/JA`（ShopGroupGreeting.gs）/ `SHOP_INVOICE_KM_/EN_`（ShopInvoice.gs・請求はクメール語＋英語だけ・2026-10-31）/ `SHOP_DAMAGE_TEXT_`（FieldShopMode.gs・作業前からあった傷・へこみ。ScriptProperties `SHOP_DAMAGE_NOTE`=on の時だけ送る・2026-10-28）と、v7-operations の `SHOP_REPORT_TEXT`（月次レポート）/ `SCOUT_LINKS_GREETING_*`（営業ボード）。**3言語そろえる**（欠けた言語は黙って飛ばされる）。クメール語は Panha
-- [ ] **あいさつ文は2か所**（v7 ShopGroupGreeting.gs と v7-operations ScoutBoardShopLinks.gs）。片方だけ直さない
+- [ ] **あいさつ文は2か所**（v7 ShopGroupGreeting.gs と v7-operations ScoutBoardShopLinks.gs）。片方だけ直さない。個人提携・飲食店も2か所（v7 IndividualPartner.gs / RestaurantPartner.gs と v7-operations IndividualPartnerOps.gs）
+- [ ] **月次レポートは 2026-10-31〜 全提携で停止中**（ShopProvisioningManager.gs `PARTNER_MONTHLY_REPORT_TO_GROUPS`=false）。あいさつ文に月次レポート・10日払いの文を足さない（再開する時に Daisuke と決める）
+- [ ] 営業ボード「📘 提携の型」タブ（ScoutBoardPartnerTypes.gs）の文を変えたら `SCOUT_TYPES_VERSION` を上げる（上げないと書き直されない）
 - [ ] **請求は QR 画像の説明文（Telegram の上限 1024字）**。長くなる文を足したら字数を確かめる（2026-10-26 時点の3言語で最長 約790字。2026-10-31 からクメール語＋英語だけ）。区切り線は11本まで（17本ではスマホで折り返した）。テスト: tests/v7_shop_invoice_text.test.js
 - [ ] 言語の読み方（parsePartnerLangs_）・標準（クメール語＋英語）・列名は v7 と v7-operations で同じにする
 - [ ] レジデンス等（SourceGroupNotify.gs・英語）と個人提携（IndividualPartner.gs / IndividualPartnerOps.gs・日本語＋英語）のグループは固定。設定で変えたくなったら、その文面にも3言語を用意してから

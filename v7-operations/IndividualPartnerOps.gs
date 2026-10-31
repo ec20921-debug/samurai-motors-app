@@ -279,7 +279,7 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       'お友達には、このあと届く紹介用のチラシ・URL をお渡しください' + (showSelf ? '（本人登録リンクは渡さないでください）' : '') + '。\n' +
       (off ? '・ご紹介いただいた方は、全サービス ' + off + ' 引きでご利用いただけます\n' : '') +
       '・お友達のご予約が入ると、ここでお知らせします（日時・メニュー・車種。お名前や写真はお送りしません）\n' +
-      '・毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、10日までに ABA でお支払いします\n\n' +
+      '\n' +
       'ご不明な点は、このグループでお気軽にどうぞ。よろしくお願いします！',
     en: 'Welcome to SAMURAI MOTORS, ' + n + '! We\'ll send updates in this group.\n\n' +
       (selfDone && selfPct > 0 ? '[Your own bookings] You are already registered. Your own bookings get ' + selfOff + ' off when you book.\n\n' : '') +
@@ -289,7 +289,7 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       'Share the referral flyers / URL coming next with your friends' + (showSelf ? ' (not the registration link)' : '') + '.\n' +
       (off ? '- People you refer get ' + off + ' off all services\n' : '') +
       '- When a friend books, we\'ll let you know here (date, time, menu and car — no names or photos)\n' +
-      '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th\n\n' +
+      '\n' +
       'Feel free to ask anything in this group. Thank you!',
     // クメール語は Panha 校閲（2026-10-28・provisional・Run Kosal 確認待ち）。pct / off / selfOff は % 込みの文字列
     km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
@@ -300,7 +300,7 @@ function individualGroupGreetingText_(name, rate, discount, langs, selfDone) {
       'សូមចែករំលែកខិត្តប័ណ្ណ ឬ URL សម្រាប់ណែនាំ ដែលនឹងមកដល់បន្ទាប់ ទៅកាន់មិត្តភក្តិរបស់អ្នក' + (showSelf ? ' (មិនមែនតំណភ្ជាប់ចុះឈ្មោះទេ)' : '') + '។\n' +
       (off ? '- ភ្ញៀវដែលអ្នកបានណែនាំមក នឹងបានបញ្ចុះតម្លៃ ' + off + ' លើសេវាទាំងអស់\n' : '') +
       '- ពេលមិត្តភក្តិកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
-      '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n' +
+      '\n' +
       'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }
@@ -319,22 +319,19 @@ function restaurantGroupGreetingText_(name, rate, langs) {
       '【しくみ】\n' +
       '・お店のお客様は、チラシの QR からご予約いただき、お支払いは SAMURAI MOTORS に直接いただきます\n' +
       '・ご予約が入ると、ここでお知らせします（日時・メニュー・車種。お名前や写真はお送りしません）\n' +
-      (r > 0 ? '・毎月はじめに、前月の件数・金額・紹介料（' + pct + '）をまとめてお送りし、10日までに ABA でお支払いします\n\n'
-             : '・毎月はじめに、前月の件数と金額をまとめてお送りします\n\n') +
+      '\n' +
       'ご不明な点は、このグループでお気軽にどうぞ。よろしくお願いします！',
     en: 'Welcome to SAMURAI MOTORS, ' + n + '! We\'ll send updates in this group.\n\n' +
       '[How it works]\n' +
       '- Your guests book with the QR on our flyer and pay SAMURAI MOTORS directly.\n' +
       '- When a guest books, we\'ll let you know here (date, time, menu and car — no names or photos).\n' +
-      (r > 0 ? '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (' + pct + '), and pay it by ABA by the 10th.\n\n'
-             : '- At the start of each month, we\'ll send last month\'s jobs and amounts.\n\n') +
+      '\n' +
       'Feel free to ask anything in this group. Thank you!',
     km: 'សូមស្វាគមន៍ ' + n + ' មកកាន់ SAMURAI MOTORS! យើងនឹងផ្ញើដំណឹងមកក្នុងក្រុមនេះ។\n\n' +
       '[របៀបដំណើរការ]\n' +
       '- ភ្ញៀវហាងអ្នកកក់តាម QR លើខិត្តប័ណ្ណរបស់យើង។ ភ្ញៀវបង់ប្រាក់ឱ្យ SAMURAI MOTORS ដោយផ្ទាល់។\n' +
       '- ពេលភ្ញៀវកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)\n' +
-      (r > 0 ? '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (' + pct + ') របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)\n\n'
-             : '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ និងចំនួនទឹកប្រាក់ របស់ខែមុន\n\n') +
+      '\n' +
       'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   });
 }

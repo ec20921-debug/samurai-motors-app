@@ -23,6 +23,10 @@
 // ====== 定数 ======
 
 var SHOP_PROV_LINK_SHEET = 'Bot連携';   // v7 Database に新設
+// 提携先のグループへ月次レポートを送るか（車屋・個人提携・飲食店のすべて。レジデンス等は元から送らない）。
+// 2026-10-31 Daisuke「月次レポートは一旦無しにしよう。すべての提携で。まだいろいろ変わるかもしれないから」→ false。
+// false の間も毎月1日の 紹介料の記帳・パートナー精算・管理グループへの日本語まとめ は続ける（グループには何も送らない）
+var PARTNER_MONTHLY_REPORT_TO_GROUPS = false;
 var SHOP_PROV_LINK_HEADERS = [
   'shop_id', '店名', 'ワンタイムコード', 'グループchat_id', 'グループ名', '紐付け日時', '状態', 'QRリンク', '登録日時'
 ];
@@ -265,7 +269,7 @@ function notifyShopProvisioned_(shopId, shopName, qrUrl, otc, brandBot) {
 
 /**
  * 前月分のコミッションを shop_id 別に集計し、
- *   - 各店舗グループ（連携済）へ英語レポート
+ *   - 各店舗グループ（連携済）へレポート（PARTNER_MONTHLY_REPORT_TO_GROUPS が true の時だけ。2026-10-31〜 停止中）
  *   - 管理グループへ日本語サマリー
  * を送信する。毎月1日のトリガーで実行（支払いは毎月10日・ABA）。
  */
@@ -381,7 +385,11 @@ function sendShopMonthlyReportsCore_(opt) {
   });
 
   var props = getShopProvProps_();
-  var adminLines = ['📊 提携店 月次レポート（' + ymLabel + '）送信結果' + (opt.individualOnly ? '（個人提携だけ送り直し）' : ''), ''];
+  var toGroups = PARTNER_MONTHLY_REPORT_TO_GROUPS;
+  var mark = function(ok) { return !toGroups ? '⏸ ' : (ok ? '✅ ' : '❌ '); };   // ⏸ = 集計だけ（グループには送っていない）
+  var adminLines = [toGroups
+    ? '📊 提携店 月次レポート（' + ymLabel + '）送信結果' + (opt.individualOnly ? '（個人提携だけ送り直し）' : '')
+    : '📊 提携先 月次まとめ（' + ymLabel + '）— お店・紹介者のグループへのレポートは停止中（2026-10-31〜）。ここ（管理グループ）だけに届いています', ''];
   if (skippedSrc.length) adminLines.push('⏭ 送らない（流入元の提携先）: ' + skippedSrc.join(' / '));
   // 個人提携: 前月より前の月の未払いも支払い予定に含める（月をまたいで清算済みになった予約など）
   var indivOwed = {};
@@ -417,19 +425,19 @@ function sendShopMonthlyReportsCore_(opt) {
         return;
       }
       var owedAll = indivOwed[shopId] || 0;
-      var okIndiv = sendViaBookingBot_(props.bookingBotToken, groupChatId,
+      var okIndiv = toGroups && sendViaBookingBot_(props.bookingBotToken, groupChatId,
         buildIndividualMonthlyReport_(shopName, ymLabel, a, yourPct, owedAll, indivLangsByShop[shopId]));
-      adminLines.push((okIndiv ? '✅ ' : '❌ ') + (indivPartners[shopId].kind === 'restaurant' ? '🍽 ' : '🙋 ') + shopName + kindLabel + ': ' + a.count + '件 / 売上' + a.sales.toFixed(2) +
+      adminLines.push(mark(okIndiv) + (indivPartners[shopId].kind === 'restaurant' ? '🍽 ' : '🙋 ') + shopName + kindLabel + ': ' + a.count + '件 / 売上' + a.sales.toFixed(2) +
         '$ / 紹介料(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 当社→' + (indivPartners[shopId].kind === 'restaurant' ? 'お店' : '紹介者') + ' 未払い' + owedAll.toFixed(2) + '$（10日までに ABA）');
       return;
     }
 
     // 店舗向け。店マスター「グループへの通知の言語」の順（標準 クメール語＋英語・PartnerLangOps.gs。2026-10-26〜30 は＋日本語、それまでは英語のみ）
     var shopLangs = langsByShop[shopId] || PARTNER_LANG_SHOP_DEFAULT.slice();
-    var ok = sendViaBookingBot_(props.bookingBotToken, groupChatId, buildShopMonthlyReportText_(shopLangs, {
+    var ok = toGroups && sendViaBookingBot_(props.bookingBotToken, groupChatId, buildShopMonthlyReportText_(shopLangs, {
       shopName: shopName, ymLabel: ymLabel, a: a, yourPct: yourPct, ourPct: ourPct
     }));
-    adminLines.push((ok ? '✅ ' : '❌ ') + shopName + ': ' + a.count + '台 / 売上' + a.sales.toFixed(2) +
+    adminLines.push(mark(ok) + shopName + ': ' + a.count + '台 / 売上' + a.sales.toFixed(2) +
       '$ / 店取分(' + yourPct + ')' + a.commission.toFixed(2) + '$ / 未回収' + a.outstanding.toFixed(2) + '$' +
       (a.owedToShop > 0 ? ' / 当社→店 未払い' + a.owedToShop.toFixed(2) + '$' : ''));
   });

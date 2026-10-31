@@ -314,7 +314,7 @@ function handleShopStart_(msg, text) {
         '（お客様は当社に直接お支払い・決済QRは通常どおり。' + (restaurantRef ? 'お店' : '紹介者') + 'のグループには予約が入った時だけ知らせる）' + selfHint +
         (linked ? '' : '\n（' + (restaurantRef ? 'お店' : '紹介者') + 'のグループは未連携: 予約のお知らせは届きません）' + shopLinkGuideText_(link, welcomeShopName || shopId))
       : '🏪 提携店QR経由の新規流入\n店: ' + (welcomeShopName || shopId) + '\n顧客: ' + custName +
-      (linked ? '' : '\n（店舗グループ未連携: 店への写真・月次レポートは届きません。決済QRは送りません）' +
+      (linked ? '' : '\n（店舗グループ未連携: 店への写真は届きません。決済QRは送りません）' +
         shopLinkGuideText_(link, welcomeShopName || shopId)));
   } catch (err) {
     Logger.log('⚠️ 管理通知失敗（QR流入）: ' + err);

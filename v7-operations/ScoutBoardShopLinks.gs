@@ -26,17 +26,14 @@ const SCOUT_LINKS_BOT = 'SAMURAI_MOTORS_BOOKING_BOT';
 const SCOUT_LINKS_GREETING_KM =
   'នេះជាក្រុមរបស់ {shop} និង SAMURAI MOTORS។\n' +
   'សម្រាប់ភ្ញៀវដែលកក់តាម QR របស់ហាងអ្នក យើងនឹងផ្ញើសារពេលចាប់ផ្តើម និងបញ្ចប់ការលាងសម្អាត ព្រមទាំងរូបថត មុន / ក្រោយ មកក្រុមនេះ។\n' +
-  'នៅដើមខែនីមួយៗ យើងនឹងផ្ញើរបាយការណ៍ប្រចាំខែ ដែលបង្ហាញចំនួនការងារ និងចំនួនទឹកប្រាក់ ផងដែរ។\n' +
   'សូមអរគុណដែលសហការជាមួយយើង ហើយសូមបន្តដើរជាមួយគ្នា!';
 const SCOUT_LINKS_GREETING_EN =
   'This is the group for {shop} × SAMURAI MOTORS.\n' +
   'For customers who book through your shop\'s QR, you\'ll see start and finish updates and Before/After photos here.\n' +
-  'At the start of each month, we\'ll also send a monthly report with the number of jobs and the amounts.\n' +
   'Thank you for working with us. We look forward to a great partnership!';
 const SCOUT_LINKS_GREETING_JA =
   '{shop} × SAMURAI MOTORS のグループです。\n' +
   'お店の QR からご予約いただいたお客様について、作業の開始と完了、作業前後の写真をこのグループでお知らせします。\n' +
-  '毎月はじめに、件数と金額をまとめた月次レポートもお送りします。\n' +
   'ご協力ありがとうございます。これからもよろしくお願いします！';
 // レジデンス等の提携先（流入元の shop_id）のあいさつ文（英語のみ）。v7/SourceGroupNotify.gs buildSourceGroupGreeting_ と同じ文。直すときは両方を直す
 const SCOUT_LINKS_GREETING_SOURCE_EN =
@@ -398,7 +395,7 @@ function scoutLinksWriteKindTabs_(board, items) {
   try {
   scoutLinksWriteKindTab_(board, 'pRestaurant', [
     '🍽 飲食店提携（1時間ごとに自動更新・見るだけ） / Restaurant partners',
-    'お客様は当社に直接払う。お店には紹介料（店マスター「紹介料率(%)」・空欄＝30%）を毎月はじめに ABA で。グループには予約の知らせと月次レポートだけ（写真なし）',
+    'お客様は当社に直接払う。お店には紹介料（店マスター「紹介料率(%)」・空欄＝30%）を毎月はじめに ABA で。グループには予約の知らせだけ（写真なし。月次レポートは 2026-10-31〜 停止中）',
     '入力は v7 Database「店マスター」（提携種別=飲食店・紹介料率・グループへの通知の言語＝空欄なら英語＋クメール語）。チラシは Day1 tools/motors_restaurant_flyer（Bot からは送らない）',
     '「店の取り分 USD」の列＝紹介料の見込み（売上 × 紹介料率）',
     catNote

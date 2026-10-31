@@ -107,7 +107,6 @@ test('あいさつ文（英語＋クメール語・紹介料30%）: 営業ボー
     '[How it works]',
     '- Your guests book with the QR on our flyer and pay SAMURAI MOTORS directly.',
     '- When a guest books, we\'ll let you know here (date, time, menu and car — no names or photos).',
-    '- At the start of each month, we\'ll send last month\'s jobs, amounts and your commission (30%), and pay it by ABA by the 10th.',
     '',
     'Feel free to ask anything in this group. Thank you!',
     '',
@@ -116,7 +115,6 @@ test('あいさつ文（英語＋クメール語・紹介料30%）: 営業ボー
     '[របៀបដំណើរការ]',
     '- ភ្ញៀវហាងអ្នកកក់តាម QR លើខិត្តប័ណ្ណរបស់យើង។ ភ្ញៀវបង់ប្រាក់ឱ្យ SAMURAI MOTORS ដោយផ្ទាល់។',
     '- ពេលភ្ញៀវកក់ យើងនឹងប្រាប់អ្នកនៅទីនេះ អំពីថ្ងៃ ម៉ោង សេវា និងប្រភេទរថយន្ត (មិនផ្ញើឈ្មោះ ឬរូបថតទេ)',
-    '- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ ចំនួនទឹកប្រាក់ និងកម្រៃជើងសារ (30%) របស់ខែមុន ហើយបង់កម្រៃជើងសារនោះជូនអ្នក ត្រឹមថ្ងៃទី10 (តាម ABA)',
     '',
     'បើមានអ្វីចង់សួរ សូមកុំស្ទាក់ស្ទើរសួរក្នុងក្រុមនេះ។ សូមអរគុណ!'
   ].join('\n'));
@@ -130,12 +128,13 @@ test('あいさつ文（英語＋クメール語・紹介料30%）: 営業ボー
   });
 });
 
-test('あいさつ文: 紹介料率0の時は紹介料の行を出さない', () => {
+test('あいさつ文: 月次レポート・紹介料の支払いの行は、紹介料率に関係なく出さない（2026-10-31〜 月次レポート停止）', () => {
   const { run } = loadV7();
-  const text = run('buildRestaurantGroupGreeting_("PJ Restaurant", 0, ["en", "km"])');
-  assert.match(text, /- At the start of each month, we'll send last month's jobs and amounts\.\n/);
-  assert.match(text, /- នៅដើមខែនីមួយៗ យើងនឹងផ្ញើចំនួនការងារ និងចំនួនទឹកប្រាក់ របស់ខែមុន\n/);
-  assert.doesNotMatch(text, /commission|កម្រៃជើងសារ/);
+  [0, 30].forEach((r) => {
+    const text = run('buildRestaurantGroupGreeting_("PJ Restaurant", ' + r + ', ["en", "km", "ja"])');
+    assert.doesNotMatch(text, /each month|by the 10th|commission|ដើមខែ|ថ្ងៃទី10|កម្រៃជើងសារ|毎月はじめ|10日まで/);
+    assert.match(text, /\(មិនផ្ញើឈ្មោះ ឬរូបថតទេ\)\n\nបើមានអ្វីចង់សួរ/);
+  });
 });
 
 test('連携完了（英語＋クメール語）', () => {

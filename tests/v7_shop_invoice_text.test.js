@@ -92,3 +92,21 @@ test('紹介のお客さん: 内訳つき・1024 字以内・compact では内�
   const compact = build(Object.assign({}, ref, { compact: true }));
   assert.doesNotMatch(compact, /Sok Dara|Service price|commission/);
 });
+
+test('車屋のあいさつ文: 月次レポートの文は出さない（2026-10-31〜 停止）・営業ボードの表示と同じ文', () => {
+  const ctx = { console, Logger: { log: () => {} } };
+  vm.createContext(ctx);
+  ['PartnerLang.gs', 'ShopGroupGreeting.gs'].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'v7', f), 'utf8'), ctx, { filename: f }));
+  vm.runInContext('__partnerLangMemo_ = {}; sourcePartnerState_ = function () { return false; }; individualPartnerState_ = function () { return false; };', ctx);
+  const text = vm.runInContext('buildShopGroupGreeting_("LUXE Auto", "SHOP-X")', ctx);
+  assert.doesNotMatch(text, /monthly report|របាយការណ៍ប្រចាំខែ|月次レポート/);
+  assert.match(text, /^នេះជាក្រុមរបស់ LUXE Auto និង SAMURAI MOTORS។\n/);
+  assert.match(text, /\nThank you for working with us\. We look forward to a great partnership!$/);
+  const ops = fs.readFileSync(path.join(ROOT, 'v7-operations', 'ScoutBoardShopLinks.gs'), 'utf8');
+  ['KM', 'EN', 'JA'].forEach((l) => {
+    const a = vm.runInContext('SHOP_GREETING_' + l, ctx);
+    const b = vm.runInNewContext(ops.match(new RegExp('const SCOUT_LINKS_GREETING_' + l + ' =([\\s\\S]*?);\\n'))[1]);
+    assert.equal(a, b, l);
+  });
+});

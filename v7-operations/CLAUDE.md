@@ -21,7 +21,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 | 秘書 dots（ドッちゃん） | DotsDigestBridge（メール受け取り・管理グループ通知）/ DotsState（状態・ロック）/ DotsDailyReport（「日報」タブ・未着の警告）/ DotsReportItems（「日報明細」タブ）/ DotsSetup（セットアップ）— 手順: docs/DOTS_SECRETARY_SETUP.md |
 | 経費 | ExpenseManager / ExpenseSync / RoutineExpense |
 | 経営・レポート | Dashboard / ExecDashboard / ExecChat / ReportManager |
-| 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager / SalesLogManager（車屋提携 営業ログ・書込先は v7 Database「営業ログ」タブ）/ PartnerLangOps（車屋のグループへの通知の言語・月次レポートの3言語・2026-10-26） |
+| 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager / SalesLogManager（車屋提携 営業ログ・書込先は v7 Database「営業ログ」タブ）/ PartnerLangOps（車屋のグループへの通知の言語・月次レポートの言語〈月次レポートは 2026-10-31〜 グループへは停止中〉・2026-10-26） |
 | セットアップ | Setup（本番ファイル扱い、push される） |
 
 - ミニアプリ: `home-internal.html` 系（勤務Bot からの入口）

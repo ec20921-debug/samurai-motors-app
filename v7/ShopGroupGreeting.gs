@@ -15,25 +15,24 @@
  * 【文言】v7-operations/ScoutBoardShopLinks.gs の SCOUT_LINKS_GREETING_KM / _EN / _JA と同じ文（営業ボードと同じ形: 言語ごとに空行で区切る）。
  *   2026-10-26〜 店マスター「グループへの通知の言語」の順に並べる（標準 クメール語 → 英語（2026-10-31〜。それまでは＋日本語）・PartnerLang.gs）。
  *   別 GAS プロジェクトで共有できないため複製している。文言を直すときは両方を直すこと。
+ *   2026-10-31〜 「毎月はじめに月次レポートも送る」の文を外した（月次レポートを全提携で停止・Daisuke「まだいろいろ変わるかもしれないから」）。
+ *     v7-operations/ScoutBoardShopLinks.gs の写しも同じ
  *   クメール語は Panha 校閲（provisional・Run Kosal 確認待ち）
  */
 
 var SHOP_GREETING_KM =
   'នេះជាក្រុមរបស់ {shop} និង SAMURAI MOTORS។\n' +
   'សម្រាប់ភ្ញៀវដែលកក់តាម QR របស់ហាងអ្នក យើងនឹងផ្ញើសារពេលចាប់ផ្តើម និងបញ្ចប់ការលាងសម្អាត ព្រមទាំងរូបថត មុន / ក្រោយ មកក្រុមនេះ។\n' +
-  'នៅដើមខែនីមួយៗ យើងនឹងផ្ញើរបាយការណ៍ប្រចាំខែ ដែលបង្ហាញចំនួនការងារ និងចំនួនទឹកប្រាក់ ផងដែរ។\n' +
   'សូមអរគុណដែលសហការជាមួយយើង ហើយសូមបន្តដើរជាមួយគ្នា!';
 var SHOP_GREETING_EN =
   'This is the group for {shop} × SAMURAI MOTORS.\n' +
   'For customers who book through your shop\'s QR, you\'ll see start and finish updates and Before/After photos here.\n' +
-  'At the start of each month, we\'ll also send a monthly report with the number of jobs and the amounts.\n' +
   'Thank you for working with us. We look forward to a great partnership!';
 
 // 2026-10-26 新設（日本語）
 var SHOP_GREETING_JA =
   '{shop} × SAMURAI MOTORS のグループです。\n' +
   'お店の QR からご予約いただいたお客様について、作業の開始と完了、作業前後の写真をこのグループでお知らせします。\n' +
-  '毎月はじめに、件数と金額をまとめた月次レポートもお送りします。\n' +
   'ご協力ありがとうございます。これからもよろしくお願いします！';
 
 var SHOP_GREETING_PROP_PREFIX = 'shop_greeting_sent_';
