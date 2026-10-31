@@ -153,6 +153,9 @@ function apiJobStartV2(body) {
   // 作業開始で選んだ提携店（2026-10-25・予約なしの作業だけ）。確かめた shop_id だけで Before をその店のグループへ送る
   // 予約のお客様の車の写真を店へ出さないよう、予約つきはサーバー側でも受け付けない。値は v2記録(JSON) の start に残る
   var fieldShop = (!body.bookingId && typeof validFieldShopId_ === 'function') ? validFieldShopId_(body.v2 && body.v2.shop_id) : '';
+  // 始める前に選んだレジデンス等（2026-10-31・予約なしの作業だけ）。確かめた値だけで Before をその提携先グループへ送る（集金には使わない）
+  var fieldRes = (!body.bookingId && body.v2 && body.v2.residence_id && typeof fieldResidenceById_ === 'function')
+    ? fieldResidenceById_(body.v2.residence_id, body.v2.residence_who) : null;
 
   var cache = CacheService.getScriptCache();
   var lock = LockService.getScriptLock();
@@ -202,7 +205,7 @@ function apiJobStartV2(body) {
   try {
     res = apiJobStart(body, { rowIndex: row.rowIndex, jobId: jobId, cid: cid,
                               skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance,
-                              fieldShopId: fieldShop });
+                              fieldShopId: fieldShop, fieldResidence: fieldRes });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
@@ -285,17 +288,21 @@ function apiJobEndV2(body) {
   var lastChanceEnd = jobBumpTries_('end', cid);
   // 作業開始で選んだ店（2026-10-25）。After の同報先にだけ使う。作業終了の再送で上書きされる「提携店ID」列ではなく
   // v2記録(JSON) の start.shop_id を確かめ直して使う
-  var startShop = '';
+  var startShop = '', startRes = null;
   try {
     var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start || {};
     if (startV2.shop_id && !body.bookingId && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
+    // 始める前に選んだレジデンス等（2026-10-31）。After をその提携先グループへ送るのにだけ使う
+    // 開始の記録が無い（終了が先に届いた）時は終了の控え（v2.residence_id）を使う
+    var resV2 = startV2.residence_id ? startV2 : (body.v2 || {});
+    if (resV2.residence_id && !body.bookingId && typeof fieldResidenceById_ === 'function') startRes = fieldResidenceById_(resV2.residence_id, resV2.residence_who);
   } catch (eStart) {
     Logger.log('⚠️ apiJobEndV2: 作業開始の店を読めず ' + eStart);
   }
   var res;
   try {
     res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
-                            fieldShopId: fieldShop, startShopId: startShop });
+                            fieldShopId: fieldShop, startShopId: startShop, fieldResidence: startRes });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }

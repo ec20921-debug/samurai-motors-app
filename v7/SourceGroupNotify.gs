@@ -203,7 +203,8 @@ function notifySourceGroupBooking_(srcCfg, info) {
 function notifySourceGroupJob_(phase, p) {
   try {
     p = p || {};
-    var rec = getSourceGroupBooking_(p.bookingId);
+    // 予約なしの作業（現場アプリで始める前に選んだレジデンス等・2026-10-31）は p.rec を使う。予約は予約時の印
+    var rec = p.rec || getSourceGroupBooking_(p.bookingId);
     if (!rec || !rec.shopId) return '';
     // 同じ送信の再実行では送り直さない（JobIdempotency.gs と同じ印。届いた後にだけ付ける）
     var key = (phase === 'start' ? 'startsrc:' : 'endsrc:') + rec.shopId;
@@ -211,17 +212,17 @@ function notifySourceGroupJob_(phase, p) {
 
     var blobs = p.blobs || [];
     var lines = [
-      (phase === 'start' ? '▶️ Job started — ' : '✅ Job finished — ') + sourceGroupWho_(rec.label),
-      '🚪 Unit: ' + (rec.unitNo || '-'),
-      '🚗 ' + (p.carModel || rec.carModel || '-')
+      (phase === 'start' ? '▶️ Job started — ' : '✅ Job finished — ') + (rec.who || sourceGroupWho_(rec.label))
     ];
+    if (!rec.noUnit) lines.push('🚪 Unit: ' + (rec.unitNo || '-'));   // スタッフの車は部屋番号の行を出さない
+    lines.push('🚗 ' + (p.carModel || rec.carModel || '-'));
     if (phase !== 'start' && Number(p.duration) > 0) lines.push('⏱ ' + p.duration + ' min');
     if (blobs.length > 0) lines.push(phase === 'start' ? '📷 Before photos ↓' : '📷 After photos ↓');
 
     if (!sendSourceGroup_(rec.shopId, lines.join('\n'), blobs, (phase === 'start' ? '作業開始 ' : '作業完了 ') + p.bookingId)) return '';
     jobMarkCustSent_(p.opts, key);
-    // 完了まで届いたら印は役目を終える（状態タブを増やし続けない）
-    if (phase !== 'start') {
+    // 完了まで届いたら印は役目を終える（状態タブを増やし続けない）。予約なしの作業は印が無い
+    if (phase !== 'start' && !p.rec) {
       try { kvDelete_(SOURCE_GROUP_PROP_PREFIX + p.bookingId); } catch (ignore) {}
     }
     return rec.shopId;
@@ -229,6 +230,54 @@ function notifySourceGroupJob_(phase, p) {
     Logger.log('⚠️ notifySourceGroupJob_(' + phase + '): ' + err);
     return '';
   }
+}
+
+/**
+ * 現場アプリの「車屋以外のお客さん（予約なし）」で、始める前に選べるレジデンス等（2026-10-31 Daisuke
+ * 「ピカソのグループに BeforeAfter は届くようにしてほしい。金額はいれなくてもいい」。Picasso のスタッフの車など予約のない作業）
+ * 流入元タブの有効な行の shop_id のうち、提携先グループが連携済みのもの（1つの shop_id に流入元が何行あっても1つ）。
+ * 集金には関係しない（請求・店集金の一覧には今までどおり出さない）
+ * @return {Array<{id:string, name:string}>} 流入元タブが読めない時は空
+ */
+function fieldResidences_() {
+  var out = [], seen = {};
+  try {
+    var cfgs = readSourceConfigs_();
+    if (!sourceConfigsReadable_()) return [];
+    Object.keys(cfgs).forEach(function(code) {
+      var c = cfgs[code];
+      if (!c || !c.active || !c.shopId || seen[c.shopId]) return;
+      seen[c.shopId] = true;
+      if (sourceGroupLinked_(c)) out.push({ id: c.shopId, name: c.placeName || c.label || c.shopId });
+    });
+  } catch (err) {
+    Logger.log('⚠️ fieldResidences_: ' + err);
+    return [];
+  }
+  out.sort(function(a, b) { return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+  return out;
+}
+
+/**
+ * 現場アプリから来た residence_id を確かめる。選べるレジデンスでなければ null
+ * @param {string} who - 'resident'（住人）/ 'staff'（その建物のスタッフ）/ それ以外は空（2026-10-31 Daisuke）
+ * @return {{id:string, name:string, who:string}|null}
+ */
+function fieldResidenceById_(id, who) {
+  var sid = String(id || '').trim();
+  if (!sid) return null;
+  var hit = fieldResidences_().filter(function(r) { return r.id === sid; })[0];
+  if (!hit) return null;
+  var w = String(who || '');
+  return { id: hit.id, name: hit.name, who: (w === 'resident' || w === 'staff') ? w : '' };
+}
+
+/** 予約なしの作業の通知に使う印（notifySourceGroupJob_ の p.rec）。部屋番号は住人の時だけ（現場で入れた値・任意） */
+function sourceGroupWalkinRec_(res, room) {
+  var staff = res.who === 'staff';
+  var unit = staff ? '' : String(room || '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, ' ').trim();
+  return { shopId: res.id, label: res.name, who: res.name + (staff ? ' staff' : (res.who === 'resident' ? ' resident' : '')),
+           unitNo: Array.from(unit).slice(0, 20).join(''), noUnit: staff };
 }
 
 /** 流入元の提携先グループのあいさつ文（英語のみ・連携直後に1回） */

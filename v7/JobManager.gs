@@ -48,8 +48,10 @@ function apiBookingToday() {
     var tomorrowStr = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
 
     var bookings = [];
+    var calIds = {};   // 予約が作ったカレンダーの予定（キャンセル済みも）。手入れの予定と見分ける（FieldCalendar.gs）
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
+      if (headers['カレンダーID'] && row[headers['カレンダーID'] - 1]) calIds[String(row[headers['カレンダーID'] - 1])] = true;
 
       var dateVal = row[(headers['予約日'] || 1) - 1];
       var dateStr = '';
@@ -141,7 +143,10 @@ function apiBookingToday() {
       return (a.startTime || '') < (b.startTime || '') ? -1 : 1;
     });
 
-    return { status: 'ok', bookings: bookings };
+    // 2026-10-31: カレンダーに手で入れた予定（見るだけ）。読めない時は空
+    var calendar = (typeof fieldCalendarNotes_ === 'function') ? fieldCalendarNotes_(todayStr, tomorrowStr, tz, calIds) : [];
+
+    return { status: 'ok', bookings: bookings, calendar: calendar };
   } catch (err) {
     Logger.log('❌ apiBookingToday error: ' + err);
     return { status: 'error', message: String(err) };
@@ -439,6 +444,13 @@ function apiJobStart(body, opts) {
         bookingId: bookingId, carModel: body.carModel, blobs: photoResult.blobs, opts: opts
       });
     }
+    // 予約なしの作業で始める前に選んだレジデンス等（Picasso のスタッフの車など・2026-10-31）: その提携先グループへ開始と Before 写真。金額は載せない
+    // 値は apiJobStartV2 が確かめたもの（opts.fieldResidence）だけ
+    if (!bookingId && opts.fieldResidence && typeof notifySourceGroupJob_ === 'function') {
+      startSrcSent = notifySourceGroupJob_('start', {
+        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, blobs: photoResult.blobs, opts: opts
+      });
+    }
     // 現場アプリで作業開始の前に選んだ店（店の車など・2026-10-25）: その店のグループへ開始と Before 写真を送る
     // shop_id は apiJobStartV2 が確かめた値（opts）だけを使う。同じ送信の再実行では送り直さない
     var startFieldShop = String(opts.fieldShopId || '');
@@ -662,6 +674,7 @@ function apiJobEnd(body, opts) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
+        (opts.fieldResidence ? '🏢 ' + opts.fieldResidence.name + (body.room ? ' ' + body.room : '') + '（グループへ写真）\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +
@@ -725,6 +738,12 @@ function apiJobEnd(body, opts) {
     if (bookingId && !shopRef && typeof notifySourceGroupJob_ === 'function') {
       endSrcSent = notifySourceGroupJob_('end', {
         bookingId: bookingId, carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts
+      });
+    }
+    // 予約なしの作業で始める前に選んだレジデンス等（2026-10-31）: 完了と After 写真。金額は載せない（apiJobEndV2 が作業開始の記録から確かめた値）
+    if (!bookingId && opts.fieldResidence && typeof notifySourceGroupJob_ === 'function') {
+      endSrcSent = notifySourceGroupJob_('end', {
+        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts
       });
     }
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');

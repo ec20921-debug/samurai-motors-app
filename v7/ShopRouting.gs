@@ -582,10 +582,12 @@ function notifyShopGroupByShopId_(shopId, text, blobs) {
  * @return {{status:string, shops:Array<{id:string, name:string, rate:number, linked:boolean}>}}
  */
 function apiFieldPartnerShops() {
+  // 2026-10-31: 「車屋以外のお客さん（予約なし）」で選べるレジデンス等（Before/After をその提携先グループへ・SourceGroupNotify.gs）。shops とは別
+  var residences = (typeof fieldResidences_ === 'function') ? fieldResidences_() : [];
   var cache = CacheService.getScriptCache();
   var hit = cache.get('field_partner_shops_v3');
   if (hit) {
-    try { return { status: 'ok', shops: JSON.parse(hit) }; } catch (ignore) {}
+    try { return { status: 'ok', shops: JSON.parse(hit), residences: residences }; } catch (ignore) {}
   }
   var out = [], seen = {}, rates = {};
   var stopped = {};
@@ -636,7 +638,7 @@ function apiFieldPartnerShops() {
   links.forEach(function(l) { if (String(l.obj['状態']) !== '停止') add(l.obj['shop_id'], l.obj['店名']); });
   out.sort(function(a, b) { return a.name.localeCompare(b.name); });
   try { cache.put('field_partner_shops_v3', JSON.stringify(out), 60); } catch (ignore) {}   // アプリの起動ごとにシートを読まない
-  return { status: 'ok', shops: out };
+  return { status: 'ok', shops: out, residences: residences };
 }
 
 /**
