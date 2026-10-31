@@ -14,7 +14,11 @@
  *   店のグループが未連携・QR が無い・送れない時は、管理グループに理由を出す（請求は手で）
  * 【重複】作業記録「店への請求」列で判定（送る前に「送信中」）。作業終了の再送では送り直さない
  * 【文言】クメール語は Panha 校閲済み（2026-10-25）。英語は既存の店舗グループ通知に合わせた短文。
- *   2026-10-26〜 店マスター「グループへの通知の言語」の順に出す（標準 クメール語 → 英語 → 日本語・PartnerLang.gs）。日本語は同日新設
+ *   2026-10-26〜 店マスター「グループへの通知の言語」の順に出す（PartnerLang.gs）。
+ *   2026-10-31〜 請求は**クメール語＋英語だけ**（日本語は出さない）。見出し・手順は言語ごとに1行、金額は1行で大きく、
+ *   手順に 1️⃣ 2️⃣ を付けた。Daisuke「日本語はいらないな。長くて見にくいわ／絵文字つきでカンボジア人にもわかりやすく」
+ *   あわせて「わからない時は当社スタッフに聞くか、このグループに文字か声で」と「自動送信です」を最後に足した（同日 Daisuke）。
+ *   全部の車屋（提携店）で同じ型（この関数を共通で使う）
  */
 
 // Panha 校閲 2026-10-25（44/50・native_check_required: Run Kosal 確認待ち）。
@@ -25,7 +29,10 @@ var SHOP_INVOICE_KM_ = {
   commission: 'កម្រៃជើងសារ របស់ហាង',
   due:        'ទឹកប្រាក់ត្រូវបង់',
   scan:       'សូមស្កេន QR ខាងលើ ដើម្បីបង់ប្រាក់ឱ្យ Samurai Motors។',   // 支払先を明示（QR は個人名義のため・Daisuke 2026-10-25）
-  screenshot: 'បន្ទាប់ពីបង់រួច សូមផ្ញើរូបថតអេក្រង់នៃការបង់ប្រាក់ មកក្នុងក្រុមនេះ។'
+  screenshot: 'បន្ទាប់ពីបង់រួច សូមផ្ញើរូបថតអេក្រង់នៃការបង់ប្រាក់ មកក្នុងក្រុមនេះ។',
+  ask:        'បើមានសំណួរ សូមសួរបុគ្គលិករបស់យើង ឬផ្ញើសារជាអក្សរ ឬសារសំឡេង មកក្នុងក្រុមនេះ។',
+  thanks:     'សូមអរគុណ!',   // 既存の確定あいさつ（PaymentManager.gs・BookingLogic.gs と同じ）
+  auto:       'សារនេះផ្ញើដោយស្វ័យប្រវត្តិ។'
 };
 var SHOP_INVOICE_EN_ = {
   title:      'Payment request',
@@ -33,17 +40,13 @@ var SHOP_INVOICE_EN_ = {
   commission: 'Your commission',
   due:        'Amount to pay',
   scan:       'Please scan the QR above to pay Samurai Motors.',
-  screenshot: 'After paying, please send a screenshot of the payment to this group.'
+  screenshot: 'After paying, please send a screenshot of the payment to this group.',
+  ask:        'If you have any questions, please ask our staff, or send a text or voice message to this group.',
+  thanks:     'Thank you!',
+  auto:       'This is an automatic message.'
 };
-var SHOP_INVOICE_JA_ = {
-  title:      'お支払いのお願い',
-  price:      'サービス料金',
-  commission: 'お店の紹介料',
-  due:        'お支払い金額',
-  scan:       '上の QR を読み取って、Samurai Motors へお支払いください。',
-  screenshot: 'お支払い後、お支払い画面のスクリーンショットをこのグループに送ってください。'
-};
-var SHOP_INVOICE_LINE_ = '━━━━━━━━━━━━━━━━━';
+var SHOP_INVOICE_LANGS_ = ['km', 'en'];   // 請求に出す言語（日本語は出さない・Daisuke 2026-10-31）
+var SHOP_INVOICE_LINE_ = '━━━━━━━━━━━';   // 11本（17本ではスマホで折り返し、次の行に「—」が1つ残った・2026-10-31）
 var SHOP_INVOICE_CAPTION_MAX_ = 1024;   // Telegram の写真の説明文の上限
 var SHOP_INVOICE_COL_ = '店への請求';   // 作業記録の列（JobIdempotency.gs JOBS_V2_COLS_）
 
@@ -61,18 +64,27 @@ function shopInvoiceServices_(body) {
   }).join(' + ');
 }
 
+/** 請求に出す言語（店マスターの設定の順から日本語を除く。何も残らなければ クメール語 → 英語） */
+function shopInvoiceLangs_(langs) {
+  var out = (langs || []).filter(function(l) { return SHOP_INVOICE_LANGS_.indexOf(l) >= 0; });
+  return out.length ? out : SHOP_INVOICE_LANGS_.slice();
+}
+
 /**
  * 請求の本文（QR 画像のキャプション。Telegram では画像の下に出る）
  * @param {Object} p - { pt, refId, carModel, plate, services, customerName, listPrice, rate, due, langs, compact }
- *   langs = 出す言語の順（省略時は従来どおり クメール語 → 英語）／ compact = 内訳とお客様の名前を出さない（説明文の上限対策）
+ *   langs = 店マスターの言語の順（日本語は除く・省略時は クメール語 → 英語）／ compact = 内訳とお客様の名前を出さない（説明文の上限対策）
  */
 function buildShopInvoiceText_(p) {
-  var langs = p.langs || ['km', 'en'], L = SHOP_INVOICE_LINE_;
-  var t = function(key, suffix) {   // { km, en, ja } の key の文（suffix は各言語の後ろに付ける）
-    return { km: SHOP_INVOICE_KM_[key] + (suffix || ''), en: SHOP_INVOICE_EN_[key] + (suffix || ''), ja: SHOP_INVOICE_JA_[key] + (suffix || '') };
+  var langs = shopInvoiceLangs_(p.langs), L = SHOP_INVOICE_LINE_;
+  var t = function(key, suffix) {   // { km, en } の key の文（suffix は各言語の後ろに付ける）
+    return { km: SHOP_INVOICE_KM_[key] + (suffix || ''), en: SHOP_INVOICE_EN_[key] + (suffix || '') };
   };
-  var each = function(emoji, key) { return langLines_(langs, t(key)).map(function(x) { return emoji + ' ' + x; }); };
-  var lines = ['🧾 ' + langJoin_(langs, t('title')), L];
+  // 見出し・手順は言語ごとに1行（絵文字は1行目だけ。2行目はその訳）
+  var block = function(emoji, key) {
+    return langLines_(langs, t(key)).map(function(x, i) { return i === 0 ? emoji + ' ' + x : x; });
+  };
+  var lines = block('🧾', 'title').concat([L]);
   if (p.refId) lines.push('🆔 ' + p.refId);
   var car = [p.carModel, p.plate].map(function(s) { return String(s || '').trim(); }).filter(String).join(' / ');
   if (car) lines.push('🚗 ' + car);
@@ -88,9 +100,12 @@ function buildShopInvoiceText_(p) {
     }
   }
   lines.push(L);
-  lines.push('💰 ' + langJoin_(langs, t('due')) + ': ' + shopInvoiceUsd_(p.due));
+  lines.push('💰 ' + langJoin_(langs, t('due')));
+  lines.push('👉 ' + shopInvoiceUsd_(p.due));   // 金額は1行で目立たせる
   lines.push(L);
-  lines = lines.concat(each('📱', 'scan'), each('📸', 'screenshot'));
+  lines = lines.concat(block('1️⃣ 📱', 'scan'), [''], block('2️⃣ 📸', 'screenshot'), [''], block('💬', 'ask'), ['']);
+  lines.push('🙏 ' + langJoin_(langs, t('thanks')));
+  lines.push('🤖 ' + langJoin_(langs, t('auto')));
   return lines.join('\n');
 }
 
@@ -157,7 +172,7 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
   if (!groupChatId) return 'not_linked';
   var qr = getActiveQR();
   if (!qr || !qr.imageUrl) return 'no_qr';
-  var langs = shopGroupLangs_(shopId);   // 店マスター「グループへの通知の言語」（PartnerLang.gs・2026-10-26）。印の前に決める
+  var langs = shopGroupLangs_(shopId);   // 店マスター「グループへの通知の言語」（PartnerLang.gs・2026-10-26）。印の前に決める（日本語は本文側で除く）
   shopInvoiceMark_(opts.rowIndex, '送信中');   // 送る前に印（返事が取れずに再送された時、二重に請求しない）
   var invoice = {
     pt:           p.pt,
@@ -172,7 +187,7 @@ function shopInvoiceSend_(body, opts, p, shopId, due) {
     langs:        langs
   };
   var text = buildShopInvoiceText_(invoice);
-  // 写真の説明文は Telegram の上限 1024 字。3言語で長くなった時は、内訳（定価・店の紹介料）とお客様の名前を外して収める
+  // 写真の説明文は Telegram の上限 1024 字。長くなった時は、内訳（定価・店の紹介料）とお客様の名前を外して収める
   if (text.length > SHOP_INVOICE_CAPTION_MAX_) {
     invoice.compact = true;
     text = buildShopInvoiceText_(invoice);
