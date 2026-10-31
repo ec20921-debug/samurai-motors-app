@@ -98,3 +98,4 @@ GAS エディタ（v7）で `showStaffGateAudit` を実行 → 実行ログ:
 - 手順4: miniapp 同期（差分 = `tg-auth.js` / `job-manager.html` / `saleslog-internal.html`、他20ファイルは同一）→ field v2 `field-20261031-002437` を本体に commit → `miniapp/field/` 同期・push
 - 手順5: `?action=auth_audit`（v7）は 10/28〜10/30 に `chat_send` / `chat_history` の記録が**1件もない**（旧フロントは署名を付けておらず他アクションは全て `missing`）。新フロント配信後の実利用を待ってから手順6を判断する
 - 補足: 予約画面・社内画面は配信リポではなく **開発リポ（公開）の GitHub Pages** から出ている（`BOOKING_MINIAPP_URL` / `INTERNAL_MINIAPP_URL` が `ec20921-debug.github.io/samurai-motors-app/`）→ main push の時点で新フロントは公開済み。DEPLOY.md の「配信は miniapp のみ」と食い違う
+- **2026-10-31 夕 手順1 完了**: v7 エディタの一時ファイルから `OPERATIONS_SPREADSHEET_ID`（長さ44・`8d194d7c`）と `FIELD_LINK_SECRET`（長さ72・`7d9eed5c`）を登録。v7-operations と照合用が一致。`TG_AUTH_MODE` なし（audit）。確認結果 = `staffSheetReadable=true activeStaff=3 fieldLinkConfigured=true`。一時ファイルは削除済み。→ StaffLookup（作業記録のスタッフID）もこの時点から動く
