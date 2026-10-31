@@ -424,7 +424,7 @@ function sendShopMonthlyReportsCore_(opt) {
       return;
     }
 
-    // 店舗向け。店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLangOps.gs・2026-10-26。それまでは英語のみ）
+    // 店舗向け。店マスター「グループへの通知の言語」の順（標準 クメール語＋英語・PartnerLangOps.gs。2026-10-26〜30 は＋日本語、それまでは英語のみ）
     var shopLangs = langsByShop[shopId] || PARTNER_LANG_SHOP_DEFAULT.slice();
     var ok = sendViaBookingBot_(props.bookingBotToken, groupChatId, buildShopMonthlyReportText_(shopLangs, {
       shopName: shopName, ymLabel: ymLabel, a: a, yourPct: yourPct, ourPct: ourPct

@@ -13,7 +13,7 @@
  * 【送信済みの印】Script Properties `shop_greeting_sent_<shop_id>`（失うと二重送信になるため Cache ではなく永続側）
  *
  * 【文言】v7-operations/ScoutBoardShopLinks.gs の SCOUT_LINKS_GREETING_KM / _EN / _JA と同じ文（営業ボードと同じ形: 言語ごとに空行で区切る）。
- *   2026-10-26〜 店マスター「グループへの通知の言語」の順に並べる（標準 クメール語 → 英語 → 日本語・PartnerLang.gs）。
+ *   2026-10-26〜 店マスター「グループへの通知の言語」の順に並べる（標準 クメール語 → 英語（2026-10-31〜。それまでは＋日本語）・PartnerLang.gs）。
  *   別 GAS プロジェクトで共有できないため複製している。文言を直すときは両方を直すこと。
  *   クメール語は Panha 校閲（provisional・Run Kosal 確認待ち）
  */

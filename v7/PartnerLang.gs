@@ -2,6 +2,7 @@
  * PartnerLang.gs — 提携先のグループへの通知の言語（2026-10-26）
  *
  * Daisuke「車屋とかの提携店は、クメール語と英語と日本語にしようか」「ケースバイケースだよね」→ グループごとに切り替え。
+ *   2026-10-31 標準をクメール語＋英語に（Daisuke「日本語はいらないな。長くて見にくいわ」→「B（車屋グループへの通知をすべて）で」）
  *   - 設定 = v7 Database「店マスター」の「グループへの通知の言語」列（v7-operations が列とプルダウンを足す）。
  *     値は「クメール語＋英語＋日本語」のように並べた順に出す（km / en / ja・カンマ区切りも可）。空欄・読めない値は車屋の標準
  *   - 対象 = 車屋（店集金の提携店）のグループ宛: 連携完了の返事・QRからお客様が来た知らせ（ShopRouting）・あいさつ文（ShopGroupGreeting）・
@@ -16,7 +17,7 @@
  */
 
 var PARTNER_GROUP_LANG_COL = 'グループへの通知の言語';
-var PARTNER_LANG_SHOP_DEFAULT = ['km', 'en', 'ja'];   // 車屋の標準（Daisuke 2026-10-26）
+var PARTNER_LANG_SHOP_DEFAULT = ['km', 'en'];   // 車屋の標準（2026-10-31 Daisuke「日本語はいらない・長くて見にくい」。2026-10-26〜30 は＋日本語）
 var PARTNER_LANG_CACHE_KEY = 'shop_group_langs_v1';
 var PARTNER_LANG_CACHE_SEC = 300;
 var PARTNER_LANG_LKG_KEY = 'shop_group_langs_lkg_v1';   // 最後に読めた内容（読めない時に全店が標準へ倒れないように）
@@ -88,7 +89,7 @@ function readShopGroupLangs_(fresh) {
 /**
  * そのグループに出す言語（並び順どおり）。例外は外へ出さない
  *   レジデンス等の提携先 = 英語（固定）・個人提携 = 英語＋クメール語が標準（この設定で日本語にも・2026-10-28）
- *   車屋 = 店マスターの設定。空欄・読めない時は標準（クメール語＋英語＋日本語）
+ *   車屋 = 店マスターの設定。空欄・読めない時は標準（クメール語＋英語（2026-10-31〜。それまでは＋日本語））
  * @param {boolean} [fresh] - 設定を読み直す（readShopGroupLangs_）
  */
 function shopGroupLangs_(shopId, fresh) {

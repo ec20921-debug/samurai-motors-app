@@ -147,7 +147,7 @@ function handleShopGroupMessage_(msg) {
   if (srcPartner === false && typeof readPartnerKinds_ === 'function') readPartnerKinds_(true);
   var indivPartner = (srcPartner === false && typeof individualPartnerState_ === 'function') ? individualPartnerState_(shopIdHit) : false;
   if (indivPartner === null) srcPartner = null;
-  // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語＋日本語・PartnerLang.gs・2026-10-26）。
+  // 車屋は店マスター「グループへの通知の言語」の順（標準 クメール語＋英語（2026-10-31〜。それまでは＋日本語）・PartnerLang.gs・2026-10-26）。
   // 返事とあいさつ文は取り消せないので、5分キャッシュを使わず設定を読み直す
   var shopLangsHit = (srcPartner === false && indivPartner === false) ? shopGroupLangs_(shopIdHit, true) : null;
   var restaurantHit = indivPartner === true && typeof isRestaurantPartnerShop_ === 'function' && isRestaurantPartnerShop_(shopIdHit);

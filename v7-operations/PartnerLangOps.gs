@@ -2,6 +2,7 @@
  * PartnerLangOps.gs — 提携先のグループへの通知の言語（v7-operations 側・2026-10-26）
  *
  * Daisuke「車屋とかの提携店は、クメール語と英語と日本語にしようか」「ケースバイケース」→ グループごとに切り替え。
+ *   2026-10-31 車屋の標準をクメール語＋英語に（Daisuke「日本語はいらない」。プルダウンも標準を先頭に）
  *   - 設定 = v7 Database「店マスター」の「グループへの通知の言語」列。この列とプルダウンは getShopSheet_ が足す（ensurePartnerLangColumn_）
  *   - ここで使う: 車屋への月次レポート（ShopProvisioningManager.gs）・営業ボードの表示（ScoutBoardShopLinks.gs）
  *   - v7/PartnerLang.gs と同じ決まり（列名・読み方・標準）。別 GAS プロジェクトのため複製。直すときは両方を直す
@@ -11,8 +12,8 @@
  */
 
 const PARTNER_GROUP_LANG_COL = 'グループへの通知の言語';
-const PARTNER_LANG_SHOP_DEFAULT = ['km', 'en', 'ja'];   // 車屋の標準（Daisuke 2026-10-26）
-const PARTNER_LANG_OPTIONS = ['クメール語＋英語＋日本語', 'クメール語＋英語', '英語＋クメール語', '英語＋日本語', '日本語＋英語', '英語', 'クメール語', '日本語'];   // 英語＋クメール語＝個人提携の標準（2026-10-28。それまでは日本語）
+const PARTNER_LANG_SHOP_DEFAULT = ['km', 'en'];   // 車屋の標準（2026-10-31 Daisuke。2026-10-26〜30 は＋日本語）
+const PARTNER_LANG_OPTIONS = ['クメール語＋英語', 'クメール語＋英語＋日本語', '英語＋クメール語', '英語＋日本語', '日本語＋英語', '英語', 'クメール語', '日本語'];   // 英語＋クメール語＝個人提携の標準（2026-10-28。それまでは日本語）
 const PARTNER_LANG_SPLIT = /[＋+,、，・\/&＆→＞>\s]+|と/;
 const PARTNER_LANG_WORDS = {
   'クメール語': 'km', 'クメール': 'km', 'カンボジア語': 'km', '英語': 'en', '英': 'en', '日本語': 'ja', '日本': 'ja',
@@ -72,7 +73,7 @@ function ensurePartnerLangColumn_(sheet) {
       if (!rule || String(rule.getCriteriaValues()[0]) !== String(PARTNER_LANG_OPTIONS)) {
         range.setDataValidation(SpreadsheetApp.newDataValidation()
           .requireValueInList(PARTNER_LANG_OPTIONS, true).setAllowInvalid(true)
-          .setHelpText('グループへの通知の言語（並べた順に出す）。空欄＝車屋はクメール語＋英語＋日本語・個人提携は英語＋クメール語。' +
+          .setHelpText('グループへの通知の言語（並べた順に出す）。空欄＝車屋はクメール語＋英語・個人提携は英語＋クメール語。' +
             '変えてから最大5分で反映。あいさつ文は連携した時の1回だけなので、/register の前に決める').build());
       }
     }
