@@ -18,7 +18,7 @@ const vm = require('node:vm');
 const OPS = path.join(__dirname, '..', 'v7-operations');
 
 function makeCtx(opts) {
-  opts = Object.assign({ bookings: [], visits: [], uncounted: '', bookingsThrow: false, visitsThrow: false }, opts || {});
+  opts = Object.assign({ bookings: [], visits: [], changes: [], uncounted: '', bookingsThrow: false, visitsThrow: false }, opts || {});
   const sent = [];
   const ctx = {
     console,
@@ -34,8 +34,10 @@ function makeCtx(opts) {
     visitRowToApi_: (o) => o,
     // 他のセクションは中身を見ないので固定の文字列に
     buildManualJobUncountedSection_: () => opts.uncounted,
-    buildSalesLogSection_: () => '🤝 <b>車屋営業状況</b>（stub）',
     buildInventorySection_: () => { throw new Error('在庫セクションは呼ばれないはず'); },
+    // 本日のシステム変更（SystemChangeLog.gs）
+    readSystemChangesForDate_: () => opts.changes,
+    buildSystemChangesSection_: () => (opts.changes.length ? '🛠 <b>本日のシステム変更</b>（' + opts.changes.length + '件）\n　' + opts.changes.map((c) => c.emoji + ' ' + c.text).join('\n　') : ''),
     escapeHtml_: (s) => String(s),
     isCancelledStatus_: (s) => s === 'キャンセル',
     isCompletedStatus_: (s) => s === '作業完了',
@@ -46,6 +48,7 @@ function makeCtx(opts) {
   // 予約（v7）の読取はファイル側の定義（SpreadsheetApp を使う）を、読み込んだ後に差し替える
   ctx.readV7BookingsForDate_ = () => { if (opts.bookingsThrow) throw new Error('v7 unavailable'); return opts.bookings; };
   ctx.buildManualJobUncountedSection_ = () => opts.uncounted; // 同じファイル内の定義を差し替える
+  ctx.buildSalesLogSection_ = () => '🤝 <b>車屋営業状況</b>（stub）'; // 同上
   return { ctx, sent };
 }
 
@@ -84,6 +87,13 @@ test('未計上の手動ジョブがあれば送る（予約0・訪問0でも）
   assert.match(sent[0].text, /手動ジョブ未計上/);
 });
 
+test('システム変更だけの日も送る（休みの日でも変更は伝える）。欄は最後に出る', () => {
+  const { ctx, sent } = makeCtx({ changes: [{ emoji: '🧾', text: '作業記録に名前が入るようになりました' }] });
+  ctx.sendDailyReport();
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /本日の売上[\s\S]*車屋営業状況[\s\S]*本日のシステム変更<\/b>（1件）\n　🧾 作業記録に名前が入るようになりました$/);
+});
+
 test('予約や営業ログが読めない時は送る（不具合を隠さない）', () => {
   let r = makeCtx({ bookingsThrow: true });
   r.ctx.sendDailyReport();
@@ -92,5 +102,5 @@ test('予約や営業ログが読めない時は送る（不具合を隠さな�
   r = makeCtx({ visitsThrow: true });
   r.ctx.sendDailyReport();
   assert.equal(r.sent.length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(r.ctx.dailyReportActivity_('2026-11-01'))), { bookings: 0, visits: -1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(r.ctx.dailyReportActivity_('2026-11-01'))), { bookings: 0, visits: -1, changes: 0 });
 });

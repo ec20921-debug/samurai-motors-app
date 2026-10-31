@@ -56,13 +56,14 @@ function sendDailyReport() {
   // 2026-10-31 Daisuke「土日も稼働しているので毎日通知で。祝日など休みの日もあるので、更新が何もない時は通知なしで OK」
   // 曜日では決めない。その日の 予約0・車屋の訪問0・未計上の手動ジョブなし なら送らない（読めなかった時は送る側に倒す＝不具合を隠さない）
   const activity = dailyReportActivity_(ppToday);
-  if (activity.bookings === 0 && activity.visits === 0 && !uncountedSection) {
-    Logger.log('📭 日報: 本日の更新なし（予約0・訪問0・未計上なし）→ 送信しない (JST ' + jstToday + ')');
+  if (activity.bookings === 0 && activity.visits === 0 && activity.changes === 0 && !uncountedSection) {
+    Logger.log('📭 日報: 本日の更新なし（予約0・訪問0・システム変更0・未計上なし）→ 送信しない (JST ' + jstToday + ')');
     return;
   }
 
   const salesSection = buildSalesSection_(ppToday);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
+  const changesSection = buildSystemChangesSection_(ppToday); // 本日のシステム変更（2026-10-31 Daisuke 要望・SystemChangeLog.gs）
   // ⏸ 2026-10-31: 在庫セクション（金曜の棚卸し）一時停止（Daisuke「在庫の部分はまだしっかりできてないので通知なしに」）
   // 在庫の運用が整ったら下記1行のコメントを外す（InventoryManager.gs の buildInventorySection_ はそのまま）:
   //   const inventorySection = buildInventorySection_(ppToday); // 金曜のみ: 在庫の少ない品目（2026-09-27 Daisuke 指示）
@@ -78,7 +79,8 @@ function sendDailyReport() {
     salesSection +
     (uncountedSection ? '\n\n' + uncountedSection : '') +
     (inventorySection ? '\n\n' + inventorySection : '') +
-    (salesLogSection ? '\n\n' + salesLogSection : '');
+    (salesLogSection ? '\n\n' + salesLogSection : '') +
+    (changesSection ? '\n\n' + changesSection : '');
 
   sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, text, {
     parse_mode: 'HTML',
@@ -94,7 +96,12 @@ function sendDailyReport() {
  *   読めなかった時は -1（「0 ではない」扱い＝日報を送って、本文側で読取失敗が見えるようにする）
  */
 function dailyReportActivity_(ppToday) {
-  const out = { bookings: -1, visits: -1 };
+  const out = { bookings: -1, visits: -1, changes: -1 };
+  try {
+    out.changes = readSystemChangesForDate_(ppToday).length; // システム変更だけの日も送る（休みの日でも変更は伝える）
+  } catch (e) {
+    Logger.log('⚠️ 日報: 更新判定（システム変更）の読取失敗 → 送る側に倒す: ' + e);
+  }
   try {
     const cfg = getConfig();
     out.bookings = cfg.v7SpreadsheetId ? readV7BookingsForDate_(cfg.v7SpreadsheetId, ppToday).length : -1;

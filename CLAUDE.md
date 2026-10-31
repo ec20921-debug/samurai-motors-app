@@ -110,6 +110,7 @@
 
 - `clasp push --force` を `v7/` と `v7-operations/` の各ディレクトリで実行（アカウント: `ec20921@gmail.com`）
 - コード変更後は必ず git add → commit → push
+- **本番に反映したら「システム変更」タブに1行書く（2026-10-31 Daisuke 要望・毎回必須）**: 経費・勤務関連 GSS（ID は下記）のタブ `システム変更` に `日付(yyyy-MM-dd) | 時刻(HH:mm) | 絵文字1つ | ひとこと | 対象 | 記録者 | 補足（内部）` で追記（Sheets MCP の append_values・`user_google_email` は ec20921@gmail.com）。日報（20:30 JST）が当日分を「🛠 本日のシステム変更」として出す（`v7-operations/SystemChangeLog.gs`）。**「ひとこと」は日本側の管理者が読む＝日本語・日常の言葉・1変更1行**（例: 「作業記録に、作業をした人のスタッフIDと名前が自動で入るようになりました」）。版番号・ファイル名・commit は「補足（内部）」へ。対象は 予約Bot／業務Bot／現場アプリ／シート／日報 のどれか。内部だけの整理（コメント・テスト）は書かない
 - 旧 OneDrive フォルダ（`OneDrive/Desktop/samurai-motors-app`）は保険スナップショット。**編集禁止**
 
 ## 📊 メインスプシ『📒Samurai Motors 経費・勤務関連』
