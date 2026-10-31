@@ -21,6 +21,12 @@ var FIELD_CAL_PLACE_MAX_ = 200; // 場所の最大文字数
  * @return {Array<{id,date,startTime,endTime,allDay,title,location}>}
  */
 function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
+  // 予約一覧を開くたびにカレンダーを読まない（60秒。予約が作った予定は説明文でも除くのでキャッシュ中に増えても出ない）
+  var cacheKey = 'field_cal_v1_' + todayStr;
+  try {
+    var hit = (typeof CacheService !== 'undefined') ? CacheService.getScriptCache().get(cacheKey) : null;
+    if (hit) return JSON.parse(hit);
+  } catch (ignore) {}
   try {
     var cfg = getConfig();
     if (!cfg.bookingCalendarId) return [];
@@ -30,16 +36,25 @@ function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
       var s = parseDateTimePhnomPenh(d, 0, 0);
       return { date: d, start: s, end: new Date(s.getTime() + 24 * 60 * 60 * 1000) };
     });
+    // 終日の予定の日付はスクリプトのタイムゾーン（日本時間）で読む。開始が日本の 0:00 でもカンボジアの 0:00 でも同じ日付になる
+    var dayTz = (typeof Session !== 'undefined' && Session.getScriptTimeZone) ? Session.getScriptTimeZone() : tz;
     var events = cal.getEvents(days[0].start, days[1].end);
     var out = [];
     events.forEach(function(ev) {
       if (!fieldCalIsManual_(ev, knownIds || {})) return;
       var allDay = false;
       try { allDay = ev.isAllDayEvent(); } catch (e) { /* 取れなければ時刻つきとして扱う */ }
+      var sd = '', ed = '';
+      if (allDay) {
+        try {
+          sd = Utilities.formatDate(ev.getAllDayStartDate(), dayTz, 'yyyy-MM-dd');
+          ed = Utilities.formatDate(ev.getAllDayEndDate(), dayTz, 'yyyy-MM-dd');   // 終了日はその日を含まない
+        } catch (e) { return; }
+      }
       var evStart = ev.getStartTime(), evEnd = ev.getEndTime();
       days.forEach(function(d) {
-        // 何日かにまたがる予定は、かかっている日ごとに1行
-        if (!(evStart < d.end && evEnd > d.start)) return;
+        // 何日かにまたがる予定は、かかっている日ごとに1行（終日は日付で、時刻つきは時刻で判定）
+        if (allDay ? !(sd <= d.date && d.date < ed) : !(evStart < d.end && evEnd > d.start)) return;
         out.push({
           id: 'CAL-' + ev.getId() + '-' + d.date,
           date: d.date,
@@ -55,7 +70,9 @@ function fieldCalendarNotes_(todayStr, tomorrowStr, tz, knownIds) {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
       return (a.startTime || '') < (b.startTime || '') ? -1 : 1;
     });
-    return out.slice(0, FIELD_CAL_MAX_);
+    var res = out.slice(0, FIELD_CAL_MAX_);
+    try { if (typeof CacheService !== 'undefined') CacheService.getScriptCache().put(cacheKey, JSON.stringify(res), 60); } catch (ignore) {}
+    return res;
   } catch (err) {
     Logger.log('⚠️ fieldCalendarNotes_ 失敗（予約一覧は継続）: ' + err);
     return [];
@@ -71,6 +88,10 @@ function fieldCalIsManual_(ev, knownIds) {
   try { desc = String(ev.getDescription() || ''); } catch (e) { desc = ''; }
   if (desc.indexOf('予約ID:') >= 0) return false;   // createBooking / createManualBooking が作る予定
   if (typeof HOLIDAY_TAG !== 'undefined' && desc.indexOf(HOLIDAY_TAG) >= 0) return false;
+  // 「非公開」にした予定は現場に出さない（私的な予定を入れても広がらないように）
+  try {
+    if (typeof CalendarApp !== 'undefined' && CalendarApp.Visibility && ev.getVisibility && ev.getVisibility() === CalendarApp.Visibility.PRIVATE) return false;
+  } catch (e) { /* 読めなければ出す */ }
   return true;
 }
 

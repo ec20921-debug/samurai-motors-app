@@ -219,7 +219,7 @@ function notifySourceGroupJob_(phase, p) {
     if (phase !== 'start' && Number(p.duration) > 0) lines.push('⏱ ' + p.duration + ' min');
     if (blobs.length > 0) lines.push(phase === 'start' ? '📷 Before photos ↓' : '📷 After photos ↓');
 
-    if (!sendSourceGroup_(rec.shopId, lines.join('\n'), blobs, (phase === 'start' ? '作業開始 ' : '作業完了 ') + p.bookingId)) return '';
+    if (!sendSourceGroup_(rec.shopId, lines.join('\n'), blobs, (phase === 'start' ? '作業開始 ' : '作業完了 ') + (p.bookingId || '予約なし'))) return '';
     jobMarkCustSent_(p.opts, key);
     // 完了まで届いたら印は役目を終える（状態タブを増やし続けない）。予約なしの作業は印が無い
     if (phase !== 'start' && !p.rec) {

@@ -181,7 +181,7 @@ main.tabbed{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 .tl-item.now .ln i{border-color:var(--blue);background:var(--blue)}
 .tl-item.working .ln i{border-color:var(--amber);background:var(--amber)}
 .tl-item.done .ln i{border-color:var(--green);background:var(--green)}
-.tl-item.cal .ln i{border-color:var(--amber);background:var(--amber-bg)}   /* カレンダーに手で入れた予定（見るだけ・2026-10-31） */
+.tl-item.cal{cursor:default} .tl-item.cal .ln i{border-color:var(--amber);background:var(--amber-bg)}   /* カレンダーに手で入れた予定（見るだけ・2026-10-31） */
 .tl-item .c{border-bottom:1px solid #e7ebf1;padding:10px 4px 10px 0;display:grid;gap:3px}
 .tl-item:last-child .c{border-bottom:0}
 .tl-item .n{font-size:16px;font-weight:700}
@@ -643,7 +643,8 @@ function loadData(manual) {
   var p4 = fetchJSON(GAS_URL + '?action=field_partner_shops').then(function (r) {
     if (r && r.status === 'ok' && Array.isArray(r.shops)) { S.shops = r.shops; Outbox.kvSet('shops', r.shops); }
     // レジデンス等（Picasso など・Before/After をその提携先グループへ・2026-10-31）。古いサーバーは無し
-    if (r && r.status === 'ok' && Array.isArray(r.residences)) { S.residences = r.residences; Outbox.kvSet('residences', r.residences); }
+    // サーバーの一時的な不調で空が返っても、端末に保存した一覧は消さない
+    if (r && r.status === 'ok' && Array.isArray(r.residences) && (r.residences.length || !S.residences.length)) { S.residences = r.residences; Outbox.kvSet('residences', r.residences); }
   }).catch(function () {});
   return Promise.all([p1, p2, p3, p4]).then(function () {
     if (S.view === 'home') render();
@@ -1031,7 +1032,7 @@ function calRowHtml(n) {
   var when = n.allDay ? t('all_day') : (n.startTime || '--:--');
   return '<div class="tl-item cal"><span class="t num">' + esc(when) + '</span><span class="ln"><i></i></span><span class="c"><span class="n">' + esc(n.title || '—') + '</span>' +
     '<span class="s chips"><span class="chip warn">📅 ' + t('cal_chip') + '</span>' + (n.endTime ? ' <span class="chip num">– ' + esc(n.endTime) + '</span>' : '') + '</span>' +
-    (n.location ? '<span class="s">📍 ' + esc(n.location) + '</span>' : '') + '</span></div>';
+    (n.location ? '<span class="s">' + (/^https?:\/\//.test(n.location) ? '' : '📍 ') + esc(placeText(n.location)) + '</span>' : '') + '</span></div>';   // 地図リンクは「📍 Google Maps」
 }
 function itemChips(i) {
   var chips = i.menu.map(function (c) { return '<span class="chip menu">' + menuLabelH(c) + '</span>'; }).join('');
@@ -1205,7 +1206,7 @@ function startNewJob() {
   var res = n.res ? S.residences.filter(function (r) { return r.id === n.res; })[0] : null;
   if (res) {   // 🏢 Picasso #部屋 ／ 🏢 Picasso（スタッフ）（2026-10-31）
     item.resId = res.id; item.resWho = n.who || '';
-    item.src = res.name + (n.who === 'staff' ? '（' + t('res_staff') + '）' : '');
+    item.src = res.name;   // 管理通知の「建物」にも使うので画面の言語の文字は混ぜない（住人／スタッフは residence_who で送る）
     item.room = n.who === 'resident' ? String(n.room || '').trim() : '';
   }
   item.amount = priceOf(item);
@@ -1383,7 +1384,7 @@ function renderBar() {
   var bar = $('bar'), html = '';
   if (S.view === 'shopjob' || S.view === 'shopnew') { sjBar(bar); return; }
   if (S.view === 'new') {
-    var okNew = S.nj.menu.length > 0;
+    var okNew = S.nj.menu.length > 0 && (!S.nj.res || !!S.nj.who);   // レジデンスを選んだら 住人／スタッフ も選ぶ（2026-10-31）
     bar.innerHTML = '<div class="in"><button type="button" class="btn green" id="next" ' + (okNew ? '' : 'disabled') + '>▶ ' + t('btn_next') + '</button></div>';
     bar.hidden = false; $('next').onclick = startNewJob; return;
   }

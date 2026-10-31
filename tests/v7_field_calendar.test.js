@@ -27,7 +27,7 @@ function load(files, extra) {
 // カンボジア時間（UTC+7）で書式化する Utilities.formatDate の代わり
 const Utilities = {
   formatDate: (d, tz, fmt) => {
-    const p = new Date(d.getTime() + 7 * 3600e3);
+    const p = new Date(d.getTime() + (tz === 'Asia/Tokyo' ? 9 : 7) * 3600e3);
     if (fmt === 'HH:mm') return pad(p.getUTCHours()) + ':' + pad(p.getUTCMinutes());
     return p.getUTCFullYear() + '-' + pad(p.getUTCMonth() + 1) + '-' + pad(p.getUTCDate());
   }
@@ -40,7 +40,9 @@ function ev(o) {
   return {
     getId: () => o.id, getTitle: () => o.title || '', getLocation: () => o.location || '',
     getDescription: () => o.desc || '', getStartTime: () => pp(o.start), getEndTime: () => pp(o.end),
-    isAllDayEvent: () => !!o.allDay
+    isAllDayEvent: () => !!o.allDay,
+    getAllDayStartDate: () => (o.adStart ? new Date(o.adStart) : pp(o.start)),
+    getAllDayEndDate: () => (o.adEnd ? new Date(o.adEnd) : pp(o.end))
   };
 }
 function loadCal(events, opts) {
@@ -53,6 +55,7 @@ function loadCal(events, opts) {
   };
   return load(['BookingLogic.gs', 'FieldCalendar.gs'], {
     Utilities,
+    Session: opts.scriptTz ? { getScriptTimeZone: () => opts.scriptTz } : undefined,
     HOLIDAY_TAG: '[SAMURAI_HOLIDAY]',
     getConfig: () => ({ bookingCalendarId: opts.noId ? '' : 'cal@x' }),
     CalendarApp: { getCalendarById: () => (opts.noCal ? null : calendar) }
@@ -92,6 +95,25 @@ test('手で入れた予定: 終日の予定は時刻なし・allDay', () => {
   assert.equal(out[0].allDay, true);
   assert.equal(out[0].startTime, '');
   assert.equal(out[0].endTime, '');
+});
+
+test('手で入れた予定: 終日の予定の開始が日本時間 0:00 で返っても前の日に出ない（スクリプトは日本時間）', () => {
+  // 11/2 の終日予定。開始 = 日本の 11/2 0:00（= カンボジアの 11/1 22:00）、終了 = 日本の 11/3 0:00
+  const ctx = loadCal([ev({ id: 'j1', title: '終日（日本時間）', allDay: true, start: '2026-11-01 22:00', end: '2026-11-02 22:00',
+    adStart: Date.UTC(2026, 10, 1, 15), adEnd: Date.UTC(2026, 10, 2, 15) })], { scriptTz: 'Asia/Tokyo' });
+  const out = ctx.fieldCalendarNotes_(TODAY, TOM, 'Asia/Phnom_Penh', {});
+  assert.deepEqual(Array.from(out, (n) => n.date), [TOM]);
+  assert.equal(out[0].allDay, true);
+});
+
+test('手で入れた予定: 非公開の予定は出さない', () => {
+  const ctx = loadCal([ev({ id: 'p1', title: '私用', start: '2026-11-01 10:00', end: '2026-11-01 11:00' })]);
+  ctx.CalendarApp.Visibility = { PRIVATE: 'PRIVATE' };
+  const evs = [ev({ id: 'p1', title: '私用', start: '2026-11-01 10:00', end: '2026-11-01 11:00' }), ev({ id: 'p2', title: '公開', start: '2026-11-01 12:00', end: '2026-11-01 13:00' })];
+  evs[0].getVisibility = () => 'PRIVATE';
+  evs[1].getVisibility = () => 'DEFAULT';
+  ctx.CalendarApp.getCalendarById = () => ({ getEvents: () => evs });
+  assert.deepEqual(Array.from(ctx.fieldCalendarNotes_(TODAY, TOM, 'Asia/Phnom_Penh', {}), (n) => n.title), ['公開']);
 });
 
 test('手で入れた予定: 日をまたぐ予定は今日・明日それぞれに出る（始まり・終わりの時刻はその日だけ）', () => {

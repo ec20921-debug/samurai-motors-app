@@ -674,7 +674,8 @@ function apiJobEnd(body, opts) {
         '━━━━━━━━━━━━━━━━━\n' +
         (bookingId ? '🆔 ' + bookingId + '\n' : '') +
         (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
-        (opts.fieldResidence ? '🏢 ' + opts.fieldResidence.name + (body.room ? ' ' + body.room : '') + '（グループへ写真）\n' : '') +
+        (opts.fieldResidence ? '🏢 ' + opts.fieldResidence.name + ({ staff: '・スタッフ', resident: '・住人' }[opts.fieldResidence.who] || '') +
+          (body.room ? ' ' + body.room : '') + '（グループへ写真）\n' : '') +
         '👤 ' + (body.name || '-') + '\n' +
         jobServiceLine_(body) +
         (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +

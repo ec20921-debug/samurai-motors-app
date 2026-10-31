@@ -293,7 +293,7 @@ function apiJobEndV2(body) {
     var startV2 = JSON.parse(String(row.data['v2記録(JSON)'] || '{}')).start || {};
     if (startV2.shop_id && !body.bookingId && typeof validFieldShopId_ === 'function') startShop = validFieldShopId_(startV2.shop_id);
     // 始める前に選んだレジデンス等（2026-10-31）。After をその提携先グループへ送るのにだけ使う
-    // 開始の記録が無い（終了が先に届いた）時は終了の控え（v2.residence_id）を使う
+    // 開始の v2 にレジデンスが読めない時だけ、終了に付けた控え（v2.residence_id）を使う
     var resV2 = startV2.residence_id ? startV2 : (body.v2 || {});
     if (resV2.residence_id && !body.bookingId && typeof fieldResidenceById_ === 'function') startRes = fieldResidenceById_(resV2.residence_id, resV2.residence_who);
   } catch (eStart) {
