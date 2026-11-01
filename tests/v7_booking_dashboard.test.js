@@ -15,7 +15,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
-const IDS = { dash: 11, cache: 22, memo: 33, maxRows: 1000, maxCols: 26, chartIds: [101, 102], ruleCount: 2 };
+const IDS = { dash: 11, cache: 22, memo: 33, booking: 44, maxRows: 1000, maxCols: 26, chartIds: [101, 102], ruleCount: 2 };
 
 function load(extra) {
   const ctx = Object.assign({ console, Logger: { log: () => {} } }, extra || {});
@@ -192,6 +192,25 @@ test('棒の下の式が見ている集計タブの列は、見出しどおり',
   assert.equal(nameOf('H'), '台数');
   const chart = reqs.find((r) => r.addChart).addChart.chart.spec.basicChart;
   assert.deepEqual(chart.series.map((s) => names[s.series.sourceRange.sources[0].startColumnIndex]), ['洗車', '磨き', 'ガラス', 'ヘッドライト', 'その他']);
+});
+
+test('金額の表示: 整数は .0 を付けない・出来事の灰色カードに印を付けない', () => {
+  const ctx = load();
+  const money = vm.runInContext("bkMoney_('A1')", ctx);
+  assert.equal(money, 'TEXT(A1,IF(A1=INT(A1),"$#,##0","$#,##0.0"))');
+  assert.equal(vm.runInContext('bkCacheHelperFormulas_().events', ctx).includes('⚪'), false);
+});
+
+test('入金カードから予約タブへ飛べる', () => {
+  const formulas = collect(requests(load()), 'formulaValue', []);
+  assert.ok(formulas.some((f) => f.includes('HYPERLINK("#gid=44"') && f.includes('予約タブで確認')));
+});
+
+test('グラフの幅: 月の列の合計＋グラフの中の余白（棒が列の真ん中に来る）', () => {
+  const pos = requests(load()).find((r) => r.addChart).addChart.chart.position.overlayPosition;
+  const ctx = load();
+  const colWidth = vm.runInContext('BK_COL_WIDTH', ctx);
+  assert.equal(pos.widthPixels, colWidth * 12 + 51);
 });
 
 test('refreshBookingDashboard: タブがあれば作り直さない（毎朝のトリガーの入口）', () => {

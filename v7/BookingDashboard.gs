@@ -62,12 +62,12 @@ const BK_SERVICES = [
 const BK_MONTHS       = 12;   // 棒の本数（= 月の列 B〜M）
 const BK_MEMO_SLOTS   = 3;    // 1か月の棒の下に出す出来事の数（集計タブの U〜W 列に対応。増やす時は列も足す）
 const BK_FIRST_COL    = 2;    // B列
-const BK_COL_WIDTH    = 100;
+const BK_COL_WIDTH    = 110;
 const BK_CHART_HEIGHT = 220;
 // グラフの中の余白（maximized で左 約22px・右 約29px）の分だけ大きく置くと、棒が月の列の真ん中に来る（実物で確認）
 const BK_LEFT_COL_WIDTH = 24;
 const BK_CHART_OFFSET_X = 2;
-const BK_CHART_WIDTH    = 1251;
+const BK_CHART_WIDTH    = 1371;
 const BK_MAX_ROWS     = 40;   // 白く塗る範囲
 const BK_CACHE_ROWS   = 5000; // 集計タブの行数。予約タブより少ないと配列数式が溢れて売上が出なくなる
 
@@ -109,6 +109,7 @@ function ensureBookingDashboard() {
     dash: dash.getSheetId(),
     cache: cache.getSheetId(),
     memo: memo.getSheetId(),
+    booking: ss.getSheetByName(SHEET_NAMES.BOOKINGS).getSheetId(),
     maxRows: dash.getMaxRows(),
     maxCols: dash.getMaxColumns(),
     cacheRows: cache.getMaxRows(),
@@ -189,7 +190,7 @@ function bookingDashboardOnOpen_() {
 
 /**
  * ダッシュボードと集計タブを作り直すリクエスト一式。出来事メモの中身には触らない。
- * @param {{dash:number, cache:number, memo:number, maxRows:number, maxCols:number,
+ * @param {{dash:number, cache:number, memo:number, booking:number, maxRows:number, maxCols:number,
  *          cacheRows:number, chartIds:number[], ruleCount:number}} ctx
  */
 function bkDashRequests_(ctx) {
@@ -198,7 +199,7 @@ function bkDashRequests_(ctx) {
     .concat(bkCacheRequests_(ctx.cache))
     .concat(bkLayoutRequests_(ctx))
     .concat(bkHeaderRequests_(ctx))
-    .concat(bkCardRequests_(ctx.dash))
+    .concat(bkCardRequests_(ctx.dash, ctx.booking))
     .concat(bkTimelineRequests_(ctx.dash, ctx.memo))
     .concat([bkChartRequest_(ctx)]);
 }
@@ -245,7 +246,7 @@ function bkCacheRequests_(id) {
     fill(1, 1, '=TEXT(I2,"yyyy/M")'),
     fill(10, 10, ' '),   // グラフの横軸用（下記 bkChartRequest_）
     fill(2, 1 + BK_SERVICES.length, '=SUMIFS($L:$L,$N:$N,B$1,$M:$M,TRUE,' + inMonth + ')'),
-    fill(7, 7, '=SUM(B2:F2)'),
+    fill(7, 7, '=ROUND(SUM(B2:F2),1)'),
     fill(8, 8, '=COUNTIFS($M:$M,TRUE,' + inMonth + ')'),
     put(2, 9, ['=EDATE(EOMONTH(TODAY(),0)+1,-' + BK_MONTHS + ')']),
     bkRepeat_(id, 3, 9, last, 9, '=EDATE(I2,1)'),
@@ -256,13 +257,15 @@ function bkCacheRequests_(id) {
     fill(21, 20 + BK_MEMO_SLOTS, '=IFERROR(INDEX(FILTER($S$2:$S,$R$2:$R>=$I2,$R$2:$R<EDATE($I2,1)),COLUMN()-20),"")'),
     fill(24, 24, '=IF($T2-MIN(' + BK_MEMO_SLOTS + ',$Q2)>0,"ほか "&($T2-MIN(' + BK_MEMO_SLOTS + ',$Q2))&" 件","")'),
     fill(25, 25, '=TEXT($I2,IF(OR(ROW()=2,MONTH($I2)=1),"yyyy年M月","M月"))'),
-    fill(26, 26, '=IF($H2=0,"—",TEXT($G2,"$#,##0.0")&"・"&$H2&"台")')
+    fill(26, 26, '=IF($H2=0,"—",' + bkMoney_('$G2') + '&"・"&$H2&"台")')
   ];
-  // カードで使う値（A15〜B17）
+  // カードで使う値（A15〜B19）
   [
     ['これからの予約', '=COUNTIFS($M:$M,TRUE,$K:$K,">"&TODAY(),$K:$K,"<"&EDATE($I13,1))'],
     ['入金の確認 件数', '=SUM(O2:O)'],
-    ['入金の確認 金額', '=SUM(P2:P)']
+    ['入金の確認 金額', '=SUM(P2:P)'],
+    ['直近12か月の売上', '=ROUND(SUM(G2:G13),1)'],
+    ['直近12か月の台数', '=SUM(H2:H13)']
   ].forEach(function(pair, i) { requests.push(put(15 + i, 1, pair)); });
   return requests;
 }
@@ -275,7 +278,7 @@ function bkCacheHelperFormulas_() {
     'IF(REGEXMATCH(' + codes + ',"GLASS"),"ガラス",' +
     'IF(REGEXMATCH(' + codes + '&"|"&予約!AD2:AD,"WASH|ハーフ|5ドル"),"洗車","その他"))))';
   const memo = BK_MEMO_SHEET + '!';
-  const rating = 'IF(REGEXMATCH(' + memo + 'B2:B,"いかなかった"),"🔴",IF(REGEXMATCH(' + memo + 'B2:B,"うまくいった"),"🟢","⚪"))';
+  const rating = 'IF(REGEXMATCH(' + memo + 'B2:B,"いかなかった"),"🔴 ",IF(REGEXMATCH(' + memo + 'B2:B,"うまくいった"),"🟢 ",""))';
   return {
     booking: [
       '=ARRAYFORMULA(IF(予約!H2:H="","",IF(ISNUMBER(予約!H2:H),予約!H2:H,IFERROR(DATEVALUE(予約!H2:H),""))))',
@@ -285,7 +288,7 @@ function bkCacheHelperFormulas_() {
       '=ARRAYFORMULA(IF(K2:K="","",(予約!L2:L="作業完了")*(予約!T2:T<>"清算済み")))',
       '=ARRAYFORMULA(IF(K2:K="","",O2:O*IF(IFERROR(VALUE(予約!U2:U),0)>0,IFERROR(VALUE(予約!U2:U),0),L2:L)))'
     ],
-    events: '=ARRAYFORMULA(IFERROR(SORT(FILTER({' + memo + 'A2:A,' + rating + '&" "&' + memo + 'C2:C},' +
+    events: '=ARRAYFORMULA(IFERROR(SORT(FILTER({' + memo + 'A2:A,' + rating + '&' + memo + 'C2:C},' +
       'ISNUMBER(' + memo + 'A2:A),' + memo + 'C2:C<>"",' + memo + 'E2:E<>"×"),1,TRUE),""))'
   };
 }
@@ -298,7 +301,7 @@ function bkLayoutRequests_(ctx) {
   heights[BK_ROW.cardLabel] = 24; heights[BK_ROW.cardValue] = 40; heights[BK_ROW.cardSub] = 24; heights[7] = 12;
   heights[BK_ROW.section] = 28; heights[BK_ROW.chart] = BK_CHART_HEIGHT;
   heights[BK_ROW.month] = 20; heights[BK_ROW.total] = 20; heights[BK_ROW.stem] = 14;
-  heights[BK_ROW.memo] = 46; heights[BK_ROW.memo + 1] = 46; heights[BK_ROW.memo + 2] = 46; heights[BK_ROW.more] = 18;
+  heights[BK_ROW.memo] = 52; heights[BK_ROW.memo + 1] = 52; heights[BK_ROW.memo + 2] = 52; heights[BK_ROW.more] = 18;
 
   const requests = [
     { updateSheetProperties: {
@@ -342,22 +345,21 @@ function bkHeaderRequests_(ctx) {
       '=HYPERLINK("#gid=' + ctx.memo + '","＋ 出来事を足す（' + BK_MEMO_SHEET + ' タブ）")', { size: 9, color: BK_COLOR.goldDark, align: 'RIGHT' }));
 }
 
-/** カード4枚（各3列）: 今月 / 先月 / 直近12か月 / 入金の確認 */
-function bkCardRequests_(id) {
+/** カード4枚（各3列）: 今月 / 先月 / 直近12か月 / 入金の確認待ち */
+function bkCardRequests_(id, bookingId) {
   const c = "'" + BK_CACHE_SHEET + "'!";
-  const money = '[=0]"$0";"$"#,##0.0';
   const perCar = function(sales, count) {
     return count + '&"台"&IF(' + count + '>0,"・1台あたり "&TEXT(' + sales + '/' + count + ',"$0.0"),"")';
   };
   const cards = [
-    { bg: BK_COLOR.goldTint, label: '="今月（"&' + c + 'Y13&"）"', value: '=' + c + 'G13', pattern: money,
+    { bg: BK_COLOR.goldTint, label: '="今月（"&' + c + 'Y13&"）"', value: '=' + bkMoney_(c + 'G13'),
       sub: '=' + perCar(c + 'G13', c + 'H13') + '&IF(' + c + 'B15>0,"（うちこれからの予約 "&' + c + 'B15&"台）","")' },
-    { bg: BK_COLOR.blueTint, label: '="先月（"&' + c + 'Y12&"）"', value: '=' + c + 'G12', pattern: money,
+    { bg: BK_COLOR.blueTint, label: '="先月（"&' + c + 'Y12&"）"', value: '=' + bkMoney_(c + 'G12'),
       sub: '=' + perCar(c + 'G12', c + 'H12') },
-    { bg: BK_COLOR.tealTint, label: '直近12か月', value: '=SUM(' + c + 'G2:G13)', pattern: money,
-      sub: '=' + perCar('SUM(' + c + 'G2:G13)', 'SUM(' + c + 'H2:H13)') },
+    { bg: BK_COLOR.tealTint, label: '直近12か月', value: '=' + bkMoney_(c + 'B18'),
+      sub: '=' + perCar(c + 'B18', c + 'B19') },
     { bg: BK_COLOR.goodTint, label: '入金の確認待ち', value: '=IF(' + c + 'B16=0,"✅ なし","⚠️ "&' + c + 'B16&"件")',
-      sub: '=IF(' + c + 'B16=0,"作業完了はすべて清算済み",TEXT(' + c + 'B17,"$#,##0.0")&" 分（作業完了・未清算）")' }
+      sub: '=IF(' + c + 'B16=0,"作業完了はすべて清算済み",HYPERLINK("#gid=' + bookingId + '",' + bkMoney_(c + 'B17') + '&" 分を予約タブで確認 →"))' }
   ];
 
   let requests = [];
@@ -365,7 +367,7 @@ function bkCardRequests_(id) {
     const col = BK_FIRST_COL + i * 3, end = col + 2;
     requests = requests
       .concat(bkBlock_(id, BK_ROW.cardLabel, col, BK_ROW.cardLabel, end, card.label, { size: 10, bold: true, color: BK_COLOR.sub, bg: card.bg, indent: 8 }))
-      .concat(bkBlock_(id, BK_ROW.cardValue, col, BK_ROW.cardValue, end, card.value, { size: 24, bold: true, bg: card.bg, pattern: card.pattern, indent: 8 }))
+      .concat(bkBlock_(id, BK_ROW.cardValue, col, BK_ROW.cardValue, end, card.value, { size: 24, bold: true, bg: card.bg, indent: 8 }))
       .concat(bkBlock_(id, BK_ROW.cardSub, col, BK_ROW.cardSub, end, card.sub, { size: 10, color: BK_COLOR.sub, bg: card.bg, indent: 8 }));
     if (i < cards.length - 1) {
       requests.push({ updateBorders: { range: bkGrid_(id, BK_ROW.cardLabel, end, BK_ROW.cardSub, end),
@@ -400,7 +402,7 @@ function bkTimelineRequests_(id, memoId) {
         fields: 'userEnteredFormat.textFormat' } }
   ];
   for (let k = 0; k < BK_MEMO_SLOTS; k++) {
-    requests.push(row(BK_ROW.memo + k, pick(BK_CACHE_COL.memo.charAt(k)), { size: 9, wrap: true, valign: 'TOP', indent: 3 }));
+    requests.push(row(BK_ROW.memo + k, pick(BK_CACHE_COL.memo.charAt(k)), { size: 10, wrap: true, valign: 'TOP', indent: 3 }));
   }
 
   // カードの白いすき間（縦・横）
@@ -409,10 +411,13 @@ function bkTimelineRequests_(id, memoId) {
     innerHorizontal: { style: 'SOLID_THICK', colorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } } } });
 
   // 評価でカードに色を付ける（色＋絵文字で、色だけに頼らない）
-  [['🟢', BK_COLOR.goodTint], ['🔴', BK_COLOR.badTint], ['⚪', BK_COLOR.noneTint]].forEach(function(rule) {
+  [['"^🟢"', BK_COLOR.goodTint], ['"^🔴"', BK_COLOR.badTint]].forEach(function(rule) {
     requests.push(bkFormulaRule_(id, BK_ROW.memo, BK_FIRST_COL, BK_ROW.memo + BK_MEMO_SLOTS - 1, lastCol,
-      '=REGEXMATCH(' + firstMemo + ',"^' + rule[0] + '")', rule[1]));
+      '=REGEXMATCH(' + firstMemo + ',' + rule[0] + ')', rule[1]));
   });
+  // 印のない出来事は灰色
+  requests.push(bkFormulaRule_(id, BK_ROW.memo, BK_FIRST_COL, BK_ROW.memo + BK_MEMO_SLOTS - 1, lastCol,
+    '=AND(' + firstMemo + '<>"",NOT(REGEXMATCH(' + firstMemo + ',"^(🟢|🔴)")))', BK_COLOR.noneTint));
   return requests;
 }
 
@@ -513,6 +518,11 @@ function bkBlock_(id, r1, c1, r2, c2, value, fmt) {
 function bkRepeat_(id, r1, c1, r2, c2, value, fmt) {
   return { repeatCell: { range: bkGrid_(id, r1, c1, r2, c2), cell: bkCell_(value, fmt),
     fields: fmt ? 'userEnteredValue,userEnteredFormat' : 'userEnteredValue' } };
+}
+
+/** $126 / $191.5（整数の時は .0 を付けない）。ref はセル参照 */
+function bkMoney_(ref) {
+  return 'TEXT(' + ref + ',IF(' + ref + '=INT(' + ref + '),"$#,##0","$#,##0.0"))';
 }
 
 function bkCell_(value, fmt) {
