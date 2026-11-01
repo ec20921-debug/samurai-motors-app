@@ -430,6 +430,7 @@ function bkChartRequest_(ctx) {
     return {
       series: { sourceRange: { sources: [bkGrid_(ctx.cache, 1, 2 + i, 1 + BK_MONTHS, 2 + i)] } },
       targetAxis: 'LEFT_AXIS',
+      color: bkRgb_(s.color),   // GAS の高度なサービスは系列の colorStyle を無視するので color も送る（本番で確認）
       colorStyle: { rgbColor: bkRgb_(s.color) }
     };
   });

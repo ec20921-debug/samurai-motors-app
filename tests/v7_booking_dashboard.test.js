@@ -48,6 +48,7 @@ test('グラフ: 隠しタブが集計元でも描く・サービス別の積み
   assert.equal(chart.spec.basicChart.series.length, 5);
   chart.spec.basicChart.series.forEach((s) => {
     assert.equal(s.series.sourceRange.sources[0].sheetId, IDS.cache);
+    assert.deepEqual(s.color, s.colorStyle.rgbColor); // GAS の高度なサービスは color しか効かない
   });
 });
 
