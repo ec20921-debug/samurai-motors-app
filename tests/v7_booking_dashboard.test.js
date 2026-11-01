@@ -48,7 +48,7 @@ test('グラフ: 隠しタブが集計元でも描く・サービス別の積み
   assert.equal(chart.spec.basicChart.series.length, 5);
   chart.spec.basicChart.series.forEach((s) => {
     assert.equal(s.series.sourceRange.sources[0].sheetId, IDS.cache);
-    assert.deepEqual(s.color, s.colorStyle.rgbColor); // GAS の高度なサービスは color しか効かない
+    assert.ok(s.colorStyle.rgbColor, '棒の色を指定する');
   });
 });
 
@@ -131,11 +131,17 @@ function fakeSpreadsheet(options) {
   };
 }
 
-function loadWith(ss, calls) {
+function loadWith(ss, calls, status) {
   return load({
     SHEET_NAMES: { BOOKINGS: '予約' },
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush: () => {} },
-    Sheets: { Spreadsheets: { batchUpdate: (body, id) => { calls.push({ body, id }); } } }
+    ScriptApp: { getOAuthToken: () => 'TOKEN' },
+    UrlFetchApp: {
+      fetch: (url, options) => {
+        calls.push({ id: url.match(/spreadsheets\/(.+):batchUpdate/)[1], body: JSON.parse(options.payload) });
+        return { getResponseCode: () => status || 200, getContentText: () => 'ng' };
+      }
+    }
   });
 }
 
@@ -159,6 +165,12 @@ test('ensureBookingDashboard: 前回タブだけ作って失敗していても�
   const calls = [];
   vm.runInContext('ensureBookingDashboard()', loadWith(fakeSpreadsheet({ memoHeader: '' }), calls));
   assert.ok(collect(JSON.parse(JSON.stringify(calls[0].body)), 'sheetId', []).includes(33));
+});
+
+test('ensureBookingDashboard: API が失敗したら止まって知らせる', () => {
+  const calls = [];
+  const ctx = loadWith(fakeSpreadsheet(), calls, 403);
+  assert.throws(() => vm.runInContext('ensureBookingDashboard()', ctx), /作れませんでした/);
 });
 
 test('ensureBookingDashboard: 予約タブの列がずれていたら何も書かずに止まる', () => {

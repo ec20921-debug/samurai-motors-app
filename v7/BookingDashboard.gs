@@ -116,11 +116,29 @@ function ensureBookingDashboard() {
     chartIds: dash.getCharts().map(function(c) { return c.getChartId(); }).filter(Boolean),
     ruleCount: dash.getConditionalFormatRules().length
   });
-  Sheets.Spreadsheets.batchUpdate({ requests: memoNeedsHeader ? requests.concat(bkMemoRequests_(memo.getSheetId())) : requests }, ss.getId());
+  applyBkRequests_(ss.getId(), memoNeedsHeader ? requests.concat(bkMemoRequests_(memo.getSheetId())) : requests);
 
   ss.setActiveSheet(dash);
   SpreadsheetApp.flush();
   Logger.log('✅ 経営ダッシュボード生成完了');
+}
+
+/**
+ * Sheets API の batchUpdate を直接呼ぶ。
+ * 高度なサービス（Sheets.Spreadsheets.batchUpdate）だと棒の色の指定が落ちる（2026-11-01 本番で確認）。
+ * manifest の Sheets は、この API を使えるようにしておくために残している。
+ */
+function applyBkRequests_(spreadsheetId, requests) {
+  const res = UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    payload: JSON.stringify({ requests: requests }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('経営ダッシュボードを作れませんでした（今のタブは変わっていません）: ' + res.getContentText().substring(0, 300));
+  }
 }
 
 /** 予約タブの見出しが数式の前提と違えば、何も書かずに止める */
@@ -430,7 +448,6 @@ function bkChartRequest_(ctx) {
     return {
       series: { sourceRange: { sources: [bkGrid_(ctx.cache, 1, 2 + i, 1 + BK_MONTHS, 2 + i)] } },
       targetAxis: 'LEFT_AXIS',
-      color: bkRgb_(s.color),   // GAS の高度なサービスは系列の colorStyle を無視するので color も送る（本番で確認）
       colorStyle: { rgbColor: bkRgb_(s.color) }
     };
   });
