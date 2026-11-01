@@ -441,14 +441,15 @@ function apiJobStart(body, opts) {
     }
     if (bookingId && !startIsShopCust && typeof notifySourceGroupJob_ === 'function') {
       startSrcSent = notifySourceGroupJob_('start', {
-        bookingId: bookingId, carModel: body.carModel, blobs: photoResult.blobs, opts: opts
+        bookingId: bookingId, carModel: body.carModel, blobs: photoResult.blobs, opts: opts, services: jobServiceCsv_(body)
       });
     }
     // 予約なしの作業で始める前に選んだレジデンス等（Picasso のスタッフの車など・2026-10-31）: その提携先グループへ開始と Before 写真。金額は載せない
     // 値は apiJobStartV2 が確かめたもの（opts.fieldResidence）だけ
     if (!bookingId && opts.fieldResidence && typeof notifySourceGroupJob_ === 'function') {
       startSrcSent = notifySourceGroupJob_('start', {
-        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, blobs: photoResult.blobs, opts: opts
+        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, blobs: photoResult.blobs, opts: opts,
+        services: jobServiceCsv_(body)   // 施工内容（2026-11-01 Daisuke「なにを施工したかは通知したほうがいい」）
       });
     }
     // 現場アプリで作業開始の前に選んだ店（店の車など・2026-10-25）: その店のグループへ開始と Before 写真を送る
@@ -738,13 +739,14 @@ function apiJobEnd(body, opts) {
     var endSrcSent = '';
     if (bookingId && !shopRef && typeof notifySourceGroupJob_ === 'function') {
       endSrcSent = notifySourceGroupJob_('end', {
-        bookingId: bookingId, carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts
+        bookingId: bookingId, carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts, services: jobServiceCsv_(body)
       });
     }
     // 予約なしの作業で始める前に選んだレジデンス等（2026-10-31）: 完了と After 写真。金額は載せない（apiJobEndV2 が作業開始の記録から確かめた値）
     if (!bookingId && opts.fieldResidence && typeof notifySourceGroupJob_ === 'function') {
       endSrcSent = notifySourceGroupJob_('end', {
-        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts
+        rec: sourceGroupWalkinRec_(opts.fieldResidence, body.room), carModel: body.carModel, duration: duration, blobs: photoResult.blobs, opts: opts,
+        services: jobServiceCsv_(body)
       });
     }
     var payTypeShop = String(body.paymentType || (body.v2 && body.v2.payment_type) || '');

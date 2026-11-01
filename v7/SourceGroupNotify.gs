@@ -216,6 +216,9 @@ function notifySourceGroupJob_(phase, p) {
     ];
     if (!rec.noUnit) lines.push('🚪 Unit: ' + (rec.unitNo || '-'));   // スタッフの車は部屋番号の行を出さない
     lines.push('🚗 ' + (p.carModel || rec.carModel || '-'));
+    // 施工内容（2026-11-01 Daisuke「なにを施工したかは通知したほうがいい」）。開始=予定のメニュー、完了=やったメニュー
+    var svc = sourceGroupServicesEn_(p.services);
+    if (svc) lines.push('🧽 ' + svc);
     if (phase !== 'start' && Number(p.duration) > 0) lines.push('⏱ ' + p.duration + ' min');
     if (blobs.length > 0) lines.push(phase === 'start' ? '📷 Before photos ↓' : '📷 After photos ↓');
 
@@ -278,6 +281,18 @@ function sourceGroupWalkinRec_(res, room) {
   var unit = staff ? '' : String(room || '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]+/g, ' ').trim();
   return { shopId: res.id, label: res.name, who: res.name + (staff ? ' staff' : (res.who === 'resident' ? ' resident' : '')),
            unitNo: Array.from(unit).slice(0, 20).join(''), noUnit: staff };
+}
+
+/**
+ * 施工内容を英語で（グループ向け）。現場アプリが送ったメニューの CSV（JobManager.gs jobServiceCsv_）→ 'BODY' / 'WASH + HEADLIGHT'
+ * 名前は管理グループの通知（jobServiceLine_）と同じメニュー名。知らない値はそのまま出す
+ */
+var SOURCE_GROUP_SVC_EN_ = { WASH: 'WASH', GLASS_3: 'GLASS 3', GLASS_ALL: 'GLASS ALL', HEADLIGHT: 'HEADLIGHT', HEADLIGHT_MAGIC: 'HEADLIGHT MAGIC', BODY: 'BODY' };
+function sourceGroupServicesEn_(csv) {
+  var seen = {};
+  return String(csv || '').split(',').map(function(s) { return s.trim(); })
+    .filter(function(s) { if (!s || seen[s]) return false; seen[s] = true; return true; })
+    .map(function(s) { return SOURCE_GROUP_SVC_EN_[s] || s; }).join(' + ');
 }
 
 /** 流入元の提携先グループのあいさつ文（英語のみ・連携直後に1回） */

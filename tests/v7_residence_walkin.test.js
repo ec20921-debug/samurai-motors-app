@@ -124,3 +124,15 @@ test('住人／スタッフ（2026-10-31）: スタッフは部屋番号の行�
   assert.equal(sent[0].text, '▶️ Job started — Picasso City Garden staff\n🚗 Lexus RX');
   assert.equal(sent[1].text, '✅ Job finished — Picasso City Garden resident\n🚪 Unit: 0501\n🚗 Prius');
 });
+
+test('施工内容（2026-11-01）: 通知に 🧽 の行（英語のメニュー名・重複なし）。無ければ行を出さない', () => {
+  const { ctx, sent } = load();
+  const staff = ctx.sourceGroupWalkinRec_(ctx.fieldResidenceById_(PICASSO, 'staff'), '');
+  ctx.notifySourceGroupJob_('start', { rec: staff, carModel: 'STAREX', blobs: [1, 2, 3, 4], opts: {}, services: 'BODY' });
+  ctx.notifySourceGroupJob_('end', { rec: staff, carModel: 'STAREX', duration: 90, blobs: [1], opts: {}, services: 'WASH,HEADLIGHT_MAGIC,WASH' });
+  assert.equal(sent[0].text, '▶️ Job started — Picasso City Garden staff\n🚗 STAREX\n🧽 BODY\n📷 Before photos ↓');
+  assert.equal(sent[1].text, '✅ Job finished — Picasso City Garden staff\n🚗 STAREX\n🧽 WASH + HEADLIGHT MAGIC\n⏱ 90 min\n📷 After photos ↓');
+  assert.equal(ctx.sourceGroupServicesEn_(''), '');
+  assert.equal(ctx.sourceGroupServicesEn_(undefined), '');
+  assert.equal(ctx.sourceGroupServicesEn_('GLASS_3, BODY'), 'GLASS 3 + BODY');
+});
