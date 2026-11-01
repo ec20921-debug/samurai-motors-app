@@ -25,7 +25,7 @@
  *   3. `setupBookingDashboardDailyTrigger()` を1回実行 → JST 7:30 自動更新
  *   4. スプレッドシートを開き直す → 📈 経営ダッシュボード メニューが出現
  *
- * 生成は Sheets API の batchUpdate 1回にまとめる（途中で失敗しても今のタブは変わらない）。
+ * 生成は Sheets API の batchUpdate 2回（本体 → グラフ）。本体が途中で失敗しても今のタブは変わらない。
  * 列記号で予約タブを見るので、再生成の前に見出しを確かめ、ずれていたら何も書かずに止まる。
  */
 
@@ -105,7 +105,7 @@ function ensureBookingDashboard() {
   const memoNeedsHeader = memo.getRange('A1').isBlank();
   SpreadsheetApp.flush();   // 作ったタブを確定させてから API を呼ぶ
 
-  const requests = bkDashRequests_({
+  const ctx = {
     dash: dash.getSheetId(),
     cache: cache.getSheetId(),
     memo: memo.getSheetId(),
@@ -115,30 +115,15 @@ function ensureBookingDashboard() {
     cacheRows: cache.getMaxRows(),
     chartIds: dash.getCharts().map(function(c) { return c.getChartId(); }).filter(Boolean),
     ruleCount: dash.getConditionalFormatRules().length
-  });
-  applyBkRequests_(ss.getId(), memoNeedsHeader ? requests.concat(bkMemoRequests_(memo.getSheetId())) : requests);
+  };
+  const requests = bkDashRequests_(ctx);
+  Sheets.Spreadsheets.batchUpdate({ requests: memoNeedsHeader ? requests.concat(bkMemoRequests_(memo.getSheetId())) : requests }, ss.getId());
+  // グラフは集計の数式が入ったあとに足す（同じ batch だと棒の色の指定が消える。2026-11-01 本番で確認）
+  Sheets.Spreadsheets.batchUpdate({ requests: [bkChartRequest_(ctx)] }, ss.getId());
 
   ss.setActiveSheet(dash);
   SpreadsheetApp.flush();
   Logger.log('✅ 経営ダッシュボード生成完了');
-}
-
-/**
- * Sheets API の batchUpdate を直接呼ぶ。
- * 高度なサービス（Sheets.Spreadsheets.batchUpdate）だと棒の色の指定が落ちる（2026-11-01 本番で確認）。
- * manifest の Sheets は、この API を使えるようにしておくために残している。
- */
-function applyBkRequests_(spreadsheetId, requests) {
-  const res = UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + ':batchUpdate', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-    payload: JSON.stringify({ requests: requests }),
-    muteHttpExceptions: true
-  });
-  if (res.getResponseCode() !== 200) {
-    throw new Error('経営ダッシュボードを作れませんでした（今のタブは変わっていません）: ' + res.getContentText().substring(0, 300));
-  }
 }
 
 /** 予約タブの見出しが数式の前提と違えば、何も書かずに止める */
@@ -207,7 +192,7 @@ function bookingDashboardOnOpen_() {
 // =====================================================
 
 /**
- * ダッシュボードと集計タブを作り直すリクエスト一式。出来事メモの中身には触らない。
+ * ダッシュボードと集計タブを作り直すリクエスト一式（グラフは bkChartRequest_ で別に足す）。出来事メモの中身には触らない。
  * @param {{dash:number, cache:number, memo:number, booking:number, maxRows:number, maxCols:number,
  *          cacheRows:number, chartIds:number[], ruleCount:number}} ctx
  */
@@ -218,8 +203,7 @@ function bkDashRequests_(ctx) {
     .concat(bkLayoutRequests_(ctx))
     .concat(bkHeaderRequests_(ctx))
     .concat(bkCardRequests_(ctx.dash, ctx.booking))
-    .concat(bkTimelineRequests_(ctx.dash, ctx.memo))
-    .concat([bkChartRequest_(ctx)]);
+    .concat(bkTimelineRequests_(ctx.dash, ctx.memo));
 }
 
 function bkResetRequests_(ctx) {

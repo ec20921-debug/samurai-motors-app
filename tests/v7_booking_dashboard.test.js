@@ -26,7 +26,7 @@ function load(extra) {
 
 function requests(ctx) {
   ctx.__ids = IDS;
-  return JSON.parse(JSON.stringify(vm.runInContext('bkDashRequests_(__ids)', ctx)));
+  return JSON.parse(JSON.stringify(vm.runInContext('bkDashRequests_(__ids).concat([bkChartRequest_(__ids)])', ctx)));
 }
 
 function collect(node, key, out) {
@@ -131,25 +131,22 @@ function fakeSpreadsheet(options) {
   };
 }
 
-function loadWith(ss, calls, status) {
+function loadWith(ss, calls) {
   return load({
     SHEET_NAMES: { BOOKINGS: '予約' },
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush: () => {} },
-    ScriptApp: { getOAuthToken: () => 'TOKEN' },
-    UrlFetchApp: {
-      fetch: (url, options) => {
-        calls.push({ id: url.match(/spreadsheets\/(.+):batchUpdate/)[1], body: JSON.parse(options.payload) });
-        return { getResponseCode: () => status || 200, getContentText: () => 'ng' };
-      }
-    }
+    Sheets: { Spreadsheets: { batchUpdate: (body, id) => { calls.push({ body, id }); } } }
   });
 }
 
-test('ensureBookingDashboard: batchUpdate は1回・出来事メモに見出しがあれば触らない', () => {
+test('ensureBookingDashboard: 本体のあとにグラフを別で足す（同じ batch だと棒の色が消える）・出来事メモに見出しがあれば触らない', () => {
   const calls = [];
   vm.runInContext('ensureBookingDashboard()', loadWith(fakeSpreadsheet(), calls));
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].id, 'SS');
+  const has = (call) => JSON.parse(JSON.stringify(call.body)).requests.some((r) => r.addChart);
+  assert.equal(has(calls[0]), false);
+  assert.equal(has(calls[1]), true);
   assert.deepEqual(collect(JSON.parse(JSON.stringify(calls[0].body)), 'sheetId', []).filter((id) => id === 33), []);
 });
 
@@ -165,12 +162,6 @@ test('ensureBookingDashboard: 前回タブだけ作って失敗していても�
   const calls = [];
   vm.runInContext('ensureBookingDashboard()', loadWith(fakeSpreadsheet({ memoHeader: '' }), calls));
   assert.ok(collect(JSON.parse(JSON.stringify(calls[0].body)), 'sheetId', []).includes(33));
-});
-
-test('ensureBookingDashboard: API が失敗したら止まって知らせる', () => {
-  const calls = [];
-  const ctx = loadWith(fakeSpreadsheet(), calls, 403);
-  assert.throws(() => vm.runInContext('ensureBookingDashboard()', ctx), /作れませんでした/);
 });
 
 test('ensureBookingDashboard: 予約タブの列がずれていたら何も書かずに止まる', () => {
