@@ -1,41 +1,90 @@
 /**
- * BookingDashboard.gs — 経営ダッシュボード（Phase 5 顧客側）
+ * BookingDashboard.gs — 経営ダッシュボード（v7 Database のタブを生成）
  *
  * 【責務】
- *   v7 の『予約』『顧客』シートを集計し、経営者向けの
- *   数字による経営管理ダッシュボードをスプレッドシート上に生成する。
+ *   『予約』を集計し、経営者が1画面で見るタブを作る（2026-11-01 Daisuke「引き算で必要な指標のみ」
+ *   「背景黒は見にくい」「棒にその時の出来事のコメントを」で作り直し）。
  *
- * 【特徴】
- *   - ダーク×ゴールドの統一テーマ
- *   - 期間セレクタ（今月/先月/今年/昨年/過去12ヶ月）
- *   - 円グラフ（プラン別売上/決済状態/新規vsリピート）
- *   - 月次売上トレンド（折れ線）＋当月日別（棒グラフ）
- *   - KPI カード6枚、ランキング表、顧客LTV トップ10
+ * 【見せるもの】
+ *   - カード4枚: 今月 / 先月 / 直近12か月の売上・台数 / 入金の確認
+ *   - 月別売上の棒グラフ（サービス別の積み上げ・12か月）
+ *   - 各月の棒の下に、『出来事メモ』タブの出来事（1行足すとここに出る）
+ *
+ * 【集計の基準】
+ *   売上 = 予約!料金(K)・進行状態(L)≠キャンセル（日報・経営コックピットと同じ）。
+ *   入金の確認 = 作業完了なのに清算済みでないもの（経営コックピットの未回収と同じ）。
+ *   サービスは1件を1つに寄せる（磨き → ヘッドライト → ガラス → 洗車 の順に判定）。
+ *
+ * 【グラフが空白にならないように】
+ *   集計元の『_経営キャッシュ』は隠しタブ。グラフの既定（隠れた行を飛ばす）だと棒が描かれない。
+ *   hiddenDimensionStrategy: SHOW_ALL を必ず指定する（2026-11-01 原因を写しで確認）。
  *
  * 【使い方】
- *   1. `ensureBookingDashboard()` を1回実行 → 『経営ダッシュボード』シート生成
+ *   1. `ensureBookingDashboard()` を1回実行 → タブ生成（出来事メモの中身は消さない）
  *   2. `setupBookingDashboardMenu()` を1回実行 → onOpen メニュー登録
  *   3. `setupBookingDashboardDailyTrigger()` を1回実行 → JST 7:30 自動更新
  *   4. スプレッドシートを開き直す → 📈 経営ダッシュボード メニューが出現
+ *
+ * 生成は Sheets API の batchUpdate 1回にまとめる（途中で失敗しても今のタブは変わらない）。
+ * 列記号で予約タブを見るので、再生成の前に見出しを確かめ、ずれていたら何も書かずに止まる。
  */
 
 const BK_DASH_SHEET  = '経営ダッシュボード';
 const BK_CACHE_SHEET = '_経営キャッシュ';
+const BK_MEMO_SHEET  = '出来事メモ';
 
 const BK_COLOR = {
-  bgDark:   '#0f0f0f',
-  bgCard:   '#1a1a1a',
-  bgSub:    '#2a2a2a',
+  white:    '#ffffff',
   gold:     '#c9a84c',
-  goldSoft: '#e8d5a3',
-  text:     '#e8e8e8',
-  textDim:  '#8a8a8a',
-  green:    '#43a047',
-  red:      '#c62828',
-  blue:     '#1e88e5',
-  purple:   '#8e24aa',
-  orange:   '#f57c00'
+  goldDark: '#8a6d2b',
+  ink:      '#1c1b17',
+  sub:      '#5b584f',
+  muted:    '#6b685f',
+  line:     '#e1e0d9',
+  goldTint: '#fbf5e3',
+  blueTint: '#eaf2fc',
+  tealTint: '#e6f6f0',
+  goodTint: '#e6f4e6',
+  badTint:  '#fbe6e6',
+  noneTint: '#f1f1ee'
 };
+
+// 積み上げの順 = 色の順（色覚の検証を通した並び。入れ替えない）。
+// 緑と赤は出来事カードの「うまくいった／いかなかった」専用なので、棒には使わない。その他は意図して灰色
+const BK_SERVICES = [
+  { name: '洗車',         color: '#2a78d6' },
+  { name: '磨き',         color: '#eda100' },
+  { name: 'ガラス',       color: '#6250d6' },
+  { name: 'ヘッドライト', color: '#e87ba4' },
+  { name: 'その他',       color: '#5b584f' }
+];
+
+const BK_MONTHS       = 12;   // 棒の本数（= 月の列 B〜M）
+const BK_MEMO_SLOTS   = 3;    // 1か月の棒の下に出す出来事の数（集計タブの U〜W 列に対応。増やす時は列も足す）
+const BK_FIRST_COL    = 2;    // B列
+const BK_COL_WIDTH    = 100;
+const BK_CHART_HEIGHT = 220;
+// グラフの中の余白（maximized で左 約22px・右 約29px）の分だけ大きく置くと、棒が月の列の真ん中に来る（実物で確認）
+const BK_LEFT_COL_WIDTH = 24;
+const BK_CHART_OFFSET_X = 2;
+const BK_CHART_WIDTH    = 1251;
+const BK_MAX_ROWS     = 40;   // 白く塗る範囲
+const BK_CACHE_ROWS   = 5000; // 集計タブの行数。予約タブより少ないと配列数式が溢れて売上が出なくなる
+
+// ダッシュボードの行（1始まり）
+const BK_ROW = { title: 1, rule: 2, cardLabel: 4, cardValue: 5, cardSub: 6, section: 8, chart: 9,
+                 month: 10, total: 11, stem: 12, memo: 13, more: 16 };
+
+// 『_経営キャッシュ』の列: A月 B〜F売上 G合計 H台数 I月初 J グラフの横軸（空白）/ K〜P 予約1行ごとの値 / Q〜T 出来事 / U〜Z 棒の下の文字
+const BK_CACHE_COL = { memo: 'UVW' };
+
+// 数式が列記号で見ている予約タブの見出し（列がずれたまま数式を作り直すと、別の列を黙って集計してしまう）
+const BK_BOOKING_COLS = { F: 'プラン', G: 'オプション', H: '予約日', K: '料金(USD)', L: '進行状態',
+                          T: '決済状態', U: '請求額(USD)', AD: 'キャンペーン名' };
+
+const BK_MEMO_HEADERS = ['日付', '評価', 'ひとこと（棒の下に出す・16字くらい）',
+                         'くわしく（何をして、どうなったか）', '棒の下に出さない時は ×', '出典・メモ'];
+const BK_MEMO_RATINGS = ['🟢 うまくいった', '🔴 うまくいかなかった', '⚪ 出来事'];
 
 // =====================================================
 //  メインエントリ
@@ -47,61 +96,52 @@ const BK_COLOR = {
 function ensureBookingDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error('この GAS はスプレッドシート紐付きで実行してください（v7 は container-bound）');
+  assertBkBookingColumns_(ss);
 
-  let sh = ss.getSheetByName(BK_DASH_SHEET);
-  if (sh) {
-    // 既存チャート削除
-    sh.getCharts().forEach(function(c) { sh.removeChart(c); });
-    sh.clear();
-    sh.clearConditionalFormatRules();
-  } else {
-    sh = ss.insertSheet(BK_DASH_SHEET);
-  }
+  const dash  = ss.getSheetByName(BK_DASH_SHEET)  || ss.insertSheet(BK_DASH_SHEET, 0);
+  const cache = ss.getSheetByName(BK_CACHE_SHEET) || ss.insertSheet(BK_CACHE_SHEET);
+  const memo  = ss.getSheetByName(BK_MEMO_SHEET)  || ss.insertSheet(BK_MEMO_SHEET, 1);
+  // タブを作った直後に失敗しても、次の実行で見出しが入るように、見出しの有無で判定する
+  const memoNeedsHeader = memo.getRange('A1').isBlank();
+  SpreadsheetApp.flush();   // 作ったタブを確定させてから API を呼ぶ
 
-  // キャッシュシート
-  ensureBkCacheSheet_(ss);
+  const requests = bkDashRequests_({
+    dash: dash.getSheetId(),
+    cache: cache.getSheetId(),
+    memo: memo.getSheetId(),
+    maxRows: dash.getMaxRows(),
+    maxCols: dash.getMaxColumns(),
+    cacheRows: cache.getMaxRows(),
+    chartIds: dash.getCharts().map(function(c) { return c.getChartId(); }).filter(Boolean),
+    ruleCount: dash.getConditionalFormatRules().length
+  });
+  Sheets.Spreadsheets.batchUpdate({ requests: memoNeedsHeader ? requests.concat(bkMemoRequests_(memo.getSheetId())) : requests }, ss.getId());
 
-  // 基本スタイル
-  sh.setHiddenGridlines(true);
-  sh.setTabColor(BK_COLOR.gold);
-  for (let c = 1; c <= 14; c++) sh.setColumnWidth(c, 110);
-  sh.setColumnWidth(1, 30);  // 左マージン
-  sh.setColumnWidth(14, 30); // 右マージン
-  sh.getRange(1, 1, 200, 14).setBackground(BK_COLOR.bgDark).setFontColor(BK_COLOR.text);
-
-  // セクション描画
-  let row = 1;
-  row = buildBkBanner_(sh, row);
-  row = buildBkPeriodSelector_(sh, row);
-  row = buildBkKpiCards_(sh, row);
-  row = buildBkMonthlyTrend_(sh, row, ss);
-  row = buildBkPieCharts_(sh, row, ss);
-  row = buildBkDailyBar_(sh, row, ss);
-  row = buildBkRankings_(sh, row, ss);
-  row = buildBkLtvTop10_(sh, row, ss);
-  row = buildBkMenuV2Analytics_(sh, row, ss);   // Menu v2 (2026-05-06): キャンペーン/GLASS/ファネル
-  row = buildBkAlerts_(sh, row);
-
-  ss.setActiveSheet(sh);
-  sh.setActiveRange(sh.getRange('B2'));
+  ss.setActiveSheet(dash);
   SpreadsheetApp.flush();
   Logger.log('✅ 経営ダッシュボード生成完了');
 }
 
+/** 予約タブの見出しが数式の前提と違えば、何も書かずに止める */
+function assertBkBookingColumns_(ss) {
+  const sh = ss.getSheetByName(SHEET_NAMES.BOOKINGS);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  Object.keys(BK_BOOKING_COLS).forEach(function(letters) {
+    const col = letters.split('').reduce(function(n, ch) { return n * 26 + ch.charCodeAt(0) - 64; }, 0);
+    if (String(headers[col - 1]).trim() !== BK_BOOKING_COLS[letters]) {
+      throw new Error('予約タブの ' + letters + ' 列が「' + BK_BOOKING_COLS[letters] + '」ではありません。BookingDashboard.gs の数式を直してから再生成してください');
+    }
+  });
+}
+
 /**
- * 手動更新（タイムスタンプ + キャッシュ再計算）
+ * 手動更新（数式は開くたびに計算される。ここでは計算を確定させるだけ）
  */
 function refreshBookingDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(BK_DASH_SHEET);
-  if (!sh) { ensureBookingDashboard(); return; }
-
-  ensureBkCacheSheet_(ss); // キャッシュ更新
-  const tz = ss.getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
-  const ts = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
-  sh.getRange('B2').setValue('🔄 最終更新: ' + ts);
+  if (!ss.getSheetByName(BK_DASH_SHEET)) { ensureBookingDashboard(); return; }
   SpreadsheetApp.flush();
-  Logger.log('🔄 経営ダッシュボード更新: ' + ts);
+  Logger.log('🔄 経営ダッシュボード更新');
 }
 
 /**
@@ -144,553 +184,381 @@ function bookingDashboardOnOpen_() {
 }
 
 // =====================================================
-//  セクション: バナー
+//  生成する内容（Sheets API のリクエスト）
 // =====================================================
-function buildBkBanner_(sh, row) {
-  const r = sh.getRange(row, 2, 1, 12).merge()
-    .setValue('🏯 SAMURAI MOTORS — 経営ダッシュボード')
-    .setBackground(BK_COLOR.bgCard).setFontColor(BK_COLOR.gold)
-    .setFontSize(20).setFontWeight('bold')
-    .setHorizontalAlignment('center').setVerticalAlignment('middle');
-  sh.setRowHeight(row, 50);
 
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Phnom_Penh';
-  sh.getRange(row + 1, 2, 1, 12).merge()
-    .setValue('🔄 最終更新: ' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'))
-    .setBackground(BK_COLOR.bgDark).setFontColor(BK_COLOR.textDim)
-    .setFontSize(10).setHorizontalAlignment('center');
-  return row + 3;
-}
-
-// =====================================================
-//  セクション: 期間セレクタ
-// =====================================================
-function buildBkPeriodSelector_(sh, row) {
-  sh.getRange(row, 2).setValue('📅 対象期間').setFontWeight('bold').setFontColor(BK_COLOR.gold);
-
-  const sel = sh.getRange(row, 3);
-  sel.setValue('今月')
-    .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.goldSoft)
-    .setFontWeight('bold').setFontSize(12).setHorizontalAlignment('center');
-  const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['今月', '先月', '今年', '昨年', '過去12ヶ月'], true)
-    .setAllowInvalid(false).build();
-  sel.setDataValidation(rule);
-
-  // 期間開始・終了セル（式で計算）
-  // D=開始, E=終了（両方 yyyy-MM-dd 形式）
-  sh.getRange(row, 4).setValue('開始').setFontColor(BK_COLOR.textDim).setFontSize(10);
-  sh.getRange(row, 5).setValue('終了').setFontColor(BK_COLOR.textDim).setFontSize(10);
-
-  sh.getRange(row + 1, 4).setFormula(
-    '=IFS(' +
-      'C' + row + '="今月", EOMONTH(TODAY(),-1)+1, ' +
-      'C' + row + '="先月", EOMONTH(TODAY(),-2)+1, ' +
-      'C' + row + '="今年", DATE(YEAR(TODAY()),1,1), ' +
-      'C' + row + '="昨年", DATE(YEAR(TODAY())-1,1,1), ' +
-      'C' + row + '="過去12ヶ月", EDATE(TODAY(),-12)' +
-    ')'
-  ).setNumberFormat('yyyy-MM-dd').setFontColor(BK_COLOR.text);
-  sh.getRange(row + 1, 5).setFormula(
-    '=IFS(' +
-      'C' + row + '="今月", EOMONTH(TODAY(),0), ' +
-      'C' + row + '="先月", EOMONTH(TODAY(),-1), ' +
-      'C' + row + '="今年", DATE(YEAR(TODAY()),12,31), ' +
-      'C' + row + '="昨年", DATE(YEAR(TODAY())-1,12,31), ' +
-      'C' + row + '="過去12ヶ月", TODAY()' +
-    ')'
-  ).setNumberFormat('yyyy-MM-dd').setFontColor(BK_COLOR.text);
-
-  // 期間ラベル
-  sh.getRange(row + 1, 2, 1, 2).merge()
-    .setFormula('=TEXT(D' + (row + 1) + ',"yyyy/M/d")&" 〜 "&TEXT(E' + (row + 1) + ',"yyyy/M/d")')
-    .setFontColor(BK_COLOR.goldSoft).setFontWeight('bold').setHorizontalAlignment('center');
-
-  return row + 3;
-}
-
-// =====================================================
-//  セクション: KPI カード6枚
-// =====================================================
-function buildBkKpiCards_(sh, row) {
-  const startR = row + 4 + 1; // 期間開始: row+1
-  const endR   = row + 4 + 1; // dummy
-  // 期間セレクタは row-3, row-2 に入ってる
-  // 実際の期間開始/終了セルは：行番号を変数化する
-  const pStart = 'D' + (row - 2);   // 期間開始セル = D5（banner3行 + selector で開始/終了は row-2 = 5行目）
-  const pEnd   = 'E' + (row - 2);   // 期間終了セル = E5
-
-  // プラン別ステータスフィルタ: 「キャンセル」除外
-  // 売上は「料金(USD)」列K、日付は「予約日」列H
-  // 決済済みベースにするか全予約ベースにするかは、ここでは「予約確定＋作業完了」を売上計上対象とする
-  const salesFormula = '=IFERROR(SUMIFS(予約!K:K, 予約!H:H, ">="&' + pStart + ', 予約!H:H, "<="&' + pEnd +
-    ', 予約!L:L, "<>キャンセル"),0)';
-  const countFormula = '=IFERROR(COUNTIFS(予約!H:H, ">="&' + pStart + ', 予約!H:H, "<="&' + pEnd +
-    ', 予約!L:L, "<>キャンセル"),0)';
-  // 期間内・キャンセル除外・顧客ID有り の行マスク と 同一顧客の期間内予約数
-  const mask = '((予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd +
-    ')*(予約!L2:L10000<>"キャンセル")*(予約!B2:B10000<>""))';
-  const custCnt = 'COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,">="&' + pStart +
-    ',予約!H2:H10000,"<="&' + pEnd + ',予約!L2:L10000,"<>キャンセル")';
-  // 客数 = 期間内ユニーク顧客ID数。各行を 1/件数 で重み付け（空行・非該当行は分母に +1 して 0/1=0 とし、
-  //        旧式の 0÷0=エラー→IFERROR で 0 に落ちる不具合を回避）
-  const uniqCustomers = '=IFERROR(SUMPRODUCT(' + mask + '/((' + custCnt + ')+(' + mask + '=0))),0)';
-  // 客単価 = 売上 ÷ 客数（1顧客あたり。同一客の複数予約をまとめる。1予約あたりではない）
-  const avgFormula   = '=IFERROR(' + salesFormula.substring(1) + '/' + uniqCustomers.substring(1) + ',0)';
-  const cancelRate = '=IFERROR(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-    ',予約!L:L,"キャンセル")/COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + '),0)';
-  // リピート率 = 期間内に2回以上予約した顧客 ÷ 客数（客数と同じ重み付け方式で 0÷0 を回避）
-  const repeatRate = '=IFERROR(SUMPRODUCT(((' + custCnt + ')>1)*' + mask +
-    '/((' + custCnt + ')+(' + mask + '=0)))/' + uniqCustomers.substring(1) + ',0)';
-
-  const cards = [
-    { label: '💴 期間売上', formula: salesFormula, fmt: '"$"#,##0', color: BK_COLOR.gold },
-    { label: '🧾 予約件数', formula: countFormula, fmt: '#,##0"件"', color: BK_COLOR.blue },
-    { label: '👥 客数',     formula: uniqCustomers, fmt: '#,##0"名"', color: BK_COLOR.green },
-    { label: '💰 客単価',   formula: avgFormula, fmt: '"$"#,##0.0', color: BK_COLOR.orange },
-    { label: '🔁 リピート率', formula: repeatRate, fmt: '0.0%', color: BK_COLOR.purple },
-    { label: '🚫 キャンセル率', formula: cancelRate, fmt: '0.0%', color: BK_COLOR.red }
-  ];
-
-  const cardW = 2; // 2列幅
-  let col = 2;
-  for (let i = 0; i < cards.length; i++) {
-    drawBkCard_(sh, row, col, cards[i]);
-    col += cardW;
-  }
-  sh.setRowHeight(row, 30);
-  sh.setRowHeight(row + 1, 46);
-  return row + 3;
-}
-
-function drawBkCard_(sh, row, col, card) {
-  sh.getRange(row, col, 1, 2).merge()
-    .setValue(card.label)
-    .setBackground(BK_COLOR.bgCard).setFontColor(BK_COLOR.textDim)
-    .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  sh.getRange(row + 1, col, 1, 2).merge()
-    .setFormula(card.formula)
-    .setBackground(BK_COLOR.bgCard).setFontColor(card.color)
-    .setFontSize(18).setFontWeight('bold')
-    .setNumberFormat(card.fmt)
-    .setHorizontalAlignment('center').setVerticalAlignment('middle');
-  sh.getRange(row, col, 2, 2).setBorder(true, true, true, true, false, false,
-    BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-}
-
-// =====================================================
-//  セクション: 月次売上トレンド（直近12ヶ月、折れ線）
-// =====================================================
-function buildBkMonthlyTrend_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '📈 月次売上トレンド（直近12ヶ月）');
-  row += 2;
-
-  // キャッシュシートに集計、そこから折れ線グラフ
-  const cache = ss.getSheetByName(BK_CACHE_SHEET);
-  // A列: 月ラベル, B列: 売上
-  cache.getRange('A1:B1').setValues([['月', '売上(USD)']]);
-  const header = cache.getRange('A1:B1');
-  header.setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  for (let i = 0; i < 12; i++) {
-    const r = i + 2;
-    cache.getRange('A' + r).setFormula('=TEXT(EDATE(TODAY(),-' + (11 - i) + '),"yyyy/M")');
-    cache.getRange('B' + r).setFormula(
-      '=IFERROR(SUMIFS(予約!K:K,' +
-        '予約!H:H,">="&EOMONTH(EDATE(TODAY(),-' + (12 - i) + '),0)+1,' +
-        '予約!H:H,"<="&EOMONTH(EDATE(TODAY(),-' + (11 - i) + '),0),' +
-        '予約!L:L,"<>キャンセル"),0)'
-    );
-  }
-
-  // チャート配置
-  const chart = sh.newChart()
-    .setChartType(Charts.ChartType.COLUMN)
-    .addRange(cache.getRange('A1:B13'))
-    .setPosition(row, 2, 0, 0)
-    .setOption('title', '')
-    .setOption('backgroundColor', BK_COLOR.bgCard)
-    .setOption('legend', { position: 'none' })
-    .setOption('colors', [BK_COLOR.gold])
-    .setOption('hAxis', { textStyle: { color: BK_COLOR.text }, gridlines: { color: BK_COLOR.bgSub } })
-    .setOption('vAxis', { textStyle: { color: BK_COLOR.text }, gridlines: { color: BK_COLOR.bgSub }, format: '$#,###' })
-    .setOption('chartArea', { left: 60, top: 20, width: '85%', height: '75%' })
-    .setOption('width',  720)
-    .setOption('height', 260)
-    .build();
-  sh.insertChart(chart);
-
-  // チャート分の行確保
-  for (let i = 0; i < 13; i++) sh.setRowHeight(row + i, 20);
-  return row + 14;
-}
-
-// =====================================================
-//  セクション: 円グラフ 3種
-// =====================================================
-function buildBkPieCharts_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '🥧 売上構成・顧客構成（期間内）');
-  row += 2;
-
-  const cache = ss.getSheetByName(BK_CACHE_SHEET);
-  const pStart = "'" + BK_DASH_SHEET + "'!D5"; // 期間開始/終了セル = D5/E5
-  const pEnd   = "'" + BK_DASH_SHEET + "'!E5";
-
-  // --- プラン別売上（D1:E6） ---
-  cache.getRange('D1:E1').setValues([['プラン', '売上']]);
-  cache.getRange('D1:E1').setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  // Menu v2 (2026-05-06): プラン一覧を Plan_Prices シートから動的取得 (旧4プランハードコード廃止)
-  const plans = (function() {
-    try {
-      const list = getActivePlans().map(function(pl) { return pl.planFull; });
-      return list.length ? list : ['SAMURAI WASH (W)'];
-    } catch (e) {
-      return ['SAMURAI WASH (W)'];
-    }
-  })();
-  plans.forEach(function(p, i) {
-    cache.getRange('D' + (i + 2)).setValue(p);
-    cache.getRange('E' + (i + 2)).setFormula(
-      '=IFERROR(SUMIFS(予約!K:K,予約!F:F,"' + p + '",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"<>キャンセル"),0)'
-    );
-  });
-
-  // --- 決済状態別件数（D8:E12） ---
-  cache.getRange('D8:E8').setValues([['決済状態', '件数']]);
-  cache.getRange('D8:E8').setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  const pays = ['未清算', 'QR送信済み', '清算済み', '要確認'];
-  pays.forEach(function(p, i) {
-    cache.getRange('D' + (i + 9)).setValue(p);
-    cache.getRange('E' + (i + 9)).setFormula(
-      '=IFERROR(COUNTIFS(予約!T:T,"' + p + '",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"<>キャンセル"),0)'
-    );
-  });
-
-  // --- 新規 vs リピート（D14:E15） ---
-  // 新規 = 顧客の初回予約が期間内
-  // リピート = 期間内予約 かつ 期間開始日より前にも予約あり
-  cache.getRange('D14:E14').setValues([['区分', '件数']]);
-  cache.getRange('D14:E14').setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  cache.getRange('D15').setValue('新規');
-  cache.getRange('E15').setFormula(
-    '=IFERROR(SUMPRODUCT(' +
-      '(予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd + ')*(予約!L2:L10000<>"キャンセル")' +
-      '*(COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,"<"&予約!H2:H10000)=0)),0)'
-  );
-  cache.getRange('D16').setValue('リピート');
-  cache.getRange('E16').setFormula(
-    '=IFERROR(SUMPRODUCT(' +
-      '(予約!H2:H10000>=' + pStart + ')*(予約!H2:H10000<=' + pEnd + ')*(予約!L2:L10000<>"キャンセル")' +
-      '*(COUNTIFS(予約!B2:B10000,予約!B2:B10000,予約!H2:H10000,"<"&予約!H2:H10000)>0)),0)'
-  );
-
-  // 3つの円グラフを並べる
-  const chartOpts = {
-    pie: (title, range, colors, posRow, posCol) => {
-      return sh.newChart()
-        .setChartType(Charts.ChartType.PIE)
-        .addRange(range)
-        .setPosition(posRow, posCol, 0, 0)
-        .setOption('title', title)
-        .setOption('titleTextStyle', { color: BK_COLOR.goldSoft, fontSize: 12, bold: true })
-        .setOption('backgroundColor', BK_COLOR.bgCard)
-        .setOption('legend', { position: 'right', textStyle: { color: BK_COLOR.text, fontSize: 10 } })
-        .setOption('colors', colors)
-        .setOption('pieHole', 0.4)
-        .setOption('pieSliceTextStyle', { color: '#fff', fontSize: 10 })
-        .setOption('chartArea', { left: 10, top: 30, width: '95%', height: '80%' })
-        .setOption('width',  360)
-        .setOption('height', 240)
-        .build();
-    }
-  };
-
-  sh.insertChart(chartOpts.pie('プラン別売上',
-    cache.getRange('D1:E5'),
-    [BK_COLOR.gold, BK_COLOR.blue, BK_COLOR.purple, BK_COLOR.red], row, 2));
-  sh.insertChart(chartOpts.pie('決済状態',
-    cache.getRange('D8:E12'),
-    [BK_COLOR.textDim, BK_COLOR.orange, BK_COLOR.green, BK_COLOR.red], row, 6));
-  sh.insertChart(chartOpts.pie('新規 vs リピート',
-    cache.getRange('D14:E16'),
-    [BK_COLOR.blue, BK_COLOR.gold], row, 10));
-
-  for (let i = 0; i < 13; i++) sh.setRowHeight(row + i, 20);
-  return row + 14;
-}
-
-// =====================================================
-//  セクション: 当月日別売上（棒グラフ）
-// =====================================================
-function buildBkDailyBar_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '📅 当月 日別売上');
-  row += 2;
-
-  const cache = ss.getSheetByName(BK_CACHE_SHEET);
-  cache.getRange('G1:H1').setValues([['日', '売上']]);
-  cache.getRange('G1:H1').setFontWeight('bold').setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold);
-  for (let i = 0; i < 31; i++) {
-    const r = i + 2;
-    cache.getRange('G' + r).setFormula(
-      '=IFERROR(IF(DAY(EOMONTH(TODAY(),0))>=' + (i + 1) + ',' +
-        'DATE(YEAR(TODAY()),MONTH(TODAY()),' + (i + 1) + '),""),"")'
-    );
-    cache.getRange('H' + r).setFormula(
-      '=IF(G' + r + '="","",' +
-        'IFERROR(SUMIFS(予約!K:K,予約!H:H,G' + r + ',予約!L:L,"<>キャンセル"),0))'
-    );
-  }
-  cache.getRange('G2:G32').setNumberFormat('M/d');
-
-  const chart = sh.newChart()
-    .setChartType(Charts.ChartType.COLUMN)
-    .addRange(cache.getRange('G1:H32'))
-    .setPosition(row, 2, 0, 0)
-    .setOption('title', '')
-    .setOption('backgroundColor', BK_COLOR.bgCard)
-    .setOption('legend', { position: 'none' })
-    .setOption('colors', [BK_COLOR.goldSoft])
-    .setOption('hAxis', { textStyle: { color: BK_COLOR.text, fontSize: 9 }, gridlines: { color: BK_COLOR.bgSub } })
-    .setOption('vAxis', { textStyle: { color: BK_COLOR.text }, gridlines: { color: BK_COLOR.bgSub }, format: '$#,###' })
-    .setOption('chartArea', { left: 60, top: 20, width: '90%', height: '75%' })
-    .setOption('width',  1100)
-    .setOption('height', 260)
-    .build();
-  sh.insertChart(chart);
-
-  for (let i = 0; i < 13; i++) sh.setRowHeight(row + i, 20);
-  return row + 14;
-}
-
-// =====================================================
-//  セクション: プラン別ランキング表
-// =====================================================
-function buildBkRankings_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '🏆 プラン別ランキング（期間内）');
-  row += 2;
-
-  const pStart = 'D' + 5;
-  const pEnd   = 'E' + 5;
-
-  sh.getRange(row, 2, 1, 4).setValues([['プラン', '件数', '売上', '構成比']])
-    .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold).setFontWeight('bold')
-    .setHorizontalAlignment('center');
-  // Menu v2 (2026-05-06): プラン一覧を Plan_Prices シートから動的取得
-  const plans = (function() {
-    try {
-      const list = getActivePlans().map(function(pl) { return pl.planFull; });
-      return list.length ? list : ['SAMURAI WASH (W)'];
-    } catch (e) {
-      return ['SAMURAI WASH (W)'];
-    }
-  })();
-  plans.forEach(function(p, i) {
-    const r = row + 1 + i;
-    sh.getRange(r, 2).setValue(p).setFontColor(BK_COLOR.text).setFontWeight('bold');
-    sh.getRange(r, 3).setFormula(
-      '=IFERROR(COUNTIFS(予約!F:F,"' + p + '",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"<>キャンセル"),0)'
-    ).setNumberFormat('#,##0"件"').setHorizontalAlignment('center');
-    sh.getRange(r, 4).setFormula(
-      '=IFERROR(SUMIFS(予約!K:K,予約!F:F,"' + p + '",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"<>キャンセル"),0)'
-    ).setNumberFormat('"$"#,##0').setHorizontalAlignment('right').setFontColor(BK_COLOR.gold);
-    sh.getRange(r, 5).setFormula(
-      '=IFERROR(D' + r + '/SUMIFS(予約!K:K,予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"<>キャンセル"),0)'
-    ).setNumberFormat('0.0%').setHorizontalAlignment('right');
-  });
-  sh.getRange(row, 2, plans.length + 1, 4)
-    .setBorder(true, true, true, true, true, true, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-  sh.getRange(row + 1, 2, plans.length, 4).setBackground(BK_COLOR.bgCard);
-
-  return row + plans.length + 2;
-}
-
-// =====================================================
-//  セクション: 顧客LTV トップ10
-// =====================================================
-function buildBkLtvTop10_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '💎 顧客 LTV トップ10（累計・キャンセル除く）');
-  row += 2;
-
-  sh.getRange(row, 2, 1, 4).setValues([['順位', '氏名', '累計売上', '利用回数']])
-    .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold).setFontWeight('bold')
-    .setHorizontalAlignment('center');
-
-  // QUERY で集計 → 顧客名と紐付け
-  // 予約シートから 顧客ID (B) と 料金 (K) を取り、キャンセル以外で合計
-  // VLOOKUP で顧客シートの氏名(D)を参照
-  for (let i = 0; i < 10; i++) {
-    const r = row + 1 + i;
-    sh.getRange(r, 2).setValue(i + 1).setFontWeight('bold').setHorizontalAlignment('center')
-      .setFontColor(i === 0 ? BK_COLOR.gold : (i < 3 ? BK_COLOR.goldSoft : BK_COLOR.text));
-  }
-
-  // ヘッダ下の1セルに巨大式を入れてテーブル化すると編集困難なので、QUERY ベース
-  // C列: 氏名, D列: 累計売上, E列: 利用回数
-  const queryCell = sh.getRange(row + 1, 3);
-  queryCell.setFormula(
-    '=IFERROR(QUERY(' +
-      '{ARRAYFORMULA(IFERROR(VLOOKUP(予約!B2:B10000,顧客!A:D,4,FALSE))),予約!K2:K10000,予約!L2:L10000},' +
-      '"select Col1, sum(Col2), count(Col2) where Col3<>\'キャンセル\' and Col1 is not null group by Col1 order by sum(Col2) desc limit 10 label sum(Col2) \'\', count(Col2) \'\'",0),"")'
-  );
-
-  sh.getRange(row + 1, 3, 10, 1).setFontColor(BK_COLOR.text);
-  sh.getRange(row + 1, 4, 10, 1).setNumberFormat('"$"#,##0').setFontColor(BK_COLOR.gold)
-    .setHorizontalAlignment('right');
-  sh.getRange(row + 1, 5, 10, 1).setNumberFormat('#,##0"回"').setHorizontalAlignment('center');
-  sh.getRange(row + 1, 2, 10, 4).setBackground(BK_COLOR.bgCard);
-  sh.getRange(row, 2, 11, 4)
-    .setBorder(true, true, true, true, true, true, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-
-  return row + 12;
-}
-
-// =====================================================
-//  セクション: 経営アラート
-// =====================================================
 /**
- * Menu v2 分析セクション (2026-05-06)
- * 3 ブロック横並び: キャンペーン / GLASS 構成 / ファネル CR
- *
- * BOOKINGS シート列前提:
- *   G: オプション (空 / GLASS_3 / GLASS_ALL)
- *   H: 予約日, L: 進行状態
- *   AC: 割引額(USD), AD: キャンペーン名
- * FUNNEL_LOG シート列前提:
- *   C: イベント (bot_start / miniapp_opened / booking_completed)
+ * ダッシュボードと集計タブを作り直すリクエスト一式。出来事メモの中身には触らない。
+ * @param {{dash:number, cache:number, memo:number, maxRows:number, maxCols:number,
+ *          cacheRows:number, chartIds:number[], ruleCount:number}} ctx
  */
-function buildBkMenuV2Analytics_(sh, row, ss) {
-  drawBkSectionHeader_(sh, row, '📊 Menu v2 分析（キャンペーン / GLASS / ファネル）');
-  row += 2;
-
-  const pStart = "'" + BK_DASH_SHEET + "'!D5";
-  const pEnd   = "'" + BK_DASH_SHEET + "'!E5";
-  const headerStyle = { bg: BK_COLOR.bgSub, fg: BK_COLOR.gold };
-
-  // ── 🎌 キャンペーン (B-C) ──
-  sh.getRange(row, 2, 1, 2).setValues([['🎌 キャンペーン', '値']])
-    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
-  const c1 = row + 1;
-  const campRows = [
-    ['適用件数',   '=IFERROR(COUNTIFS(予約!AD:AD,"<>",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '#,##0"件"'],
-    ['全予約件数', '=IFERROR(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '#,##0"件"'],
-    ['適用率',     '=IFERROR(C' + c1 + '/MAX(C' + (c1 + 1) + ',1),0)', '0.0%'],
-    ['累計割引額', '=IFERROR(SUMIFS(予約!AC:AC,予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)', '"$"#,##0.00']
-  ];
-  campRows.forEach(function(r, i) {
-    sh.getRange(c1 + i, 2).setValue(r[0]).setFontColor(BK_COLOR.text);
-    sh.getRange(c1 + i, 3).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat(r[2]);
-  });
-
-  // ── ✨ GLASS / HEADLIGHT 構成 (E-F) ──
-  // Menu v4 (2026-09-22): G 列は複数コードのカンマ区切り('GLASS_3,HEADLIGHT')になり得るためワイルドカード一致
-  sh.getRange(row, 5, 1, 2).setValues([['✨ GLASS / HEADLIGHT 構成', '件数']])
-    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
-  const glassRows = [
-    ['No option',  '=IFERROR(COUNTIFS(予約!G:G,"",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
-    ['GLASS_3',    '=IFERROR(COUNTIFS(予約!G:G,"*GLASS_3*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
-    ['GLASS_ALL',  '=IFERROR(COUNTIFS(予約!G:G,"*GLASS_ALL*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)'],
-    ['HEADLIGHT',  '=IFERROR(COUNTIFS(予約!G:G,"*HEADLIGHT*",予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ',予約!L:L,"<>キャンセル"),0)']
-  ];
-  glassRows.forEach(function(r, i) {
-    sh.getRange(c1 + i, 5).setValue(r[0]).setFontColor(BK_COLOR.text);
-    sh.getRange(c1 + i, 6).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat('#,##0"件"');
-  });
-
-  // ── 📊 ファネル CR (H-I) ── ※ FUNNEL_LOG は累計値(期間フィルタなし)
-  sh.getRange(row, 8, 1, 2).setValues([['📊 ファネル(累計)', '値']])
-    .setBackground(headerStyle.bg).setFontColor(headerStyle.fg).setFontWeight('bold');
-  const f1 = c1;
-  const funnelRows = [
-    ['Bot 来訪',        '=IFERROR(COUNTIF(ファネルログ!C:C,"bot_start"),0)', '#,##0"人"'],
-    ['ミニアプリ開',    '=IFERROR(COUNTIF(ファネルログ!C:C,"miniapp_opened"),0)', '#,##0"回"'],
-    ['予約完了',        '=IFERROR(COUNTIF(ファネルログ!C:C,"booking_completed"),0)', '#,##0"件"'],
-    ['Overall CR',      '=IFERROR(I' + (f1 + 2) + '/MAX(I' + f1 + ',1),0)', '0.0%']
-  ];
-  funnelRows.forEach(function(r, i) {
-    sh.getRange(f1 + i, 8).setValue(r[0]).setFontColor(BK_COLOR.text);
-    sh.getRange(f1 + i, 9).setFormula(r[1]).setFontColor(BK_COLOR.gold).setNumberFormat(r[2]);
-  });
-
-  // 罫線で 3 ブロックを軽く区切る
-  sh.getRange(row, 2, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-  sh.getRange(row, 5, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-  sh.getRange(row, 8, 5, 2).setBorder(true, true, true, true, false, false, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
-
-  return row + 6;
+function bkDashRequests_(ctx) {
+  return []
+    .concat(bkResetRequests_(ctx))
+    .concat(bkCacheRequests_(ctx.cache))
+    .concat(bkLayoutRequests_(ctx))
+    .concat(bkHeaderRequests_(ctx))
+    .concat(bkCardRequests_(ctx.dash))
+    .concat(bkTimelineRequests_(ctx.dash, ctx.memo))
+    .concat([bkChartRequest_(ctx)]);
 }
 
-function buildBkAlerts_(sh, row) {
-  drawBkSectionHeader_(sh, row, '🚨 経営アラート');
-  row += 2;
+function bkResetRequests_(ctx) {
+  const all = bkGrid_(ctx.dash, 1, 1, ctx.maxRows, ctx.maxCols);
+  const requests = (ctx.chartIds || []).map(function(id) {
+    return { deleteEmbeddedObject: { objectId: id } };
+  });
+  // 条件付き書式は前から消すと番号が詰まるので、いつも 0 番を消す
+  for (let i = 0; i < (ctx.ruleCount || 0); i++) {
+    requests.push({ deleteConditionalFormatRule: { sheetId: ctx.dash, index: 0 } });
+  }
+  requests.push({ unmergeCells: { range: all } });
+  requests.push({ setDataValidation: { range: all } });
+  requests.push({ updateCells: { range: all, fields: '*' } });
+  requests.push({ updateCells: { range: { sheetId: ctx.cache }, fields: '*' } });
+  if (ctx.cacheRows < BK_CACHE_ROWS) {
+    requests.push({ appendDimension: { sheetId: ctx.cache, dimension: 'ROWS', length: BK_CACHE_ROWS - ctx.cacheRows } });
+  }
+  return requests;
+}
 
-  const pStart = 'D5';
-  const pEnd   = 'E5';
+/**
+ * 集計タブ（隠す）。1か月1行の表と、予約1行ごとの値、棒の下に出す文字を置く。
+ * repeatCell は数式の相対参照を行・列ごとにずらしてくれるので、2行目の式だけ書く。
+ */
+function bkCacheRequests_(id) {
+  const last = 1 + BK_MONTHS;
+  const memo = BK_MEMO_SHEET + '!';
+  const inMonth = '$K:$K,">="&$I2,$K:$K,"<"&EDATE($I2,1)';
+  const fill = function(c1, c2, formula) { return bkRepeat_(id, 2, c1, last, c2, formula); };
+  const put = function(row, col, values) {
+    return { updateCells: { start: { sheetId: id, rowIndex: row - 1, columnIndex: col - 1 },
+      rows: [{ values: values.map(function(v) { return v === '' ? {} : bkCell_(v); }) }], fields: 'userEnteredValue' } };
+  };
+  const helper = bkCacheHelperFormulas_();
 
-  const alerts = [
-    {
-      label: 'キャンセル率',
-      formula: '=IFERROR(TEXT(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"キャンセル")/COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + '),"0.0%")&" " &' +
-        'IF(COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd +
-        ',予約!L:L,"キャンセル")/COUNTIFS(予約!H:H,">="&' + pStart + ',予約!H:H,"<="&' + pEnd + ')>0.1,"⚠️ 10%超え","✅ 健全"),"—")'
-    },
-    {
-      label: '未清算の件数',
-      formula: '=IFERROR(COUNTIFS(予約!T:T,"未清算",予約!L:L,"<>キャンセル")&"件 "&' +
-        'IF(COUNTIFS(予約!T:T,"未清算",予約!L:L,"<>キャンセル")>=5,"⚠️ 5件以上","✅ OK"),"—")'
-    },
-    {
-      label: '要確認の決済',
-      formula: '=IFERROR(COUNTIFS(予約!T:T,"要確認")&"件 "&' +
-        'IF(COUNTIFS(予約!T:T,"要確認")>0,"⚠️ 要対応","✅ なし"),"—")'
-    },
-    {
-      label: '催促回数 3回以上',
-      formula: '=IFERROR(COUNTIFS(予約!Y:Y,">=3",予約!T:T,"<>清算済み")&"件 "&' +
-        'IF(COUNTIFS(予約!Y:Y,">=3",予約!T:T,"<>清算済み")>0,"🔴 要エスカレ","✅ なし"),"—")'
-    }
+  const requests = [
+    { updateSheetProperties: { properties: { sheetId: id, hidden: true }, fields: 'hidden' } },
+    put(1, 1, ['月'].concat(BK_SERVICES.map(function(s) { return s.name; }), ['合計', '台数', '月初', '',
+      '日付', '売上', '有効', 'サービス', '未入金', '未入金額', '出来事の数（出す）', '出来事の日付', '出来事', '出来事の数（全部）',
+      '出来事1', '出来事2', '出来事3', 'ほか', '月の表示', '合計の表示'])),
+    fill(1, 1, '=TEXT(I2,"yyyy/M")'),
+    fill(10, 10, ' '),   // グラフの横軸用（下記 bkChartRequest_）
+    fill(2, 1 + BK_SERVICES.length, '=SUMIFS($L:$L,$N:$N,B$1,$M:$M,TRUE,' + inMonth + ')'),
+    fill(7, 7, '=SUM(B2:F2)'),
+    fill(8, 8, '=COUNTIFS($M:$M,TRUE,' + inMonth + ')'),
+    put(2, 9, ['=EDATE(EOMONTH(TODAY(),0)+1,-' + BK_MONTHS + ')']),
+    bkRepeat_(id, 3, 9, last, 9, '=EDATE(I2,1)'),
+    put(2, 11, helper.booking),
+    fill(17, 17, '=COUNTIFS($R:$R,">="&$I2,$R:$R,"<"&EDATE($I2,1))'),
+    put(2, 18, [helper.events]),
+    fill(20, 20, '=COUNTIFS(' + memo + '$A:$A,">="&$I2,' + memo + '$A:$A,"<"&EDATE($I2,1),' + memo + '$C:$C,"<>")'),
+    fill(21, 20 + BK_MEMO_SLOTS, '=IFERROR(INDEX(FILTER($S$2:$S,$R$2:$R>=$I2,$R$2:$R<EDATE($I2,1)),COLUMN()-20),"")'),
+    fill(24, 24, '=IF($T2-MIN(' + BK_MEMO_SLOTS + ',$Q2)>0,"ほか "&($T2-MIN(' + BK_MEMO_SLOTS + ',$Q2))&" 件","")'),
+    fill(25, 25, '=TEXT($I2,IF(OR(ROW()=2,MONTH($I2)=1),"yyyy年M月","M月"))'),
+    fill(26, 26, '=IF($H2=0,"—",TEXT($G2,"$#,##0.0")&"・"&$H2&"台")')
+  ];
+  // カードで使う値（A15〜B17）
+  [
+    ['これからの予約', '=COUNTIFS($M:$M,TRUE,$K:$K,">"&TODAY(),$K:$K,"<"&EDATE($I13,1))'],
+    ['入金の確認 件数', '=SUM(O2:O)'],
+    ['入金の確認 金額', '=SUM(P2:P)']
+  ].forEach(function(pair, i) { requests.push(put(15 + i, 1, pair)); });
+  return requests;
+}
+
+function bkCacheHelperFormulas_() {
+  const codes = '予約!F2:F&"|"&予約!G2:G';
+  const service =
+    'IF(REGEXMATCH(' + codes + ',"BODY|POLISH|REPAIR|REFRESH"),"磨き",' +
+    'IF(REGEXMATCH(' + codes + ',"HEADLIGHT"),"ヘッドライト",' +
+    'IF(REGEXMATCH(' + codes + ',"GLASS"),"ガラス",' +
+    'IF(REGEXMATCH(' + codes + '&"|"&予約!AD2:AD,"WASH|ハーフ|5ドル"),"洗車","その他"))))';
+  const memo = BK_MEMO_SHEET + '!';
+  const rating = 'IF(REGEXMATCH(' + memo + 'B2:B,"いかなかった"),"🔴",IF(REGEXMATCH(' + memo + 'B2:B,"うまくいった"),"🟢","⚪"))';
+  return {
+    booking: [
+      '=ARRAYFORMULA(IF(予約!H2:H="","",IF(ISNUMBER(予約!H2:H),予約!H2:H,IFERROR(DATEVALUE(予約!H2:H),""))))',
+      '=ARRAYFORMULA(IF(K2:K="","",IFERROR(VALUE(予約!K2:K),0)))',
+      '=ARRAYFORMULA(IF(K2:K="","",予約!L2:L<>"キャンセル"))',
+      '=ARRAYFORMULA(IF(K2:K="","",' + service + '))',
+      '=ARRAYFORMULA(IF(K2:K="","",(予約!L2:L="作業完了")*(予約!T2:T<>"清算済み")))',
+      '=ARRAYFORMULA(IF(K2:K="","",O2:O*IF(IFERROR(VALUE(予約!U2:U),0)>0,IFERROR(VALUE(予約!U2:U),0),L2:L)))'
+    ],
+    events: '=ARRAYFORMULA(IFERROR(SORT(FILTER({' + memo + 'A2:A,' + rating + '&" "&' + memo + 'C2:C},' +
+      'ISNUMBER(' + memo + 'A2:A),' + memo + 'C2:C<>"",' + memo + 'E2:E<>"×"),1,TRUE),""))'
+  };
+}
+
+/** 白い下地・列幅・行の高さ */
+function bkLayoutRequests_(ctx) {
+  const id = ctx.dash;
+  const heights = {};
+  heights[BK_ROW.title] = 42; heights[BK_ROW.rule] = 3; heights[3] = 10;
+  heights[BK_ROW.cardLabel] = 24; heights[BK_ROW.cardValue] = 40; heights[BK_ROW.cardSub] = 24; heights[7] = 12;
+  heights[BK_ROW.section] = 28; heights[BK_ROW.chart] = BK_CHART_HEIGHT;
+  heights[BK_ROW.month] = 20; heights[BK_ROW.total] = 20; heights[BK_ROW.stem] = 14;
+  heights[BK_ROW.memo] = 46; heights[BK_ROW.memo + 1] = 46; heights[BK_ROW.memo + 2] = 46; heights[BK_ROW.more] = 18;
+
+  const requests = [
+    { updateSheetProperties: {
+        properties: { sheetId: id, gridProperties: { hideGridlines: true }, tabColorStyle: { rgbColor: bkRgb_(BK_COLOR.gold) } },
+        fields: 'gridProperties.hideGridlines,tabColorStyle' } },
+    { updateDimensionProperties: { range: { sheetId: id, dimension: 'ROWS', startIndex: 0, endIndex: ctx.maxRows },
+        properties: { pixelSize: 21 }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: id, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 },
+        properties: { pixelSize: BK_LEFT_COL_WIDTH }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: id, dimension: 'COLUMNS', startIndex: 1, endIndex: 1 + BK_MONTHS },
+        properties: { pixelSize: BK_COL_WIDTH }, fields: 'pixelSize' } },
+    { updateDimensionProperties: { range: { sheetId: id, dimension: 'COLUMNS', startIndex: 1 + BK_MONTHS, endIndex: 2 + BK_MONTHS },
+        properties: { pixelSize: 16 }, fields: 'pixelSize' } },
+    { repeatCell: { range: bkGrid_(id, 1, 1, BK_MAX_ROWS, 2 + BK_MONTHS),
+        cell: { userEnteredFormat: { backgroundColorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } } },
+        fields: 'userEnteredFormat.backgroundColorStyle' } }
+  ];
+  Object.keys(heights).forEach(function(r) {
+    requests.push({ updateDimensionProperties: {
+      range: { sheetId: id, dimension: 'ROWS', startIndex: Number(r) - 1, endIndex: Number(r) },
+      properties: { pixelSize: heights[r] }, fields: 'pixelSize' } });
+  });
+  return requests;
+}
+
+/** 題名・金の線・棒グラフの見出し */
+function bkHeaderRequests_(ctx) {
+  const id = ctx.dash, last = BK_FIRST_COL + BK_MONTHS - 1, split = BK_FIRST_COL + 7;
+  const sectionRow = BK_ROW.section;
+  return []
+    .concat(bkBlock_(id, BK_ROW.title, BK_FIRST_COL, BK_ROW.title, split - 1,
+      'SAMURAI MOTORS  経営ダッシュボード', { size: 18, bold: true }))
+    .concat(bkBlock_(id, BK_ROW.title, split, BK_ROW.title, last,
+      '="売上は予約タブの料金（キャンセル除く）｜"&TEXT(NOW(),"M/d H:mm")&" 時点"', { size: 9, color: BK_COLOR.muted, align: 'RIGHT' }))
+    .concat([{ repeatCell: { range: bkGrid_(id, BK_ROW.rule, BK_FIRST_COL, BK_ROW.rule, last),
+        cell: { userEnteredFormat: { backgroundColorStyle: { rgbColor: bkRgb_(BK_COLOR.gold) } } },
+        fields: 'userEnteredFormat.backgroundColorStyle' } }])
+    .concat(bkBlock_(id, sectionRow, BK_FIRST_COL, sectionRow, split - 1,
+      '月別の売上と、その時の出来事（直近12か月）', { size: 12, bold: true }))
+    .concat(bkBlock_(id, sectionRow, split, sectionRow, last,
+      '=HYPERLINK("#gid=' + ctx.memo + '","＋ 出来事を足す（' + BK_MEMO_SHEET + ' タブ）")', { size: 9, color: BK_COLOR.goldDark, align: 'RIGHT' }));
+}
+
+/** カード4枚（各3列）: 今月 / 先月 / 直近12か月 / 入金の確認 */
+function bkCardRequests_(id) {
+  const c = "'" + BK_CACHE_SHEET + "'!";
+  const money = '[=0]"$0";"$"#,##0.0';
+  const perCar = function(sales, count) {
+    return count + '&"台"&IF(' + count + '>0,"・1台あたり "&TEXT(' + sales + '/' + count + ',"$0.0"),"")';
+  };
+  const cards = [
+    { bg: BK_COLOR.goldTint, label: '="今月（"&' + c + 'Y13&"）"', value: '=' + c + 'G13', pattern: money,
+      sub: '=' + perCar(c + 'G13', c + 'H13') + '&IF(' + c + 'B15>0,"（うちこれからの予約 "&' + c + 'B15&"台）","")' },
+    { bg: BK_COLOR.blueTint, label: '="先月（"&' + c + 'Y12&"）"', value: '=' + c + 'G12', pattern: money,
+      sub: '=' + perCar(c + 'G12', c + 'H12') },
+    { bg: BK_COLOR.tealTint, label: '直近12か月', value: '=SUM(' + c + 'G2:G13)', pattern: money,
+      sub: '=' + perCar('SUM(' + c + 'G2:G13)', 'SUM(' + c + 'H2:H13)') },
+    { bg: BK_COLOR.goodTint, label: '入金の確認待ち', value: '=IF(' + c + 'B16=0,"✅ なし","⚠️ "&' + c + 'B16&"件")',
+      sub: '=IF(' + c + 'B16=0,"作業完了はすべて清算済み",TEXT(' + c + 'B17,"$#,##0.0")&" 分（作業完了・未清算）")' }
   ];
 
-  alerts.forEach(function(a, i) {
-    const r = row + i;
-    sh.getRange(r, 2, 1, 3).merge().setValue(a.label)
-      .setBackground(BK_COLOR.bgCard).setFontColor(BK_COLOR.goldSoft).setFontWeight('bold')
-      .setHorizontalAlignment('left').setVerticalAlignment('middle');
-    sh.getRange(r, 5, 1, 8).merge().setFormula(a.formula)
-      .setBackground(BK_COLOR.bgCard).setFontColor(BK_COLOR.text)
-      .setHorizontalAlignment('left').setVerticalAlignment('middle');
-    sh.setRowHeight(r, 28);
+  let requests = [];
+  cards.forEach(function(card, i) {
+    const col = BK_FIRST_COL + i * 3, end = col + 2;
+    requests = requests
+      .concat(bkBlock_(id, BK_ROW.cardLabel, col, BK_ROW.cardLabel, end, card.label, { size: 10, bold: true, color: BK_COLOR.sub, bg: card.bg, indent: 8 }))
+      .concat(bkBlock_(id, BK_ROW.cardValue, col, BK_ROW.cardValue, end, card.value, { size: 24, bold: true, bg: card.bg, pattern: card.pattern, indent: 8 }))
+      .concat(bkBlock_(id, BK_ROW.cardSub, col, BK_ROW.cardSub, end, card.sub, { size: 10, color: BK_COLOR.sub, bg: card.bg, indent: 8 }));
+    if (i < cards.length - 1) {
+      requests.push({ updateBorders: { range: bkGrid_(id, BK_ROW.cardLabel, end, BK_ROW.cardSub, end),
+        right: { style: 'SOLID_THICK', colorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } } } });
+    }
   });
+  // 入金の確認: 残っていれば赤、なければ緑（条件付き書式は別タブを見られないので、カード自身の値を見る）
+  const alertCol = BK_FIRST_COL + 9;
+  const alertCell = '$' + bkA1_(BK_ROW.cardValue, alertCol).replace(/(\d+)/, '$$$1');
+  requests.push(bkFormulaRule_(id, BK_ROW.cardLabel, alertCol, BK_ROW.cardSub, alertCol + 2,
+    '=REGEXMATCH(' + alertCell + ',"件")', BK_COLOR.badTint));
+  return requests;
+}
 
-  sh.getRange(row, 2, alerts.length, 11)
-    .setBorder(true, true, true, true, true, true, BK_COLOR.bgSub, SpreadsheetApp.BorderStyle.SOLID);
+/** 棒の真下: 月・合計 → 細い線 → 出来事カード → ほか N 件。どの列も同じ式で、列の位置から月を引く */
+function bkTimelineRequests_(id, memoId) {
+  const c = "'" + BK_CACHE_SHEET + "'!";
+  const lastCol = BK_FIRST_COL + BK_MONTHS - 1;
+  const pick = function(col) { return '=INDEX(' + c + '$' + col + '$2:$' + col + '$' + (1 + BK_MONTHS) + ',COLUMN()-' + (BK_FIRST_COL - 1) + ')'; };
+  const row = function(r, formula, fmt) { return bkRepeat_(id, r, BK_FIRST_COL, r, lastCol, formula, fmt); };
+  const firstMemo = bkA1_(BK_ROW.memo, BK_FIRST_COL);
 
-  return row + alerts.length + 2;
+  const requests = [
+    row(BK_ROW.month, pick('Y'), { size: 10, bold: true, align: 'CENTER' }),
+    row(BK_ROW.total, pick('Z'), { size: 10, align: 'CENTER' }),
+    row(BK_ROW.stem, '=IF(' + firstMemo + '<>"","│","")', { size: 8, align: 'CENTER', color: BK_COLOR.muted }),
+    row(BK_ROW.more, '=IF(' + pick('X').substring(1) + '="","",HYPERLINK("#gid=' + memoId + '",' + pick('X').substring(1) + '))',
+      { size: 9, align: 'CENTER', color: BK_COLOR.muted }),
+    // 今月の列は金色で目印
+    { repeatCell: { range: bkGrid_(id, BK_ROW.month, lastCol, BK_ROW.month, lastCol),
+        cell: { userEnteredFormat: { textFormat: { fontSize: 10, bold: true, foregroundColorStyle: { rgbColor: bkRgb_(BK_COLOR.goldDark) } } } },
+        fields: 'userEnteredFormat.textFormat' } }
+  ];
+  for (let k = 0; k < BK_MEMO_SLOTS; k++) {
+    requests.push(row(BK_ROW.memo + k, pick(BK_CACHE_COL.memo.charAt(k)), { size: 9, wrap: true, valign: 'TOP', indent: 3 }));
+  }
+
+  // カードの白いすき間（縦・横）
+  requests.push({ updateBorders: { range: bkGrid_(id, BK_ROW.memo, BK_FIRST_COL, BK_ROW.memo + BK_MEMO_SLOTS - 1, lastCol),
+    innerVertical: { style: 'SOLID_THICK', colorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } },
+    innerHorizontal: { style: 'SOLID_THICK', colorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } } } });
+
+  // 評価でカードに色を付ける（色＋絵文字で、色だけに頼らない）
+  [['🟢', BK_COLOR.goodTint], ['🔴', BK_COLOR.badTint], ['⚪', BK_COLOR.noneTint]].forEach(function(rule) {
+    requests.push(bkFormulaRule_(id, BK_ROW.memo, BK_FIRST_COL, BK_ROW.memo + BK_MEMO_SLOTS - 1, lastCol,
+      '=REGEXMATCH(' + firstMemo + ',"^' + rule[0] + '")', rule[1]));
+  });
+  return requests;
+}
+
+/**
+ * 月別売上の積み上げ棒。棒の真下に各月の列が来るように置く。
+ * maximized だと横軸のラベルが棒に重なるので、横軸は空白の列（J）にして、月はセルに出す。
+ */
+function bkChartRequest_(ctx) {
+  const series = BK_SERVICES.map(function(s, i) {
+    return {
+      series: { sourceRange: { sources: [bkGrid_(ctx.cache, 1, 2 + i, 1 + BK_MONTHS, 2 + i)] } },
+      targetAxis: 'LEFT_AXIS',
+      colorStyle: { rgbColor: bkRgb_(s.color) }
+    };
+  });
+  return { addChart: { chart: {
+    spec: {
+      hiddenDimensionStrategy: 'SHOW_ALL',   // 集計元が隠しタブでも描く（既定だと空白になる）
+      fontName: 'Arial',
+      maximized: true,
+      backgroundColorStyle: { rgbColor: bkRgb_(BK_COLOR.white) },
+      basicChart: {
+        chartType: 'COLUMN',
+        stackedType: 'STACKED',
+        legendPosition: 'TOP_LEGEND',
+        headerCount: 1,
+        axis: [{ position: 'BOTTOM_AXIS' }, { position: 'LEFT_AXIS' }],
+        domains: [{ domain: { sourceRange: { sources: [bkGrid_(ctx.cache, 1, 10, 1 + BK_MONTHS, 10)] } } }],
+        series: series
+      }
+    },
+    border: { colorStyle: { rgbColor: bkRgb_(BK_COLOR.white) } },
+    position: { overlayPosition: {
+      anchorCell: { sheetId: ctx.dash, rowIndex: BK_ROW.chart - 1, columnIndex: 0 },
+      offsetXPixels: BK_CHART_OFFSET_X,
+      widthPixels: BK_CHART_WIDTH,
+      heightPixels: BK_CHART_HEIGHT
+    } }
+  } } };
+}
+
+/** 出来事メモの見出し（タブを新しく作る時だけ。中身は書かない） */
+function bkMemoRequests_(memoId) {
+  const widths = [90, 175, 250, 520, 110, 280];
+  const requests = [
+    { updateSheetProperties: {
+        properties: { sheetId: memoId, gridProperties: { frozenRowCount: 1 }, tabColorStyle: { rgbColor: bkRgb_(BK_COLOR.gold) } },
+        fields: 'gridProperties.frozenRowCount,tabColorStyle' } },
+    { updateCells: { start: { sheetId: memoId, rowIndex: 0, columnIndex: 0 },
+        rows: [{ values: BK_MEMO_HEADERS.map(function(h) {
+          return bkCell_(h, { size: 10, bold: true, bg: BK_COLOR.goldTint, wrap: true });
+        }) }],
+        fields: 'userEnteredValue,userEnteredFormat' } },
+    { repeatCell: { range: bkGrid_(memoId, 2, 1, 1000, 1),
+        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'yyyy/mm/dd' } } },
+        fields: 'userEnteredFormat.numberFormat' } },
+    { repeatCell: { range: bkGrid_(memoId, 2, 1, 1000, 6),
+        cell: { userEnteredFormat: { verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat.verticalAlignment' } },
+    { repeatCell: { range: bkGrid_(memoId, 2, 4, 1000, 4),
+        cell: { userEnteredFormat: { wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat.wrapStrategy' } },
+    { setDataValidation: { range: bkGrid_(memoId, 2, 1, 1000, 1), rule: {
+        condition: { type: 'DATE_IS_VALID' }, strict: false } } },
+    { setDataValidation: { range: bkGrid_(memoId, 2, 2, 1000, 2), rule: {
+        condition: { type: 'ONE_OF_LIST', values: BK_MEMO_RATINGS.map(function(v) { return { userEnteredValue: v }; }) },
+        showCustomUi: true, strict: false } } },
+    { setDataValidation: { range: bkGrid_(memoId, 2, 5, 1000, 5), rule: {
+        condition: { type: 'ONE_OF_LIST', values: [{ userEnteredValue: '×' }] },
+        showCustomUi: true, strict: false } } }
+  ];
+  widths.forEach(function(w, i) {
+    requests.push({ updateDimensionProperties: { range: { sheetId: memoId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+      properties: { pixelSize: w }, fields: 'pixelSize' } });
+  });
+  return requests;
 }
 
 // =====================================================
 //  共通ヘルパー
 // =====================================================
-function drawBkSectionHeader_(sh, row, label) {
-  sh.getRange(row, 2, 1, 12).merge()
-    .setValue(label)
-    .setBackground(BK_COLOR.bgSub).setFontColor(BK_COLOR.gold)
-    .setFontSize(13).setFontWeight('bold')
-    .setHorizontalAlignment('left').setVerticalAlignment('middle');
-  sh.setRowHeight(row, 32);
+
+/** 結合（複数セルの時）＋ 左上のセルに値と見た目を入れる */
+function bkBlock_(id, r1, c1, r2, c2, value, fmt) {
+  const requests = [];
+  if (r1 !== r2 || c1 !== c2) {
+    requests.push({ mergeCells: { range: bkGrid_(id, r1, c1, r2, c2), mergeType: 'MERGE_ALL' } });
+  }
+  requests.push({ updateCells: { start: { sheetId: id, rowIndex: r1 - 1, columnIndex: c1 - 1 },
+    rows: [{ values: [bkCell_(value, fmt)] }], fields: 'userEnteredValue,userEnteredFormat' } });
+  if (fmt && fmt.bg && c1 !== c2) {
+    requests.push({ repeatCell: { range: bkGrid_(id, r1, c1, r2, c2),
+      cell: { userEnteredFormat: { backgroundColorStyle: { rgbColor: bkRgb_(fmt.bg) } } },
+      fields: 'userEnteredFormat.backgroundColorStyle' } });
+  }
+  return requests;
 }
 
-function ensureBkCacheSheet_(ss) {
-  let sh = ss.getSheetByName(BK_CACHE_SHEET);
-  if (!sh) {
-    sh = ss.insertSheet(BK_CACHE_SHEET);
-    sh.hideSheet();
-  }
-  return sh;
+/** 同じ式・同じ見た目を範囲に入れる（式の相対参照は行・列ごとにずれる） */
+function bkRepeat_(id, r1, c1, r2, c2, value, fmt) {
+  return { repeatCell: { range: bkGrid_(id, r1, c1, r2, c2), cell: bkCell_(value, fmt),
+    fields: fmt ? 'userEnteredValue,userEnteredFormat' : 'userEnteredValue' } };
+}
+
+function bkCell_(value, fmt) {
+  const cell = {};
+  if (typeof value === 'number') cell.userEnteredValue = { numberValue: value };
+  else if (String(value).charAt(0) === '=') cell.userEnteredValue = { formulaValue: value };
+  else cell.userEnteredValue = { stringValue: String(value) };
+  if (fmt) cell.userEnteredFormat = bkFormat_(fmt);
+  return cell;
+}
+
+function bkFormat_(f) {
+  const out = {
+    horizontalAlignment: f.align || 'LEFT',
+    verticalAlignment: f.valign || 'MIDDLE',
+    wrapStrategy: f.wrap ? 'WRAP' : 'CLIP',
+    textFormat: { fontSize: f.size || 10, bold: !!f.bold, foregroundColorStyle: { rgbColor: bkRgb_(f.color || BK_COLOR.ink) } }
+  };
+  if (f.bg) out.backgroundColorStyle = { rgbColor: bkRgb_(f.bg) };
+  if (f.pattern) out.numberFormat = { type: 'NUMBER', pattern: f.pattern };
+  if (f.indent) out.padding = { left: f.indent, right: f.indent };
+  return out;
+}
+
+function bkFormulaRule_(id, r1, c1, r2, c2, formula, bg) {
+  return { addConditionalFormatRule: { index: 0, rule: {
+    ranges: [bkGrid_(id, r1, c1, r2, c2)],
+    booleanRule: {
+      condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: formula }] },
+      format: { backgroundColorStyle: { rgbColor: bkRgb_(bg) } }
+    }
+  } } };
+}
+
+/** 1始まり・両端を含む行列 → Sheets API の範囲 */
+function bkGrid_(id, r1, c1, r2, c2) {
+  return { sheetId: id, startRowIndex: r1 - 1, endRowIndex: r2, startColumnIndex: c1 - 1, endColumnIndex: c2 };
+}
+
+function bkA1_(row, col) {
+  return String.fromCharCode(64 + col) + row;
+}
+
+function bkRgb_(hex) {
+  const part = function(from) { return Math.round(parseInt(hex.substring(from, from + 2), 16) / 255 * 1000) / 1000; };
+  return { red: part(1), green: part(3), blue: part(5) };
 }
 
 // =====================================================
@@ -702,7 +570,8 @@ function debugBookingDashboardPreview() {
 
 // =====================================================
 //  予約日(H列) 文字列→日付 一括変換 ＋ ダッシュボード再生成
-//  文字列日付だとダッシュボードの日付フィルタが効かず売上が $0 になる不具合の是正。
+//  他の集計（日報など）の日付フィルタが効くように、シートの値を日付にそろえる。
+//  （ダッシュボードの数式は文字列の日付も読める）
 //  ※ 何度実行しても安全（すでに日付値の行はスキップ）
 // =====================================================
 function fixBookingDatesAndRebuild() {
@@ -733,7 +602,7 @@ function fixBookingDatesAndRebuild() {
   }
 
   Logger.log('🔧 予約日 文字列→日付 変換: ' + converted + '件');
-  ensureBookingDashboard(); // 修正後のセル参照(D5/E5)でダッシュボードを再構築
+  ensureBookingDashboard(); // 修正後の予約日でダッシュボードを再構築
   const msg = '予約日を ' + converted + ' 件 日付化 → 経営ダッシュボード再生成 完了';
   Logger.log('✅ ' + msg);
   return msg;

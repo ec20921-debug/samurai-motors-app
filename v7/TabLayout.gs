@@ -23,6 +23,7 @@ const TAB_GROUPS = {
 // 経営ダッシュボード / Picasso管理 / パートナー精算 はプログラムが見た目まで作るので整えない
 const TAB_LAYOUT = [
   ['経営ダッシュボード', 'DASH',  true,  false],
+  ['出来事メモ',         'DASH',  true,  false],   // 棒グラフの下に出す出来事（2026-11-01）。見た目は BookingDashboard.gs が作る
   ['予約',               'DAILY', true,  true],
   ['作業記録',           'DAILY', true,  true],
   ['顧客',               'DAILY', true,  true],
