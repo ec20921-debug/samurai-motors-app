@@ -32,7 +32,7 @@ function load(opts) {
     },
     sourceConfigsReadable_: () => opts.unreadable ? false : true,
     findShopLinkByShopId_: (id) => {
-      if (id === PICASSO) return { obj: { shop_id: PICASSO, '店名': 'Picasso City Garden', '状態': opts.unlinked ? '待機中' : '連携済', 'グループchat_id': '-5147145489' } };
+      if (id === PICASSO) return { obj: { shop_id: PICASSO, '店名': 'Picasso City Garden', '状態': opts.unlinked ? '待機中' : '連携済', 'グループchat_id': '-1000000000' } };
       if (id === 'SHOP-NOGROUP') return { obj: { shop_id: id, '状態': '待機中', 'グループchat_id': '' } };
       return null;
     },
@@ -82,7 +82,7 @@ test('予約なしの作業: 開始・完了の本文に金額が出ない・写
   assert.equal(ctx.notifySourceGroupJob_('start', { rec, carModel: 'Lexus RX', blobs: [1, 2, 3], opts }), PICASSO);
   assert.equal(ctx.notifySourceGroupJob_('end', { rec, carModel: 'Lexus RX', duration: 95, blobs: [1, 2], opts }), PICASSO);
   assert.equal(sent.length, 2);
-  assert.ok(sent.every((m) => m.chatId === '-5147145489'));
+  assert.ok(sent.every((m) => m.chatId === '-1000000000'));
   assert.match(sent[0].text, /^▶️ Job started — Picasso City Garden\n/);
   assert.match(sent[1].text, /^✅ Job finished — Picasso City Garden\n/);
   assert.ok(!/resident/.test(sent[0].text), 'スタッフの車もあるので resident と書かない');

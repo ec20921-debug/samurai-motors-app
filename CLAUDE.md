@@ -119,6 +119,11 @@
 - 主要タブ: 経費（Bot入力先）/ 経費マスター（SoT・GAS自動転記）/ 前払い管理 / ルーティン経費 / 経費ダッシュボード / 設定
 - 担当エージェント: 日次記帳=**加藤 (choba)**、月次P&L・$50超承認=**金子 (kaneko)**
 
+## 🏢 Picasso の契約（恒久・2026-11-02 Daisuke 指示）
+
+Picasso（流入元 `picasso_*`・Picasso のグループ通知・住民割引）に触れる変更は、確定する前に `picasso-constitution` スキルを通す。正典は Vault の Picasso 憲法（`04_Projects/Samurai/04_Businesses/Motors/02_Relations/Picasso/`）。
+**このリポは公開なので、契約の本文と Picasso 側の特典の率をコード・ドキュメント・コミットメッセージに書かない。**
+
 ## 📎 関連ドキュメント
 
 - `docs/DEPLOY.md` — clasp デプロイ正式手順・戻し方・claspignore ポリシー
