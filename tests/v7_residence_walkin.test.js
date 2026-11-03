@@ -50,7 +50,32 @@ function load(opts) {
 
 test('レジデンス一覧: 連携済みの Picasso だけを1つ（流入元が何行あっても）', () => {
   const { ctx } = load();
-  assert.deepEqual(JSON.parse(JSON.stringify(ctx.fieldResidences_())), [{ id: PICASSO, name: 'Picasso City Garden' }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(ctx.fieldResidences_())), [{ id: PICASSO, name: 'Picasso City Garden', pct: 0 }]);
+});
+
+test('レジデンス一覧: 割引率は流入元タブの決まりで返す（常時・期間内は率、期間外は0）', () => {
+  const { ctx } = load();
+  // 実物の sourcePctFor_ / sourceInPeriod_ / sourceToday_ を読み込む（シートには触らない）
+  const src = fs.readFileSync(path.join(V7, 'SourceCampaign.gs'), 'utf8');
+  const pick = (name) => { const a = src.indexOf('function ' + name + '('); return src.slice(a, src.indexOf(String.fromCharCode(10) + '}', a) + 2); };
+  vm.runInContext(pick('sourceInPeriod_') + pick('sourcePctFor_') + 'function sourceToday_() { return "2026-11-03"; }', ctx);
+  const c = { itemPct: { HEADLIGHT_MAGIC: 50 }, servicePct: 20, start: '2026-10-26', end: '2026-11-01' };
+  assert.equal(ctx.fieldResidencePct_(Object.assign({ serviceAlways: true }, c)), 20);
+  assert.equal(ctx.fieldResidencePct_(Object.assign({ serviceAlways: false }, c)), 0);
+  assert.equal(ctx.fieldResidencePct_({ servicePct: 20, start: '2026-11-01', end: '2026-11-30' }), 20);
+  assert.equal(ctx.fieldResidencePct_({ servicePct: 0, serviceAlways: true }), 0);
+});
+
+test('レジデンス一覧: 流入元の行で率が違う時は最も高い率。率の計算が失敗しても一覧からは消さない', () => {
+  const base = { label: 'Picasso City Garden', placeName: 'Picasso City Garden', active: true, shopId: PICASSO };
+  const { ctx } = load({ cfgs: { a: Object.assign({ code: 'a', pct: 0 }, base), b: Object.assign({ code: 'b', pct: 20 }, base) } });
+  ctx.sourceToday_ = () => '2026-11-03';
+  ctx.sourcePctFor_ = (c) => c.pct;
+  assert.equal(ctx.fieldResidences_()[0].pct, 20);
+  ctx.sourcePctFor_ = () => { throw new Error('boom'); };
+  const r = ctx.fieldResidences_();
+  assert.equal(r.length, 1);
+  assert.equal(r[0].pct, 0);
 });
 
 test('レジデンス一覧: グループ未連携・流入元タブが読めない時は空', () => {

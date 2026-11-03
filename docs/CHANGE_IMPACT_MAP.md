@@ -133,6 +133,7 @@
 ## 🏢 専用QR（流入元）キャンペーンの追加 / 終了
 
 > 例: Picasso City Garden 住民向け（全メニュー20%オフは**いつでも**・2026-10-25 Daisuke 決定。SAMURAI MAGIC 50%オフと 11/1 の日曜営業は 10/26〜11/1 の期間限定）。仕組み = v7/SourceCampaign.gs
+> **現場アプリの予約なしの作業**: レジデンス等を選ぶと、金額の初期値にも同じサービス割引(%)が入る（v7/SourceGroupNotify.gs `fieldResidences_` の pct → field/index.html `resPrice`・2026-11-03）。同じ提携先の行が複数あれば最も高い率。個別割引は見ない。値段のないメニュー（BODY）と手で入れた金額には自動で効かない。定価は `listAmount` で送り、割引額を売上に残す。率を変えるときは流入元タブだけ直す
 > QR = `https://t.me/SAMURAI_MOTORS_BOOKING_BOT?start=<流入元コード>`。来たお客様は `src_ref_<chatId>`（Script Properties）で永続的に紐付く
 > **期間の決まり**: 開始日/終了日 = 個別割引・期間中の日曜営業の期間。サービス割引(%) も同じ期間だけ効くが、**「サービス割引は常時」=TRUE ならいつでも**（期間が終わると歓迎・予約画面の期間限定の行は自動で消える）
 

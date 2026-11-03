@@ -240,25 +240,41 @@ function notifySourceGroupJob_(phase, p) {
  * 「ピカソのグループに BeforeAfter は届くようにしてほしい。金額はいれなくてもいい」。Picasso のスタッフの車など予約のない作業）
  * 流入元タブの有効な行の shop_id のうち、提携先グループが連携済みのもの（1つの shop_id に流入元が何行あっても1つ）。
  * 集金には関係しない（請求・店集金の一覧には今までどおり出さない）
- * @return {Array<{id:string, name:string}>} 流入元タブが読めない時は空
+ * @return {Array<{id:string, name:string, pct:number}>} 流入元タブが読めない時は空。pct = 今日のサービス割引(%)
  */
 function fieldResidences_() {
-  var out = [], seen = {};
+  var out = [], seen = {}, pcts = {};
   try {
     var cfgs = readSourceConfigs_();
     if (!sourceConfigsReadable_()) return [];
     Object.keys(cfgs).forEach(function(code) {
       var c = cfgs[code];
-      if (!c || !c.active || !c.shopId || seen[c.shopId]) return;
+      if (!c || !c.active || !c.shopId) return;
+      // 同じ提携先に流入元が何行あっても、いちばん高い率（行の並びや設定のずれで住民の割引が抜けないように）
+      pcts[c.shopId] = Math.max(pcts[c.shopId] || 0, fieldResidencePct_(c));
+      if (seen[c.shopId]) return;
       seen[c.shopId] = true;
       if (sourceGroupLinked_(c)) out.push({ id: c.shopId, name: c.placeName || c.label || c.shopId });
     });
+    out.forEach(function(r) { r.pct = pcts[r.id] || 0; });
   } catch (err) {
     Logger.log('⚠️ fieldResidences_: ' + err);
     return [];
   }
   out.sort(function(a, b) { return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
   return out;
+}
+
+/**
+ * 流入元の行の、今日のサービス割引(%)。現場アプリの予約なしの作業で金額の初期値に使う（2026-11-03・予約と同じ決まり。個別割引は見ない）
+ */
+function fieldResidencePct_(cfg) {
+  try {
+    return typeof sourcePctFor_ === 'function' ? (Number(sourcePctFor_(cfg, '', sourceToday_())) || 0) : 0;
+  } catch (err) {
+    Logger.log('⚠️ fieldResidencePct_: ' + err);   // 率が読めなくても、レジデンスの選択とグループ通知は止めない
+    return 0;
+  }
 }
 
 /**
