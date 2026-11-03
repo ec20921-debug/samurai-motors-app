@@ -151,7 +151,7 @@ function sendShopInvoiceForJob_(body, opts, p) {
   if (result !== 'unknown' && opts && opts.rowIndex) {
     shopInvoiceMark_(opts.rowIndex, result === 'sent' ? '送信済' : '未送信(' + result + ')');
   }
-  notifyShopInvoiceAdmin_(result, shopId, due, p.adminOpts);
+  notifyShopInvoiceAdmin_(result, shopId, due, p.adminOpts, p.refId);
   return result;
 }
 
@@ -216,7 +216,7 @@ function shopInvoiceCut_(v) {
 }
 
 /** 請求の結果を管理グループへ（日本語）。トピックが消えていたら一般スレッドへ送り直す */
-function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts) {
+function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts, refId) {
   if (result === 'skip_zero' || result === 'duplicate') return;
   try {
     var name = (shopId && (typeof getShopNameById_ === 'function') && getShopNameById_(shopId)) || shopId || '（店が分からない）';
@@ -224,7 +224,7 @@ function notifyShopInvoiceAdmin_(result, shopId, due, adminOpts) {
     var msg;
     switch (result) {
       case 'sent':
-        msg = '🧾 お店のグループへ請求を送りました: ' + name + ' $' + due + '（ABA QR 付き）';
+        msg = '🧾 お店のグループへ請求を送りました: ' + name + ' $' + due + '（' + (refId ? refId + '・' : '') + 'ABA QR 付き）';
         break;
       case 'unknown':
         msg = '⚠️ 請求の送信結果が分かりません（前回が途中で止まった）: ' + name + ' $' + due + '。お店のグループに届いているか確かめてください（自動では送り直しません）';

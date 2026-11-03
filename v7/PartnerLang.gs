@@ -160,13 +160,15 @@ function shopGroupConnectedText_(langs, shopName) {
 /**
  * 作業の開始・完了（車屋のグループ宛）。見出しは言語ごとに1行
  * @param {Array} langs
- * @param {Object} p - { phase: 'start'|'end', who: 'qr'|'shop', name, car, duration, photos: 'before'|'after'|'' }
+ * @param {Object} p - { phase: 'start'|'end', who: 'qr'|'shop', id, name, car, duration, photos: 'before'|'after'|'' }
  *   name / car / duration は渡した時だけ行を出す（空なら「-」）
+ *   id = 予約ID・売上の番号（BK-…）。あとで請求と突き合わせるため。空なら行を出さない（2026-11-03 Daisuke・請求の「🆔」と同じ形）
  */
 function shopGroupJobText_(langs, p) {
   var head = SHOP_GROUP_TEXT[(p.phase === 'start' ? 'start' : 'end') + (p.who === 'qr' ? 'Qr' : 'Shop')];
   var lines = langLines_(langs, head);
   lines[0] = (p.phase === 'start' ? '▶️ ' : '✅ ') + lines[0];
+  if (p.id) lines.push('🆔 ' + p.id);
   if (p.name !== undefined) lines.push('👤 ' + (p.name || '-'));
   if (p.car !== undefined) lines.push('🚗 ' + (p.car || '-'));
   if (p.duration !== undefined) lines.push('⏱ ' + langJoin_(langs, langFill_(SHOP_GROUP_TEXT.minutes, { n: p.duration })));
