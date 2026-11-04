@@ -106,7 +106,8 @@ test('車屋のあいさつ文: 月次レポートの文は出さない（2026-1
   const ops = fs.readFileSync(path.join(ROOT, 'v7-operations', 'ScoutBoardShopLinks.gs'), 'utf8');
   ['KM', 'EN', 'JA'].forEach((l) => {
     const a = vm.runInContext('SHOP_GREETING_' + l, ctx);
-    const b = vm.runInNewContext(ops.match(new RegExp('const SCOUT_LINKS_GREETING_' + l + ' =([\\s\\S]*?);\\n'))[1]);
+    // Windows の作業フォルダでは改行が CRLF になるので、LF と CRLF のどちらでも読めるようにする
+    const b = vm.runInNewContext(ops.match(new RegExp('const SCOUT_LINKS_GREETING_' + l + ' =([\\s\\S]*?);\\r?\\n'))[1]);
     assert.equal(a, b, l);
   });
 });
