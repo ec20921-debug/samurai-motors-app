@@ -18,6 +18,13 @@
  *
  * 【売上の持ち方】料金(USD)＝請求額(USD)＝当社が受け取った額。お店の取り分は割引額に入れず、管理者メモに 定価・率 を残す
  *   （割引額はキャンペーン等の本当の割引だけ＝割引 KPI を膨らませない）
+ *
+ * 【決済状態 2026-11-05 Daisuke「作業が終わった時点で清算済みではなく、要確認にできる？」】
+ *   - 提携店が払う仕事（shop・shopref）は、作業終了の時点では「要確認」（入金待ち）。入金確認日時は空のまま。
+ *     お店は請求書でまとめて払うことがある（LUXE Auto: 15台を 11/5 にまとめて $370）ので、入金を確かめてから「清算済み」にする
+ *   - ABA（その場で確かめて受け取った）・無料・旧現金は今までどおり「清算済み」
+ *   - 売上の合計は決済状態を見ない（作業完了の料金を数える）ので、売上の数字は変わらない。要確認は日報と経営ダッシュボードの「入金の確認待ち」に出る
+ *   - 催促（checkUnpaidReminders）は「QR送信済み」だけが対象なので、要確認の行にお客様あての催促は出ない
  */
 
 var FIELD_PAY_ON_SITE_ = { aba: true, shopref: true, shop: true, free: true, cash: true };
@@ -38,6 +45,17 @@ function fieldPayIsShop_(pt) { return pt === 'shop' || pt === 'shopref'; }
 
 /** その場で受け取り済み（または無料）で、あとから決済QRを送る必要がないか */
 function fieldPaidOnSite_(pt) { return fieldHas_(FIELD_PAY_ON_SITE_, pt); }
+
+// 提携店が払う仕事の、作業終了の時点の決済状態（入金を確かめたら「清算済み」に手で直す・2026-11-05）
+var FIELD_SHOP_PENDING_STATUS_ = '要確認';
+
+/** 作業終了の時点の決済状態。提携店が払う仕事は「要確認」（入金待ち）、それ以外（ABA・無料・旧現金）は「清算済み」 */
+function fieldSettleStatus_(pt) { return fieldPayIsShop_(pt) ? FIELD_SHOP_PENDING_STATUS_ : '清算済み'; }
+
+/** 管理者メモが「提携店が払う仕事」の記録か（手動ジョブの売上行「｜店払い:」「｜紹介:」・予約客の「現場で受領: …店から QR」） */
+function fieldMemoShopPays_(memo) {
+  return /｜(店払い|紹介):|現場で受領: (紹介客|店の車)・店から QR/.test(String(memo || ''));
+}
 
 /**
  * 店マスターの「紹介料率(%)」セルを 0〜100 の数にする。読み方は v7-operations/CommissionManager.gs parsePercentCell_ と同じ
@@ -109,15 +127,17 @@ function fieldPayAdminLine_(pt, shopName, body, shopId) {
 
 /**
  * 予約客がその場で払った時（QR・店・無料）: 予約を清算済みにして、決済QR・催促が出ないようにする。
+ * 提携店が払う仕事（店の車・紹介客）は「要確認」（入金待ち）にして、入金確認日時は空のまま（2026-11-05）。
  * 料金・請求額は現場が入れた金額（＝当社が受け取った額。無料は 0）。
  * ABA で定価より安くした時だけ割引前金額・割引額に残す。店の仕事は 定価・率 を管理者メモに残す（割引額には入れない）。
- * 同じ作業の再送では何もしない（すでに「現場で受領」が書かれていれば true）。
- * @return {boolean} 清算済みにした（またはすでに清算済み）か。false の時は呼び出し側が決済QRを通常どおり扱う
+ * 同じ作業の再送では何もしない（すでに「現場で受領」が書かれていて、清算済み・要確認なら true）。
+ * @return {boolean} 記録した（またはすでに記録済み）か。false の時は呼び出し側が決済QRを通常どおり扱う
  */
 function markBookingPaidOnSite_(bkRow, body, pt, shopName, shopId) {
   if (!bkRow || !fieldPaidOnSite_(pt)) return false;
   var memo = String(bkRow.data['管理者メモ'] || '');
-  if (String(bkRow.data['決済状態'] || '') === '清算済み' && memo.indexOf('現場で受領:') >= 0) return true;
+  var curStatus = String(bkRow.data['決済状態'] || '');
+  if ((curStatus === '清算済み' || curStatus === FIELD_SHOP_PENDING_STATUS_) && memo.indexOf('現場で受領:') >= 0) return true;
   if (!fieldAmountOk_(pt, body)) {
     Logger.log('⚠️ markBookingPaidOnSite_: 金額が不正のため清算済みにしない amount=' + (body && body.amount));
     return false;
@@ -133,8 +153,8 @@ function markBookingPaidOnSite_(bkRow, body, pt, shopName, shopId) {
       if (sp.list > 0) add += '（定価 $' + sp.list + (sp.rate !== null ? '・お店 ' + sp.rate + '%' : '') + '）';
     }
     var upd = {
-      '決済状態':     '清算済み',
-      '入金確認日時': new Date(),
+      '決済状態':     fieldSettleStatus_(pt),
+      '入金確認日時': fieldPayIsShop_(pt) ? '' : new Date(),   // 提携店が払う仕事は入金を確かめた時に入れる
       '料金(USD)':    amount,
       '請求額(USD)':  amount,
       '管理者メモ':   memo ? memo + '｜' + add : add

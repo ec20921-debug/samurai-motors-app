@@ -17,9 +17,10 @@
  *   - bookingId が空（= 予約経由でない手動ジョブ）
  *   - 料金(amount) > 0（無料 $0 と未入力は対象外）
  *   - 支払区分が ABA・提携店（紹介客 shopref／店の車 shop）・旧現金（未収・無料デモ・不明は対象外）
- *     2026-10-25 Daisuke 決定: 提携店の仕事も当社分をその場で QR で受け取るので「清算済み」で計上し、
- *     売上は当社の取り分だけ（現場アプリが 定価×(100−店の紹介料率)% を入れる）。店の取り分は割引額に入れず、
- *     管理者メモに 定価・率 を残す（割引額は ABA で定価より安くした時＝本当の割引だけ）
+ *     2026-10-25 Daisuke 決定: 提携店の仕事も売上は当社の取り分だけ（現場アプリが 定価×(100−店の紹介料率)% を入れる）。
+ *     店の取り分は割引額に入れず、管理者メモに 定価・率 を残す（割引額は ABA で定価より安くした時＝本当の割引だけ）
+ *     2026-11-05 Daisuke: 提携店が払う仕事は「清算済み」ではなく「要確認」（入金待ち）で計上する。入金確認日時は空のまま
+ *     （お店は請求書でまとめて払うことがある。入金を確かめて「清算済み」に直す。FieldPayment.gs fieldSettleStatus_）
  */
 
 // 提携店払いを計上するのは、この日（yyyyMMdd）以降に終わった作業だけ（毎時シンクで過去分を遡って作らない）
@@ -213,6 +214,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
     // 現場アプリ「お店の仕事」の店の車は、お店と決めた金額（定価×率ではない・2026-10-28 FieldShopMode.gs）
     var agreed = payType === 'shop' && typeof fieldIsAgreedPrice_ === 'function' && fieldIsAgreedPrice_(body);
     var realDiscount = !shopPays && listPrice > amount;   // ABA 等で定価より安くした時だけ割引として残す
+    var settleStatus = shopPays ? (typeof FIELD_SHOP_PENDING_STATUS_ !== 'undefined' ? FIELD_SHOP_PENDING_STATUS_ : '要確認') : '清算済み';   // FieldPayment.gs（2026-11-05）
 
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(15 * 1000)) {
@@ -261,9 +263,9 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '料金(USD)':      amount,
         '進行状態':       '作業完了',
         '予約登録日時':   now,
-        '決済状態':       '清算済み',   // 2026-10-25: 提携店の仕事も当社分をその場で QR で受け取る
+        '決済状態':       settleStatus,   // 2026-11-05: 提携店が払う仕事は「要確認」（入金待ち）・ABA 等は「清算済み」
         '請求額(USD)':    amount,
-        '入金確認日時':   now,
+        '入金確認日時':   shopPays ? '' : now,   // 提携店が払う仕事は入金を確かめた時に入れる
         '催促回数':       0,
         '管理者メモ':     '客名:' + name + '｜手動ジョブ売上' +
                          (shopPays ? '｜' + shopKind + shopLabel + (agreed ? '（お店と決めた金額）' : listPrice > amount ? '（定価$' + listPrice + (shopRate ? '・お店' + shopRate + '%' : '') + '）' : '') : '') +
@@ -288,7 +290,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
           '━━━━━━━━━━━━━━━━━\n' +
           '🆔 ' + newBookingId + '\n' +
           '💵 $' + amount + (shopPays
-            ? '（清算済み・' + (payType === 'shopref' ? '紹介のお客さん' : 'お店の車') + '・お店から QR: ' + shopLabel +
+            ? '（入金待ち＝要確認・' + (payType === 'shopref' ? '紹介のお客さん' : 'お店の車') + '・お店から QR: ' + shopLabel +
               (agreed ? '・お店と決めた金額' : listPrice > amount ? '・定価 $' + listPrice + (shopRate ? '・お店 ' + shopRate + '%' : '') : '') + '）'
             : '（清算済み）') + '\n' +
           '👤 ' + (name || '-') +

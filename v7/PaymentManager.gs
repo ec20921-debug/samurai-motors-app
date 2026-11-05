@@ -99,7 +99,11 @@ function sendPaymentQR_locked_(bookingId, opts, after) {
   }
 
   // 「提携店が払う」の手動ジョブ売上行（ManualSales.gs・管理者メモに「｜店払い:」）は代金をお店からもらうので送らない（2026-10-23）
-  if (/｜(店払い|紹介):/.test(String(bkRow.data['管理者メモ'] || '')) && !opts.ignoreShopRef) {   // 2026-10-25: 紹介客（紹介:）も
+  // 2026-11-05: 予約客で現場が「店から受け取る」を選んだ行（「現場で受領: 店の車・店から QR」等）も。清算済みではなく要確認になったため、ここで止める
+  var memoShopPays = (typeof fieldMemoShopPays_ === 'function')
+    ? fieldMemoShopPays_(bkRow.data['管理者メモ'])
+    : /｜(店払い|紹介):/.test(String(bkRow.data['管理者メモ'] || ''));
+  if (memoShopPays && !opts.ignoreShopRef) {   // 2026-10-25: 紹介客（紹介:）も
     Logger.log('⏭️ sendPaymentQR: 店払いの作業のためスキップ bookingId=' + bookingId);
     return { ok: false, reason: 'SHOP_PAYS' };
   }
@@ -258,6 +262,12 @@ function retryPaymentQR(bookingId, ignoreShopRef) {
   if (shopRefRetry && ignoreShopRef !== true) {
     Logger.log('⏭️ retryPaymentQR: 提携店経由（shop=' + shopRefRetry + '）のため何もしない。当社で集金する時は retryPaymentQR("' + bookingId + '", true)');
     return { ok: false, reason: 'SHOP_COLLECTS', shopId: shopRefRetry };
+  }
+
+  // 提携店が払う仕事（管理者メモで判定・要確認＝入金待ちの行）は、状態を「未清算」に戻さずに止める（2026-11-05）
+  if (ignoreShopRef !== true && typeof fieldMemoShopPays_ === 'function' && fieldMemoShopPays_(bkRow.data['管理者メモ'])) {
+    Logger.log('⏭️ retryPaymentQR: 提携店が払う仕事のため何もしない。当社で集金する時は retryPaymentQR("' + bookingId + '", true)');
+    return { ok: false, reason: 'SHOP_PAYS' };
   }
 
   // 清算済み（現場で受け取り済み等）は状態を「未清算」に戻して送らない（2026-10-25）。どうしても送る時は 第3引数 true
