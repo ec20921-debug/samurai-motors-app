@@ -26,6 +26,7 @@
  *     - booking_create              : 予約確定
  *     - job_start                   : 作業開始通知
  *     - job_end                     : 作業終了通知
+     - job_cancel                  : 作業の取り消し（アプリのテスト・押し間違い。予約なしの作業だけ・JobCancel.gs）
  *     - job                         : 最終データ送信（写真付き）
  *     - chat_history                : 顧客チャット履歴取得
  *     - chat_send                   : ミニアプリからメッセージ送信
@@ -33,7 +34,7 @@
  *     - manual_campaign_settle      : 手動特価予約の清算（決済状態→清算済み）
  *     - manual_campaign_sale        : 手動特価の売上記録
  *   ★スタッフ専用（StaffGate.gs）: booking_today / field_partner_shops / manual_campaign_list /
- *     job_start / job_end / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
+ *     job_start / job_end / job_cancel / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
  *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）。判定の記録は GAS エディタで
  *     showStaffGateAudit() を実行して見る（公開しない）
  */
@@ -184,6 +185,11 @@ function doPost(e) {
 
       case 'job_end':
         result = body.client_id ? apiJobEndV2(body) : apiJobEnd(body);
+        break;
+
+      // 2026-11-05: 現場アプリの「この作業を取り消す（アプリのテスト・押し間違い）」（JobCancel.gs）
+      case 'job_cancel':
+        result = apiJobCancelV2(body);
         break;
 
       case 'job':

@@ -87,6 +87,8 @@
   var cfg = { url: '', onChange: null, appVersion: '' };
   var sending = false;
   var timer = null;
+  var paused = false;      // 取り消しで箱の中身を触っている間は送らない（cancelJob）
+  var flushing = null;     // 送信ループ1回分の Promise（cancelJob が終わりを待つ）
 
   /** 記録を箱に入れる（保存できたら resolve ＝「保存しました」を出してよい）
    *  opts.url: 送り先（既定は現場の GAS。勤怠・日報は勤務Bot側の GAS） */
@@ -142,9 +144,9 @@
 
   /** 1回分の送信ループ（同時に1本だけ） */
   function flush() {
-    if (sending || !cfg.url) return Promise.resolve();
+    if (sending || paused || !cfg.url) return Promise.resolve();
     sending = true;
-    return getAll().then(function (list) {
+    return (flushing = getAll().then(function (list) {
       var now = Date.now();
       // 送信済みの古い記録を掃除
       list.filter(function (r) { return r.status === 'sent' && now - Date.parse(r.sent_at || r.created_at) > KEEP_SENT_MS; })
@@ -222,10 +224,10 @@
       });
       return chain;
     }).then(function () {
-      sending = false; notify(); schedule();
+      sending = false; flushing = null; notify(); schedule();
     }, function () {
-      sending = false; notify(); schedule();
-    });
+      sending = false; flushing = null; notify(); schedule();
+    }));
   }
 
   function schedule() {
@@ -247,6 +249,32 @@
         if (r.status === 'sending') { keep = r.client_id; return null; }
         return del(r.client_id);
       })).then(function () { return keep; });
+    });
+  }
+
+  /**
+   * 作業の取り消し（2026-11-05「この作業を取り消す（アプリのテスト・押し間違い）」）
+   *   - まだ送れていない開始・終了の記録は箱から消す（サーバーには届けない）
+   *   - 開始がサーバーに届いた（かもしれない）時だけ、取り消しの記録（job_cancel）を入れて送る＝作業記録を「中断」に。
+   *     届いたかどうかは端末では決めきれない（応答が来る前に切れた等）ので、一度でも送ろうとした開始は「届いたかも」と扱う
+   *     （サーバーは行が無ければ ok を返すだけ）。opts.started = 画面が開始を箱に入れた印（送信済みの記録は7日で掃除されるため）
+   *   - 終了の記録がある仕事は取り消さない → { ended: true }
+   *   送信の途中で記録を消すと、送り終わった時に書き戻される（put）ので、送信ループ1回分が終わるのを待ってから触る
+   */
+  function cancelJob(jobCid, payload, opts) {
+    paused = true;
+    return (flushing || Promise.resolve()).then(getAll).then(function (list) {
+      var mine = list.filter(function (r) { return r.job_client_id === jobCid && (r.kind === 'job_start' || r.kind === 'job_end'); });
+      if (mine.some(function (r) { return r.kind === 'job_end'; })) return { ended: true, queued: false };
+      var st = mine.filter(function (r) { return r.kind === 'job_start'; })[0];
+      var reached = st ? (st.status === 'sent' || st.attempts > 0 || st.fails > 0 || !!st.last_error) : !!(opts && opts.started);
+      return Promise.all(mine.filter(function (r) { return r.status !== 'sent'; }).map(function (r) { return del(r.client_id); }))
+        .then(function () { return reached ? enqueue('job_cancel', payload) : null; })
+        .then(function (rec) { return { ended: false, queued: !!rec }; });
+    }).then(function (r) {
+      paused = false; flush(); return r;
+    }, function (err) {
+      paused = false; flush(); throw err;
     });
   }
 
@@ -276,7 +304,7 @@
   }
 
   global.Outbox = {
-    start: start, enqueue: enqueue, flush: flush, retryAll: retryAll, all: getAll, supersede: supersede,
+    start: start, enqueue: enqueue, flush: flush, retryAll: retryAll, all: getAll, supersede: supersede, cancelJob: cancelJob,
     kvGet: kvGet, kvSet: kvSet, kvDel: kvDel, uuid: uuid
   };
 })(window);
