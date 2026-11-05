@@ -76,7 +76,7 @@ const DROPDOWNS = {
   BOOKING_PAYMENT_STATUS: ['未清算', 'QR送信済み', '清算済み', '要確認'],
   VEHICLE_TYPE:           ['セダン', 'SUV'],
   BOOKING_PLAN:           ['清 KIYOME (A)', '鏡 KAGAMI (B)', '匠 TAKUMI (C)', '将軍 SHOGUN (D)'],
-  JOB_STATUS:             ['割当済', '作業中', '完了'],
+  JOB_STATUS:             ['割当済', '作業中', '完了', '中断'],   // 中断 = 取り消した作業（JobCancel.gs・2026-11-05）
   LANGUAGE:               ['クメール語', '英語'],
   CHAT_DIRECTION:         ['顧客→管理', '管理→顧客'],
   MESSAGE_TYPE:           ['テキスト', '写真', '動画', '位置情報', 'ドキュメント']

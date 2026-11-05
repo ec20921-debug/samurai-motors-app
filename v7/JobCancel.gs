@@ -11,7 +11,11 @@
  *     「中断」は 売上の自動計上（ManualSales.gs）・日報（v7-operations DailyReport.gs）・提携店の集計
  *     （v7-operations ScoutBoardShopLinks.gs）・QR連携（ManualCustomerLink.gs）のどれにも入らない（どれも 作業状態=完了 だけ）
  *   - 作業終了がもう届いた行は取り消さない（ALREADY_ENDED。売上・請求が出たあと）
- *   - 作業開始が届いていない（行が無い）時は ok（取り消すものが無い。端末は送信済みにしてよい）
+ *   - 作業開始が届いていない（行が無い）時は ok（取り消すものが無い。端末は送信済みにしてよい）。
+ *     ただし開始が遅れて届く（端末が90秒で切っても GAS はまだ処理中など）ことがあるので、「状態」タブ（KvStore）に
+ *     取り消し済みの印（job_cancelled_<作業のclient_id>）を残し、あとから来た開始は行を作らず配信もしない（apiJobStartV2）
+ *   - 取り消したあとに届いた開始・終了（JobIdempotency.gs）: 開始は duplicate（配信しない）、終了は JOB_CANCELLED
+ *     （retryable=false＝端末で「要確認」。「完了」に戻して売上・請求に入れない・2026-11-05 コードレビュー[高-1][高-2]）
  *   - 管理グループ（一般）に1回だけ知らせる。開始の知らせ（管理グループ・お店や建物のグループ）は
  *     ボットが送ったメッセージの ID を残していないので自動では消せない → 手で消す案内を添える
  *
@@ -21,6 +25,16 @@
  */
 
 var JOB_CANCEL_STATE_ = '中断';
+var JOB_CANCEL_MARK_PREFIX_ = 'job_cancelled_';   // 「状態」タブのキー（行が無いうちに取り消した作業の印）
+
+/** 行が無いうちに取り消した作業か（開始・終了の入口がロックの中で見る）。読めない時は false（今までどおり） */
+function jobCancelMarked_(jobCid) {
+  try {
+    return !!(jobCid && typeof kvGet_ === 'function' && kvGet_(JOB_CANCEL_MARK_PREFIX_ + jobCid));
+  } catch (e) {
+    return false;
+  }
+}
 
 function apiJobCancelV2(body) {
   var cid = String(body.client_id || '');
@@ -32,8 +46,17 @@ function apiJobCancelV2(body) {
   if (!lock.tryLock(5000)) return jobErr_(body, 'BUSY', true);
   var d, jobId;
   try {
+    try { ensureJobsV2Columns_(); } catch (eCol) {
+      Logger.log('⚠️ apiJobCancelV2: 列の確保に失敗 ' + eCol);
+      return jobErr_(body, 'BUSY', true, { message: 'columns not ready' });
+    }
     var row = findRow(SHEET_NAMES.JOBS, 'client_id', jcid);
-    if (!row) return jobEcho_({ status: 'ok', result: 'not_started' }, body);
+    if (!row) {
+      // 開始がまだ届いていない。遅れて届いた開始で行ができないよう印を残す（ロックの中で書く＝開始の入口と順番がそろう）
+      if (typeof kvSet_ !== 'function') return jobErr_(body, 'BUSY', true, { message: 'kv not ready' });
+      kvSet_(JOB_CANCEL_MARK_PREFIX_ + jcid, new Date().toISOString());
+      return jobEcho_({ status: 'ok', result: 'not_started' }, body);
+    }
     d = row.data || {};
     jobId = String(d['ジョブID'] || '');
     var state = String(d['作業状態'] || '');

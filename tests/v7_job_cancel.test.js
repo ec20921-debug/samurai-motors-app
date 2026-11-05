@@ -9,6 +9,8 @@
  *   - 予約つき・作業終了が届いた行は受け付けない（retryable=false＝端末で要確認）
  *   - 2回目は duplicate（通知もしない）／管理通知が失敗しても取り消しは ok
  *   - 受け口（Router.gs）とスタッフ限定（StaffGate.gs）に job_cancel がある
+ *   - 取り消しの後に届いた開始・終了（JobIdempotency.gs・コードレビュー[高-1][高-2]）:
+ *     中断の行への終了は JOB_CANCELLED（完了に戻さない）、開始は配り直さない。行が無いうちの取り消しは「状態」タブに印
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
 const test = require('node:test');
@@ -28,10 +30,17 @@ function startJson(extra) {
 
 function loadV7(rows, opts) {
   opts = opts || {};
-  const sent = [], updates = [];
+  const sent = [], updates = [], appended = [], delivered = [], kv = Object.assign({}, opts.kv || {});
   let lockOk = opts.lockOk !== false;
   const ctx = {
-    console, sent, updates,
+    console, sent, updates, appended, delivered, kv,
+    CacheService: { getScriptCache: () => { const c = {}; return { get: (k) => c[k] || null, put: (k, v) => { c[k] = v; }, remove: (k) => { delete c[k]; } }; } },
+    kvGet_: (k) => (k in kv ? kv[k] : null),
+    kvSet_: (k, v) => { kv[k] = v; },
+    generateDateSeqId: () => 'JOB-20261105-099',
+    appendRow: (sheet, obj) => { appended.push(obj); rows.push(Object.assign({}, obj)); },
+    apiJobStart: (b, o) => { delivered.push({ phase: 'start', o }); return { status: 'ok' }; },
+    apiJobEnd: (b, o) => { delivered.push({ phase: 'end', o }); return { status: 'ok' }; },
     Logger: { log: () => {} },
     SHEET_NAMES: { JOBS: '作業記録' },
     BOT_TYPE: { BOOKING: 'booking' },
@@ -55,6 +64,7 @@ function loadV7(rows, opts) {
   };
   vm.createContext(ctx);
   ['JobIdempotency.gs', 'JobCancel.gs'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(V7, f), 'utf8'), ctx, { filename: f }));
+  vm.runInContext('ensureJobsV2Columns_ = function () {};', ctx);   // 列の確保はシートが要るので外す
   return ctx;
 }
 
@@ -121,7 +131,7 @@ test('建物（レジデンス等）・新しいお店の作業も、届いた�
   assert.ok(ctx.sent[0].text.includes('📌 このグループに届いた'), '新しいお店はグループが無い＝開始は届いていない');
 });
 
-test('開始が届いていない（行が無い）→ ok・何も書かない・知らせない', () => {
+test('開始が届いていない（行が無い）→ ok・行は書かない・知らせない・「状態」タブに取り消しの印', () => {
   const rows = [jobRow({ client_id: 'aaaaaaaa-0000-4000-8000-000000000000' })];
   const ctx = loadV7(rows);
   const res = ctx.apiJobCancelV2(body());
@@ -130,6 +140,71 @@ test('開始が届いていない（行が無い）→ ok・何も書かない�
   assert.equal(res.client_id, CANCEL_CID);
   assert.equal(ctx.updates.length, 0);
   assert.equal(ctx.sent.length, 0);
+  assert.ok(ctx.kv['job_cancelled_' + JOB_CID], '遅れて届く開始を止める印');
+});
+
+// ── 取り消しの後に届いた開始・終了（JobIdempotency.gs） ──
+const startBody = (extra) => Object.assign({ action: 'job_start', client_id: JOB_CID, job_client_id: JOB_CID, bookingId: '', v2: {} }, extra || {});
+const endBody = (extra) => Object.assign({ action: 'job_end', client_id: 'eeeeeeee-1111-4000-8000-000000000000', job_client_id: JOB_CID, amount: 19.4, v2: { payment_type: 'shop' } }, extra || {});
+
+test('[高-1] 中断の行に終了が届いても「完了」に戻さない（JOB_CANCELLED・要確認・配信しない）', () => {
+  const rows = [jobRow({ '作業状態': '中断' })];
+  const ctx = loadV7(rows);
+  const res = ctx.apiJobEndV2(endBody());
+  assert.equal(res.status, 'error');
+  assert.equal(res.error, 'JOB_CANCELLED');
+  assert.equal(res.retryable, false);
+  assert.equal(rows[0]['作業状態'], '中断');
+  assert.equal(ctx.updates.length, 0, '完了イベントID も書かない');
+  assert.equal(ctx.delivered.length, 0, '売上・請求・お店への After を出さない');
+});
+
+test('[高-1] 取り消し → 終了 の順でも売上に入らない（取り消してから終了を送る）', () => {
+  const rows = [jobRow()];
+  const ctx = loadV7(rows);
+  assert.equal(ctx.apiJobCancelV2(body()).status, 'ok');
+  const res = ctx.apiJobEndV2(endBody());
+  assert.equal(res.error, 'JOB_CANCELLED');
+  assert.equal(rows[0]['作業状態'], '中断');
+  assert.equal(ctx.delivered.length, 0);
+});
+
+test('[高-2] 行が無いうちに取り消した作業: 遅れて届いた開始は行を作らず配信しない・終了も受け付けない', () => {
+  const rows = [];
+  const ctx = loadV7(rows);
+  assert.equal(ctx.apiJobCancelV2(body()).result, 'not_started');
+  const st = ctx.apiJobStartV2(startBody());
+  assert.equal(st.status, 'duplicate', '端末は送信済みにする');
+  assert.equal(st.result, 'cancelled');
+  assert.equal(st.client_id, JOB_CID);
+  assert.equal(ctx.appended.length, 0, '作業記録に行を作らない');
+  assert.equal(ctx.delivered.length, 0, 'お店・お客様に「作業開始」を出さない');
+  const en = ctx.apiJobEndV2(endBody());
+  assert.equal(en.error, 'JOB_CANCELLED');
+  assert.equal(en.retryable, false);
+});
+
+test('中断の行に開始の送り直しが来ても配り直さない（開始配信日時が空でも）', () => {
+  const rows = [jobRow({ '作業状態': '中断', '開始配信日時': '' })];
+  const ctx = loadV7(rows);
+  const st = ctx.apiJobStartV2(startBody());
+  assert.equal(st.status, 'duplicate');
+  assert.equal(st.result, 'cancelled');
+  assert.equal(ctx.delivered.length, 0);
+});
+
+test('取り消していない作業は今までどおり（開始=行を作って配信・行なしの終了=START_NOT_FOUND で再送）', () => {
+  const rows = [];
+  const ctx = loadV7(rows);
+  const st = ctx.apiJobStartV2(startBody());
+  assert.equal(st.status, 'ok');
+  assert.equal(ctx.appended.length, 1);
+  assert.equal(ctx.appended[0]['作業状態'], '作業中');
+  assert.equal(ctx.delivered.length, 1);
+  const ctx2 = loadV7([]);
+  const en = ctx2.apiJobEndV2(endBody());
+  assert.equal(en.error, 'START_NOT_FOUND');
+  assert.equal(en.retryable, true);
 });
 
 test('2回目（もう「中断」）→ duplicate・書かない・知らせない', () => {

@@ -172,7 +172,14 @@ function apiJobStartV2(body) {
       if (row.data['開始配信日時']) {
         return jobEcho_({ status: 'duplicate', jobId: jobId }, body);
       }
+      // 取り消した作業（JobCancel.gs）に開始の送り直しが来ても、お店・お客様へ「作業開始」を配り直さない
+      if (String(row.data['作業状態'] || '') === JOB_CANCEL_STATE_) {
+        return jobEcho_({ status: 'duplicate', jobId: jobId, result: 'cancelled' }, body);
+      }
       // 終了が先に届いていた（開始の遅延到着）は下で skipCustomer にする（写真保存と管理通知は行う）
+    } else if (jobCancelMarked_(cid)) {
+      // 開始が届く前に取り消した作業（JobCancel.gs の印）。行を作らず、配信もしない
+      return jobEcho_({ status: 'duplicate', result: 'cancelled' }, body);
     } else {
       jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
       appendRow(SHEET_NAMES.JOBS, {
@@ -248,10 +255,16 @@ function apiJobEndV2(body) {
     }
     row = findRow(SHEET_NAMES.JOBS, 'client_id', jcid);
     if (!row) {
+      // 開始が届く前に取り消した作業（JobCancel.gs の印）は受け付けない（要確認）
+      if (jobCancelMarked_(jcid)) return jobErr_(body, 'JOB_CANCELLED', false);
       // 作業開始がまだ届いていない（アプリは開始→終了の順に送るので、開始の再送を待つ）
       return jobErr_(body, 'START_NOT_FOUND', true);
     }
     jobId = String(row.data['ジョブID'] || '');
+    // 取り消した作業（作業状態=中断・JobCancel.gs）を「完了」に戻さない＝売上・日報・店への請求に入れない（要確認）
+    if (String(row.data['作業状態'] || '') === JOB_CANCEL_STATE_) {
+      return jobErr_(body, 'JOB_CANCELLED', false, { jobId: jobId });
+    }
     // 予約IDは作業開始で記録した行の値を使う（作業終了の本文の値で別の予約を清算済みにさせない・2026-10-25）
     if (row.data['予約ID'] !== undefined) body.bookingId = String(row.data['予約ID'] || '').replace(/^'/, '');
     var prevEnd = String(row.data['完了イベントID'] || '');
