@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAMURAI MOTORS — កម្មវិធី «Samurai» ចំណុចដែលផ្លាស់ប្ដូរក្នុងកំណែថ្មី (現場アプリ 新しい版で変わったところ)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+Khmer:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SAMURAI MOTORS — 現場アプリ «Samurai» 新しい版で変わったところ（2026-11）
+   現場スタッフ（Run Kosal さん・新人）向け : クメール語メイン + 日本語（小さく）
+   クメール語は Panha 校閲済み（2026-11-05・合格 45/50・Run Kosal さんの native check 待ち）
+   « » の中はアプリの表示と一字一句同じ（field/index.html T_KM）
+   画面の写真は見本のデータ（実在のお店・お客さんではない）
+   体裁は job-payment-sop と同じ
+   ============================================================ */
+:root{
+  --ink:#15181d; --ink2:#3c4250; --sub:#79808d;
+  --red:#d81e5b; --green:#1e7a46; --blue:#1d4ed8;
+  --gold:#b8924f; --goldbg:#f7f0e2; --card:#f6f5f2; --line:#dcdad4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;color:var(--ink);line-height:1.75;-webkit-font-smoothing:antialiased}
+.jp{font-family:'Noto Sans JP',sans-serif;color:var(--sub);font-size:.74em;letter-spacing:.02em;line-height:1.55}
+.en{font-family:'Jost',sans-serif}
+
+@page{size:A4;margin:0}
+.sheet{width:210mm;min-height:297mm;margin:14px auto;background:#fff;box-shadow:0 10px 30px -16px rgba(0,0,0,.5);position:relative;overflow:hidden}
+.sheet-body{padding:4mm 10mm 12mm}
+.foot{position:absolute;bottom:4mm;left:10mm;right:10mm;display:flex;justify-content:space-between;font-family:'Jost',sans-serif;font-size:9.5px;color:#a3a9b1;letter-spacing:.18em;text-transform:uppercase}
+@media print{
+  body{background:#fff}
+  .sheet{margin:0;box-shadow:none;height:297mm;page-break-after:always;break-after:page}
+  .sheet:last-child{page-break-after:auto;break-after:auto}
+}
+
+/* 上の帯 */
+.band{background:#000;color:#fff;display:flex;align-items:center;gap:12px;padding:8px 10mm;border-bottom:3px solid var(--gold)}
+.band img{height:46px;width:auto;display:block;border-radius:4px}
+.band .t{flex:1;min-width:0}
+.band .t .km{font-size:18px;font-weight:800;line-height:1.5}
+.band .t .jp{color:#9aa3b2;font-size:11px}
+.band .doc{text-align:right;font-family:'Jost',sans-serif;line-height:1.25;border-left:1px solid #2a2e36;padding-left:12px}
+.band .doc .no{font-size:24px;font-weight:600;color:var(--gold);letter-spacing:.06em}
+.band .doc .meta{font-size:9.5px;color:#8c95a3;letter-spacing:.14em}
+.band.slim{padding:5px 10mm}
+.band.slim img{height:30px}
+.band.slim .t .km{font-size:14px}
+
+/* 冒頭の帯・更新のしかた */
+.rule{border-radius:10px;padding:7px 14px;display:flex;gap:12px;align-items:center;color:#fff;margin-top:3mm}
+.rule .mk{font-size:28px;line-height:1;flex:none}
+.rule .km{font-size:15px;font-weight:700;line-height:1.65}
+.rule .jp{display:block;color:inherit;opacity:.82;font-size:11px;margin-top:1px}
+.rule.dark{background:linear-gradient(135deg,#1c2028,#0d0f13);border-left:6px solid var(--gold)}
+.upd{margin-top:3mm;border:2px solid #9db5ec;background:#eef3fd;border-radius:12px;display:grid;grid-template-columns:72mm 1fr;gap:12px;align-items:center;padding:7px 12px}
+.upd img{width:100%;display:block;border-radius:8px;border:1.5px solid #c9d6f3;aspect-ratio:390/124;object-fit:cover;object-position:top}
+.upd .km{font-size:13.6px;font-weight:600;line-height:1.75}
+.upd .jp{display:block;font-size:10.4px;margin-top:2px}
+
+/* 変わったところのカード */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;margin-top:3mm}
+.cd{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column;break-inside:avoid}
+.cd.wide{grid-column:1 / -1}
+.cd .hd{display:flex;align-items:center;gap:8px;padding:5px 10px 4px;background:var(--card);border-bottom:1.5px solid var(--line);min-height:40px}
+.cd .num{flex:none;width:25px;height:25px;border-radius:50%;background:var(--ink);color:#fff;font-family:'Jost',sans-serif;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center}
+.cd .ttl{font-size:13.4px;font-weight:800;line-height:1.5}
+.cd .ttl .jp{display:block;font-weight:500;font-size:10px;line-height:1.35}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:7px 9px 4px;background:#f1f3f6;border-bottom:1.5px solid var(--line)}
+.pic .lb{display:inline-flex;align-items:baseline;gap:5px;font-size:11.4px;font-weight:700;border-radius:999px;padding:0 9px;margin-bottom:3px;line-height:1.7}
+.pic .lb .jp{font-size:9.4px;color:inherit;opacity:.8}
+.pic.b .lb{background:#e4e7ec;color:#5b6270}
+.pic.a .lb{background:var(--green);color:#fff}
+.pic img{width:100%;display:block;border-radius:9px;border:1.5px solid #cfd5de;background:#fff}
+.pics .pic img{aspect-ratio:390/470;object-fit:cover;object-position:top}
+.pics .pic img.mid{aspect-ratio:390/290;object-position:center}
+.pics .pic img.short{aspect-ratio:390/390}
+.pic.b img{filter:saturate(.75)}
+.tx{padding:5px 10px 7px;font-size:12.2px;line-height:1.75;flex:1}
+.tx .jp{display:block;font-size:9.8px;margin-top:2px}
+/* 横長のカード（縦に長い写真）: 写真2枚＋文 */
+.cd.wide .row{display:grid;grid-template-columns:41mm 41mm 1fr;gap:8px;padding:7px 9px;background:#f1f3f6;align-items:start}
+.cd.wide .row .tx{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:8px 11px;align-self:stretch;font-size:12.6px}
+
+/* その他・困ったとき */
+.side{display:grid;gap:8px;align-content:start}
+.mini{border:1.5px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;break-inside:avoid}
+.mini .mk{font-size:24px;line-height:1.2;flex:none}
+.mini .km{font-size:12.6px;font-weight:600;line-height:1.75}
+.mini .jp{display:block;font-size:10px;margin-top:1px}
+.mini.help{border-color:#b9d9c4;background:#eef6f0}
+.mini.help .km{font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- ======================= 1ページ目 ======================= -->
+<section class="sheet">
+  <header class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t">
+      <div class="km">កម្មវិធី «Samurai» — ចំណុចដែលផ្លាស់ប្ដូរក្នុងកំណែថ្មី</div>
+      <div class="jp">現場アプリ «Samurai» — 新しい版で変わったところ</div>
+    </div>
+    <div class="doc"><div class="no">UPDATE</div><div class="meta">FIELD APP · 2026.11</div></div>
+  </header>
+  <div class="sheet-body">
+
+    <div class="rule dark"><span class="mk">📱</span>
+      <div class="km">របៀបធ្វើការងារ គឺដូចពីមុន។ យើងបានរៀបចំទីតាំង និងទំហំអ្វីៗលើអេក្រង់ ឱ្យងាយមើល និងងាយចុចជាងមុន។
+        <span class="jp">作業のやり方は今までと同じです。画面の並びと大きさを、見やすく・押しやすくしました。</span></div>
+    </div>
+
+    <div class="upd">
+      <img src="./assets/after_0_update.jpg" alt="">
+      <div class="km">ពេលឃើញបន្ទះពណ៌ខៀវ «មានកំណែថ្មី។ ចុចដើម្បីធ្វើបច្ចុប្បន្នភាព» សូមចុចវា។ កំណត់ត្រាដែលមិនទាន់បានផ្ញើ នឹងមិនបាត់ទេ។
+        <span class="jp">青い帯「新しい版があります。タップして更新」が出たら、押してください。まだ送っていない記録は消えません。</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="cd">
+        <div class="hd"><span class="num">1</span><div class="ttl">🔄 ផ្ទុកឡើងវិញ នៅជ្រុងខាងស្ដាំខាងលើ<span class="jp">🔄 更新は右上</span></div></div>
+        <div class="pics">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_1_refresh.jpg" alt=""></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_1_refresh.jpg" alt=""></div>
+        </div>
+        <div class="tx">ដើម្បីផ្ទុកការកក់ឡើងវិញ សូមចុច 🔄 នៅជ្រុងខាងស្ដាំខាងលើ។ ប៊ូតុង «ផ្ទុកឡើងវិញ» ដែលនៅខាងក្រោម លែងមានហើយ។
+          <span class="jp">予約を読み直すときは、右上の 🔄 を押します。下にあった「更新」ボタンはなくなりました。</span></div>
+      </div>
+
+      <div class="cd">
+        <div class="hd"><span class="num">2</span><div class="ttl">«ការងាររបស់ហាងដៃគូ» មិនបង្ហាញក្នុង «ការកក់បន្ទាប់»<span class="jp">お店の仕事は「次の予定」に出ません</span></div></div>
+        <div class="pics">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_2_next.jpg" alt=""></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_2_next.jpg" alt=""></div>
+        </div>
+        <div class="tx">«ការកក់បន្ទាប់» បង្ហាញតែការកក់ប៉ុណ្ណោះ។ ដើម្បីបន្តការងាររបស់ហាងដៃគូ សូមចុចបន្ទះពណ៌ខៀវ «មានការងារកំពុងធ្វើ។ សូមបន្ត»។ ការងារនេះក៏មាននៅក្នុងបញ្ជី «ថ្ងៃនេះ» ដែរ។
+          <span class="jp">「次の予定」は予約だけです。お店の仕事の続きは、青い帯「作業中の仕事があります。続けてください」を押します。「今日」の一覧にも出ます。</span></div>
+      </div>
+
+      <div class="cd wide">
+        <div class="hd"><span class="num">3</span><div class="ttl">សារជូនដំណឹង បង្ហាញតូចៗនៅខាងក្រោម<span class="jp">お知らせは下に小さく</span></div></div>
+        <div class="row">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_4_toast.jpg" alt=""></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_4_toast.jpg" alt=""></div>
+          <div class="tx">សារដូចជា «បានរក្សាទុកក្នុងទូរស័ព្ទ» បង្ហាញនៅជាប់ពីលើប៊ូតុងខាងក្រោម។ សារនេះនឹងមិនបាំងតម្លៃ ឬរូបថតទេ។ ប៊ូតុង «កែតម្លៃ» ឥឡូវមានតែមួយបន្ទាត់ ហើយងាយមើលជាងមុន។
+            <span class="jp">「スマホに保存しました」などのお知らせは、下のボタンのすぐ上に出ます。値段や写真を隠しません。「値段を直す」ボタンも、いまは1行で見やすくなりました。</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="foot"><span>Samurai Motors · Field App Update</span><span>1 / 2</span></div>
+</section>
+
+<!-- ======================= 2ページ目 ======================= -->
+<section class="sheet">
+  <header class="band slim">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t"><div class="km">កម្មវិធី «Samurai» — ចំណុចដែលផ្លាស់ប្ដូរក្នុងកំណែថ្មី</div></div>
+    <div class="doc"><div class="meta">FIELD APP · 2026.11</div></div>
+  </header>
+  <div class="sheet-body">
+    <div class="grid">
+      <div class="cd wide">
+        <div class="hd"><span class="num">4</span><div class="ttl">ប៊ូតុងដែលមិនទាន់ចុចបាន មានស៊ុមជាបន្ទាត់ដាច់ៗ<span class="jp">まだ押せないボタンは点線の枠</span></div></div>
+        <div class="row">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_3_disabled.jpg" alt=""></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_3_disabled.jpg" alt=""></div>
+          <div class="tx">ប៊ូតុងដែលមានស៊ុមជាបន្ទាត់ដាច់ៗ មិនទាន់ចុចបានទេ។ សូមធ្វើជំហានខាងលើជាមុនសិន (ឧទាហរណ៍៖ បើគ្មានស្នាម សូមចុច «គ្មានស្នាម»)។
+            <span class="jp">点線の枠のボタンは、まだ押せません。上の手順を先にしてください（例：傷がなければ「傷なし」を押す）。</span></div>
+        </div>
+      </div>
+
+      <div class="cd">
+        <div class="hd"><span class="num">5</span><div class="ttl">ប៊ូតុងរូបថត «មុខ» «ក្រោយ» «ឆ្វេង» និង «ស្ដាំ» ធំជាងមុន<span class="jp">写真の「前・後ろ・左・右」が大きく</span></div></div>
+        <div class="pics">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_5_thumbs.jpg" alt="" class="mid"></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_5_thumbs.jpg" alt="" class="mid"></div>
+        </div>
+        <div class="tx">ចុចបានងាយស្រួលជាងមុន។ បើចង់ថតផ្នែកណាម្ដងទៀត សូមចុចប៊ូតុងនៃផ្នែកនោះនៅទីនេះ។
+          <span class="jp">押しやすくなりました。撮り直したい面があれば、ここでその面のボタンを押します。</span></div>
+      </div>
+
+      <div class="cd">
+        <div class="hd"><span class="num">6</span><div class="ttl">អ្វីដែលបានជ្រើស មាន ✓<span class="jp">選んだものに ✓</span></div></div>
+        <div class="pics">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_6_check.jpg" alt=""></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_6_check.jpg" alt=""></div>
+        </div>
+        <div class="tx">ជម្រើសដូចជា «រថយន្តរបស់ហាង» និង «សេដាន ឬ តូចជាង» ដែលបានជ្រើស នឹងមាន ✓។ ទោះនៅក្រោមពន្លឺថ្ងៃខ្លាំង ក៏មើលឃើញច្បាស់។
+          <span class="jp">「お店の車」「セダン以下」など、選んだものに ✓ が付きます。強い日差しの下でもはっきり見えます。</span></div>
+      </div>
+
+      <div class="cd">
+        <div class="hd"><span class="num">7</span><div class="ttl">ជម្រើសក្នុង «ការទូទាត់» នៅជួរតែមួយ<span class="jp">支払いは1列</span></div></div>
+        <div class="pics">
+          <div class="pic b"><span class="lb">ពីមុន <span class="jp">前</span></span><img src="./assets/before_7_pay.jpg" alt="" class="short"></div>
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_7_pay.jpg" alt="" class="short"></div>
+        </div>
+        <div class="tx">ជម្រើសក្នុង «ការទូទាត់» តម្រៀបពីលើចុះក្រោម មួយជម្រើសមួយជួរ។ អក្សរមិនដាច់ជាពីរបន្ទាត់ អានបានងាយ។ របៀបជ្រើស គឺដូចពីមុន។
+          <span class="jp">支払いの選び方は、上から下へ1つずつ並びます。文字が2行に割れず読みやすいです。選び方は今までと同じです。</span></div>
+      </div>
+
+      <div class="side">
+        <div class="mini"><span class="mk">🔠</span>
+          <div class="km">អក្សរធំជាងមុនបន្តិច។ ផ្ទាំងនៅខាងក្រោមអេក្រង់ ដែលកំពុងបើក មានដាក់ពណ៌។
+            <span class="jp">文字を少し大きくしました。画面の下のタブは、開いている所に色が付きます。</span></div>
+        </div>
+        <div class="mini help"><span class="mk">💬</span>
+          <div class="km">បើមិនច្បាស់ ឬចុចខុស សូមទាក់ទង Daisuke។
+            <span class="jp">わからないとき・押し間違えたときは、Daisuke に連絡してください。</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Samurai Motors · Field App Update</span><span>2 / 2</span></div>
+</section>
+
+</body>
+</html>
