@@ -92,11 +92,11 @@ main.flow{padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
 .btn small{font-size:13px;font-weight:600;opacity:.92}
 .btn:active{transform:scale(.985);filter:brightness(.93)}
 .btn.green{background:var(--green)} .btn.red{background:var(--red)} .btn.gold{background:var(--gold)}
-.btn.ghost{background:#fff;color:var(--text);border:2px solid var(--line)}
+.btn.ghost{background:#fff;color:var(--text);border:2px solid #b9c3cf}
 .btn.sm{min-height:50px;font-size:16px;border-radius:12px}
 .btn.mini{min-height:52px;font-size:15px;font-weight:700;color:var(--sub)}
 .btn.mini small{display:block;font-weight:500}
-.btn:disabled{background:#b9c0ca;color:#fff;border-color:#b9c0ca}
+.btn:disabled{background:#eef1f5;color:#5d6878;border:2px dashed #aab4c2}
 .row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .row1{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
@@ -124,7 +124,7 @@ main.flow{padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
 .scout-wrap iframe{width:100%;height:100%;border:0;display:block}
 .tab{height:66px;display:grid;place-items:center;align-content:center;gap:3px;color:#5d6878;position:relative;font-size:13px;font-weight:700;line-height:1.15}
 .tab svg{width:26px;height:26px}
-.tab[aria-selected="true"]{color:var(--blue)}
+.tab[aria-selected="true"]{color:var(--blue);background:var(--blue-bg)}
 .tab[aria-selected="true"]::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--blue)}
 main.tabbed{padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))}
 /* ── 経費（試作と同じ） ── */
@@ -139,7 +139,7 @@ main.tabbed{padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))}
 .items{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .item{border:2px solid var(--line);border-radius:14px;background:#fff;min-height:84px;padding:8px 4px;display:grid;place-items:center;align-content:center;gap:4px;text-align:center;line-height:1.2}
 .item .ic{font-size:30px;line-height:1}
-.item .nm{font-size:14px;font-weight:700}
+.item .nm{font-size:15px;font-weight:700;line-height:1.3}
 .item.on{border-color:var(--blue);background:var(--blue-bg);color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
 .item-ex{background:var(--band);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);line-height:1.5}
 .memo-in{width:100%;min-height:52px;border:2px solid var(--amber);border-radius:12px;padding:10px 12px;font-size:17px;background:#fff}
@@ -231,9 +231,9 @@ div.tl-item{cursor:pointer}
 .cam .retake{position:relative;overflow:hidden;width:100%}
 .cam .retake input{position:absolute;inset:0;opacity:0;width:100%;height:100%}
 .thumbs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
-.thumbs button{flex:none;width:64px;height:48px;border-radius:8px;overflow:hidden;border:2px solid var(--line);background:#f7f9fb;position:relative;display:grid;place-items:center;font-size:11px;color:var(--sub);font-weight:700}
+.thumbs button{flex:none;width:72px;height:56px;border-radius:10px;overflow:hidden;border:2px solid #b9c3cf;background:#f7f9fb;position:relative;display:grid;place-items:center;font-size:13px;color:var(--text);font-weight:700;line-height:1.2}
 .thumbs button img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.thumbs button.now{border-color:var(--blue)} .thumbs button.has{border-color:var(--green)}
+.thumbs button.now{border-color:var(--blue);box-shadow:inset 0 0 0 2px var(--blue)} .thumbs button.has{border-color:var(--green)}
 .thumbs button .k{position:absolute;right:2px;bottom:1px;background:var(--green);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:grid;place-items:center}
 .timer{text-align:center;padding:14px}
 .timer .v{font-size:50px;font-weight:700;color:var(--green);line-height:1.05}
@@ -286,7 +286,8 @@ div.tl-item{cursor:pointer}
 .seg2{display:grid;grid-template-columns:1fr 1fr;border:2px solid var(--line);border-radius:12px;overflow:hidden}
 .seg2.three{grid-template-columns:1fr 1fr 1fr}
 .seg2 button{padding:12px 6px;font-size:15px;font-weight:700;background:#fff}
-.seg2 button.on{background:var(--gold-bg);color:var(--gold)}
+.seg2 button.on{background:var(--gold-bg);color:var(--gold);box-shadow:inset 0 0 0 2px var(--gold)}
+.seg2 button.on::before{content:"✓ "}
 .pstep{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .pstep button{border:2px solid var(--line);border-radius:12px;min-height:48px;font-size:18px;font-weight:700;background:#fff;font-family:system-ui,sans-serif}
 .phint{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--sub)}
@@ -308,6 +309,9 @@ div.tl-item{cursor:pointer}
 .strip.test{background:#fff4c2;color:#5c4400;border:2px dashed #b88a00}
 body.test .head{background:repeating-linear-gradient(135deg,#fff6cf 0 14px,#fff 14px 28px)}
 .card.admin{border:2px dashed #b88a00}
+body.test .bar{border-top:5px solid #e0b000}
+body.test .bar::before{content:"🧪 TEST";position:absolute;right:12px;top:-30px;background:#fff4c2;color:#5c4400;border:2px dashed #b88a00;border-radius:8px;padding:1px 8px;font-size:13px;font-weight:700}
+.btn.testoff{background:#fff4c2;color:#5c4400;border:2px solid #b88a00}
 /* 取り消し中（2026-11-05） */
 .busyov{position:fixed;inset:0;z-index:300;background:rgba(15,23,42,.45);display:grid;place-items:center}
 .busyov[hidden]{display:none}
@@ -587,7 +591,13 @@ function toMin(s) { var p = String(s || '0:0').split(':'); return (+p[0] || 0) *
 function hms(sec) { sec = Math.max(0, Math.floor(sec)); return [Math.floor(sec / 3600), Math.floor(sec % 3600 / 60), sec % 60].map(function (n) { return String(n).padStart(2, '0'); }).join(':'); }
 function fmtDur(sec) { return Math.round(sec / 60) + ' ' + t('minutes'); }
 var toastTimer;
-function toast(msg, kind) { var el = $('toast'); el.textContent = msg; el.className = 'toast show ' + (kind || ''); clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800); }
+function toast(msg, kind) {
+  var el = $('toast'), bar = $('bar'), tabs = $('tabs');
+  // 下の操作バー（作業中）かタブ（ホーム）のすぐ上に出す＝押そうとしているボタンに重ねない（2026-11-05 デザインレビュー）
+  var under = (!bar.hidden && bar.offsetHeight) || (!tabs.hidden && tabs.offsetHeight) || 0;
+  el.style.bottom = (under + 12) + 'px';
+  el.textContent = msg; el.className = 'toast show ' + (kind || ''); clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800);
+}
 function openUrl(u) { if (!u) return; try { if (SURFACE === 'telegram' && TG.openLink) { TG.openLink(u); return; } } catch (e) {} window.open(u, '_blank'); }
 function mapUrl(place) { if (!place) return ''; return /^https?:\/\//.test(place) ? place : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place); }
 function placeText(place) { if (!place) return '—'; return /^https?:\/\//.test(place) ? '📍 Google Maps' : place; }
@@ -954,9 +964,9 @@ function adminCardHtml() {
   if (!isAdmin() && !TEST) return '';
   var h = '<div class="card admin"><div class="band">🛠 管理者（スタッフには出ません）</div><div class="body">' +
     '<div class="note">' + (TEST
-      ? '🧪 <b>テストモード中</b>。このスマホで始めた作業・経費・打刻はサーバーに送りません（お店・お客さん・売上・請求に出ません）。'
+      ? '🧪 <b>テストモード中</b>（このスマホだけ）'
       : '🧪 テストモード：このスマホだけ、何も送らずにアプリを試せます。お店やお客さんに通知は飛びません。') + '</div>' +
-    '<button type="button" class="btn sm ' + (TEST ? 'gold' : 'ghost') + '" id="testToggle">' +
+    '<button type="button" class="btn sm ' + (TEST ? 'testoff' : 'ghost') + '" id="testToggle">' +
     (TEST ? 'テストモードを終わる<small>テストで始めた作業・経費・打刻はスマホから消えます</small>' : '🧪 テストモードを始める') + '</button></div></div>';
   if (SURFACE === 'telegram' && isAdmin()) h += staffLinkCardHtml();
   return h;
