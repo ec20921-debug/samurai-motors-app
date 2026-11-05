@@ -76,7 +76,7 @@ body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;
 .pic img{width:100%;display:block;border-radius:9px;border:1.5px solid #cfd5de;background:#fff}
 .pics .pic img{aspect-ratio:390/470;object-fit:cover;object-position:top}
 .pics .pic img.mid{aspect-ratio:390/290;object-position:center}
-.pics .pic img.short{aspect-ratio:390/390}
+.pics .pic img.short{aspect-ratio:390/420}
 .pic.b img{filter:saturate(.75)}
 .tx{padding:5px 10px 7px;font-size:12.2px;line-height:1.75;flex:1}
 .tx .jp{display:block;font-size:9.8px;margin-top:2px}
@@ -86,7 +86,10 @@ body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;
 
 /* その他・困ったとき */
 .side{display:grid;gap:8px;align-content:start}
-.mini{border:1.5px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;gap:10px;align-items:flex-start;break-inside:avoid}
+.cd.wide .row.one{grid-template-columns:64mm 1fr}
+.cd.wide .row.one .tx{font-size:13px}
+.cd.wide .row.one .tx .jp{font-size:10.4px}
+.mini{border:1.5px solid var(--line);border-radius:12px;padding:6px 11px;display:flex;gap:9px;align-items:flex-start;break-inside:avoid}
 .mini .mk{font-size:24px;line-height:1.2;flex:none}
 .mini .km{font-size:12.6px;font-weight:600;line-height:1.75}
 .mini .jp{display:block;font-size:10px;margin-top:1px}
@@ -152,7 +155,7 @@ body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;
     </div>
 
   </div>
-  <div class="foot"><span>Samurai Motors · Field App Update</span><span>1 / 2</span></div>
+  <div class="foot"><span>Samurai Motors · Field App Update</span><span>1 / 3</span></div>
 </section>
 
 <!-- ======================= 2ページ目 ======================= -->
@@ -194,6 +197,20 @@ body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;
           <span class="jp">「お店の車」「セダン以下」など、選んだものに ✓ が付きます。強い日差しの下でもはっきり見えます。</span></div>
       </div>
 
+    </div>
+  </div>
+  <div class="foot"><span>Samurai Motors · Field App Update</span><span>2 / 3</span></div>
+</section>
+
+<!-- ======================= 3ページ目 ======================= -->
+<section class="sheet">
+  <header class="band slim">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t"><div class="km">កម្មវិធី «Samurai» — ចំណុចដែលផ្លាស់ប្ដូរក្នុងកំណែថ្មី</div></div>
+    <div class="doc"><div class="meta">FIELD APP · 2026.11</div></div>
+  </header>
+  <div class="sheet-body">
+    <div class="grid">
       <div class="cd">
         <div class="hd"><span class="num">7</span><div class="ttl">ជម្រើសក្នុង «ការទូទាត់» នៅជួរតែមួយ<span class="jp">支払いは1列</span></div></div>
         <div class="pics">
@@ -210,13 +227,22 @@ body{font-family:'Noto Sans Khmer','Noto Sans JP',sans-serif;background:#d9d7d2;
             <span class="jp">文字を少し大きくしました。画面の下のタブは、開いている所に色が付きます。</span></div>
         </div>
         <div class="mini help"><span class="mk">💬</span>
-          <div class="km">បើមិនច្បាស់ ឬចុចខុស សូមទាក់ទង Daisuke។
-            <span class="jp">わからないとき・押し間違えたときは、Daisuke に連絡してください。</span></div>
+          <div class="km">បើមិនច្បាស់ សូមទាក់ទង Daisuke។
+            <span class="jp">わからないときは、Daisuke に連絡してください。</span></div>
         </div>
       </div>
+      <div class="cd wide">
+        <div class="hd"><span class="num">8</span><div class="ttl">បើចុចខុស អាចបោះបង់ការងារនេះបាន<span class="jp">押し間違えたら、この作業を取り消せます</span></div></div>
+        <div class="row one">
+          <div class="pic a"><span class="lb">ឥឡូវ <span class="jp">今</span></span><img src="./assets/after_8_cancel.jpg" alt=""></div>
+          <div class="tx">ចុចប៊ូតុងអក្សរពណ៌ក្រហម «🗑 បោះបង់ការងារនេះ (ធ្វើតេស្តកម្មវិធី ឬចុចខុស)» នៅខាងក្រោមបំផុតនៃអេក្រង់ការងារ រួចចុច OK នៅក្នុងអេក្រង់បញ្ជាក់។ បន្ទាប់មក នឹងមិនមានការកត់ត្រាតម្លៃសេវា និងការស្នើសុំទូទាត់ប្រាក់ (QR) ទេ។ Daisuke នឹងទទួលបានដំណឹងថាការងារនេះត្រូវបានបោះបង់។ បើអ្នកបានធ្វើការងារលើរថយន្តពិតប្រាកដ (រួមទាំងការងារ «ឥតគិតថ្លៃ (សាកល្បង)») សូមកុំបោះបង់ សូមបន្តធ្វើរហូតដល់ចប់។ ការងាររបស់ភ្ញៀវដែលបានកក់ទុក មិនមានប៊ូតុងនេះទេ ហើយមិនអាចបោះបង់បានទេ។
+          <span class="jp">作業の画面のいちばん下にある赤い文字のボタン「🗑 この作業を取り消す（アプリのテスト・押し間違い）」を押し、確認の画面で OK を押します。そのあと、売上の記録とお支払いのお願い（QR）は出ません。Daisuke に「この作業が取り消された」と知らせが届きます。本当にお客さんの車を作業した時（「無料（デモ）」も）は、取り消さずに最後まで続けてください。予約のお客さんの作業には、このボタンは出ず、取り消せません。</span></div>
+        </div>
+      </div>
+
     </div>
   </div>
-  <div class="foot"><span>Samurai Motors · Field App Update</span><span>2 / 2</span></div>
+  <div class="foot"><span>Samurai Motors · Field App Update</span><span>3 / 3</span></div>
 </section>
 
 </body>

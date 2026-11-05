@@ -1419,8 +1419,8 @@ function renderJob() {
     if (c.mode === 'shop') html += sjDoneHtml(c);
   }
 
-  // 2026-11-05: 作業の取り消し（cancelCurJob）。管理者だけ（スタッフには出さない・Daisuke「現場スタッフには表示されなくていい」）。
-  //   予約のない作業だけ。テストモードの作業は予約でも取り消せる（何も送っていないので、スマホから消すだけ）
+  // 2026-11-05: 作業の取り消し（cancelCurJob・canCancelJob）。全スタッフ・予約のない作業だけ（同日夜の Daisuke 指示で管理者限定をやめた）。
+  //   テストモードの作業は予約でも取り消せる（何も送っていないので、スマホから消すだけ）
   if (canCancelJob(c)) html += '<button type="button" class="btn mini ghost" id="jobCancel" style="margin-top:28px;color:var(--red)">' + t('job_cancel') + '</button>';
 
   $('main').innerHTML = html;
@@ -1564,14 +1564,16 @@ function sjGuide(job, who, rate) {
 }
 function sjRunning() { return S.cur && S.cur.startQueued && S.cur.step !== 'done'; }
 
-// 「この作業を取り消す」（2026-11-05 Daisuke「両方直して」→ 同日「おれだけ…現場スタッフには表示されなくていい」で管理者だけ）
+// 「この作業を取り消す」（2026-11-05 Daisuke「両方直して」→ 同日夜「現場スタッフのアプリでも出来るように」で全スタッフ）
 //   まだ送れていない記録は箱から消し、開始が届いた（かもしれない）時だけサーバーへ取り消しを送る
 //   （Outbox.cancelJob → v7/JobCancel.gs が作業記録を「中断」にし、管理グループに知らせる）。端末の下書きと今日の一覧からも消す
 var cancelling = false;
+// 2026-11-05 夜 Daisuke「押し間違えたら Daisuke に連絡 でなくて、現場スタッフのアプリでも出来るようにしてよ」→ 全スタッフに出す
+//   予約のない作業（お店の仕事・予約なしのお客さん）だけ。予約の作業はサーバーも受け付けない（HAS_BOOKING）ので出さない。テストモードの作業はいつでも
 function canCancelJob(c) {
   if (!c || c.step === 'done') return false;
   if (c.test) return true;
-  return isAdmin() && !c.job.bookingId;
+  return !c.job.bookingId;
 }
 function cancelCurJob() {
   var c = S.cur;
