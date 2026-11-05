@@ -5,7 +5,7 @@
  *
  * v7 の実ファイル（.gs）を Node の vm に読み込み、シート・Telegram はスタブで置き換える（本番には触れない）。
  *   - 手動ジョブの売上行（ManualSales.gs）: 店の車・紹介客は 要確認・入金確認日時は空。ABA は今までどおり 清算済み
- *   - 予約客（FieldPayment.gs markBookingPaidOnSite_）: 同じ。同じ作業の再送では書き直さない
+ *   - 予約客（FieldPayment.gs markBookingPaidOnSite_）: 要確認（入金確認日時は作業終了の時刻）。同じ作業の再送では書き直さない
  *   - お客様あての決済QR（PaymentManager.gs）: 要確認になった提携店の仕事にも送らない・再送でも状態を「未清算」に戻さない
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
@@ -94,14 +94,14 @@ test('手動ジョブ: ABA（その場で確かめて受け取った）は今ま
 
 const bookingRow = (status, memo) => ({ rowIndex: 7, data: { '決済状態': status || '未清算', '管理者メモ': memo || '', '料金(USD)': 30 } });
 
-test('予約客: 現場が「店から受け取る」（shop・shopref）なら「要確認」・入金確認日時は空', () => {
+test('予約客: 現場が「店から受け取る」（shop・shopref）なら「要確認」・入金確認日時は作業終了の時刻（感想のお願いの起点）', () => {
   ['shop', 'shopref'].forEach((pt) => {
     const ctx = load(['FieldShopMode.gs', 'FieldPayment.gs']);
     const ok = ctx.markBookingPaidOnSite_(bookingRow(), { amount: 25, v2: { payment_type: pt } }, pt, 'LUXE Auto', 'SHOP-LUXE');
     assert.equal(ok, true);
     const upd = ctx.updated[0];
     assert.equal(upd['決済状態'], '要確認', pt);
-    assert.equal(upd['入金確認日時'], '', pt);
+    assert.ok(isDate(upd['入金確認日時']), pt);   // CustomerNotifier の感想のお願いが24時間後に出るように
     assert.equal(upd['料金(USD)'], 25);
     assert.ok(upd['管理者メモ'].startsWith('現場で受領: '), upd['管理者メモ']);
     assert.ok(ctx.fieldMemoShopPays_(upd['管理者メモ']), upd['管理者メモ']);
@@ -151,15 +151,15 @@ function loadPayment(bkData) {
   return { ctx, failures };
 }
 
-test('決済QR: 要確認になった提携店の仕事（予約客）には送らない', () => {
-  const { ctx, failures } = loadPayment({ '予約ID': 'BK-1', '決済状態': '要確認', '管理者メモ': '現場で受領: 店の車・店から QR・LUXE Auto $25', 'チャットID': '123' });
+test('決済QR: 提携店の仕事（予約客・現場で受領: 店の車）は、状態が手で未清算に戻されていても送らない', () => {
+  const { ctx, failures } = loadPayment({ '予約ID': 'BK-1', '決済状態': '未清算', '管理者メモ': '現場で受領: 店の車・店から QR・LUXE Auto $25', 'チャットID': '123' });
   const res = ctx.sendPaymentQR_locked_('BK-1', {}, []);
   assert.deepEqual(JSON.parse(JSON.stringify(res)), { ok: false, reason: 'SHOP_PAYS' });
   assert.equal(failures.length, 0);
 });
 
-test('決済QR: 要確認になった手動ジョブの売上行（｜店払い:）にも送らない', () => {
-  const { ctx } = loadPayment({ '予約ID': 'BK-2', '決済状態': '要確認', '管理者メモ': '客名:LUXE Auto｜手動ジョブ売上｜店払い:LUXE Auto（お店と決めた金額）', 'チャットID': '' });
+test('決済QR: 手動ジョブの売上行（｜店払い:）にも送らない（状態が未清算でも）', () => {
+  const { ctx } = loadPayment({ '予約ID': 'BK-2', '決済状態': '未清算', '管理者メモ': '客名:LUXE Auto｜手動ジョブ売上｜店払い:LUXE Auto（お店と決めた金額）', 'チャットID': '' });
   assert.equal(ctx.sendPaymentQR_locked_('BK-2', {}, []).reason, 'SHOP_PAYS');
 });
 
@@ -168,4 +168,10 @@ test('決済QR の再送: 提携店が払う仕事は、状態を「未清算」
   const res = ctx.retryPaymentQR('BK-3');
   assert.equal(res.reason, 'SHOP_PAYS');
   assert.equal(ctx.updated.length, 0);   // 決済状態・QR送信日時を書き換えていない
+});
+
+test('決済QR: 要確認の予約には、管理者メモの目印が無くても送らない（手でメモを消した時の守り）', () => {
+  const { ctx, failures } = loadPayment({ '予約ID': 'BK-4', '決済状態': '要確認', '管理者メモ': '', 'チャットID': '123' });
+  assert.equal(ctx.sendPaymentQR_locked_('BK-4', {}, []).reason, 'NEEDS_CHECK');
+  assert.equal(failures.length, 0);
 });
