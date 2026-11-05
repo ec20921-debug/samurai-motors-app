@@ -40,7 +40,7 @@ function load(files, extra) {
   files.forEach((f) => vm.runInContext(fs.readFileSync(path.join(V7, f), 'utf8'), ctx, { filename: f }));
   Object.assign(ctx, {
     getSpreadsheet: () => ({ getSpreadsheetTimeZone: () => 'Asia/Phnom_Penh' }),
-    getShopNameById_: () => 'LUXE Auto',
+    getShopNameById_: () => 'Shop A',
     getConfig: () => ({ adminGroupId: '-100' }),
     sendMessage: (bot, chatId, text) => { sent.push(text); },
     generateDateSeqId: () => 'BK-TEST-' + (appended.length + 1),
@@ -63,14 +63,14 @@ const manualBody = (paymentType, extra) => Object.assign({
 
 test('手動ジョブ: 店の車（shop）は「要確認」・入金確認日時は空・管理通知は入金待ち', () => {
   const ctx = load(['FieldShopMode.gs', 'FieldPayment.gs', 'ManualSales.gs']);
-  const id = ctx.recordManualJobSaleIfNeeded_(manualBody('shop'), 'job_end', { shopId: 'SHOP-LUXE', jobId: 'JOB-1' });
+  const id = ctx.recordManualJobSaleIfNeeded_(manualBody('shop'), 'job_end', { shopId: 'SHOP-A', jobId: 'JOB-1' });
   assert.equal(id, 'BK-TEST-1');
   const row = ctx.appended[0];
   assert.equal(row['決済状態'], '要確認');
   assert.equal(row['入金確認日時'], '');
   assert.equal(row['料金(USD)'], 25);       // 売上の額は今までどおり
   assert.equal(row['請求額(USD)'], 25);
-  assert.ok(row['管理者メモ'].includes('｜店払い:LUXE Auto'), row['管理者メモ']);
+  assert.ok(row['管理者メモ'].includes('｜店払い:Shop A'), row['管理者メモ']);
   assert.ok(ctx.sent[0].includes('入金待ち＝要確認'), ctx.sent[0]);
   assert.ok(!ctx.sent[0].includes('清算済み'), ctx.sent[0]);
 });
@@ -97,7 +97,7 @@ const bookingRow = (status, memo) => ({ rowIndex: 7, data: { '決済状態': sta
 test('予約客: 現場が「店から受け取る」（shop・shopref）なら「要確認」・入金確認日時は作業終了の時刻（感想のお願いの起点）', () => {
   ['shop', 'shopref'].forEach((pt) => {
     const ctx = load(['FieldShopMode.gs', 'FieldPayment.gs']);
-    const ok = ctx.markBookingPaidOnSite_(bookingRow(), { amount: 25, v2: { payment_type: pt } }, pt, 'LUXE Auto', 'SHOP-LUXE');
+    const ok = ctx.markBookingPaidOnSite_(bookingRow(), { amount: 25, v2: { payment_type: pt } }, pt, 'Shop A', 'SHOP-A');
     assert.equal(ok, true);
     const upd = ctx.updated[0];
     assert.equal(upd['決済状態'], '要確認', pt);
@@ -119,7 +119,7 @@ test('予約客: ABA・無料は今までどおり「清算済み」', () => {
 
 test('予約客: 同じ作業の再送では書き直さない（要確認・清算済みのどちらでも）', () => {
   const ctx = load(['FieldShopMode.gs', 'FieldPayment.gs']);
-  assert.equal(ctx.markBookingPaidOnSite_(bookingRow('要確認', '現場で受領: 店の車・店から QR・LUXE Auto $25'), { amount: 25 }, 'shop', 'LUXE Auto', ''), true);
+  assert.equal(ctx.markBookingPaidOnSite_(bookingRow('要確認', '現場で受領: 店の車・店から QR・Shop A $25'), { amount: 25 }, 'shop', 'Shop A', ''), true);
   assert.equal(ctx.markBookingPaidOnSite_(bookingRow('清算済み', '現場で受領: ABA QR $25'), { amount: 25 }, 'aba', '', ''), true);
   assert.equal(ctx.updated.length, 0);
 });
@@ -132,7 +132,7 @@ test('お客様のスクショで「要確認」になった予約（現場で�
 
 test('管理者メモの判定: 提携店が払う仕事だけを拾う', () => {
   const ctx = load(['FieldShopMode.gs', 'FieldPayment.gs']);
-  assert.equal(ctx.fieldMemoShopPays_('客名:LUXE Auto｜手動ジョブ売上｜店払い:LUXE Auto（お店と決めた金額）｜MS:x'), true);
+  assert.equal(ctx.fieldMemoShopPays_('客名:Shop A｜手動ジョブ売上｜店払い:Shop A（お店と決めた金額）｜MS:x'), true);
   assert.equal(ctx.fieldMemoShopPays_('客名:A｜手動ジョブ売上｜紹介:City Golf（定価$20・お店30%）'), true);
   assert.equal(ctx.fieldMemoShopPays_('現場で受領: 紹介客・店から QR・City Golf $14'), true);
   assert.equal(ctx.fieldMemoShopPays_('メモ｜現場で受領: 店の車・店から QR $25'), true);
@@ -152,19 +152,19 @@ function loadPayment(bkData) {
 }
 
 test('決済QR: 提携店の仕事（予約客・現場で受領: 店の車）は、状態が手で未清算に戻されていても送らない', () => {
-  const { ctx, failures } = loadPayment({ '予約ID': 'BK-1', '決済状態': '未清算', '管理者メモ': '現場で受領: 店の車・店から QR・LUXE Auto $25', 'チャットID': '123' });
+  const { ctx, failures } = loadPayment({ '予約ID': 'BK-1', '決済状態': '未清算', '管理者メモ': '現場で受領: 店の車・店から QR・Shop A $25', 'チャットID': '123' });
   const res = ctx.sendPaymentQR_locked_('BK-1', {}, []);
   assert.deepEqual(JSON.parse(JSON.stringify(res)), { ok: false, reason: 'SHOP_PAYS' });
   assert.equal(failures.length, 0);
 });
 
 test('決済QR: 手動ジョブの売上行（｜店払い:）にも送らない（状態が未清算でも）', () => {
-  const { ctx } = loadPayment({ '予約ID': 'BK-2', '決済状態': '未清算', '管理者メモ': '客名:LUXE Auto｜手動ジョブ売上｜店払い:LUXE Auto（お店と決めた金額）', 'チャットID': '' });
+  const { ctx } = loadPayment({ '予約ID': 'BK-2', '決済状態': '未清算', '管理者メモ': '客名:Shop A｜手動ジョブ売上｜店払い:Shop A（お店と決めた金額）', 'チャットID': '' });
   assert.equal(ctx.sendPaymentQR_locked_('BK-2', {}, []).reason, 'SHOP_PAYS');
 });
 
 test('決済QR の再送: 提携店が払う仕事は、状態を「未清算」に戻さずに止める', () => {
-  const { ctx } = loadPayment({ '予約ID': 'BK-3', '決済状態': '要確認', '管理者メモ': '客名:LUXE Auto｜手動ジョブ売上｜店払い:LUXE Auto', 'チャットID': '' });
+  const { ctx } = loadPayment({ '予約ID': 'BK-3', '決済状態': '要確認', '管理者メモ': '客名:Shop A｜手動ジョブ売上｜店払い:Shop A', 'チャットID': '' });
   const res = ctx.retryPaymentQR('BK-3');
   assert.equal(res.reason, 'SHOP_PAYS');
   assert.equal(ctx.updated.length, 0);   // 決済状態・QR送信日時を書き換えていない
