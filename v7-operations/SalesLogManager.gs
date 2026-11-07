@@ -109,7 +109,14 @@ function reactionLabel_(r) {
 function salesLogShops(chatId) {
   const staff = findStaffByChatId(chatId);
   if (!staff) return { ok: false, error: 'STAFF_NOT_FOUND' };
+  return { ok: true, shops: salesLogShopsData_() };
+}
 
+/**
+ * お店の一覧（スタッフの確認なし）。salesLogShops と、Supabase の写し（ScoutSupabase.gs）で共用
+ * 2026-11-07: 商談計算の料金（prices）は計算画面をなくしたので返さない
+ */
+function salesLogShopsData_() {
   // v1→v2 移行は 2026-07 に完了済み。安全網として1時間に1回だけ確認する（毎回だと全件読み2回分遅い）
   runAtMostEvery_('saleslog_v2_migration', 60 * 60, ensureSalesLogV2Migration_);
 
@@ -148,11 +155,7 @@ function salesLogShops(chatId) {
     return String(b.lastVisit || '').localeCompare(String(a.lastVisit || ''));
   });
 
-  // 商談計算の料金（メニュータブ）。読めなくても店一覧は返す
-  let prices = [];
-  try { prices = salesHearingPrices_(); } catch (e) { Logger.log('⚠️ salesHearingPrices_: ' + e); }
-
-  return { ok: true, shops: shops, prices: prices };
+  return shops;
 }
 
 /**
@@ -292,7 +295,7 @@ function salesLogUpdate(chatId, visitId, p) {
   const shopId = String(found.obj['shop_id'] || '');
   if (shopId) refreshShopAggregates_(shopId);
 
-  return { ok: true, visitId: String(found.obj['visit_id'] || visitId) };
+  return { ok: true, visitId: String(found.obj['visit_id'] || visitId), shopId: String(found.obj['shop_id'] || '') };
 }
 
 /**
