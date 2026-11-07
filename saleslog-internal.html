@@ -603,7 +603,7 @@ nav.tabs button.plus { color:var(--gold2); }
 .hero-last { margin-top:10px; font-size:15px; line-height:1.55; color:#e3dac4; }
 .hero-last b { color:var(--gold2); }
 .hero-last .nx { display:block; margin-top:4px; color:#ffb35c; }
-.hero-acts { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:14px; }
+.hero-acts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
 .act { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:58px; border-radius:14px;
   border:1px solid var(--border); background:rgba(0,0,0,.28); color:var(--text); font-size:13px; font-weight:700; text-decoration:none;
   font-family:inherit; cursor:pointer; line-height:1.25; text-align:center; padding:6px 4px; }
@@ -902,7 +902,6 @@ body { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
       <div class="hero-acts">
         <a class="act" id="actCall" href="#"><span class="ic">📞</span><span id="actCallL"></span></a>
         <a class="act" id="actMap" href="#" target="_blank" rel="noopener"><span class="ic">🧭</span><span id="actMapL"></span></a>
-        <button type="button" class="act gold" id="btnHear"><span class="ic">🧮</span><span id="actCalcL"></span></button>
       </div>
     </div>
     <div class="shop-src hidden" id="shopSrc"></div>
@@ -1166,7 +1165,6 @@ body { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
   <button type="button" id="tabMap" data-nav="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg><span id="navMapL"></span></button>
   <button type="button" id="tabList" data-nav="list" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 10l1.5-5h13L20 10M4 10v9h16v-9M4 10h16M9 19v-5h6v5"/></svg><span id="navListL"></span></button>
   <button type="button" id="btnNew" class="plus"><span class="pc">＋</span><span id="navNewL"></span></button>
-  <button type="button" id="tabCalc" data-nav="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7h7M8.5 12h1M12 12h1M15.5 12h0M8.5 16h1M12 16h1M15.5 16h0" stroke-linecap="round"/></svg><span id="navCalcL"></span></button>
 </div></nav>
 <div class="sheet hidden" id="sheet"><div class="in" id="sheetIn"></div></div>
 <div class="toast" id="toast"></div>
@@ -1718,7 +1716,7 @@ function renderListError(msg) {
 
 function badgeFor(shop) {
   if (isUnvisited(shop)) return '<span class="badge unv">' + esc(STR.unvisited) + '</span>';
-  if (shop.status === '提携済') return '<span class="badge partner">⭐ ' + esc(shop.lastReaction || 'A') + '</span>';
+  if (shop.status === '提携済') return '<span class="badge partner">🤝 ' + esc(shop.lastReaction || 'A') + '</span>';
   var cls = shop.lastReaction ? 'r' + shop.lastReaction : 'rNone';
   return '<span class="badge ' + cls + '">' + esc(shop.lastReaction || '—') + '</span>';
 }
@@ -1857,7 +1855,7 @@ function refreshMapMarkers() {
       ((s.shopTypes && s.shopTypes.length) ? '🔧 ' + esc(s.shopTypes.join(' / ')) + '<br>' : '') +
       esc((s.lastReaction || '—') + ' · 🔁 ' + s.visitCount + (s.lastVisit ? ' · ' + s.lastVisit : '')) +
       (hereGps ? ' · ' + esc(fmtDist(distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng))) : '') +
-      (s.potential ? ' · ⭐' + esc(s.potential) + (s.potentialMine !== null ? ' (' + esc(hMoney(s.potentialMine)) + '$/月)' : '') : '') +
+      (s.potential ? ' · 📈' + esc(s.potential) + (s.potentialMine !== null ? ' (' + esc(hMoney(s.potentialMine)) + '$/月)' : '') : '') +
       (s.lastMemo ? '<div class="popup-last"><b>' + esc(STR.lastLabel) + '</b><br>' + esc(s.lastMemo) + '</div>' : '') +
       (unv ? '<div class="popup-last">' + esc(STR.unvisited) + (s.tier ? ' · Tier ' + esc(s.tier) : '') + (s.address ? '<br>' + esc(s.address) : '') + '</div>' : '') +
       (s.nextAction || s.nextDue ? '<div class="popup-last">⏰ ' + esc((s.nextDue ? s.nextDue + ' ' : '') + (s.nextAction || '')) + '</div>' : '');
@@ -1867,12 +1865,7 @@ function refreshMapMarkers() {
     btn.className = 'popup-open-btn';
     btn.textContent = STR.open;
     btn.addEventListener('click', function() { openShop(s.shopId); });
-    var btn2 = document.createElement('button');
-    btn2.className = 'popup-open-btn alt';
-    btn2.textContent = '🧮';
-    btn2.setAttribute('aria-label', STR.hearTitle);
-    btn2.addEventListener('click', function() { openShop(s.shopId, true); });
-    btns.appendChild(btn); btns.appendChild(btn2);
+    btns.appendChild(btn);
     div.appendChild(btns);
     marker.bindPopup(div);
 
@@ -1941,7 +1934,7 @@ function hereThen(after) {
 }
 
 function setNav(which) {
-  ['tabMap', 'tabList', 'tabCalc'].forEach(function(id) {
+  ['tabMap', 'tabList'].forEach(function(id) {
     var b = document.getElementById(id);
     if (b.getAttribute('data-nav') === which) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
@@ -2619,7 +2612,7 @@ function renderTimeline() {
       : o.mode === 'dealer' ? '🚗 ' + o.stock + ' · 💡 ' + o.light + '+' + o.heavy + ' · 🪟 ' + o.glass + ' · 👥 ' + o.buyers
       : '🚗 ' + o.carsDay + ' × ' + o.days + ' · 1/' + o.oneIn + ' · ' + o.avg + '$';
     return '<div class="tl-item"><div class="tl-ic">🧮</div><div class="tl-b"><div class="tl-d">' + d + (o.staff ? ' · ' + esc(o.staff) : '') +
-      (o.potential ? ' <span class="pot ' + esc(o.potential) + '">⭐' + esc(o.potential) + '</span>' : '') +
+      (o.potential ? ' <span class="pot ' + esc(o.potential) + '">' + esc(o.potential) + '</span>' : '') +
       '<span class="tl-m">' + hMoney(o.mine || 0) + '$</span></div><div style="color:var(--text-dim);font-size:13.5px">' + esc(how) + '</div>' +
       (o.note ? '<div>' + esc(o.note) + '</div>' : '') + '</div></div>';
   }).join('');
@@ -3095,7 +3088,6 @@ function saveVisit() {
 // ═══════════════════════════════════════════
 document.getElementById('tabList').addEventListener('click', function() { showView('home'); switchTab('list'); });
 document.getElementById('tabMap').addEventListener('click',  function() { showView('home'); switchTab('map'); });
-document.getElementById('tabCalc').addEventListener('click', function() { openCalcTab(); });
 document.getElementById('btnNew').addEventListener('click',  function() { openNewShop(); });
 document.getElementById('btnShopBack').addEventListener('click', function() { showView('home'); switchTab(homeTab); loadShops(); });
 document.getElementById('btnShopSave').addEventListener('click', saveShop);
@@ -3483,10 +3475,8 @@ document.getElementById('lblFormNotes').textContent = STR.notesHead;
 document.getElementById('navMapL').textContent = STR.navMap;
 document.getElementById('navListL').textContent = STR.navList;
 document.getElementById('navNewL').textContent = STR.navNew;
-document.getElementById('navCalcL').textContent = STR.navCalc;
 document.getElementById('actCallL').textContent = STR.actCall;
 document.getElementById('actMapL').textContent = STR.actMap;
-document.getElementById('actCalcL').textContent = STR.navCalc;
 document.getElementById('btnJustVisit').textContent = STR.justVisit;
 document.getElementById('nextHead').textContent = STR.nextHead;
 document.getElementById('dueHead').textContent = STR.dueHead;
@@ -3561,7 +3551,6 @@ document.getElementById('btnShopFav').addEventListener('click', function() {
   toggleFav(currentShop.shopId);
   renderShopFav(); renderShopList(); refreshMapMarkers();
 });
-document.getElementById('btnHear').addEventListener('click', openHearing);
 document.getElementById('btnHearBack').addEventListener('click', function() { if (currentShop) openShop(currentShop.shopId); else showView('home'); });
 document.getElementById('btnHearSave').addEventListener('click', saveHearing);
 document.getElementById('shopSearch').addEventListener('input', renderShopList);
