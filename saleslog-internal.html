@@ -823,6 +823,15 @@ body { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
 .hres .cells div { flex:none; background:none; border-radius:0; padding:0; }
 .hres .cells span { display:inline; font-size:12px; margin-right:5px; }
 .hres .cells b { font-size:18px; }
+/* 2026-11-07 お気に入り（このスマホだけに覚える） */
+.hero-top { display:flex; align-items:flex-start; gap:8px; }
+.hero-top .hero-name { flex:1; min-width:0; }
+.fav-btn { flex:none; width:44px; height:44px; border:1.5px solid var(--border); border-radius:12px; background:#fff;
+  color:var(--text-dim); font-size:24px; line-height:1; cursor:pointer; font-family:inherit; }
+.fav-btn.on { border-color:var(--gold); color:var(--gold); background:#fff6df; }
+.near-btn#btnFav { font-size:20px; }
+.near-btn#btnFav.on { background:#fff6df; }
+.shop-name .fav { color:var(--gold); margin-right:4px; }
 </style>
 </head>
 <body>
@@ -847,7 +856,7 @@ body { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
     <div class="find-row">
       <input type="search" id="shopSearch" autocomplete="off">
       <button type="button" class="near-btn" id="btnNear"></button>
-      <button type="button" class="near-btn" id="btnPot">⭐</button>
+      <button type="button" class="near-btn" id="btnFav" aria-pressed="false">☆</button>
     </div>
 
     <div class="follow-box hidden" id="followBox">
@@ -887,7 +896,7 @@ body { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
   <div id="viewShop" class="hidden">
     <button class="back-btn" id="btnShopBack">← ត្រឡប់ / 戻る</button>
     <div class="hero">
-      <div class="hero-name" id="shopTitle"></div>
+      <div class="hero-top"><div class="hero-name" id="shopTitle"></div><button type="button" class="fav-btn" id="btnShopFav" aria-pressed="false">☆</button></div>
       <div class="hero-meta" id="heroMeta"></div>
       <div class="hero-last" id="heroLast"></div>
       <div class="hero-acts">
@@ -1398,7 +1407,15 @@ var editingVisitId = null;    // edit 時の対象訪問
 var selectedReaction = '';
 var selectedStatus = '';
 var map = null, mapMarkers = [];
-var hereGps = null, hereGpsAt = 0, meMarker = null, nearMode = false, potMode = false;
+var hereGps = null, hereGpsAt = 0, meMarker = null, nearMode = false, favMode = false;
+// お気に入り（2026-11-07 Daisuke「お気に入り登録は出来るといいな」）。そのスマホだけに覚える（サーバーには送らない）
+var FAV_KEY = 'sl_fav_v1', favIds = {};
+try { (JSON.parse(localStorage.getItem(FAV_KEY) || '[]') || []).forEach(function(id) { favIds[id] = true; }); } catch (e) {}
+function isFav(id) { return !!favIds[id]; }
+function toggleFav(id) {
+  if (favIds[id]) delete favIds[id]; else favIds[id] = true;
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(Object.keys(favIds))); } catch (e) {}
+}
 var homeTab = 'list';                                   // 下のタブ（地図 / お店）
 var todayVisit = null, todayChain = Promise.resolve();  // 今日の訪問（こまめ保存）
 var calcShop = null, calcFrom = '';                     // 計算タブのお店（店の画面から来たら 'shop'）
@@ -1745,15 +1762,10 @@ function renderShopList() {
   var rows = shopsCache.filter(function(s) {
     if (listFilter === 'visited' && isUnvisited(s)) return false;
     if (listFilter === 'unvisited' && !isUnvisited(s)) return false;
+    if (favMode && !isFav(s.shopId)) return false;
     return !q || (s.shopName + ' ' + (s.phone || '') + ' ' + (s.ownerName || '') + ' ' + (s.address || '')).toLowerCase().indexOf(q) >= 0;
   });
-  if (potMode) {
-    var rank = { S: 0, A: 1, B: 2, C: 3 };
-    rows = rows.slice().sort(function(a, b) {
-      var ra = rank[a.potential] === undefined ? 9 : rank[a.potential], rb = rank[b.potential] === undefined ? 9 : rank[b.potential];
-      return ra - rb || (Number(b.potentialMine) || 0) - (Number(a.potentialMine) || 0);
-    });
-  } else if (nearMode && hereGps) {
+  if (nearMode && hereGps) {
     rows = rows.map(function(s) {
       return { s: s, d: (s.lat === null || s.lng === null) ? Infinity : distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng) };
     }).sort(function(a, b) { return a.d - b.d; }).map(function(x) { return x.s; });
@@ -1780,9 +1792,9 @@ function renderShopList() {
     var dist = (hereGps && s.lat !== null && s.lng !== null) ? fmtDist(distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng)) : '';
     card.innerHTML =
       '<div class="shop-head">' +
-        '<div class="shop-name">' + esc(s.shopName) + '</div>' +
+        '<div class="shop-name">' + (isFav(s.shopId) ? '<span class="fav">★</span>' : '') + esc(s.shopName) + '</div>' +
         (dist ? '<span class="dist">' + esc(dist) + '</span>' : '') +
-        (s.potential ? '<span class="pot ' + esc(s.potential) + '">⭐' + esc(s.potential) + '</span>' : '') +
+        (s.potential ? '<span class="pot ' + esc(s.potential) + '">' + esc(s.potential) + '</span>' : '') +
         badgeFor(s) +
       '</div>' +
       typesLine +
@@ -1822,7 +1834,7 @@ function refreshMapMarkers() {
   mapMarkers = [];
 
   var located = shopsCache.filter(function(s) {
-    return s.lat !== null && s.lng !== null && (showUnvisited || !isUnvisited(s));
+    return s.lat !== null && s.lng !== null && (showUnvisited || !isUnvisited(s)) && (!favMode || isFav(s.shopId));
   });
   document.getElementById('mapHint').textContent =
     located.length ? ('📍 ' + located.length) : STR.mapEmpty;
@@ -2404,11 +2416,12 @@ function saveCommission() {
 function renderShopDetail() {
   var s = currentShop;
   document.getElementById('shopTitle').textContent = s.shopName;
+  renderShopFav();
   var chips = [];
   chips.push(STATUS_LABELS[s.status] || s.status || '');
   if (s.shopTypes && s.shopTypes.length) chips.push(s.shopTypes.join('・'));
   if (hereGps && s.lat !== null && s.lng !== null && s.lat !== undefined) chips.push('📍 ' + fmtDist(distMeters(hereGps.lat, hereGps.lng, s.lat, s.lng)));
-  if (s.potential) chips.push('⭐ ' + s.potential + (s.potentialMine !== null && s.potentialMine !== undefined ? ' · ' + hMoney(s.potentialMine) + '$' : ''));
+  if (s.potential) chips.push('📈 ' + s.potential + (s.potentialMine !== null && s.potentialMine !== undefined ? ' · ' + hMoney(s.potentialMine) + '$' : ''));
   if (s.visitCount) chips.push('🔁 ' + s.visitCount);
   document.getElementById('heroMeta').innerHTML = chips.filter(function(c) { return c; })
     .map(function(c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('');
@@ -3529,11 +3542,24 @@ Object.keys(FAC_KM).forEach(function(k) { if (HS[k]) HS[k][0] = FAC_KM[k]; });
 SHOP_TYPES.forEach(function(t) { if (t.kmKey && FAC_KM[t.kmKey]) t.km = FAC_KM[t.kmKey]; else if (t.kmKey) t.km = t.jp; });
 // ボタンは Panha 確定文の1行目（កន្លែងអាជីវកម្ម）＋「施設」だけ。括弧の例示（2行目）はボタンに入らないので省く
 document.getElementById('hmFacility').textContent = (HS.facility[0] || '').split(' (')[0] + ' / 施設';
-document.getElementById('btnPot').addEventListener('click', function() {
-  potMode = !potMode;
-  this.className = 'near-btn' + (potMode ? ' on' : '');
-  if (potMode) { nearMode = false; document.getElementById('btnNear').className = 'near-btn'; }
-  renderShopList();
+// ☆ = お気に入りの店だけ表示（一覧と地図）。近い順と一緒に使える
+document.getElementById('btnFav').addEventListener('click', function() {
+  favMode = !favMode;
+  this.className = 'near-btn' + (favMode ? ' on' : '');
+  this.textContent = favMode ? '★' : '☆';
+  this.setAttribute('aria-pressed', favMode ? 'true' : 'false');
+  renderShopList(); refreshMapMarkers();
+});
+function renderShopFav() {
+  var b = document.getElementById('btnShopFav'), on = !!(currentShop && isFav(currentShop.shopId));
+  b.textContent = on ? '★' : '☆';
+  b.className = 'fav-btn' + (on ? ' on' : '');
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+document.getElementById('btnShopFav').addEventListener('click', function() {
+  if (!currentShop) return;
+  toggleFav(currentShop.shopId);
+  renderShopFav(); renderShopList(); refreshMapMarkers();
 });
 document.getElementById('btnHear').addEventListener('click', openHearing);
 document.getElementById('btnHearBack').addEventListener('click', function() { if (currentShop) openShop(currentShop.shopId); else showView('home'); });
@@ -3541,7 +3567,6 @@ document.getElementById('btnHearSave').addEventListener('click', saveHearing);
 document.getElementById('shopSearch').addEventListener('input', renderShopList);
 document.getElementById('btnNear').addEventListener('click', function() {
   if (nearMode) { nearMode = false; this.className = 'near-btn'; renderShopList(); return; }
-  potMode = false; document.getElementById('btnPot').className = 'near-btn';
   var b = this;
   var on = function() { nearMode = true; b.className = 'near-btn on'; renderShopList(); refreshMapMarkers(); };
   if (hereGps) on(); else hereThen(on);
@@ -3795,7 +3820,7 @@ loadWho().then(loadShops).then(function() {
   flushOutbox();
   // 現場では「いまいる所から近い順」が一番使う。位置が取れたら自動で近い順にする（もう一度押せば解除）
   locateHere(function(ok) {
-    if (!ok || potMode || nearMode) return;
+    if (!ok || nearMode) return;
     nearMode = true; document.getElementById('btnNear').className = 'near-btn on';
     renderShopList(); refreshMapMarkers();
   });
