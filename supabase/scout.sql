@@ -28,6 +28,9 @@ create table if not exists public.scout_tokens (
 alter table public.scout_cache  enable row level security;
 alter table public.scout_tokens enable row level security;
 revoke all on table public.scout_cache, public.scout_tokens from anon, authenticated;
+-- 書くのは GAS（秘密の鍵 = service_role）だけ。「Automatically expose new tables」を外したプロジェクトでも書けるよう、はっきり許可する
+grant usage on schema public to service_role;
+grant select, insert, update, delete on table public.scout_cache, public.scout_tokens to service_role;
 
 create or replace function public.scout_read(p_token text, p_key text)
 returns jsonb
