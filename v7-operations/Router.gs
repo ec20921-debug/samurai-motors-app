@@ -258,21 +258,28 @@ function doPost(e) {
       case 'saleslog_shops': {
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(salesLogShops(chatId));
+        return jsonOut(scoutSbAfterList_(salesLogShops(chatId)));
       }
 
       case 'saleslog_shop_detail': {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(salesLogShopDetail(chatId, shopId));
+        return jsonOut(scoutSbAfterDetail_(shopId, salesLogShopDetail(chatId, shopId)));
+      }
+
+      // ── SAMURAI SCOUT の読み取り用の写し（Supabase）の通行証（ScoutSupabase.gs・2026-11-07） ──
+      case 'scout_token': {
+        const chatId = String(body.chatId || '');
+        if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
+        return jsonOut(scoutSbIssueToken(chatId));
       }
 
       case 'saleslog_shop_update': {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(salesLogShopUpdate(chatId, shopId, {
+        return jsonOut(scoutSbAfterWrite_(salesLogShopUpdate(chatId, shopId, {
           shopName:  String(body.shopName  || ''),
           shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
           ownerName: String(body.ownerName || ''),
@@ -280,13 +287,13 @@ function doPost(e) {
           facebook:  String(body.facebook  || ''),
           status:    String(body.status    || ''),
           memo:      String(body.memo      || '')
-        }));
+        }), shopId));
       }
 
       case 'saleslog_create': {
         const chatId = String(body.chatId || '');
         if (!chatId) return jsonOut({ ok: false, error: 'MISSING_CHAT_ID' });
-        return jsonOut(salesLogCreate(chatId, {
+        return jsonOut(scoutSbAfterWrite_(salesLogCreate(chatId, {
           shopId:    String(body.shopId    || ''),
           shopName:  String(body.shopName  || ''),
           shopTypes: Array.isArray(body.shopTypes) ? body.shopTypes : [],
@@ -300,7 +307,7 @@ function doPost(e) {
           nextDue:   String(body.nextDue    || ''),
           notes:     Array.isArray(body.notes) ? body.notes : [],
           clientId:  String(body.clientId || '')
-        }));
+        }), ''));
       }
 
       case 'saleslog_update': {
@@ -314,7 +321,7 @@ function doPost(e) {
         ['shopName', 'ownerName', 'phone', 'reaction', 'memo', 'nextAction', 'nextDue'].forEach(function(k) {
           if (body.hasOwnProperty(k)) upd[k] = String(body[k] || '');
         });
-        return jsonOut(salesLogUpdate(chatId, visitId, upd));
+        return jsonOut(scoutSbAfterWrite_(salesLogUpdate(chatId, visitId, upd), ''));
       }
 
       // ── 車屋提携 商談ヒアリング（その場の紹介料試算・在庫車の記録 / SalesHearingManager.gs） ──
@@ -322,14 +329,14 @@ function doPost(e) {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(salesHearingCreate(chatId, {
+        return jsonOut(scoutSbAfterWrite_(salesHearingCreate(chatId, {
           shopId: shopId,
           mode:   String(body.mode || ''),
           inputs: (body.inputs && typeof body.inputs === 'object') ? body.inputs : {},
           note:   String(body.note || ''),
           gps:    body.gps || null,
           clientId: String(body.clientId || '')
-        }));
+        }), shopId));
       }
 
       // ── 車屋提携 ヒアリングメモ（何件でも足せる・SalesHearingManager.gs） ──
@@ -337,13 +344,13 @@ function doPost(e) {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(salesNoteCreate(chatId, {
+        return jsonOut(scoutSbAfterWrite_(salesNoteCreate(chatId, {
           shopId:  shopId,
           texts:   Array.isArray(body.texts) ? body.texts : [String(body.text || '')],
           visitId: String(body.visitId || ''),
           gps:     body.gps || null,
           clientId: String(body.clientId || '')
-        }));
+        }), shopId));
       }
 
       // ── 車屋提携 QRシール・お店のグループ（ShopQrSticker.gs） ──
@@ -351,19 +358,19 @@ function doPost(e) {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(shopQrIssue(chatId, shopId));
+        return jsonOut(scoutSbAfterWrite_(shopQrIssue(chatId, shopId), shopId));
       }
 
       case 'shop_qr_sticker': {
         const chatId = String(body.chatId || '');
         const shopId = String(body.shopId || '');
         if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
-        return jsonOut(shopQrStickerLog(chatId, {
+        return jsonOut(scoutSbAfterWrite_(shopQrStickerLog(chatId, {
           shopId:   shopId,
           count:    Number(body.count || 0),
           memo:     String(body.memo || ''),
           clientId: String(body.clientId || '')
-        }));
+        }), shopId));
       }
 
       // ── 車屋提携 コミッション台帳（Phase 4・saleslog-internal.html） ──
