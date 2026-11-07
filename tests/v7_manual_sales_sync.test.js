@@ -101,6 +101,43 @@ test('毎時シンク: お店と決めた金額（price_mode=agreed）は実時�
   assert.ok(!sent[0].includes('定価 $20'), sent[0]);
 });
 
+test('提携店の仕事は「QR送信済み」で計上（入金確認日時・QR送信日時は空）。通知も入金確認待ちと出す（2026-11-07）', () => {
+  const { ctx, sent, appended } = loadV7([
+    jobRow('JOB-9', 25, { payment_type: 'shop', list_price: 25, shop_rate: 30, mode: 'shop', price_mode: 'agreed', agreed_price: 25, guide_price: 25 }),
+  ]);
+  assert.equal(ctx.syncMissingManualJobSales(), 1);
+  assert.equal(appended[0]['決済状態'], 'QR送信済み');
+  assert.equal(appended[0]['入金確認日時'], '');
+  assert.ok(!appended[0]['QR送信日時'], 'お客様向けの催促に乗せない');
+  assert.ok(sent[0].includes('QR送信済み・入金確認待ち'), sent[0]);
+  assert.ok(!sent[0].includes('清算済み'), sent[0]);
+});
+
+test('ABA の手動ジョブは従来どおり「清算済み」', () => {
+  const row = jobRow('JOB-10', 15, { payment_type: 'aba' });
+  row[7] = 'aba';
+  const { ctx, appended } = loadV7([row]);
+  assert.equal(ctx.syncMissingManualJobSales(), 1);
+  assert.equal(appended[0]['決済状態'], '清算済み');
+  assert.equal(Object.prototype.toString.call(appended[0]['入金確認日時']), '[object Date]');
+});
+
+test('予約客の店の仕事（markBookingPaidOnSite_）は「QR送信済み」・ABA は「清算済み」。再送では書き直さない', () => {
+  const { ctx } = loadV7([]);
+  const updated = [];
+  ctx.updateRow = (name, rowIndex, upd) => { updated.push(upd); };   // 予約の行への書き込みだけ記録する
+  const bk = (state, memo) => ({ rowIndex: 5, data: { '決済状態': state || '未清算', '管理者メモ': memo || '', '料金(USD)': 25 } });
+  assert.equal(ctx.markBookingPaidOnSite_(bk(), { amount: 17.5, v2: { list_price: 25, shop_rate: 30 } }, 'shop', 'LUXE Auto', 'SHOP-X'), true);
+  assert.equal(updated[0]['決済状態'], 'QR送信済み');
+  assert.equal(updated[0]['入金確認日時'], '');
+  assert.equal(updated[0]['QR送信日時'], '');
+  assert.equal(ctx.markBookingPaidOnSite_(bk('QR送信済み', '現場で受領: 店の車'), { amount: 17.5 }, 'shop', '', ''), true);
+  assert.equal(updated.length, 1, '再送では何もしない');
+  assert.equal(ctx.markBookingPaidOnSite_(bk(), { amount: 20 }, 'aba', '', ''), true);
+  assert.equal(updated[1]['決済状態'], '清算済み');
+  assert.equal(Object.prototype.toString.call(updated[1]['入金確認日時']), '[object Date]');
+});
+
 test('毎時シンク: 古いアプリの行（price_mode なし）は今までどおり定価・お店の率', () => {
   const { ctx, sent, appended } = loadV7([
     jobRow('JOB-2', 8.4, { payment_type: 'shop', list_price: 12, shop_rate: 30 }),

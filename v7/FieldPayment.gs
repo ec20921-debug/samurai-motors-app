@@ -109,6 +109,7 @@ function fieldPayAdminLine_(pt, shopName, body, shopId) {
 
 /**
  * 予約客がその場で払った時（QR・店・無料）: 予約を清算済みにして、決済QR・催促が出ないようにする。
+ * ただし提携店の仕事（shop・shopref）は「QR送信済み」（店へ請求＋QR を送っただけで入金は未確認・2026-11-07 Daisuke）。
  * 料金・請求額は現場が入れた金額（＝当社が受け取った額。無料は 0）。
  * ABA で定価より安くした時だけ割引前金額・割引額に残す。店の仕事は 定価・率 を管理者メモに残す（割引額には入れない）。
  * 同じ作業の再送では何もしない（すでに「現場で受領」が書かれていれば true）。
@@ -117,7 +118,10 @@ function fieldPayAdminLine_(pt, shopName, body, shopId) {
 function markBookingPaidOnSite_(bkRow, body, pt, shopName, shopId) {
   if (!bkRow || !fieldPaidOnSite_(pt)) return false;
   var memo = String(bkRow.data['管理者メモ'] || '');
-  if (String(bkRow.data['決済状態'] || '') === '清算済み' && memo.indexOf('現場で受領:') >= 0) return true;
+  // 2026-11-07 Daisuke: 提携店の仕事は店へ QR を送っただけ（入金は未確認）→「QR送信済み」。ABA・無料・旧現金は従来どおり「清算済み」
+  var payState = fieldPayIsShop_(pt) ? 'QR送信済み' : '清算済み';
+  var curState = String(bkRow.data['決済状態'] || '');
+  if (memo.indexOf('現場で受領:') >= 0 && (curState === '清算済み' || curState === payState)) return true;
   if (!fieldAmountOk_(pt, body)) {
     Logger.log('⚠️ markBookingPaidOnSite_: 金額が不正のため清算済みにしない amount=' + (body && body.amount));
     return false;
@@ -133,14 +137,16 @@ function markBookingPaidOnSite_(bkRow, body, pt, shopName, shopId) {
       if (sp.list > 0) add += '（定価 $' + sp.list + (sp.rate !== null ? '・お店 ' + sp.rate + '%' : '') + '）';
     }
     var upd = {
-      '決済状態':     '清算済み',
-      '入金確認日時': new Date(),
+      '決済状態':     payState,
+      '入金確認日時': payState === '清算済み' ? new Date() : '',
       '料金(USD)':    amount,
       '請求額(USD)':  amount,
       '管理者メモ':   memo ? memo + '｜' + add : add
     };
     // 予約にもともと割引（キャンペーン等）がある時は、その割引前金額を基準にする
     var before = Number(bkRow.data['割引前金額(USD)']) || Number(bkRow.data['料金(USD)']) || 0;
+    // 店の仕事: お客様向けの決済QRの記録は空にする（お客様への24h催促・スクショ照合の対象にしない。請求先はお店）
+    if (payState === 'QR送信済み') upd['QR送信日時'] = '';
     if ((pt === 'aba' || pt === 'cash') && before > amount) {
       upd['割引前金額(USD)'] = before; upd['割引額(USD)'] = Math.round((before - amount) * 100) / 100;
     }

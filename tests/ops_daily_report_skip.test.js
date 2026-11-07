@@ -108,6 +108,20 @@ test('日報全体が 4000 字を超える時だけ、システム変更の欄�
   assert.ok(sent[0].text.length <= 4000);
 });
 
+test('プラン内訳: プランが空でもオプション（BODY 等）の名前で数える。決済状況は決済状態どおり（2026-11-07）', () => {
+  const body = (amt) => ({ 'プラン': '', 'オプション': 'BODY', '料金(USD)': amt, '進行状態': '作業完了', '決済状態': 'QR送信済み' });
+  const { ctx, sent } = makeCtx({ bookings: [body(25), body(25), body(10), body(10)] });
+  ctx.sendDailyReport();
+  assert.match(sent[0].text, /BODY: 4件 \/ \$70\.00/);
+  assert.doesNotMatch(sent[0].text, /不明/);
+  assert.match(sent[0].text, /清算済み: 0件/);
+  assert.match(sent[0].text, /QR送信済み: 4件/);
+  assert.equal(ctx.bookingPlanLabel_({ 'プラン': '', 'オプション': 'GLASS_3, HEADLIGHT' }), 'GLASS_3 + HEADLIGHT');
+  assert.equal(ctx.bookingPlanLabel_({ 'プラン': 'SAMURAI WASH (W)', 'オプション': 'BODY' }), 'SAMURAI WASH (W)');
+  assert.equal(ctx.bookingPlanLabel_({ 'プラン': '', 'オプション': '', 'キャンペーン名': '10ドルプラン' }), '10ドルプラン');
+  assert.equal(ctx.bookingPlanLabel_({}), '不明');
+});
+
 test('予約や営業ログが読めない時は送る（不具合を隠さない）', () => {
   let r = makeCtx({ bookingsThrow: true });
   r.ctx.sendDailyReport();

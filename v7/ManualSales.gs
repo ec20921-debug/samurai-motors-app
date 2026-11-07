@@ -20,6 +20,8 @@
  *     2026-10-25 Daisuke 決定: 提携店の仕事も当社分をその場で QR で受け取るので「清算済み」で計上し、
  *     売上は当社の取り分だけ（現場アプリが 定価×(100−店の紹介料率)% を入れる）。店の取り分は割引額に入れず、
  *     管理者メモに 定価・率 を残す（割引額は ABA で定価より安くした時＝本当の割引だけ）
+ *     2026-11-07 Daisuke 指摘で変更: 提携店の仕事は「QR送信済み」で計上する（店へ QR を送っただけで入金は未確認）。
+ *     入金を確かめたら管理者が予約タブで「清算済み」に変える。ABA・旧現金は従来どおり「清算済み」
  */
 
 // 提携店払いを計上するのは、この日（yyyyMMdd）以降に終わった作業だけ（毎時シンクで過去分を遡って作らない）
@@ -261,9 +263,12 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
         '料金(USD)':      amount,
         '進行状態':       '作業完了',
         '予約登録日時':   now,
-        '決済状態':       '清算済み',   // 2026-10-25: 提携店の仕事も当社分をその場で QR で受け取る
+        // 2026-11-07 Daisuke: 提携店の仕事（店の車・紹介客）は店グループへ請求＋QR を送っただけで、入金はまだ確認していない
+        //   → 「QR送信済み」で記録し、入金を確かめたら管理者が「清算済み」に変える。
+        //   QR送信日時は空のまま（お客様向けの24h催促・スクショ照合の対象にしない＝店に QR を送ったのはお店宛て）
+        '決済状態':       shopPays ? 'QR送信済み' : '清算済み',
         '請求額(USD)':    amount,
-        '入金確認日時':   now,
+        '入金確認日時':   shopPays ? '' : now,
         '催促回数':       0,
         '管理者メモ':     '客名:' + name + '｜手動ジョブ売上' +
                          (shopPays ? '｜' + shopKind + shopLabel + (agreed ? '（お店と決めた金額）' : listPrice > amount ? '（定価$' + listPrice + (shopRate ? '・お店' + shopRate + '%' : '') + '）' : '') : '') +
@@ -288,7 +293,7 @@ function recordManualJobSaleIfNeeded_(body, sourceAction, opts) {
           '━━━━━━━━━━━━━━━━━\n' +
           '🆔 ' + newBookingId + '\n' +
           '💵 $' + amount + (shopPays
-            ? '（清算済み・' + (payType === 'shopref' ? '紹介のお客さん' : 'お店の車') + '・お店から QR: ' + shopLabel +
+            ? '（QR送信済み・入金確認待ち・' + (payType === 'shopref' ? '紹介のお客さん' : 'お店の車') + '・お店から QR: ' + shopLabel +
               (agreed ? '・お店と決めた金額' : listPrice > amount ? '・定価 $' + listPrice + (shopRate ? '・お店 ' + shopRate + '%' : '') : '') + '）'
             : '（清算済み）') + '\n' +
           '👤 ' + (name || '-') +

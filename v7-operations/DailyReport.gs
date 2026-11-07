@@ -2,7 +2,7 @@
  * DailyReport.gs — 日報（Phase 2e）
  *
  * 【責務】
- *   JST 20:00 に、当日の業務サマリーを管理グループの日報トピックへ送信する。
+ *   JST 20:30 に、当日の業務サマリーを管理グループの日報トピックへ送信する。
  *
  *   - 売上・ジョブ件数・プラン内訳     ← v7 の「予約」シートを openById で参照
  *   - 決済状況（清算済み/QR送信済み/未清算）
@@ -384,7 +384,7 @@ function buildSalesSection_(todayStr) {
   const payMap  = { '清算済み': 0, 'QR送信済み': 0, '未清算': 0, '要確認': 0, 'その他': 0 };
 
   rows.forEach(function(r) {
-    const plan   = String(r['プラン'] || '不明');
+    const plan   = bookingPlanLabel_(r);
     const amt    = Number(r['料金(USD)']) || 0;
     const prog   = String(r['進行状態'] || '');
     const pay    = String(r['決済状態'] || '未清算');
@@ -424,6 +424,23 @@ function buildSalesSection_(todayStr) {
   if (payMap['要確認'] > 0) lines.push('　⚠️ 要確認: ' + payMap['要確認'] + '件');
 
   return lines.join('\n');
+}
+
+/**
+ * 予約1行の「プラン内訳」の名前（日報・経営ダッシュボードで共通・2026-11-07 Daisuke 指摘）
+ *   現場アプリは WASH の時だけ「プラン」列に入れ、BODY・GLASS・HEADLIGHT 等は「オプション」列に入れる。
+ *   プランが空でもオプションがあれば、その名前で数える（例: 'BODY'・'GLASS_3 + HEADLIGHT'）。
+ *   どちらも空ならキャンペーン名、それも無ければ「不明」
+ */
+function bookingPlanLabel_(r) {
+  const plan = String(r['プラン'] || '').trim();
+  if (plan) return plan;
+  const opts = String(r['オプション'] || '').split(',')
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s; });
+  if (opts.length) return opts.join(' + ');
+  const camp = String(r['キャンペーン名'] || '').trim();
+  return camp || '不明';
 }
 
 /**

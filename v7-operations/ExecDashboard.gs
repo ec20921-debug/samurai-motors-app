@@ -270,7 +270,8 @@ function buildSalesSection2_(rows, ym, todayStr) {
   // プラン別（選択月）
   const planMap = {};
   inMonth.forEach(function(r) {
-    const p = String(r['プラン'] || '不明').trim() || '不明';
+    // プランが空のオプションだけの仕事（BODY 等）も名前で数える（DailyReport.gs bookingPlanLabel_・2026-11-07）
+    const p = typeof bookingPlanLabel_ === 'function' ? bookingPlanLabel_(r) : (String(r['プラン'] || '不明').trim() || '不明');
     if (!planMap[p]) planMap[p] = { name: p, revenue: 0, count: 0 };
     planMap[p].revenue += rowRevenue_(r);
     planMap[p].count++;
