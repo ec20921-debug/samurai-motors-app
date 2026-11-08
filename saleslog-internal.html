@@ -1213,14 +1213,14 @@ var STR = {
   todaySaved:  'បានរក្សាទុក / 保存済み',
   todayPend:   'បានរក្សាទុកក្នុងទូរស័ព្ទ (មិនទាន់ផ្ញើ) / スマホに保存（未送信）',
   justVisit:   'មិនទាន់មានប្រតិកម្ម — រក្សាទុកតែការចុះជួប / 反応はまだ — 行ったことだけ保存',
-  // ↓ 2026-11-08 お店の顔（外観の写真・Facebook）。km は Panha 校閲済み（provisional・Run Kosal の確認待ち）
+  // ↓ 2026-11-08 お店の顔（外観の写真・Facebook）。km は Panha 校閲済み 2026-11-08（provisional・Run Kosal の確認待ち: 電波=អ៊ីនធឺណិត か / តំណ で通じるか / ថតដោយ / សូមកុំ の丁寧さ）
   photoHead:   '📷 មុខហាង / お店の外観',
   photoTake:   '📷 ថតរូបមុខហាង / 外観の写真を撮る',
   photoMore:   '📷 ថតរូបបន្ថែម / 写真を追加',
-  photoHint:   'ថតឱ្យឃើញស្លាកហាង និងមុខហាងទាំងមូល។ កុំថតមុខមនុស្ស ឬស្លាកលេខរថយន្តឱ្យឃើញច្បាស់។ / 看板と店の正面全体が入るように。人の顔や車のナンバーは大きく写さないでください',
+  photoHint:   'សូមថតឱ្យឃើញស្លាកហាង និងមុខហាងទាំងមូល។ សូមកុំថតមុខមនុស្ស ឬស្លាកលេខរថយន្តឱ្យឃើញច្បាស់។ / 看板と店の正面全体が入るように。人の顔や車のナンバーは大きく写さないでください',
   photoSending:'កំពុងផ្ញើរូបថត… / 写真を送っています…',
   photoSaved:  'បានរក្សាទុករូបថតហើយ ✅ / 写真を保存しました ✅',
-  photoFail:   'ផ្ញើរូបថតមិនបានទេ។ សូមព្យាយាមម្តងទៀត នៅកន្លែងដែលមានអ៊ីនធឺណិត។ / 写真を送れませんでした。電波のある所でもう一度どうぞ',
+  photoFail:   'ផ្ញើរូបថតមិនបានទេ។ សូមព្យាយាមម្ដងទៀត នៅកន្លែងដែលមានអ៊ីនធឺណិត។ / 写真を送れませんでした。電波のある所でもう一度どうぞ',
   photoBy:     'ថតដោយ / 撮った人',
   fbOpen:      'បើក Facebook / Facebook を開く',
   fbPh:        'បិទភ្ជាប់តំណ Facebook របស់ហាង / お店の Facebook の URL を貼る',
@@ -2522,7 +2522,7 @@ function renderFaceCard() {
     var cur = ph[photoSel];
     box.innerHTML = '<img class="photo-main" id="photoMain" alt="" src="' + esc(photoUrl(cur.fileId, 900)) + '">' +
       (cur.datetime ? '<div class="photo-cap">' + esc(String(cur.datetime).substring(0, 10).replace(/-/g, '/')) +
-        (cur.staff ? ' · ' + esc(pickLang(STR.photoBy)) + ': ' + esc(cur.staff) : '') + '</div>' : '') +
+        (cur.staff ? ' · ' + esc(pickLang(STR.photoBy)) + (LANG === 'km' ? '៖ ' : ': ') + esc(cur.staff) : '') + '</div>' : '') +
       (ph.length > 1 ? '<div class="photo-thumbs">' + ph.map(function(p, i) {
         return '<img data-ph="' + i + '" class="' + (i === photoSel ? 'sel' : '') + '" loading="lazy" alt="" src="' + esc(photoUrl(p.fileId, 200)) + '">';
       }).join('') + '</div>' : '');
