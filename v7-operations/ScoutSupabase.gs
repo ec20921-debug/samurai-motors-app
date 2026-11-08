@@ -96,7 +96,7 @@ function scoutSbPushDetail_(cfg, shopId, detail) {
     o.lat = has ? 0 : null; o.lng = has ? 0 : null;
     return o;
   });
-  const data = { shop: detail.shop, visits: visits, hearings: detail.hearings, notes: detail.notes, qr: detail.qr };
+  const data = { shop: detail.shop, visits: visits, hearings: detail.hearings, notes: detail.notes, qr: detail.qr, photos: detail.photos || [] };
   return scoutSbPut_(cfg, [{ key: 'detail:' + String(shopId), data: data }]);
 }
 

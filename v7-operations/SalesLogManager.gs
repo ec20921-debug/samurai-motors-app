@@ -180,8 +180,10 @@ function salesLogShopDetail(chatId, shopId) {
 
   // 🔗 QRシール・お店のグループ（ShopQrSticker.gs）。取れなくても店の画面は出す
   const qr = shopQrInfoSafe_(String(shopId), found.obj);
+  // 📷 外観の写真（ShopProfile.gs・2026-11-08）。取れなくても店の画面は出す
+  const photos = shopPhotosForShopSafe_(String(shopId));
 
-  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings, notes: notes, qr: qr };
+  return { ok: true, shop: shopRowToApi_(found.obj), visits: visits, hearings: hearings, notes: notes, qr: qr, photos: photos };
 }
 
 /**
@@ -833,6 +835,8 @@ function shopRowToApi_(obj) {
     ownerName:    String(obj['オーナー名'] || ''),
     phone:        String(obj['電話'] || ''),
     facebook:     String(obj['Facebook'] || ''),
+    // 一番新しい外観の写真の Drive ファイルID（ShopProfile.gs・一覧と地図で見せる1枚。列が無い間は空）
+    photoId:      shopPhotoFileId_(obj['外観写真']),
     lastReaction: String(obj['最新反応'] || ''),
     status:       String(obj['ステータス'] || ''),
     partnerId:    String(obj['パートナーID'] || ''),

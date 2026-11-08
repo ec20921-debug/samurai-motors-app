@@ -373,6 +373,25 @@ function doPost(e) {
         }), shopId));
       }
 
+      // ── SAMURAI SCOUT お店の顔: 外観の写真・Facebook（ShopProfile.gs・2026-11-08） ──
+      case 'shop_photo_add': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(scoutSbAfterWrite_(shopPhotoAdd(chatId, {
+          shopId:   shopId,
+          image:    String(body.image || ''),
+          clientId: String(body.clientId || '')
+        }), shopId));
+      }
+
+      case 'shop_facebook_set': {
+        const chatId = String(body.chatId || '');
+        const shopId = String(body.shopId || '');
+        if (!chatId || !shopId) return jsonOut({ ok: false, error: 'MISSING_PARAMS' });
+        return jsonOut(scoutSbAfterWrite_(shopFacebookSet(chatId, shopId, String(body.facebook || '')), shopId));
+      }
+
       // ── 車屋提携 コミッション台帳（Phase 4・saleslog-internal.html） ──
       case 'commission_list': {
         const chatId = String(body.chatId || '');
