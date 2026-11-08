@@ -708,6 +708,7 @@ input[type="date"], .due-row input { color-scheme:light; }
 .photo-btn.has { border-style:solid; border-width:1.5px; background:#fff; font-size:15px; min-height:46px; }
 .photo-btn:disabled { opacity:.55; }
 .fb-row { margin-top:14px; padding-top:12px; border-top:1px solid #eee8db; }
+.card2.nophoto .fb-row { margin-top:0; padding-top:0; border-top:none; }
 .fb-h { font-size:14px; font-weight:700; margin-bottom:6px; }
 #fbView { display:flex; gap:8px; align-items:center; }
 .fb-open { flex:1; display:flex; align-items:center; justify-content:center; min-height:46px; border-radius:12px; background:#1877f2; color:#fff; font-weight:700; text-decoration:none; font-size:15px; }
@@ -1979,6 +1980,8 @@ function applyShopDetail(shopId, d) {
   currentHearings = d.hearings || [];
   currentNotes = d.notes || [];
   currentPhotos = d.photos || [];
+  // サーバーが写真に対応した版か（古い版の応答には photos が無い → 写真のボタンは出さない。PC で反映すると自動で出る）
+  photoServerOk = Array.isArray(d.photos);
   photoSel = 0;
   resolveToday();
   renderShopDetail();
@@ -2511,6 +2514,7 @@ var currentPhotos = [];
 var photoSel = 0;
 var photoBusy = '';   // 写真を送っている店の shop_id（送っていなければ空）
 var fbEditing = false;
+var photoServerOk = false;
 function photoUrl(fileId, w) { return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w' + (w || 800); }
 
 function renderFaceCard() {
@@ -2527,9 +2531,11 @@ function renderFaceCard() {
         return '<img data-ph="' + i + '" class="' + (i === photoSel ? 'sel' : '') + '" loading="lazy" alt="" src="' + esc(photoUrl(p.fileId, 200)) + '">';
       }).join('') + '</div>' : '');
   }
-  document.getElementById('photoHint').className = 'notes-hint' + (ph.length ? ' hidden' : '');
+  document.getElementById('photoHead').className = 'ch' + (ph.length || photoServerOk ? '' : ' hidden');
+  document.getElementById('faceCard').className = 'card2' + (ph.length || photoServerOk ? '' : ' nophoto');
+  document.getElementById('photoHint').className = 'notes-hint' + (ph.length || !photoServerOk ? ' hidden' : '');
   var btn = document.getElementById('btnPhoto');
-  btn.className = 'photo-btn' + (ph.length ? ' has' : '');
+  btn.className = 'photo-btn' + (ph.length ? ' has' : '') + (photoServerOk ? '' : ' hidden');
   var busy = !!(photoBusy && currentShop && photoBusy === currentShop.shopId);
   btn.disabled = busy;
   btn.textContent = busy ? STR.photoSending : (ph.length ? STR.photoMore : STR.photoTake);
@@ -2604,7 +2610,16 @@ document.getElementById('btnFbSave').addEventListener('click', function() {
   if (!currentShop) return;
   var shopId = currentShop.shopId, v = document.getElementById('fbInput').value.trim(), btn = this;
   btn.disabled = true;
+  var cs = currentShop;
   api({ action: 'shop_facebook_set', shopId: shopId, facebook: v })
+    .then(function(d) {
+      if (!d || d.error !== 'UNKNOWN_ACTION') return d;
+      // サーバーが古い版の間は、今までの「お店の情報の保存」で Facebook を入れる（ほかの欄は今の値のまま送る）
+      var fb = v && !/^https?:\/\//i.test(v) ? 'https://' + v : v;
+      return api({ action: 'saleslog_shop_update', shopId: shopId, shopName: cs.shopName || '', shopTypes: cs.shopTypes || [],
+        ownerName: cs.ownerName || '', phone: cs.phone || '', facebook: fb, status: cs.status || '', memo: cs.memo || '' })
+        .then(function(r) { return r && r.ok ? { ok: true, shopId: shopId, facebook: fb } : r; });
+    })
     .catch(function() { return { ok: false, error: STR.netError }; })
     .then(function(d) {
       btn.disabled = false;
