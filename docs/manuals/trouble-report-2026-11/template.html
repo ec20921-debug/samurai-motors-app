@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAMURAI MOTORS — {{T1}} (アプリで困ったとき — 連絡のしかた)</title>
+<style>
+/* ============================================================
+   SAMURAI MOTORS — アプリで困ったとき — 連絡のしかた（2026-11・A4 1枚）
+   現場スタッフ向け : クメール語メイン + 日本語（小さく）
+   クメール語は Panha 校閲（km.json）。« » の中はアプリの表示と同じ
+   編集はこの template.html と km.json → python build.py で index.html と PDF を作る
+   体裁は field-app-update-2026-11 と同じ
+   ============================================================ */
+@font-face{font-family:'NSKhmer';src:url('./assets/fonts/noto-sans-khmer-khmer-400-normal.woff2') format('woff2');font-weight:400}
+@font-face{font-family:'NSKhmer';src:url('./assets/fonts/noto-sans-khmer-khmer-700-normal.woff2') format('woff2');font-weight:700}
+@font-face{font-family:'NSKhmer';src:url('./assets/fonts/noto-sans-khmer-khmer-800-normal.woff2') format('woff2');font-weight:800}
+@font-face{font-family:'NSJP';src:url('./assets/fonts/notosansjp500_jis.ttf') format('truetype')}
+:root{
+  --ink:#15181d; --ink2:#3c4250; --sub:#79808d;
+  --red:#d81e5b; --green:#1e7a46; --blue:#1d4ed8; --tg:#2aabee;
+  --gold:#b8924f; --goldbg:#f7f0e2; --card:#f6f5f2; --line:#dcdad4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'NSKhmer','NSJP','DejaVu Sans','Noto Color Emoji',sans-serif;background:#d9d7d2;color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased}
+.jp{font-family:'NSJP','DejaVu Sans','Noto Color Emoji',sans-serif;color:var(--sub);font-size:.74em;letter-spacing:.02em;line-height:1.5;font-weight:400}
+.lat{font-family:'NSJP','DejaVu Sans',sans-serif}
+@page{size:A4;margin:0}
+.sheet{width:210mm;height:297mm;margin:14px auto;background:#fff;box-shadow:0 10px 30px -16px rgba(0,0,0,.5);position:relative;overflow:hidden}
+.sheet-body{padding:3mm 9mm 0}
+@media print{ body{background:#fff} .sheet{margin:0;box-shadow:none} }
+
+/* 上の帯 */
+.band{background:#000;color:#fff;display:flex;align-items:center;gap:12px;padding:5px 9mm;border-bottom:3px solid var(--gold)}
+.band img{height:44px;width:auto;display:block;border-radius:4px}
+.band .t{flex:1;min-width:0}
+.band .t .km{font-size:19px;font-weight:800;line-height:1.5}
+.band .t .jp{color:#9aa3b2;font-size:11px;display:block}
+.band .doc{text-align:right;font-family:'NSJP','DejaVu Sans',sans-serif;line-height:1.25;border-left:1px solid #2a2e36;padding-left:12px}
+.band .doc .no{font-size:22px;color:var(--gold);letter-spacing:.08em}
+.band .doc .meta{font-size:9px;color:#8c95a3;letter-spacing:.14em}
+
+/* 冒頭 */
+.rule{border-radius:10px;padding:7px 14px;display:flex;gap:12px;align-items:center;color:#fff;background:linear-gradient(135deg,#1c2028,#0d0f13);border-left:6px solid var(--gold)}
+.rule .mk{font-size:30px;line-height:1;flex:none}
+.rule .km{font-size:13.6px;font-weight:700;line-height:1.6}
+.rule .jp{display:block;color:#c7ccd6;font-size:10.6px;margin-top:1px}
+
+/* こんなとき */
+.when{margin-top:2mm;display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:6px;align-items:stretch}
+.when .lb{display:flex;flex-direction:column;justify-content:center;font-size:12.2px;font-weight:800;line-height:1.45;padding-right:2px;max-width:37mm}
+.nw{white-space:nowrap}
+.when .lb .jp{font-size:9.4px;font-weight:400}
+.when .w{border:1.5px solid #f0c2cf;background:#fdf1f4;border-radius:10px;padding:4px 8px;display:flex;gap:6px;align-items:center}
+.when .w .mk{font-size:20px;flex:none}
+.when .w .km{font-size:11.2px;font-weight:700;line-height:1.45}
+.when .w .jp{display:block;font-size:9px;font-weight:400}
+
+/* ステップのカード */
+.cd{border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;margin-top:2mm}
+.cd .hd{display:flex;align-items:center;gap:9px;padding:4px 11px;background:var(--card);border-bottom:1.5px solid var(--line)}
+.cd .num{flex:none;width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;font-family:'NSJP','DejaVu Sans',sans-serif;font-size:15px;display:flex;align-items:center;justify-content:center}
+.cd .ttl{font-size:14.6px;font-weight:800;line-height:1.45}
+.cd .ttl .jp{font-weight:400;font-size:10.4px;margin-left:6px}
+.cd .hd .note{margin-left:auto;font-size:11px;font-weight:700;color:var(--red);text-align:right;line-height:1.45;max-width:78mm}
+.cd .hd .note .jp{display:block;font-size:9px;color:var(--red);opacity:.8}
+
+/* ① スクショ */
+.shot{display:grid;grid-template-columns:1fr 1fr 52mm;grid-template-rows:auto auto;gap:7px 8px;padding:7px 9px 7px;background:#f1f3f6}
+.shot > .flashph{grid-column:3;grid-row:1 / 3}
+.shot > .tip{grid-column:1 / 3;grid-row:2}
+.ph{background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:6px 8px 7px;display:flex;flex-direction:column}
+.ph .cap{font-size:12px;font-weight:800;line-height:1.45;text-align:center}
+.ph .cap .jp{display:block;font-weight:400;font-size:9.2px}
+.ph .fig{position:relative;height:37mm;margin:2px 0 3px}
+.ph .fig svg{position:absolute;left:50%;top:0;height:100%;transform:translateX(-50%)}
+.ph .tx{font-size:11.2px;line-height:1.6;font-weight:600}
+.ph .tx .jp{display:block;font-size:9px;font-weight:400;margin-top:1px}
+.tag{position:absolute;font-size:10.4px;font-weight:800;color:#fff;background:var(--red);border-radius:6px;padding:0 6px;line-height:1.6;white-space:nowrap}
+.tag .jp{color:#ffe1ea;font-size:8.4px;display:block;line-height:1.25;padding-bottom:2px}
+.tag.g{background:var(--ink)}
+.tag.g .jp{color:#c9ced8}
+.flashph .fig{height:47mm}
+.tip{border:1.5px dashed var(--red);background:#fff6f8;border-radius:10px;padding:5px 11px;font-size:11.4px;font-weight:700;line-height:1.6;color:#7a1033;display:flex;gap:8px;align-items:center}
+.tip .mk{font-size:22px;flex:none}
+.tip .jp{display:block;font-weight:400;font-size:9px;color:#9b4a64}
+
+/* ② Telegram */
+.tgrow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:7px 9px 7px;background:#eef7fd}
+.tg{background:#fff;border:1.5px solid #c4e3f5;border-radius:11px;padding:5px 6px 6px;display:flex;flex-direction:column;align-items:center;position:relative}
+.tg .k{position:absolute;left:6px;top:5px;width:20px;height:20px;border-radius:50%;background:var(--tg);color:#fff;font-family:'NSJP','DejaVu Sans',sans-serif;font-size:11.5px;display:flex;align-items:center;justify-content:center}
+.tg svg{height:21mm;display:block}
+.tg .tx{font-size:11px;font-weight:700;line-height:1.5;text-align:center;margin-top:3px}
+.tg .tx .jp{display:block;font-weight:400;font-size:9px}
+.tg:not(:last-child)::after{content:'›';position:absolute;right:-8px;top:38%;font-size:22px;color:var(--tg);font-family:'NSJP','DejaVu Sans',sans-serif;z-index:2;line-height:1}
+
+/* ③④ */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.two .cd{display:flex;flex-direction:column}
+.two .body{padding:5px 11px 6px;flex:1}
+.chk{list-style:none;display:grid;gap:2px}
+.chk li{display:flex;gap:7px;align-items:flex-start;font-size:11.6px;font-weight:600;line-height:1.55}
+.chk li .b{flex:none;width:17px;height:17px;border:2px solid var(--green);border-radius:4px;margin-top:3px;display:flex;align-items:center;justify-content:center;color:var(--green);font-size:12px;font-family:'NSJP','DejaVu Sans',sans-serif}
+.chk li .jp{display:block;font-size:9px;font-weight:400}
+.stop .body{display:flex;gap:9px;align-items:flex-start}
+.stop .mk{font-size:30px;line-height:1.1;flex:none}
+.stop .tx{font-size:11.4px;font-weight:600;line-height:1.6}
+.stop .tx .jp{display:block;font-size:9px;font-weight:400;margin-top:2px}
+.cd.stop{border-color:#f0c2cf}
+.cd.stop .hd{background:#fdf1f4;border-color:#f0c2cf}
+.cd.stop .num{background:var(--red)}
+.cd.stop .ttl{font-size:13.6px}
+.cd.stop .ttl .jp{display:block;margin-left:0}
+
+/* 下 */
+.contact{margin-top:2mm;border-radius:12px;background:#eef6f0;border:1.5px solid #b9d9c4;padding:6px 14px;display:flex;align-items:center;gap:12px}
+.contact .mk{font-size:28px;flex:none}
+.contact .km{font-size:13.4px;font-weight:700;line-height:1.6}
+.contact .jp{display:block;font-size:10px;font-weight:400}
+.contact .tgb{margin-left:auto;flex:none;display:flex;align-items:center;gap:6px;background:var(--tg);color:#fff;border-radius:999px;padding:4px 14px 4px 6px;font-family:'NSJP','DejaVu Sans',sans-serif;font-size:13px}
+.contact .tgb svg{width:22px;height:22px}
+.foot{position:absolute;bottom:3.5mm;left:9mm;right:9mm;display:flex;justify-content:space-between;font-family:'NSJP','DejaVu Sans',sans-serif;font-size:8.5px;color:#a3a9b1;letter-spacing:.18em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<section class="sheet">
+  <header class="band">
+    <img src="./assets/logo_emblem_sm.jpg" alt="SAMURAI MOTORS">
+    <div class="t">
+      <div class="km">{{T1}}</div>
+      <span class="jp">アプリで困ったとき — 連絡のしかた</span>
+    </div>
+    <div class="doc"><div class="no">HELP</div><div class="meta">FIELD APP · 2026.11</div></div>
+  </header>
+
+  <div class="sheet-body">
+    <div class="rule"><span class="mk">📸</span>
+      <div class="km">{{R1}}<span class="jp">エラーが出たら、まず画面のスクショを撮って、Daisuke に Telegram で送ってください。スクショがあると、すぐに原因が分かって早く直せます。</span></div>
+    </div>
+
+    <div class="when">
+      <div class="lb">{{W0}}<span class="jp">こんなときに送ってください</span></div>
+      <div class="w"><span class="mk">⚠️</span><div class="km">{{W1}}<span class="jp">⚠ のお知らせが出た（例: <span class="nw">«⚠ IndexedDB»</span>）</span></div></div>
+      <div class="w"><span class="mk">👆</span><div class="km">{{W2}}<span class="jp">ボタンを押しても先へ進まない</span></div></div>
+      <div class="w"><span class="mk">⏸️</span><div class="km">{{W3}}<span class="jp">画面が止まった・おかしい</span></div></div>
+    </div>
+
+    <!-- ① スクショを撮る -->
+    <div class="cd">
+      <div class="hd"><span class="num">1</span><div class="ttl">📱 {{S1}}<span class="jp">スクショを撮る</span></div>
+        <div class="note">{{S1n}}<span class="jp">アプリは閉じないで、その画面のまま撮ります。</span></div></div>
+      <div class="shot">
+        <!-- ホームボタンのない iPhone -->
+        <div class="ph">
+          <div class="cap">{{S1a}}<span class="jp">ホームボタンのない iPhone</span></div>
+          <div class="fig">
+            <svg viewBox="0 0 150 170" xmlns="http://www.w3.org/2000/svg">
+              <defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d81e5b"/></marker></defs>
+              <!-- buttons -->
+              <rect x="40" y="38" width="5" height="11" rx="2" fill="#9aa1ad"/>
+              <rect x="40" y="56" width="5" height="20" rx="2" fill="#d81e5b"/>
+              <rect x="40" y="80" width="5" height="20" rx="2" fill="#9aa1ad"/>
+              <rect x="105" y="58" width="5" height="30" rx="2" fill="#d81e5b"/>
+              <!-- body -->
+              <rect x="44" y="20" width="62" height="130" rx="13" fill="#1d2129"/>
+              <rect x="47.5" y="23.5" width="55" height="123" rx="10" fill="#eef1f6"/>
+              <rect x="64" y="28" width="22" height="6" rx="3" fill="#1d2129"/>
+              <!-- screen content -->
+              <rect x="53" y="42" width="44" height="8" rx="3" fill="#cdd3dd"/>
+              <rect x="53" y="55" width="44" height="22" rx="4" fill="#fff" stroke="#d6dbe3"/>
+              <rect x="53" y="82" width="44" height="22" rx="4" fill="#fff" stroke="#d6dbe3"/>
+              <rect x="53" y="128" width="44" height="10" rx="4" fill="#1e7a46"/>
+              <!-- arrows -->
+              <path d="M14 66 H36" stroke="#d81e5b" stroke-width="3" marker-end="url(#ar)"/>
+              <path d="M136 73 H114" stroke="#d81e5b" stroke-width="3" marker-end="url(#ar)"/>
+              <!-- same time -->
+            </svg>
+            <span class="tag" style="left:0;top:12%">{{L2}}<span class="jp">音量を上げる</span></span>
+            <span class="tag" style="right:0;top:12%">{{L1}}<span class="jp">サイドボタン</span></span>
+            <span class="tag g" style="left:0;bottom:4%">{{L3}}<span class="jp">同時に押す</span></span>
+          </div>
+          <div class="tx">{{S1at}}<span class="jp">右の「サイドボタン」と左の「音量を上げるボタン」を同時に押して、すぐ離します。</span></div>
+        </div>
+
+        <!-- ホームボタンのある iPhone -->
+        <div class="ph">
+          <div class="cap">{{S1b}}<span class="jp">ホームボタンのある iPhone</span></div>
+          <div class="fig">
+            <svg viewBox="0 0 150 170" xmlns="http://www.w3.org/2000/svg">
+              <defs><marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d81e5b"/></marker></defs>
+              <rect x="40" y="40" width="5" height="9" rx="2" fill="#9aa1ad"/>
+              <rect x="40" y="56" width="5" height="16" rx="2" fill="#9aa1ad"/>
+              <rect x="40" y="76" width="5" height="16" rx="2" fill="#9aa1ad"/>
+              <rect x="105" y="54" width="5" height="22" rx="2" fill="#d81e5b"/>
+              <rect x="44" y="20" width="62" height="130" rx="10" fill="#e6e8ec" stroke="#b9bfc9"/>
+              <rect x="48" y="38" width="54" height="92" rx="2" fill="#eef1f6" stroke="#cfd5de"/>
+              <rect x="66" y="28" width="18" height="3" rx="1.5" fill="#9aa1ad"/>
+              <rect x="53" y="45" width="44" height="7" rx="3" fill="#cdd3dd"/>
+              <rect x="53" y="57" width="44" height="20" rx="4" fill="#fff" stroke="#d6dbe3"/>
+              <rect x="53" y="81" width="44" height="20" rx="4" fill="#fff" stroke="#d6dbe3"/>
+              <rect x="53" y="116" width="44" height="9" rx="4" fill="#1e7a46"/>
+              <circle cx="75" cy="140" r="7" fill="#fff" stroke="#d81e5b" stroke-width="3"/>
+              <path d="M136 65 H114" stroke="#d81e5b" stroke-width="3" marker-end="url(#ar2)"/>
+              <path d="M75 166 V151" stroke="#d81e5b" stroke-width="3" marker-end="url(#ar2)"/>
+            </svg>
+            <span class="tag" style="right:0;top:12%">{{L1}}<span class="jp">サイドボタン</span></span>
+            <span class="tag" style="left:0;bottom:4%">{{L4}}<span class="jp">ホームボタン</span></span>
+            <span class="tag g" style="left:2%;top:44%">{{L3}}<span class="jp">同時に押す</span></span>
+          </div>
+          <div class="tx">{{S1bt}}<span class="jp">「サイドボタン」と「ホームボタン」を同時に押して、すぐ離します。</span></div>
+        </div>
+
+        <!-- 撮れたら -->
+          <div class="ph flashph">
+            <div class="fig">
+              <svg viewBox="0 0 150 168" xmlns="http://www.w3.org/2000/svg">
+                <rect x="40" y="6" width="70" height="128" rx="13" fill="#1d2129"/>
+                <rect x="43.5" y="9.5" width="63" height="121" rx="10" fill="#fff"/>
+                <g stroke="#f2c14e" stroke-width="2.4" stroke-linecap="round"><path d="M75 30v-8"/><path d="M90 36l6-6"/><path d="M60 36l-6-6"/></g>
+                <rect x="49" y="88" width="22" height="34" rx="3" fill="#eef1f6" stroke="#15181d" stroke-width="2"/>
+                <rect x="52" y="92" width="16" height="4" rx="2" fill="#cdd3dd"/>
+                <rect x="52" y="99" width="16" height="7" rx="2" fill="#cdd3dd"/>
+                <rect x="52" y="113" width="16" height="4" rx="2" fill="#1e7a46"/>
+                <path d="M38 146 L50 126" stroke="#d81e5b" stroke-width="3"/>
+                <path d="M52 122 l-1 8 -6 -3z" fill="#d81e5b"/>
+                <!-- Photos icon -->
+                <g transform="translate(118 50)">
+                  <rect x="-14" y="-14" width="28" height="28" rx="7" fill="#fff" stroke="#d6dbe3"/>
+                  <g transform="translate(0 0)">
+                    <circle cx="0" cy="-5.5" r="4" fill="#f5b400" opacity=".85"/><circle cx="5.2" cy="-1.7" r="4" fill="#ea4335" opacity=".75"/>
+                    <circle cx="3.2" cy="4.5" r="4" fill="#a142f4" opacity=".75"/><circle cx="-3.2" cy="4.5" r="4" fill="#1a73e8" opacity=".75"/>
+                    <circle cx="-5.2" cy="-1.7" r="4" fill="#34a853" opacity=".75"/>
+                  </g>
+                </g>
+              </svg>
+              <span class="tag" style="left:0;bottom:0">{{L5}}<span class="jp">ここに小さく出る</span></span>
+              <span class="tag g" style="right:0;top:44%">{{L6}}<span class="jp">写真</span></span>
+            </div>
+            <div class="tx">{{S1c}}<span class="jp">画面が白く光ったら撮れています。左下に小さい写真が出ます。そのままにすると「写真」アプリに保存されます。</span></div>
+          </div>
+        <div class="tip"><span class="mk">⏱️</span><div>{{S1tip}}<span class="jp">⚠ のお知らせは3秒ほどで消えます。出たらすぐ撮ってください。消えてしまったら、そのときの画面を撮って送ってください。</span></div></div>
+      </div>
+    </div>
+
+    <!-- ② Telegram で送る -->
+    <div class="cd">
+      <div class="hd"><span class="num">2</span><div class="ttl">✈️ {{S2}}<span class="jp">Telegram で Daisuke に送る</span></div></div>
+      <div class="tgrow">
+        <div class="tg"><span class="k">a</span>
+          <svg viewBox="0 0 90 100" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="2" width="74" height="96" rx="10" fill="#fff" stroke="#c7ced9" stroke-width="1.5"/>
+            <rect x="8" y="2" width="74" height="16" rx="10" fill="#2aabee"/><rect x="8" y="12" width="74" height="6" fill="#2aabee"/>
+            <g><circle cx="20" cy="30" r="6" fill="#d9dee6"/><rect x="30" y="26" width="40" height="4" rx="2" fill="#d9dee6"/><rect x="30" y="33" width="28" height="3" rx="1.5" fill="#e6e9ee"/></g>
+            <rect x="11" y="42" width="68" height="18" rx="5" fill="#e3f3fc" stroke="#2aabee" stroke-width="2"/>
+            <circle cx="20" cy="51" r="6" fill="#f5a623"/><text x="20" y="54" font-size="7" text-anchor="middle" fill="#fff" font-family="NSJP">D</text>
+            <text x="30" y="54" font-size="8" fill="#15181d" font-family="NSJP">Daisuke</text>
+            <g><circle cx="20" cy="72" r="6" fill="#d9dee6"/><rect x="30" y="68" width="40" height="4" rx="2" fill="#d9dee6"/><rect x="30" y="75" width="24" height="3" rx="1.5" fill="#e6e9ee"/></g>
+            <g><circle cx="20" cy="88" r="6" fill="#d9dee6"/><rect x="30" y="85" width="36" height="4" rx="2" fill="#d9dee6"/></g>
+          </svg>
+          <div class="tx">{{S2a}}<span class="jp">Daisuke とのチャットを開く</span></div></div>
+        <div class="tg"><span class="k">b</span>
+          <svg viewBox="0 0 90 100" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="2" width="74" height="96" rx="10" fill="#e7eef3" stroke="#c7ced9" stroke-width="1.5"/>
+            <rect x="8" y="2" width="74" height="16" rx="10" fill="#fff"/><rect x="8" y="12" width="74" height="6" fill="#fff"/>
+            <text x="45" y="14" font-size="7.5" text-anchor="middle" fill="#15181d" font-family="NSJP">Daisuke</text>
+            <rect x="14" y="26" width="40" height="11" rx="5" fill="#fff"/><rect x="36" y="42" width="40" height="11" rx="5" fill="#dcf8c6"/>
+            <rect x="8" y="78" width="74" height="20" fill="#fff"/><rect x="8" y="88" width="74" height="10" rx="10" fill="#fff"/>
+            <circle cx="20" cy="88" r="9" fill="#fff4f7" stroke="#d81e5b" stroke-width="2.4"/>
+            <path d="M22.5 84.5l-5.5 5.6a2 2 0 0 0 2.8 2.8l6.2-6.3a3.4 3.4 0 0 0-4.8-4.8l-6.2 6.3a4.8 4.8 0 0 0 6.8 6.8l5-5" fill="none" stroke="#15181d" stroke-width="1.4" stroke-linecap="round" transform="translate(-2 -1) scale(.9) translate(2 9)"/>
+            <rect x="32" y="83" width="38" height="10" rx="5" fill="#f1f3f6" stroke="#dde1e7"/>
+          </svg>
+          <div class="tx">{{S2b}}<span class="jp">📎 を押す</span></div></div>
+        <div class="tg"><span class="k">c</span>
+          <svg viewBox="0 0 90 100" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="2" width="74" height="96" rx="10" fill="#fff" stroke="#c7ced9" stroke-width="1.5"/>
+            <g fill="#d9dee6"><rect x="13" y="10" width="20" height="24" rx="2"/><rect x="35" y="10" width="20" height="24" rx="2"/><rect x="57" y="10" width="20" height="24" rx="2"/>
+            <rect x="35" y="37" width="20" height="24" rx="2"/><rect x="57" y="37" width="20" height="24" rx="2"/>
+            <rect x="13" y="64" width="20" height="24" rx="2"/><rect x="35" y="64" width="20" height="24" rx="2"/><rect x="57" y="64" width="20" height="24" rx="2"/></g>
+            <rect x="13" y="37" width="20" height="24" rx="2" fill="#eef1f6" stroke="#2aabee" stroke-width="2.4"/>
+            <rect x="16" y="41" width="14" height="3" rx="1.5" fill="#cdd3dd"/><rect x="16" y="47" width="14" height="5" rx="1.5" fill="#cdd3dd"/><rect x="16" y="55" width="14" height="3" rx="1.5" fill="#1e7a46"/>
+            <circle cx="30" cy="40" r="5" fill="#2aabee" stroke="#fff" stroke-width="1.2"/><path d="M27.8 40l1.6 1.6 2.8-3" fill="none" stroke="#fff" stroke-width="1.4"/>
+          </svg>
+          <div class="tx">{{S2c}}<span class="jp">撮ったスクショを選ぶ</span></div></div>
+        <div class="tg"><span class="k">d</span>
+          <svg viewBox="0 0 90 100" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="2" width="74" height="96" rx="10" fill="#1d2129" stroke="#c7ced9" stroke-width="1.5"/>
+            <rect x="24" y="12" width="42" height="60" rx="3" fill="#eef1f6"/>
+            <rect x="28" y="17" width="34" height="6" rx="2" fill="#cdd3dd"/><rect x="28" y="27" width="34" height="14" rx="2" fill="#fff"/><rect x="28" y="61" width="34" height="6" rx="2" fill="#1e7a46"/>
+            <rect x="12" y="80" width="50" height="12" rx="6" fill="#2b313b"/>
+            <circle cx="72" cy="86" r="9" fill="#2aabee" stroke="#d81e5b" stroke-width="2.4"/>
+            <path d="M68 82.5l9 3.5-9 3.5 1.6-3.5z" fill="#fff"/>
+          </svg>
+          <div class="tx">{{S2d}}<span class="jp">➤ を押して送る</span></div></div>
+      </div>
+    </div>
+
+    <!-- ③ ひとこと ④ やり直さない -->
+    <div class="two">
+      <div class="cd">
+        <div class="hd"><span class="num">3</span><div class="ttl">✍️ {{S3}}<span class="jp">ひとこと書く</span></div></div>
+        <div class="body"><ul class="chk">
+          <li><span class="b">✓</span><div>{{S3a}}<span class="jp">どのお客さん・どのお店の作業か</span></div></li>
+          <li><span class="b">✓</span><div>{{S3b}}<span class="jp">何を押したら出たか（例: 送るボタンを押したら出た）</span></div></li>
+          <li><span class="b">✓</span><div>{{S3c}}<span class="jp">何時ごろか</span></div></li>
+        </ul></div>
+      </div>
+      <div class="cd stop">
+        <div class="hd"><span class="num">4</span><div class="ttl">🙅 {{S4}}<span class="jp">作業を最初からやり直さない</span></div></div>
+        <div class="body"><div class="tx">{{S4t}}<span class="jp">スクショを送ったあと、アプリを一度閉じて、もう一度開くのは大丈夫です。でも、作業を最初からやり直さないでください。記録が2つになってしまいます。Daisuke の返事を待ってください。</span></div></div>
+      </div>
+    </div>
+
+    <div class="contact"><span class="mk">💬</span>
+      <div class="km">{{F1}}<span class="jp">困ったときは、いつでも Daisuke に連絡してください。スクショ、ありがとう！</span></div>
+      <div class="tgb"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#fff"/><path d="M5.5 11.8l11-4.3c.5-.2 1 .1.8.9l-1.9 8.8c-.1.6-.5.8-1 .5l-2.9-2.1-1.4 1.3c-.2.2-.3.3-.6.3l.2-2.9 5.3-4.8c.2-.2 0-.3-.3-.1L8.2 13.4l-2.8-.9c-.6-.2-.6-.6.1-.7z" fill="#2aabee"/></svg>Daisuke</div>
+    </div>
+  </div>
+  <div class="foot"><span>Samurai Motors · Field App Help</span><span>2026.11</span></div>
+</section>
+</body>
+</html>
