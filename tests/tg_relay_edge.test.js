@@ -92,14 +92,17 @@ test('壊れた update は 200 で捨てる（GAS を呼ばない）', async () 
   assert.equal(t.calls.length, 0);
 });
 
-test('GET（GAS の見回り）: 合言葉が合う時だけ表に1行書いて { ok, db }', async () => {
-  const t = await setup({ ok: true });
+test('GET（GAS の見回り）: 合言葉が合う時だけ表に1行書き、GAS（tg_ping）まで届くか確かめて { ok, db, gas }', async () => {
+  const t = await setup((b) => ({ ok: b.action === 'tg_ping' && b.relayKey === ENV.GAS_RELAY_KEY }));
   const bad = await t.handle(new Request(FN, { headers: { 'x-relay-key': 'nope' } }));
   assert.equal(bad.status, 404);
   const good = await t.handle(new Request(FN, { headers: { 'x-relay-key': ENV.GAS_RELAY_KEY } }));
   assert.equal(good.status, 200);
-  assert.deepEqual(await good.json(), { ok: true, db: true });
+  assert.deepEqual(await good.json(), { ok: true, db: true, gas: true });
   assert.equal(t.calls[0].body[0].source, 'gas');
+  const t2 = await setup({ ok: false, message: 'FORBIDDEN' });
+  const res2 = await t2.handle(new Request(FN, { headers: { 'x-relay-key': ENV.GAS_RELAY_KEY } }));
+  assert.equal((await res2.json()).gas, false);
 });
 
 test('設定が揃っていなければ受けない（503）', async () => {

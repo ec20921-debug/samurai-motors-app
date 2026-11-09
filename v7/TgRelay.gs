@@ -16,17 +16,18 @@
  *   （業務Bot も同じ形の …Field を用意。まずは予約Bot だけで始める）
  *
  * 自動で戻す見張り（pollTelegramUpdates から毎分呼ぶ。中で間引く）:
- *   - 5分ごとに Telegram の webhook の状態を見る。登録先がずれている／配達に失敗して未配達が残る、が
- *     2回続いたら、その Bot を1分ごとに戻して管理グループに知らせる（未配達のメッセージは消えずに1分ごとで拾う）
- *   - 1時間ごとに受付の health を呼ぶ（受付が Supabase の表に1行書く＝予約がゼロの週でも「7日使わないと止まる」にかからない）。
- *     2回続けて失敗したら同じく1分ごとに戻す
+ *   - 5分ごとに Telegram の webhook の状態を見る。登録先がずれていたらすぐ、前回より新しい配達の失敗があって
+ *     未配達が残る、が2回続いたら、その Bot を1分ごとに戻して管理グループに知らせる（未配達は1分ごとで拾う）
+ *   - 1時間ごとに受付の health を呼ぶ（受付が Supabase の表に1行書き、GAS の tg_ping まで届くか確かめる
+ *     ＝予約がゼロの週でも「7日使わないと止まる」にかからない）。2回続けて失敗したら同じく1分ごとに戻す
+ *   - Telegram が webhook を外せなかった時は relay のまま残し、毎分やり直す（外せないまま poll にすると誰も受け取らない）
  *   - 戻ったあと受付に戻すのは人の判断（tgRelayEnableBooking を実行）
  *
  * 設定（Script Properties・3つ。揃っていなければこの仕組みは丸ごと止まり、今までどおり1分ごと）:
  *   TG_RELAY_URL       https://<project>.supabase.co/functions/v1/tg-relay
  *   TG_RELAY_KEY       GAS と受付の合言葉（24文字以上。受付の GAS_RELAY_KEY と同じ値）
  *   TG_WEBHOOK_SECRET  Telegram と受付の合言葉（24〜256文字・英数字と _ - だけ。受付の TG_WEBHOOK_SECRET と同じ値）
- * 状態（Script Properties・1つ）: tg_relay_state_v1 = {"booking":"relay"|"poll", "field":…}
+ * 状態（Script Properties・1つ）: tg_relay_state_v1 = {"booking":"relay"|"poll", "field":…, "pendingFallback":{bot:理由}}
  *
  * 手順: docs/TG_RELAY_SUPABASE.md
  */
@@ -110,7 +111,22 @@ function apiTgRelay_(body) {
     return { ok: false, message: 'BAD_UPDATE' };
   }
   if (loadProcessedIds_(null).indexOf(String(update.update_id)) >= 0) return { ok: true, duplicate: true };
+  // 受付が GAS の返事を待ちきれず Telegram が送り直した時、同じものがまだキューにあれば積まない
+  var suffix = '_' + update.update_id;
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var queued = Object.keys(all).some(function(k) {
+    if (k.indexOf(STORAGE_KEYS.QUEUE_PREFIX) !== 0 || k.slice(-suffix.length) !== suffix) return false;
+    try { return JSON.parse(all[k]).botType === botType; } catch (e) { return false; }
+  });
+  if (queued) return { ok: true, duplicate: true };
   enqueueTelegramUpdate(update, botType);
+  return { ok: true };
+}
+
+/** action=tg_ping: 受付の health から呼ばれる。合言葉と、この版の GAS が受付を知っていることだけ確かめる */
+function apiTgPing_(body) {
+  var cfg = tgRelayConfig_();
+  if (!cfg || !body || !tgRelaySafeEqual_(body.relayKey, cfg.key)) return { ok: false, message: 'FORBIDDEN' };
   return { ok: true };
 }
 
@@ -148,43 +164,73 @@ function tgRelayStrike_(name, bad) {
 
 function tgRelayWatch_() {
   var state = tgRelayState_();
+  var cfg = tgRelayConfig_();
+
+  // 戻しが失敗して残っている時は、毎分やり直す（webhook が残ったままだと1分ごとの受け取りもできないため）
+  [BOT_TYPE.BOOKING, BOT_TYPE.FIELD].forEach(function(b) {
+    var pending = tgRelayPendingFallback_(b);
+    if (pending) tgRelayFallback_(b, pending);
+  });
+  state = tgRelayState_();
+
   var relayBots = [BOT_TYPE.BOOKING, BOT_TYPE.FIELD].filter(function(b) { return state[b] === 'relay'; });
   if (relayBots.length === 0) return;
 
-  var cfg = tgRelayConfig_();
   if (!cfg) {
     // 設定が消された（＝止めたい時の非常口）→ 1分ごとに戻す
     relayBots.forEach(function(b) { tgRelayFallback_(b, '受付の設定（Script Properties）が見つかりません'); });
     return;
   }
 
-  if (tgRelayDue_('tg_relay_watch_at', TG_RELAY_WATCH_EVERY_SEC_)) {
-    relayBots.forEach(function(botType) {
-      var info = getWebhookInfo(botType);
-      if (!info || !info.ok || !info.result) return;   // Telegram に聞けない時は何もしない（判断材料がない）
-      var r = info.result;
-      var reason = '';
-      if (String(r.url || '') !== tgRelayWebhookUrl_(cfg, botType)) {
-        reason = 'Telegram に登録された受付の場所が違います（' + (r.url ? 'ほかの場所' : '未登録') + '）';
-      } else if (r.last_error_date && (Date.now() / 1000 - r.last_error_date) < TG_RELAY_ERROR_WINDOW_SEC_ &&
-                 (r.pending_update_count || 0) > 0) {
-        reason = '受付への配達に失敗しています（未配達 ' + r.pending_update_count + ' 件・' +
-          String(r.last_error_message || '').substring(0, 120) + '）';
-      }
-      if (tgRelayStrike_('wh_' + botType, !!reason)) tgRelayFallback_(botType, reason);
-      else if (reason) Logger.log(TG_RELAY_LOG_ + botType + ' 怪しい(1回目): ' + reason);
+  if (!tgRelayDue_('tg_relay_watch_at', TG_RELAY_WATCH_EVERY_SEC_)) return;
+  relayBots.forEach(function(botType) {
+    var info = getWebhookInfo(botType);
+    if (!info || !info.ok || !info.result) return;   // Telegram に聞けない時は何もしない（判断材料がない）
+    var r = info.result;
+    if (String(r.url || '') !== tgRelayWebhookUrl_(cfg, botType)) {
+      // 登録先がずれている間は誰も受け取らないので、すぐ戻す
+      tgRelayFallback_(botType, 'Telegram に登録された受付の場所が違います（' + (r.url ? 'ほかの場所' : '未登録') + '）');
+      return;
+    }
+    // 前回見た時より新しい配達の失敗があり、未配達が残っている時だけ「怪しい」（last_error_date は成功しても消えないため）
+    var prevErr = tgRelayLastErr_(botType);
+    var errDate = Number(r.last_error_date || 0);
+    var isNew = errDate > 0 && (prevErr ? errDate > prevErr : (Date.now() / 1000 - errDate) < TG_RELAY_ERROR_WINDOW_SEC_);
+    tgRelaySetLastErr_(botType, errDate);
+    var reason = (isNew && (r.pending_update_count || 0) > 0)
+      ? '受付への配達に失敗しています（未配達 ' + r.pending_update_count + ' 件・' + String(r.last_error_message || '').substring(0, 120) + '）'
+      : '';
+    if (tgRelayStrike_('wh_' + botType, !!reason)) tgRelayFallback_(botType, reason);
+    else if (reason) Logger.log(TG_RELAY_LOG_ + botType + ' 怪しい(1回目): ' + reason);
+  });
+}
+
+/** 1時間に1回、受付の health を呼ぶ（受付が Supabase の表に1行書き、GAS まで届くかも確かめる）。1分ごとの受け取りの後に呼ぶ */
+function tgRelayPingWatch_() {
+  var state = tgRelayState_();
+  var relayBots = [BOT_TYPE.BOOKING, BOT_TYPE.FIELD].filter(function(b) { return state[b] === 'relay'; });
+  var cfg = tgRelayConfig_();
+  if (relayBots.length === 0 || !cfg) return;
+  if (!tgRelayDue_('tg_relay_ping_at', TG_RELAY_PING_EVERY_SEC_)) return;
+  var ping = tgRelayPing_(cfg);
+  if (tgRelayStrike_('ping', !ping.ok)) {
+    relayBots.forEach(function(b) {
+      tgRelayFallback_(b, '受付の見回り（health）が2回続けて失敗しました（' + ping.detail + '）');
     });
   }
+}
 
-  if (tgRelayDue_('tg_relay_ping_at', TG_RELAY_PING_EVERY_SEC_)) {
-    var ping = tgRelayPing_(cfg);
-    if (tgRelayStrike_('ping', !ping.ok)) {
-      // 上の webhook の見張りで戻した Bot は除く（状態を読み直す）
-      relayBots.filter(function(b) { return tgRelayState_()[b] === 'relay'; }).forEach(function(b) {
-        tgRelayFallback_(b, '受付の見回り（health）が2回続けて失敗しました（' + ping.detail + '）');
-      });
-    }
-  }
+function tgRelayLastErr_(botType) {
+  try { return Number(CacheService.getScriptCache().get('tg_relay_lasterr_' + botType) || 0); } catch (e) { return 0; }
+}
+function tgRelaySetLastErr_(botType, errDate) {
+  try { CacheService.getScriptCache().put('tg_relay_lasterr_' + botType, String(errDate || 0), 6 * 3600); } catch (e) {}
+}
+
+/** 戻しに失敗した Bot の理由（Script Properties に残す＝消えない）。無ければ '' */
+function tgRelayPendingFallback_(botType) {
+  var s = tgRelayState_();
+  return (s.pendingFallback && s.pendingFallback[botType]) || '';
 }
 
 /** 受付の health を呼ぶ。受付は Supabase の表に1行書いて { ok:true, db:true } を返す */
@@ -196,26 +242,48 @@ function tgRelayPing_(cfg) {
     var code = res.getResponseCode();
     var data = null;
     try { data = JSON.parse(res.getContentText()); } catch (ignore) {}
-    var ok = code === 200 && !!data && data.ok === true;
+    // gas=true: 受付から GAS（この版）まで合言葉つきで届いた。db=true: Supabase の表に書けた
+    var ok = code === 200 && !!data && data.ok === true && data.gas === true;
     if (ok && data.db !== true) Logger.log(TG_RELAY_LOG_ + 'health OK だが表に書けていない（relay_heartbeat を確認）');
-    return { ok: ok, detail: 'HTTP ' + code + (data && data.db === false ? '・表に書けず' : '') };
+    return { ok: ok, detail: 'HTTP ' + code + (data && data.gas === false ? '・受付から GAS に届かない（GAS_EXEC_URL・合言葉・GAS の版を確認）' : '') +
+      (data && data.db === false ? '・表に書けず' : '') };
   } catch (e) {
     return { ok: false, detail: String(e).substring(0, 120) };
   }
 }
 
-/** 受付をやめて1分ごとに戻す（未配達の分は消さない＝1分ごとの方で拾う）。管理グループに知らせる */
+/**
+ * 受付をやめて1分ごとに戻す（未配達の分は消さない＝1分ごとの方で拾う）。管理グループに知らせる。
+ * Telegram が webhook を外せなかった時は relay のまま残し、次の1分でやり直す（poll にして webhook が残ると誰も受け取らない）
+ */
 function tgRelayFallback_(botType, reason) {
   var del = callTelegramApi(botType, 'deleteWebhook', { drop_pending_updates: false });
-  tgRelaySetMode_(botType, 'poll');
-  Logger.log(TG_RELAY_LOG_ + botType + ' → 1分ごとに戻した: ' + reason + ' deleteWebhook=' + JSON.stringify(del));
+  var s = tgRelayState_();
+  s.pendingFallback = s.pendingFallback || {};
+  if (!del || !del.ok) {
+    var first = !s.pendingFallback[botType];
+    s.pendingFallback[botType] = reason;
+    PropertiesService.getScriptProperties().setProperty(TG_RELAY_STATE_KEY_, JSON.stringify(s));
+    Logger.log(TG_RELAY_LOG_ + botType + ' webhook を外せなかった（次の1分でやり直す）: ' + JSON.stringify(del));
+    if (first) tgRelayNotify_(botType, '⚠️ ' + tgRelayBotName_(botType) + 'の受付（Supabase）に問題があり、1分ごとに戻そうとしていますが、Telegram が応じません。毎分やり直しています。\n理由: ' + reason);
+    return false;
+  }
+  delete s.pendingFallback[botType];
+  s[botType] = 'poll';
+  PropertiesService.getScriptProperties().setProperty(TG_RELAY_STATE_KEY_, JSON.stringify(s));
+  Logger.log(TG_RELAY_LOG_ + botType + ' → 1分ごとに戻した: ' + reason);
+  tgRelayNotify_(botType,
+    '⚠️ ' + tgRelayBotName_(botType) + 'の受付（Supabase）を止めて、1分ごとの受け取りに戻しました\n' +
+    '理由: ' + reason + '\n' +
+    'お客様のメッセージは Telegram が預かっているので、通常は消えません（返事が最大1分遅れるだけです）。\n' +
+    '直したら GAS エディタで ' + (botType === BOT_TYPE.BOOKING ? 'tgRelayEnableBooking' : 'tgRelayEnableField') + ' を実行すると受付に戻ります。');
+  return true;
+}
+
+function tgRelayBotName_(botType) { return botType === BOT_TYPE.BOOKING ? '予約Bot' : '業務Bot'; }
+
+function tgRelayNotify_(botType, text) {
   try {
-    var name = botType === BOT_TYPE.BOOKING ? '予約Bot' : '業務Bot';
-    var text =
-      '⚠️ ' + name + 'の受付（Supabase）を止めて、1分ごとの受け取りに戻しました\n' +
-      '理由: ' + reason + '\n' +
-      'お客様のメッセージは消えていません（返事が最大1分遅れるだけです）。\n' +
-      '直したら GAS エディタで ' + (botType === BOT_TYPE.BOOKING ? 'tgRelayEnableBooking' : 'tgRelayEnableField') + ' を実行すると受付に戻ります。';
     sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId, text);
   } catch (e) {
     Logger.log(TG_RELAY_LOG_ + '管理グループへの通知に失敗: ' + e);
@@ -234,9 +302,11 @@ function tgRelayEnable_(botType) {
     url: tgRelayWebhookUrl_(cfg, botType),
     secret_token: cfg.secret,
     drop_pending_updates: false,
-    max_connections: 5
+    max_connections: 1   // 1件ずつ順番に届ける（同じお客様の会話の順番を守る）
   });
   if (!res || !res.ok) throw new Error('setWebhook に失敗: ' + JSON.stringify(res));
+  var info = getWebhookInfo(botType);
+  tgRelaySetLastErr_(botType, (info && info.result && info.result.last_error_date) || 0);   // 切り替える前の古い失敗は数えない
   tgRelaySetMode_(botType, 'relay');
   try { CacheService.getScriptCache().removeAll(['tg_relay_strike_wh_' + botType, 'tg_relay_strike_ping']); } catch (ignore) {}
   Logger.log('✅ ' + botType + ' を受付（Supabase）に切り替えました。Bot にメッセージを送って、数秒で返事が来るか確かめてください');
@@ -246,8 +316,12 @@ function tgRelayEnable_(botType) {
 function tgRelayDisable_(botType) {
   if (!tgRelayValidBot_(botType)) throw new Error('botType が違います: ' + botType);
   var res = callTelegramApi(botType, 'deleteWebhook', { drop_pending_updates: false });
-  tgRelaySetMode_(botType, 'poll');
-  Logger.log('↩️ ' + botType + ' を1分ごとに戻しました deleteWebhook=' + JSON.stringify(res));
+  if (!res || !res.ok) throw new Error('deleteWebhook に失敗しました（もう一度実行してください）: ' + JSON.stringify(res));
+  var s = tgRelayState_();
+  s[botType] = 'poll';
+  if (s.pendingFallback) delete s.pendingFallback[botType];
+  PropertiesService.getScriptProperties().setProperty(TG_RELAY_STATE_KEY_, JSON.stringify(s));
+  Logger.log('↩️ ' + botType + ' を1分ごとに戻しました');
 }
 
 function tgRelayEnableBooking() { tgRelayEnable_(BOT_TYPE.BOOKING); }

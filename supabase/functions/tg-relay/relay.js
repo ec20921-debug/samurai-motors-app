@@ -96,11 +96,19 @@ export function createHandler(deps) {
   return async function handle(req) {
     const u = new URL(req.url);
 
-    // GAS からの見回り（1時間に1回）。データベースに1行書く＝無料版の「7日使わないと止まる」にかからない
+    // GAS からの見回り（1時間に1回）。データベースに1行書く＝無料版の「7日使わないと止まる」にかからない。
+    // あわせて GAS（tg_ping）まで届くかも確かめる（GAS_EXEC_URL・合言葉・GAS の版のずれを見つける）
     if (req.method === 'GET') {
       if (!configured() || !safeEqual(req.headers.get('x-relay-key'), env('GAS_RELAY_KEY'))) return json({ ok: false }, 404);
       const db = await heartbeat('gas', null);
-      return json({ ok: true, db });
+      let gas = false;
+      try {
+        const r = await callGas({ action: 'tg_ping' }, ENQUEUE_TIMEOUT_MS);
+        gas = !!(r.data && r.data.ok === true);
+      } catch (e) {
+        log('ping gas error ' + e);
+      }
+      return json({ ok: true, db, gas });
     }
 
     if (req.method !== 'POST') return json({ ok: false }, 405);
@@ -110,6 +118,7 @@ export function createHandler(deps) {
     const bot = u.searchParams.get('bot') || '';
     if (BOTS.indexOf(bot) < 0) return json({ ok: false }, 400);
 
+    if (Number(req.headers.get('content-length') || 0) > MAX_BODY_BYTES) { log('too large ' + bot); return json({ ok: true, ignored: 'too_large' }); }
     const raw = await req.text();
     if (raw.length > MAX_BODY_BYTES) { log('too large ' + bot); return json({ ok: true, ignored: 'too_large' }); }
     let update;

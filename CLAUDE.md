@@ -61,7 +61,7 @@
 
 ## 🔒 GAS 実装の絶対ルール（コード例と背景: docs/GAS_PATTERNS.md）
 
-1. **doPost は1秒以内に `ok` を return**。実処理はキュー投入→ `processTelegramQueue`（1分トリガー）側で。v6 崩壊の直接原因
+1. **doPost は1秒以内に `ok` を return**。実処理はキュー投入→ `processTelegramQueue`（1分トリガー）側で。v6 崩壊の直接原因。例外は Supabase の受付だけが呼ぶ `tg_drain`（受付は結果を待たない・TgRelay.gs・2026-11-09）
 2. **キュー・処理済み一覧・トークンは ScriptProperties（永続）**。返信状態・キャッシュ類は CacheService（揮発）。判断基準:「失うと業務影響が出るか」。**お客様ごと・お店ごと・予約ごとの小さな状態（紹介元・流入元・本人登録リンクの状態など）は Script Properties に置かず v7 Database「状態」タブ（`KvStore.gs` の `kvGet_/kvSet_/kvGetAll_/kvDelete_`）に置く**（2026-10-31 Daisuke 決定。Script Properties は設定だけ・20個以内。設定画面は 50 個で読み取り専用になる）。処理済み update_id は `processed_ids_v1` 1キーにまとめる
 3. **トークン・ID類のハードコード禁止**。すべて PropertiesService から取得。コミット前チェック必須
 4. **1顧客 = 1トピック**。`CUSTOMERS.thread_id` を先に検索、`createForumTopic` は存在しない時のみ

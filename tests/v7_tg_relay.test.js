@@ -61,21 +61,24 @@ function makeCtx(opts) {
         assert.equal(opt.headers['x-relay-key'], KEY);
         return {
           getResponseCode: () => (state.pingOk ? 200 : 503),
-          getContentText: () => JSON.stringify(state.pingOk ? { ok: true, db: state.pingDb } : { ok: false })
+          getContentText: () => JSON.stringify(state.pingOk ? { ok: true, db: state.pingDb, gas: state.pingGas !== false } : { ok: false })
         };
       }
     },
     callTelegramApi: (bot, method, payload) => {
       state.tg.push({ bot, method, payload });
       if (method === 'setWebhook') state.webhook = { url: payload.url, pending_update_count: 0 };
-      if (method === 'deleteWebhook') state.webhook = { url: '', pending_update_count: state.webhook.pending_update_count };
+      if (method === 'deleteWebhook') {
+        if (state.deleteFails) return { ok: false, description: 'Too Many Requests' };
+        state.webhook = { url: '', pending_update_count: state.webhook.pending_update_count };
+      }
       if (method === 'getUpdates') return { ok: true, result: [] };
       return { ok: true, result: true };
     },
     getWebhookInfo: (bot) => { state.tg.push({ bot, method: 'getWebhookInfo' }); return { ok: true, result: state.webhook }; },
     sendMessage: (bot, chatId, text) => state.sent.push({ bot, chatId, text }),
     getConfig: () => ({ adminGroupId: '-100ADMIN' }),
-    handleBookingBotUpdate: (u) => state.handled.push(['booking', u.update_id]),
+    handleBookingBotUpdate: (u) => { if (state.throwOn === u.update_id) throw new Error('boom'); state.handled.push(['booking', u.update_id]); },
     handleFieldBotUpdate: (u) => state.handled.push(['field', u.update_id])
   };
   ctx.getUpdates = (bot, offset, o) => ctx.callTelegramApi(bot, 'getUpdates', Object.assign({ offset }, o));
@@ -182,6 +185,7 @@ test('見張り: 配達の失敗が1回だけなら戻さない。2回続いた�
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
   assert.equal(t.state.sent.length, 0);
 
+  t.state.webhook = Object.assign({}, failing, { last_error_date: failing.last_error_date + 30 });   // 前回より新しい失敗
   nextWatch(t);
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'poll');
   const del = t.state.tg.find((c) => c.method === 'deleteWebhook');
@@ -204,29 +208,58 @@ test('見張り: 失敗→回復なら数え直す。古い失敗（10分より�
   assert.equal(t.state.sent.length, 0);
 });
 
-test('見張り: 登録先がずれていたら（2回続けて）戻す', () => {
+test('見張り: 登録先がずれていたらすぐ戻す（その間は誰も受け取らないため）', () => {
   const t = relayOn({ url: 'https://example.com/other', pending_update_count: 0 });
   t.run(`tgRelayWatch_()`);
-  nextWatch(t);
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'poll');
+});
+
+test('見張り: 同じ古い失敗が残っているだけなら（last_error_date が前回と同じ）何度見ても戻さない', () => {
+  const t = relayOn({ url: URL_ + '?bot=booking', pending_update_count: 1, last_error_date: Math.floor(Date.now() / 1000) - 60 });
+  t.run(`tgRelayWatch_()`); nextWatch(t); nextWatch(t);
+  assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
+});
+
+test('戻し: Telegram が webhook を外せなかったら relay のまま残し、毎分やり直す（外れたら poll）。知らせは1回', () => {
+  const t = relayOn({ url: 'https://example.com/other', pending_update_count: 0 });
+  t.state.deleteFails = true;
+  t.run(`tgRelayWatch_()`);
+  assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
+  assert.equal(t.run(`tgRelayIsOn_('booking')`), true);            // まだ webhook が残っているので poll しない
+  t.run(`tgRelayWatch_()`);                                          // 次の1分（見張りの間引き中でもやり直す）
+  assert.equal(t.state.sent.length, 1);
+  t.state.deleteFails = false;
+  t.run(`tgRelayWatch_()`);
+  const st = JSON.parse(t.props.get('tg_relay_state_v1'));
+  assert.equal(st.booking, 'poll');
+  assert.equal(st.pendingFallback.booking, undefined);
+  assert.equal(t.state.sent.length, 2);
+  assert.match(t.state.sent[1].text, /1分ごとの受け取りに戻しました/);
+});
+
+test('無効化: webhook を外せなければエラーにして状態は変えない', () => {
+  const t = relayOn({ url: URL_ + '?bot=booking', pending_update_count: 0 });
+  t.state.deleteFails = true;
+  assert.throws(() => t.run(`tgRelayDisableBooking()`), /deleteWebhook/);
+  assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
 });
 
 test('見張り: 受付の health は1時間に1回。2回続けて失敗したら戻す（予約ゼロの週でも Supabase を毎日使う）', () => {
   const t = relayOn({ url: URL_ + '?bot=booking', pending_update_count: 0 });
-  t.run(`tgRelayWatch_()`);
-  t.run(`tgRelayWatch_()`);
+  t.run(`tgRelayPingWatch_()`);
+  t.run(`tgRelayPingWatch_()`);
   assert.equal(t.state.pingCalls, 1);                                                // 間引き
-  t.state.pingOk = false;
-  t.cache.delete('tg_relay_ping_at'); t.run(`tgRelayWatch_()`);
+  t.state.pingGas = false;                                                            // 受付は動くが GAS まで届かない
+  t.cache.delete('tg_relay_ping_at'); t.run(`tgRelayPingWatch_()`);
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
-  t.cache.delete('tg_relay_ping_at'); t.run(`tgRelayWatch_()`);
+  t.cache.delete('tg_relay_ping_at'); t.run(`tgRelayPingWatch_()`);
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'poll');
   assert.match(t.state.sent[0].text, /health/);
 });
 
 test('見張り: どの Bot も1分ごとなら Telegram にも受付にも問い合わせない', () => {
   const t = makeCtx({ props: GOOD_PROPS });
-  t.run(`tgRelayWatch_()`);
+  t.run(`tgRelayWatch_()`); t.run(`tgRelayPingWatch_()`);
   assert.equal(t.state.tg.length, 0);
   assert.equal(t.state.pingCalls || 0, 0);
 });
@@ -249,6 +282,7 @@ test('有効化: 合言葉つきで登録し（未配達は捨てない）relay 
   assert.equal(set.payload.url, URL_ + '?bot=booking');
   assert.equal(set.payload.secret_token, SECRET);
   assert.equal(set.payload.drop_pending_updates, false);
+  assert.equal(set.payload.max_connections, 1);
   assert.equal(JSON.parse(t.props.get('tg_relay_state_v1')).booking, 'relay');
   assert.ok(!t.state.log.join('\n').includes(KEY) && !t.state.log.join('\n').includes(SECRET));   // ログに合言葉を出さない
 
@@ -266,4 +300,42 @@ test('設定の形が違えば止まる（URL が supabase.co でない・合言
     const t = makeCtx({ props: Object.assign({}, GOOD_PROPS, bad) });
     assert.equal(t.run(`tgRelayConfig_()`), null);
   });
+});
+
+// ====== キューの順番・二重積み・失敗の上限 ======
+
+test('tg_relay: 同じ update がまだキューにあれば積まない（受付の待ちきれで Telegram が送り直した時）', () => {
+  const t = makeCtx({ props: GOOD_PROPS });
+  t.run(`apiTgRelay_(${relayBody()})`);
+  assert.deepEqual(plain(t.run(`apiTgRelay_(${relayBody()})`)), { ok: true, duplicate: true });
+  assert.equal(t.queueKeys().length, 1);
+  t.run(`apiTgRelay_(${relayBody({ botType: 'field' })})`);                 // 別の Bot の同じ番号は別物
+  assert.equal(t.queueKeys().length, 2);
+});
+
+test('キュー: 届いた順が入れ替わっても、同じ Bot の中は update_id 順に処理する', () => {
+  const t = makeCtx({ props: Object.assign({
+    queue_1000_12: JSON.stringify({ botType: 'booking', update: { update_id: 12 } }),
+    queue_1001_500: JSON.stringify({ botType: 'field', update: { update_id: 500 } }),
+    queue_1002_11: JSON.stringify({ botType: 'booking', update: { update_id: 11 } })
+  }, GOOD_PROPS) });
+  t.run(`processTelegramQueue()`);
+  assert.deepEqual(plain(t.state.handled), [['booking', 11], ['field', 500], ['booking', 12]]);
+});
+
+test('キュー: 3回失敗したら処理をやめて管理グループに知らせる（同じ返信を何度も送らない）。成功した分は続けて処理', () => {
+  const t = makeCtx({ props: Object.assign({
+    queue_1000_7: JSON.stringify({ botType: 'booking', update: { update_id: 7, message: { chat: { id: 99 } } } })
+  }, GOOD_PROPS) });
+  t.state.throwOn = 7;
+  t.run(`processTelegramQueue()`);
+  assert.equal(JSON.parse(t.props.get('queue_1000_7')).attempts, 1);       // 1回の実行で何度も回さない
+  t.run(`processTelegramQueue()`);
+  assert.equal(t.state.sent.length, 0);
+  t.run(`processTelegramQueue()`);
+  assert.equal(t.queueKeys().length, 0);
+  assert.ok(JSON.parse(t.props.get('processed_ids_v1')).includes('7'));
+  assert.equal(t.state.sent.length, 1);
+  assert.match(t.state.sent[0].text, /3回処理できなかった/);
+  assert.match(t.state.sent[0].text, /99/);
 });

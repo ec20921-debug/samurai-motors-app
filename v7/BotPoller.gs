@@ -9,6 +9,8 @@
  *   GAS の Web App /exec は POST に対して 302 リダイレクトを返し、
  *   Telegram がそれを追わずリトライループに入る既知問題（2024+）があるため、
  *   Webhook 方式を諦めて Polling に切替。
+ *   2026-11-09〜: Bot ごとに Supabase の受付（TgRelay.gs）にも切り替えられる。受付で受けている Bot は
+ *   ここでは聞きに行かない（受付が 302 を追って GAS に渡すので、上の問題は起きない）。
  *
  * 【トリガー】
  *   pollTelegramUpdates: 1分間隔
@@ -50,6 +52,13 @@ function pollTelegramUpdates() {
     processTelegramQueue();
   } catch (err) {
     Logger.log('⚠️ pollTelegramUpdates → processTelegramQueue error: ' + err);
+  }
+
+  // 2026-11-09: 受付の health（1時間に1回）。外への通信なので、ふだんの受け取りと処理の後に回す
+  try {
+    if (typeof tgRelayPingWatch_ === 'function') tgRelayPingWatch_();
+  } catch (err) {
+    Logger.log('⚠️ tgRelayPingWatch_ error: ' + err);
   }
 }
 

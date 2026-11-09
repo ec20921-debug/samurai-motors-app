@@ -34,7 +34,7 @@
  *     - manual_campaign_create      : 手動特価予約の作成（店舗/出張）
  *     - manual_campaign_settle      : 手動特価予約の清算（決済状態→清算済み）
  *     - manual_campaign_sale        : 手動特価の売上記録
- *     - tg_relay / tg_drain         : Supabase の受付から（TgRelay.gs・合言葉 TG_RELAY_KEY）
+ *     - tg_relay / tg_drain / tg_ping : Supabase の受付から（TgRelay.gs・合言葉 TG_RELAY_KEY）
  *   ★スタッフ専用（StaffGate.gs）: booking_today / field_partner_shops / manual_campaign_list /
  *     job_start / job_end / job_cancel / job / chat_history / chat_send / manual_campaign_create / _settle / _sale。
  *     TG_AUTH_MODE=enforce の時だけ止める（未設定・audit は記録だけ）。判定の記録は GAS エディタで
@@ -145,9 +145,11 @@ function doPost(e) {
     let result;
 
     // 2026-11-09: Supabase の受付（TgRelay.gs）からの呼び出し。合言葉で確かめ、署名の記録やスタッフ確認は通さない
-    //   tg_relay = キューに積むだけ（すぐ返す）／ tg_drain = キューをその場で処理
+    //   tg_relay = キューに積むだけ（すぐ返す）／ tg_drain = キューをその場で処理（最大数十秒・呼ぶのは受付だけで、
+    //   受付は結果を待たないので「doPost は1秒以内」の例外にしている）／ tg_ping = 受付の health から（合言葉の確認だけ）
     if (action === 'tg_relay') return jsonResponse(apiTgRelay_(body));
     if (action === 'tg_drain') return jsonResponse(apiTgDrain_(body));
+    if (action === 'tg_ping') return jsonResponse(apiTgPing_(body));
 
     // 2026-10-30: staff-only actions (StaffGate.gs). audit = record only / enforce = block
     // 2026-10-31: StaffGate が「スタッフ」と確かめた送り主（署名＝24時間以内＋スタッフマスター照合／専用リンク）を
