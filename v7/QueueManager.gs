@@ -31,8 +31,13 @@
  */
 function enqueueTelegramUpdate(update, botType) {
   const props = PropertiesService.getScriptProperties();
-  const ts = new Date().getTime();
-  const key = STORAGE_KEYS.QUEUE_PREFIX + ts + '_' + update.update_id;
+  let ts = new Date().getTime();
+  let key = STORAGE_KEYS.QUEUE_PREFIX + ts + '_' + update.update_id;
+  // 別の Bot の同じ番号が同じミリ秒に届くと名前がかぶって上書きされるので、かぶったら1ミリ秒ずらす（2026-11-09）
+  while (props.getProperty(key) !== null) {
+    ts++;
+    key = STORAGE_KEYS.QUEUE_PREFIX + ts + '_' + update.update_id;
+  }
   const payload = JSON.stringify({
     botType: botType,
     update: update,
