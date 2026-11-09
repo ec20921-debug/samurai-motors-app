@@ -2,9 +2,9 @@
  * SnsWeeklyReport.gs — SNS 週次レビュー（Facebook）を管理グループの日報トピックへ送る（2026-11-09 Daisuke 指示）
  *
  * 【責務】
- *   本文は Day1 の tools/motors_pdca.py --post-weekly が毎週月曜に作り、
+ *   本文は Day1 の tools/motors_pdca.py --post-weekly が毎週金曜の夕方に作り、
  *   FB動画量産管理 GSS のタブ「12_SNS週次」に1行入れる（A 週 / B 本文〈Telegram HTML〉/ C 作成日時 / D 送信状態 / E 送信日時）。
- *   ここでは D が「未送信」の行を、日報のあと（20:32〜20:59 JST）に日報トピックへ送り、D を「送信済」にする。
+ *   ここでは D が「未送信」の行を、毎週金曜 20:00〜20:29 JST に日報トピックへ送り、D を「送信済」にする。
  *
  * 【なぜ GAS から送るか】
  *   日報と同じ Bot・同じトピックに届けるため。Bot のトークンは Script Properties にだけあり、PC 側には置かない。
@@ -16,10 +16,15 @@
 const SNS_WEEKLY_SPREADSHEET_ID_ = '1O9b6y9hFqTzPVygqu81M80dB2Zng1WWWde3daep07fo'; // FB動画量産管理 GSS（秘密ではない）
 const SNS_WEEKLY_TAB_ = '12_SNS週次';
 
-/** 1分トリガー（pollInternalBot）から毎分呼ばれる。時刻窓の外は即 return */
+/**
+ * 1分トリガー（pollInternalBot）から毎分呼ばれる。時刻窓の外は即 return
+ * 送るのは毎週金曜 20:00〜20:29 JST（2026-11-09 Daisuke「毎週金曜の夜に今週分として。日本時間20時に」）。日報（20:30）より先に届く
+ */
 function maybeSendSnsWeekly_() {
-  const hm = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'HH:mm');
-  if (hm < '20:32' || hm > '20:59') return;
+  const now = new Date();
+  if (Utilities.formatDate(now, 'Asia/Tokyo', 'u') !== '5') return; // 5 = 金曜
+  const hm = Utilities.formatDate(now, 'Asia/Tokyo', 'HH:mm');
+  if (hm < '20:00' || hm > '20:29') return;
   sendPendingSnsWeekly_();
 }
 
