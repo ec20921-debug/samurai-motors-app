@@ -44,22 +44,54 @@ function enqueueTelegramUpdate(update, botType) {
 /**
  * キューから update を取り出して処理する
  *
- * トリガー: 1分間隔
+ * トリガー: 1分間隔（＋ pollTelegramUpdates の末尾・受付の tg_drain からも呼ばれる）
  * 1回の実行で最大 20件処理（GAS実行時間制限対策）
+ *
+ * 2026-11-09: 受付（TgRelay.gs）が届くたびに処理を頼むようになり、同時に走る回数が増えるので、
+ *   キューの処理は1本ずつにする（UserLock＝ウェブアプリもトリガーも同じ持ち主で動くので共通。
+ *   中の処理が使う ScriptLock・DocumentLock とは別のロックなので固まらない）。
+ *   先に別の処理が動いていれば少し待ち、待ちきれなければ何もしない（次の1分ごとで拾う）
  */
 function processTelegramQueue() {
+  processTelegramQueueLocked_(10 * 1000);
+}
+
+/** @return {boolean} 処理したら true（ロックが取れず見送ったら false） */
+function processTelegramQueueLocked_(waitMs) {
+  var lock = null;
+  try {
+    if (typeof LockService.getUserLock === 'function') lock = LockService.getUserLock();
+  } catch (e) { lock = null; }
+  if (lock && !lock.tryLock(waitMs)) {
+    Logger.log('⏳ processTelegramQueue: 別の処理が動いているので見送り（次の1分ごとで拾う）');
+    return false;
+  }
+  try {
+    // 処理中に届いた分も、続けて拾う（受付の tg_drain がロック待ちで見送っても取りこぼさない。最大3周・40秒まで）
+    var started = Date.now();
+    for (var pass = 0; pass < 3; pass++) {
+      var done = processTelegramQueueBody_();
+      if (!done || Date.now() - started > 40 * 1000) break;
+    }
+    return true;
+  } finally {
+    if (lock) { try { lock.releaseLock(); } catch (ignore) {} }
+  }
+}
+
+function processTelegramQueueBody_() {
   const props = PropertiesService.getScriptProperties();
   const all = props.getProperties();
 
-  // キューキーのみ抽出してタイムスタンプ順にソート
-  const queueKeys = Object.keys(all)
+  // キューキーのみ抽出してタイムスタンプ順にソート（同じ Bot の中は update_id 順に並べ直す・queueOrder_）
+  const queueKeys = queueOrder_(Object.keys(all)
     .filter(function(k) { return k.indexOf(STORAGE_KEYS.QUEUE_PREFIX) === 0; })
-    .sort();
+    .sort(), all);
 
   // 2026-10-31: Script Properties に残る小さな状態（移行前・退避）を「状態」タブへ少しずつ移す（KvStore.gs。無ければ何もしない）
   if (typeof kvAutoMigrate_ === 'function') kvAutoMigrate_(all);
 
-  if (queueKeys.length === 0) return;
+  if (queueKeys.length === 0) return 0;
 
   const MAX_PER_RUN = 20;
   const targets = queueKeys.slice(0, MAX_PER_RUN);
@@ -75,7 +107,7 @@ function processTelegramQueue() {
       const botType = payload.botType;
       const updateId = update.update_id;
 
-      // ── 重複排除マーカー（処理開始前にマーク） ──
+      // ── 重複排除（処理済みの一覧に入っていれば捨てる。印は処理が終わってから付ける） ──
       const processedKey = STORAGE_KEYS.PROCESSED_PREFIX + updateId;   // 旧マーカー（移行期間だけ見る）
       if (seen.indexOf(String(updateId)) >= 0 || props.getProperty(processedKey)) {
         // 既に処理済み → キューから削除のみ
@@ -109,13 +141,73 @@ function processTelegramQueue() {
     } catch (err) {
       Logger.log('❌ processTelegramQueue error key=' + key + ' err=' + err);
       failed++;
-      // 失敗したキューは削除せず残す（次回再試行）
-      // ただしログで監視できるようにする
+      // 失敗したキューは残して次回再試行。ただし QUEUE_MAX_ATTEMPTS_ 回で諦めて管理グループへ知らせる（2026-11-09）
+      //   受付（TgRelay.gs）が届くたびに処理を走らせるので、途中まで返信してから落ちる update が
+      //   お客様へ同じ返信を何度も送らないようにする
+      queueRecordFailure_(props, key, all[key], seen, err);
     }
   });
 
   if (success > 0 || failed > 0) {
     Logger.log('📬 queue processed: success=' + success + ' failed=' + failed + ' remaining=' + (queueKeys.length - targets.length));
+  }
+  return success;   // 1件でも処理できたら、呼び出し元がもう一周見る（失敗だけの時は回さない＝回数を一気に使わない）
+}
+
+var QUEUE_MAX_ATTEMPTS_ = 3;
+
+/**
+ * 処理順: 到着順（キーの時刻）を基本に、同じ Bot の update は update_id の小さい順に並べ直す
+ * （受付は複数の update を並行して届けることがあり、到着順が入れ替わっても会話の順番を守る）
+ */
+function queueOrder_(keys, all) {
+  var items = keys.map(function(k) {
+    var bot = '', id = NaN;
+    try { var p = JSON.parse(all[k]); bot = String(p.botType || ''); id = Number(p.update.update_id); } catch (ignore) {}
+    return { key: k, bot: bot, id: id };
+  });
+  var byBot = {};
+  items.forEach(function(it, i) { (byBot[it.bot] = byBot[it.bot] || []).push(i); });
+  var out = items.slice();
+  Object.keys(byBot).forEach(function(bot) {
+    var pos = byBot[bot];
+    var sorted = pos.map(function(i) { return items[i]; }).sort(function(a, b) {
+      if (isNaN(a.id) || isNaN(b.id)) return 0;
+      return a.id - b.id;
+    });
+    pos.forEach(function(i, j) { out[i] = sorted[j]; });
+  });
+  return out.map(function(it) { return it.key; });
+}
+
+/** 失敗の回数をキューに書き戻す。上限に達したら処理済みにして捨て、管理グループへ知らせる */
+function queueRecordFailure_(props, key, raw, seen, err) {
+  try {
+    var payload = JSON.parse(raw);
+    payload.attempts = (Number(payload.attempts) || 0) + 1;
+    if (payload.attempts < QUEUE_MAX_ATTEMPTS_) {
+      props.setProperty(key, JSON.stringify(payload));
+      return;
+    }
+    var updateId = payload.update && payload.update.update_id;
+    seen.push(String(updateId));
+    if (seen.length > PROCESSED_IDS_MAX_) seen.splice(0, seen.length - PROCESSED_IDS_MAX_);
+    props.setProperty(STORAGE_KEYS.PROCESSED_IDS, JSON.stringify(seen));
+    props.deleteProperty(key);
+    var u = payload.update || {};
+    var msg = u.message || u.edited_message || (u.callback_query && u.callback_query.message) || {};
+    var chatId = (msg.chat && msg.chat.id) || (u.callback_query && u.callback_query.from && u.callback_query.from.id) || '';
+    Logger.log('🛑 queue: ' + QUEUE_MAX_ATTEMPTS_ + '回失敗したので処理をあきらめた key=' + key + ' err=' + err);
+    if (typeof sendMessage === 'function' && typeof getConfig === 'function') {
+      sendMessage(BOT_TYPE.BOOKING, getConfig().adminGroupId,
+        '🛑 Bot のメッセージを' + QUEUE_MAX_ATTEMPTS_ + '回処理できなかったので、処理をやめました\n' +
+        'Bot: ' + (payload.botType === BOT_TYPE.FIELD ? '業務Bot' : '予約Bot') + ' / update_id: ' + updateId +
+        (chatId ? ' / チャットID: ' + chatId : '') + '\n' +
+        'エラー: ' + String(err).substring(0, 200) + '\n' +
+        'お客様への返事が届いていない可能性があります。管理グループの該当トピックで確認してください。');
+    }
+  } catch (e) {
+    Logger.log('⚠️ queueRecordFailure_ 失敗(キューは残す): ' + e);
   }
 }
 
