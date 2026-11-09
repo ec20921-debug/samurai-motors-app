@@ -44,10 +44,37 @@ function enqueueTelegramUpdate(update, botType) {
 /**
  * キューから update を取り出して処理する
  *
- * トリガー: 1分間隔
+ * トリガー: 1分間隔（＋ pollTelegramUpdates の末尾・受付の tg_drain からも呼ばれる）
  * 1回の実行で最大 20件処理（GAS実行時間制限対策）
+ *
+ * 2026-11-09: 受付（TgRelay.gs）が届くたびに処理を頼むようになり、同時に走る回数が増えるので、
+ *   キューの処理は1本ずつにする（UserLock＝ウェブアプリもトリガーも同じ持ち主で動くので共通。
+ *   中の処理が使う ScriptLock・DocumentLock とは別のロックなので固まらない）。
+ *   先に別の処理が動いていれば少し待ち、待ちきれなければ何もしない（次の1分ごとで拾う）
  */
 function processTelegramQueue() {
+  processTelegramQueueLocked_(10 * 1000);
+}
+
+/** @return {boolean} 処理したら true（ロックが取れず見送ったら false） */
+function processTelegramQueueLocked_(waitMs) {
+  var lock = null;
+  try {
+    if (typeof LockService.getUserLock === 'function') lock = LockService.getUserLock();
+  } catch (e) { lock = null; }
+  if (lock && !lock.tryLock(waitMs)) {
+    Logger.log('⏳ processTelegramQueue: 別の処理が動いているので見送り（次の1分ごとで拾う）');
+    return false;
+  }
+  try {
+    processTelegramQueueBody_();
+    return true;
+  } finally {
+    if (lock) { try { lock.releaseLock(); } catch (ignore) {} }
+  }
+}
+
+function processTelegramQueueBody_() {
   const props = PropertiesService.getScriptProperties();
   const all = props.getProperties();
 

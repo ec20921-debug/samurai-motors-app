@@ -34,6 +34,14 @@
  *   update のリトライとして機能する。
  */
 function pollTelegramUpdates() {
+  // 2026-11-09: 受付（Supabase・TgRelay.gs）の見張り。おかしければここで1分ごとに戻すので、
+  //   同じ実行の下の pollBotUpdates で未配達の分をすぐ拾える
+  try {
+    if (typeof tgRelayWatch_ === 'function') tgRelayWatch_();
+  } catch (err) {
+    Logger.log('⚠️ tgRelayWatch_ error: ' + err);
+  }
+
   pollBotUpdates(BOT_TYPE.BOOKING);
   pollBotUpdates(BOT_TYPE.FIELD);
 
@@ -51,6 +59,9 @@ function pollTelegramUpdates() {
  * @param {string} botType - BOT_TYPE.BOOKING or BOT_TYPE.FIELD
  */
 function pollBotUpdates(botType) {
+  // 2026-11-09: 受付（Supabase）で受けている Bot は聞きに行かない（webhook がある間は getUpdates が使えない）
+  if (typeof tgRelayIsOn_ === 'function' && tgRelayIsOn_(botType)) return;
+
   const props = PropertiesService.getScriptProperties();
   const offsetKey = STORAGE_KEYS.POLL_OFFSET_PREFIX + botType;
   const stored = props.getProperty(offsetKey);
