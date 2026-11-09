@@ -18,6 +18,8 @@
 function pollInternalBot() {
   // 日報の 20:30 JST 定時送信チェック（1分トリガー起点・時刻窓外は即 return の軽量処理）
   try { maybeSendDailyReport_(); } catch (e) { Logger.log('❌ maybeSendDailyReport_: ' + e); }
+  // SNS 週次レビュー（GSS「12_SNS週次」の未送信行を 20:32〜20:59 JST に日報トピックへ・SnsWeeklyReport.gs）
+  try { maybeSendSnsWeekly_(); } catch (e) { Logger.log('❌ maybeSendSnsWeekly_: ' + e); }
 
   const props = PropertiesService.getScriptProperties();
   const offsetKey = STORAGE_KEYS.POLL_OFFSET_PREFIX + BOT_TYPE.INTERNAL;
