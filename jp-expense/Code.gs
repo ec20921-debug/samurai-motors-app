@@ -40,6 +40,26 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
+/**
+ * GitHub Pages 版の画面からの呼び出し口（2026-11-10 追加）
+ *   スマホで Google アカウントに複数ログインしていると script.google.com の画面が
+ *   「現在、ファイルを開くことができません」になる → 画面は Pages に置き、ここへ fetch(POST) する。
+ *   body: {"fn":"jpInit"|"jpRecent"|"jpSubmit","args":[...]} → {"result":...} か {"__error":"..."}
+ */
+function doPost(e) {
+  let out;
+  try {
+    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    const fns = { jpInit: jpInit, jpRecent: jpRecent, jpSubmit: jpSubmit };
+    const f = fns[body.fn];
+    if (!f) throw new Error('UNKNOWN_FN');
+    out = { result: f.apply(null, Array.isArray(body.args) ? body.args : []) };
+  } catch (err) {
+    out = { __error: String((err && err.message) || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
 // ============================================================
 //  画面から呼ぶ関数（google.script.run）
 // ============================================================

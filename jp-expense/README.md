@@ -11,7 +11,9 @@
 ## 使い方
 
 1. 下のリンク（1本だけ・全員共通）を日本側メンバーに送る。合言葉はない（2026-11-10 Daisuke「個別リンクも合言葉もいらない。開いたらすぐ入れられるように」）
-   `https://script.google.com/macros/s/AKfycbxAZuGD3MVOKBoGII1wsxl9kE_QIt8GpMYfvpwrvIu3L5BR8B3KwLPBayANrHMSX58/exec`
+   **`https://ec20921-debug.github.io/samurai-motors-miniapp/jp-expense/`**（GitHub Pages 版・こちらを配る）
+   - GAS の `/exec` を直接開く版は、スマホで Google アカウントに複数ログインしていると「現在、ファイルを開くことができません」になる（2026-11-10 Daisuke の iPhone で発生）。Pages 版は画面を Pages に置き、GAS の `doPost` へ fetch するので、ログイン状態に左右されない
+   - Pages 版の作り方: `python build_pages.py C:/Users/drymp/dev/samurai-motors-miniapp/jp-expense/index.html` → 配信用リポジトリで commit・push（index.html を直したら毎回）
 2. 画面の上に Samurai Motors のロゴ。開いたら名前を選び（前回選んだ名前は端末が覚える）、日付・何に使ったか・金額・分類・支払い方法・スクショ・コメントを入れて「登録する」
 3. 経費マスターに次の形で入る
 
