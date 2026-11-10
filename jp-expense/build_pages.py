@@ -33,7 +33,12 @@ src = open('index.html', encoding='utf-8').read()
 out = src.replace('<base target="_top">\n', '')
 head_extra = ('<meta name="viewport" content="width=device-width, initial-scale=1">\n'
               '<title>日本側経費の入力｜Samurai Motors</title>\n'
-              '<meta name="robots" content="noindex">\n')
+              '<meta name="robots" content="noindex">\n'
+              # ホーム画面に追加した時のアイコンと名前（iPhone・Android）
+              '<link rel="apple-touch-icon" href="icon-180.png">\n'
+              '<meta name="apple-mobile-web-app-title" content="SM経費">\n'
+              '<link rel="manifest" href="manifest.webmanifest">\n'
+              '<meta name="theme-color" content="#000000">\n')
 out = out.replace('<meta charset="utf-8">\n', '<meta charset="utf-8">\n' + head_extra, 1)
 assert out.count('<script>') == 1
 out = out.replace('<script>', SHIM + '<script>', 1)
