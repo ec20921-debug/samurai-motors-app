@@ -45,11 +45,12 @@
   <p id="who">読み込み中…</p>
 </header>
 <main>
-  <div id="bad" class="card" style="display:none">
-    このリンクでは入力できません。鈴木に正しいリンクを確認してください。
-  </div>
+  <div id="bad" class="card" style="display:none"></div>
 
   <form id="f" class="card" style="display:none" autocomplete="off">
+    <label>あなたの名前（払った人）<span class="req">必須</span></label>
+    <select id="name" required></select>
+
     <label>日付<span class="req">必須</span></label>
     <input type="date" id="date" required>
 
@@ -81,13 +82,12 @@
   </form>
 
   <div id="recentCard" class="card" style="display:none">
-    <h2>最近あなたが入れた経費</h2>
+    <h2 id="recentTitle">最近の記録</h2>
     <ul id="recent" class="recent"></ul>
   </div>
 </main>
 
 <script>
-  var K = <?= JSON.stringify(k) ?>;
   var files = []; // {name, mime, data, preview}
   var reqId = null; // 送信ID（失敗して送り直しても同じIDを使う＝二重登録を防ぐ）
   var $ = function (id) { return document.getElementById(id); };
@@ -112,19 +112,31 @@
     }).join('');
   }
 
+  function loadRecent() {
+    var n = $('name').value;
+    if (!n) { $('recentCard').style.display = 'none'; return; }
+    $('recentTitle').textContent = '最近 ' + n + ' さんが入れた経費';
+    google.script.run.withSuccessHandler(showRecent).jpRecent(n);
+  }
+
   google.script.run
     .withSuccessHandler(function (res) {
-      if (!res || !res.ok) { $('who').textContent = ''; $('bad').style.display = ''; return; }
-      $('who').textContent = res.name + ' さん（負担した人として記録されます）';
+      if (!res || !res.ok) { $('who').textContent = ''; $('bad').style.display = ''; $('bad').textContent = '読み込みに失敗しました'; return; }
+      $('who').textContent = 'Samurai Motors の経費を、日本側で払った分を入れます';
+      var last = '';
+      try { last = localStorage.getItem('jp_expense_name') || ''; } catch (e) {}
+      fill($('name'), [''].concat(res.members), res.members.indexOf(last) >= 0 ? last : '');
+      $('name').options[0].textContent = '選んでください';
+      $('name').onchange = function () { try { localStorage.setItem('jp_expense_name', this.value); } catch (e) {} loadRecent(); };
       fill($('category'), res.categories, '広告宣伝費');
       fill($('currency'), res.currencies, 'JPY');
       fill($('method'), res.methods, 'クレカ');
       $('date').value = today();
       $('f').style.display = '';
-      showRecent(res.recent);
+      loadRecent();
     })
     .withFailureHandler(function (e) { $('who').textContent = ''; $('bad').style.display = ''; $('bad').textContent = '読み込みに失敗しました: ' + e.message; })
-    .jpInit(K);
+    .jpInit();
 
   // ── 証憑の選択 ──
   $('drop').onclick = function () { $('file').click(); };
@@ -185,7 +197,9 @@
     var size = files.reduce(function (a, f) { return a + f.data.length; }, 0);
     if (size > 9 * 1024 * 1024) { msg.className = 'msg err'; msg.textContent = 'ファイルの合計が大きすぎます（合計 6MB まで）。枚数を減らしてください'; return; }
     if (!reqId) reqId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    if (!$('name').value) { msg.className = 'msg err'; msg.textContent = '名前を選んでください'; return; }
     var p = {
+      name: $('name').value,
       reqId: reqId,
       date: $('date').value, item: $('item').value, amount: $('amount').value, currency: $('currency').value,
       category: $('category').value, method: $('method').value, comment: $('comment').value,
@@ -207,7 +221,7 @@
         $('send').disabled = false; $('send').textContent = '登録する';
         msg.className = 'msg err'; msg.textContent = '登録できませんでした: ' + err.message;
       })
-      .jpSubmit(K, p);
+      .jpSubmit(p);
   };
 </script>
 </body>

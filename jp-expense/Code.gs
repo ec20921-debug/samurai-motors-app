@@ -6,7 +6,8 @@
  *
  * 設計:
  *   - v7-operations（業務Bot・本番）とは別の GAS プロジェクト。本番 Bot に影響しない
- *   - 本人確認は「メンバーごとの合言葉つきリンク」（?k=合言葉）。名簿＝経費GSS「日本側メンバー」タブ
+ *   - リンクは1本・合言葉なし。開いたら名前を選んで入れる（2026-11-10 Daisuke「個別リンクも合言葉もいらない。名前は選べるように」）
+ *     名前の選択肢＝経費GSS「日本側メンバー」タブ（A 名前 / B 有効）
  *   - 書き込み先＝経費マスター（負担先F＝本人・支払方法G＝「方法（本人）」・入力者J＝本人）
  *     出典N＝「日本側経費アプリ」、元ID O＝「JP-yyyyMMdd-HHmmss-xxx」
  *   - 証憑は Drive フォルダ「SamuraiMotors_日本側経費_証憑/yyyy-MM」に保存し H列にリンク
@@ -33,11 +34,7 @@ const MAX_TOTAL_B64_ = 9 * 1024 * 1024;  // 1回の合計の上限
 // ============================================================
 
 function doGet(e) {
-  // 合言葉は英数字と - _ だけ（それ以外を消して、画面の script に安全に埋め込む）
-  const k = String((e && e.parameter && e.parameter.k) || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
-  const t = HtmlService.createTemplateFromFile('index');
-  t.k = k;
-  return t.evaluate()
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('日本側経費の入力｜Samurai Motors')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
@@ -47,32 +44,34 @@ function doGet(e) {
 //  画面から呼ぶ関数（google.script.run）
 // ============================================================
 
-/** 初期表示: 本人の名前・分類・最近の自分の記録 */
-function jpInit(k) {
-  const member = findMember_(k);
-  if (!member) return { ok: false, error: 'BAD_LINK' };
+/** 初期表示: 名前の選択肢・分類など */
+function jpInit() {
   return {
     ok: true,
-    name: member.name,
+    members: readMembers_(),
     categories: readCategories_(),
     currencies: CURRENCIES_,
     methods: METHODS_,
-    recent: readRecent_(member.name, 10),
   };
+}
+
+/** 選んだ人の最近の記録 */
+function jpRecent(name) {
+  const member = findMember_(name);
+  return member ? readRecent_(member.name, 10) : [];
 }
 
 /**
  * 経費を1件登録
- * @param {string} k 合言葉
- * @param {Object} p { date:'yyyy-MM-dd', category, item, amount, currency, method, comment,
+ * @param {Object} p { name, date:'yyyy-MM-dd', category, item, amount, currency, method, comment,
  *                     files:[{name, mime, data(base64)}] }
  */
-function jpSubmit(k, p) {
-  const member = findMember_(k);
-  if (!member) return { ok: false, error: 'BAD_LINK' };
+function jpSubmit(p) {
+  p = p || {};
+  const member = findMember_(p.name);
+  if (!member) return { ok: false, error: '名前を選んでください' };
 
   // ── 入力チェック ──
-  p = p || {};
   const date = String(p.date || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: '日付を選んでください' };
   const category = String(p.category || '').trim();
@@ -180,20 +179,18 @@ function openSheet_() {
   return SpreadsheetApp.openById(id);
 }
 
-/** 名簿タブ: A 名前 / B 合言葉 / C 有効(TRUE/FALSE) / D メモ */
-function findMember_(k) {
-  k = String(k || '').trim();
-  if (k.length < 12) return null;
+/** 名簿タブ「日本側メンバー」: A 名前 / B 有効(TRUE/FALSE) / C メモ。有効な名前だけ返す */
+function readMembers_() {
   const sh = openSheet_().getSheetByName(MEMBER_SHEET_);
-  if (!sh || sh.getLastRow() < 2) return null;
-  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
-  for (let i = 0; i < rows.length; i++) {
-    const name = String(rows[i][0]).trim();
-    const code = String(rows[i][1]).trim();
-    const active = rows[i][2] === true || String(rows[i][2]).toUpperCase() === 'TRUE';
-    if (name && code && active && code === k) return { name: name };
-  }
-  return null;
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues()
+    .filter(function (r) { return String(r[0]).trim() && (r[1] === true || String(r[1]).toUpperCase() === 'TRUE'); })
+    .map(function (r) { return String(r[0]).trim(); });
+}
+
+function findMember_(name) {
+  name = String(name || '').trim();
+  return readMembers_().indexOf(name) >= 0 ? { name: name } : null;
 }
 
 /** 分類＝「設定」タブ A12:A28 の分類表（経費マスター B 列の入力規則と同じ並び） */
