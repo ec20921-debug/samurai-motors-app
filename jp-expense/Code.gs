@@ -74,8 +74,12 @@ function jpSubmit(p) {
   // ── 入力チェック ──
   const date = String(p.date || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: '日付を選んでください' };
-  const category = String(p.category || '').trim();
-  if (readCategories_().indexOf(category) < 0) return { ok: false, error: '分類を選んでください' };
+  // 分類・支払い方法は任意（2026-11-10 Daisuke「簡便にしたいから任意に」）
+  //   分類なし → 経費マスターの集計から漏れないよう「その他」で入れ、備考に「分類は未指定」と残す
+  let category = String(p.category || '').trim();
+  const categoryUnset = !category;
+  if (categoryUnset) category = 'その他';
+  else if (readCategories_().indexOf(category) < 0) return { ok: false, error: '分類が正しくありません' };
   const item = String(p.item || '').trim();
   if (!item) return { ok: false, error: '何に使ったか（項目）を書いてください' };
   const amount = Number(p.amount);
@@ -83,7 +87,7 @@ function jpSubmit(p) {
   const currency = String(p.currency || '').toUpperCase();
   if (CURRENCIES_.indexOf(currency) < 0) return { ok: false, error: '通貨を選んでください' };
   const method = String(p.method || '').trim();
-  if (METHODS_.indexOf(method) < 0) return { ok: false, error: '支払い方法を選んでください' };
+  if (method && METHODS_.indexOf(method) < 0) return { ok: false, error: '支払い方法が正しくありません' };
   const comment = String(p.comment || '').trim();
   const files = Array.isArray(p.files) ? p.files.slice(0, MAX_FILES_) : [];
   let total = 0;
@@ -131,7 +135,8 @@ function jpSubmit(p) {
       });
     }
 
-    const note = [SOURCE_LABEL_ + 'から入力', comment].filter(String).join(' / ');
+    const note = [SOURCE_LABEL_ + 'から入力', categoryUnset ? '分類は未指定（要振替）' : '', comment]
+      .filter(String).join(' / ');
     const values = [[
       date,                                  // A 日付
       category,                              // B 分類
@@ -139,7 +144,7 @@ function jpSubmit(p) {
       amount,                                // D 金額
       currency,                              // E 通貨
       member.name,                           // F 負担先
-      method + '（' + member.name + '）',    // G 支払方法
+      method ? method + '（' + member.name + '）' : '', // G 支払方法（未指定は空欄）
       receiptCell,                           // H レシート
       safe_(note),                           // I 備考
       member.name,                           // J 入力者
