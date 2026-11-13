@@ -420,7 +420,7 @@ function apiJobStart(body, opts) {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
         // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
         startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
-          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', id: bookingId, name: body.name || '', car: body.carModel || '', photos: 'before', at: jobLateAt_(body.startTime) });
+          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', id: bookingId, name: body.name || '', car: body.carModel || '', photos: 'before' });
         }, photoResult.blobs, bkRow ? bkRow.data : null);   // 予約の紹介元を優先（2026-10-27 紹介の期限）
       }
     } catch (e) {
@@ -455,7 +455,7 @@ function apiJobStart(body, opts) {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
           var fieldShopSent = notifyShopGroupByShopId_(startFieldShop,
             shopGroupJobText_(shopGroupLangs_(startFieldShop), { phase: 'start', who: 'shop', id: bookingId,
-              car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before', at: jobLateAt_(body.startTime) }),
+              car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before' }),
             photoResult.blobs);
           // 作業前からあった傷・へこみを文章で（2026-10-28 FieldShopMode.gs。SHOP_DAMAGE_NOTE=on の時だけ）
           if (fieldShopSent && typeof notifyShopDamage_ === 'function') notifyShopDamage_(startFieldShop, body);

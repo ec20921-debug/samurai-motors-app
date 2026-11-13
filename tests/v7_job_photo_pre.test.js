@@ -328,7 +328,7 @@ test('遅れの1行: 5分未満は出さない・時間と分で書く', () => {
   assert.equal(ctx.jobDelayLine_('', now), '');
 });
 
-test('開始の文面: すぐ届いた時は遅れを書かない・遅れた時は書く・お店向けは時刻だけ', () => {
+test('開始の文面（管理グループ）: すぐ届いた時は遅れを書かない・遅れた時は書く', () => {
   const ctx = load();
   const quick = ctx.jobStartAdminText_(startBody(), { fieldShopId: 'SHOP-1' }, null, '📷 Before 6枚');
   assert.ok(quick.includes('🕐 開始: '));
@@ -337,8 +337,16 @@ test('開始の文面: すぐ届いた時は遅れを書かない・遅れた時
   const lateBody = startBody({ startTime: minutesAgo(221) });
   const late = ctx.jobStartAdminText_(lateBody, { fieldShopId: 'SHOP-1' }, null, '📷 Before 6枚');
   assert.ok(late.includes('⏱ 現場の操作から 3時間41分 遅れて届きました'));
-  assert.equal(ctx.jobLateAt_(startBody().startTime), '');
-  assert.match(ctx.jobLateAt_(lateBody.startTime), /^\d\d:\d\d$/);
+});
+
+test('お店・お客様のグループには遅れのことを出さない（遅れの1行は管理グループの文面だけ）', () => {
+  const read = (f) => fs.readFileSync(path.join(V7, f), 'utf8');
+  assert.ok(!/jobLateAt_/.test(read('JobManager.gs') + read('PartnerLang.gs') + read('JobPhotoPre.gs')));
+  assert.ok(!/jobDelayLine_|遅れて届きました/.test(read('PartnerLang.gs')), 'お店のグループの文面を作る所に遅れの表示が無い');
+  const jm = read('JobManager.gs');
+  assert.equal((jm.match(/jobDelayLine_\(/g) || []).length, 1, 'JobManager で遅れの1行を使うのは管理グループの終了通知だけ');
+  assert.match(jm, /'🕐 終了: ' \+ jobTimePP_\(body\.endTime\) \+ '\\n' \+ jobDelayLine_\(body\.endTime, new Date\(\)\)/);
+  assert.ok(!/custText[^;]*jobDelayLine_/.test(jm), 'お客様向けの文に遅れを入れない');
 });
 
 test('開始の文面: 知らせを出し済みなら短い文・届かなかった写真は枚数と枠を書く', () => {

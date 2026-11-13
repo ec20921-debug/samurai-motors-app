@@ -172,7 +172,6 @@ function shopGroupJobText_(langs, p) {
   if (p.name !== undefined) lines.push('👤 ' + (p.name || '-'));
   if (p.car !== undefined) lines.push('🚗 ' + (p.car || '-'));
   if (p.duration !== undefined) lines.push('⏱ ' + langJoin_(langs, langFill_(SHOP_GROUP_TEXT.minutes, { n: p.duration })));
-  if (p.at) lines.push('🕐 ' + p.at);   // 遅れて届いた時だけ: 現場で押した時刻（プノンペン・言葉なし＝どの言語でも同じ・2026-11-13 JobPhotoPre.gs）
   if (p.photos) lines.push(shopGroupPhotosLine_(langs, p.photos));
   return lines.join('\n');
 }

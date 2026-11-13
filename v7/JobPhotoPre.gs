@@ -10,7 +10,8 @@
  *   2. job_start / job_end … 写真の本体ではなく file_id の一覧（photo_refs）で届く＝文字だけの軽い送信。
  *                            ここで保存済みの写真を読み、今までと同じ配信（お客様・管理・お店）をする
  *   3. job_start_notice  … 開始を押した時に写真がまだ送り切れていない時だけ、文字だけの知らせを管理グループへ先に出す
- *   4. 管理グループの通知は、5分以上遅れて届いた時に遅れを書く（時刻はプノンペン時間だけ・2026-11-13 Daisuke「プノンペン時間だけでいいよ」）
+ *   4. 管理グループの通知は、5分以上遅れて届いた時に遅れを書く（時刻はプノンペン時間だけ・2026-11-13 Daisuke「プノンペン時間だけでいいよ」）。
+ *      お客様・お店のグループには遅れのことを出さない（同日 Daisuke）
  *
  * 古い現場アプリ（写真の本体を beforePhotos / afterPhotos に入れて送る）は今までどおり動く。
  * 保存先の状態は持たない: file_id は端末が持ち回り、ここでは「このサーバーがこの作業のために保存した写真か」を
@@ -224,7 +225,10 @@ function jobTimePP_(iso) {
   }
 }
 
-/** 現場の操作（iso）から now まで JOB_LATE_MIN_ 分以上たっていたら「⏱ … 遅れて届きました」の1行（改行つき）。それ未満は空 */
+/**
+ * 現場の操作（iso）から now まで JOB_LATE_MIN_ 分以上たっていたら「⏱ … 遅れて届きました」の1行（改行つき）。それ未満は空。
+ * 管理グループの通知にだけ使う。お客様・お店のグループには遅れのことを出さない（2026-11-13 Daisuke「お客さんにはわざわざ言わなくてOK」）
+ */
 function jobDelayLine_(iso, now) {
   if (!iso) return '';
   var t = new Date(iso).getTime();
@@ -233,12 +237,6 @@ function jobDelayLine_(iso, now) {
   if (min < JOB_LATE_MIN_) return '';
   var h = Math.floor(min / 60), m = min % 60;
   return '⏱ 現場の操作から ' + (h > 0 ? h + '時間' : '') + m + '分 遅れて届きました\n';
-}
-
-/** お店のグループ向け: 5分以上遅れて届いた時だけ、現場で押した時刻（プノンペン）を返す。遅れていなければ空 */
-function jobLateAt_(iso) {
-  if (!jobDelayLine_(iso, new Date())) return '';
-  try { return Utilities.formatDate(new Date(iso), 'Asia/Phnom_Penh', 'HH:mm'); } catch (e) { return ''; }
 }
 
 /** 枠が届かなかった写真の1行（改行つき）。無ければ空 */
