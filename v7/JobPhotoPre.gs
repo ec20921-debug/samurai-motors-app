@@ -10,7 +10,7 @@
  *   2. job_start / job_end … 写真の本体ではなく file_id の一覧（photo_refs）で届く＝文字だけの軽い送信。
  *                            ここで保存済みの写真を読み、今までと同じ配信（お客様・管理・お店）をする
  *   3. job_start_notice  … 開始を押した時に写真がまだ送り切れていない時だけ、文字だけの知らせを管理グループへ先に出す
- *   4. 管理グループの通知に、時刻をプノンペンと日本の両方で書き、5分以上遅れて届いた時は遅れを書く
+ *   4. 管理グループの通知は、5分以上遅れて届いた時に遅れを書く（時刻はプノンペン時間だけ・2026-11-13 Daisuke「プノンペン時間だけでいいよ」）
  *
  * 古い現場アプリ（写真の本体を beforePhotos / afterPhotos に入れて送る）は今までどおり動く。
  * 保存先の状態は持たない: file_id は端末が持ち回り、ここでは「このサーバーがこの作業のために保存した写真か」を
@@ -210,15 +210,15 @@ function jobNoticeSent_(rowData) {
   try { return !!JSON.parse(String((rowData && rowData['v2記録(JSON)']) || '{}')).start_notice; } catch (e) { return false; }
 }
 
-// ====== 4. 管理グループの文面（時刻は両方・遅れは書く） ======
+// ====== 4. 管理グループの文面（時刻はプノンペン時間・遅れは書く） ======
 
-/** 「09:29（日本 11:29）」。通知の中の時刻（プノンペン）と Telegram の表示時刻（見る人の端末）を取り違えないように */
-function jobTimeBoth_(iso) {
+/** 現場の時刻（プノンペン時間）「09:29」。日本時間は併記しない（2026-11-13 Daisuke）。読めない値は '-' */
+function jobTimePP_(iso) {
   if (!iso) return '-';
   try {
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '-';
-    return Utilities.formatDate(d, 'Asia/Phnom_Penh', 'HH:mm') + '（日本 ' + Utilities.formatDate(d, 'Asia/Tokyo', 'HH:mm') + '）';
+    return Utilities.formatDate(d, 'Asia/Phnom_Penh', 'HH:mm');
   } catch (e) {
     return '-';
   }
@@ -258,7 +258,7 @@ function jobStartAdminText_(body, opts, bkData, photoLine) {
   var shopName = opts.fieldShopId ? ((typeof getShopNameById_ === 'function' && getShopNameById_(opts.fieldShopId)) || opts.fieldShopId) : '';
   var late = jobDelayLine_(body.startTime, new Date());
   if (opts.noticeSent) {
-    return '📷 作業開始の写真（開始 ' + jobTimeBoth_(body.startTime) + '）\n' +
+    return '📷 作業開始の写真（開始 ' + jobTimePP_(body.startTime) + '）\n' +
       (bookingId ? '🆔 ' + bookingId + '\n' : '') +
       (shopName ? '🏪 提携店: ' + shopName + '\n' : '') +
       '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
@@ -274,6 +274,6 @@ function jobStartAdminText_(body, opts, bkData, photoLine) {
     '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
     jobServiceLine_(body) +
     (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
-    '🕐 開始: ' + jobTimeBoth_(body.startTime) + '\n' +
+    '🕐 開始: ' + jobTimePP_(body.startTime) + '\n' +
     late + jobMissingLine_(opts.prePhotos) + photoLine;
 }

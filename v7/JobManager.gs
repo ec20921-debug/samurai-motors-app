@@ -678,8 +678,8 @@ function apiJobEnd(body, opts) {
         (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +
         (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body, opts.fieldShopId || '') : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
-        // 2026-11-13: 終わった時刻（プノンペンと日本）・5分以上遅れて届いたら遅れ・届かなかった写真（JobPhotoPre.gs）
-        (body.endTime ? '🕐 終了: ' + jobTimeBoth_(body.endTime) + '\n' + jobDelayLine_(body.endTime, new Date()) : '') +
+        // 2026-11-13: 終わった時刻（プノンペン時間）・5分以上遅れて届いたら遅れ・届かなかった写真（JobPhotoPre.gs）
+        (body.endTime ? '🕐 終了: ' + jobTimePP_(body.endTime) + '\n' + jobDelayLine_(body.endTime, new Date()) : '') +
         jobMissingLine_(opts.prePhotos) +
         '📷 After ' + photoResult.urls.length + '枚';
 

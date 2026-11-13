@@ -7,7 +7,7 @@
  *   - job_photo: 1枚を Drive に保存して file_id を返す／同じ送信の送り直しは1枚にまとめる／取り消した作業は保存しない
  *   - 開始・終了: photo_refs の写真を読んで apiJobStart / apiJobEnd に渡す。別の作業の写真・知らないファイルは配らない
  *   - job_start_notice: 文字だけの知らせを管理グループへ1回。開始が配り終わっていれば何もしない
- *   - 管理グループの文面: 時刻はプノンペンと日本の両方・5分以上の遅れを書く
+ *   - 管理グループの文面: 時刻はプノンペン時間だけ・5分以上の遅れを書く
  *   - 古いアプリ（photo_refs なし）は今までどおり
  * ※ このファイルは v7/ の外に置く（v7/ の .js は clasp push で本番に送られるため）
  */
@@ -312,11 +312,11 @@ test('job_start_notice: 管理通知が届かない時は送り直し（3回目�
 
 // ── 管理グループの文面 ──
 
-test('時刻はプノンペンと日本の両方（09:29（日本 11:29））', () => {
+test('時刻はプノンペン時間だけ（09:29）。日本時間は併記しない', () => {
   const ctx = load();
-  assert.equal(ctx.jobTimeBoth_('2026-11-13T02:29:24.923Z'), '09:29（日本 11:29）');
-  assert.equal(ctx.jobTimeBoth_(''), '-');
-  assert.equal(ctx.jobTimeBoth_('not-a-date'), '-');
+  assert.equal(ctx.jobTimePP_('2026-11-13T02:29:24.923Z'), '09:29');
+  assert.equal(ctx.jobTimePP_(''), '-');
+  assert.equal(ctx.jobTimePP_('not-a-date'), '-');
 });
 
 test('遅れの1行: 5分未満は出さない・時間と分で書く', () => {
@@ -332,7 +332,7 @@ test('開始の文面: すぐ届いた時は遅れを書かない・遅れた時
   const ctx = load();
   const quick = ctx.jobStartAdminText_(startBody(), { fieldShopId: 'SHOP-1' }, null, '📷 Before 6枚');
   assert.ok(quick.includes('🕐 開始: '));
-  assert.ok(quick.includes('（日本 '));
+  assert.ok(!quick.includes('日本'), '日本時間は書かない');
   assert.ok(!quick.includes('遅れて届きました'));
   const lateBody = startBody({ startTime: minutesAgo(221) });
   const late = ctx.jobStartAdminText_(lateBody, { fieldShopId: 'SHOP-1' }, null, '📷 Before 6枚');
@@ -366,6 +366,6 @@ test('JobManager.gs: 開始・終了とも先に受け取った写真を足す�
   const src = fs.readFileSync(path.join(V7, 'JobManager.gs'), 'utf8');
   assert.equal((src.match(/if \(opts\.prePhotos\) photoResult = jobMergePhotos_\(opts\.prePhotos, photoResult\);/g) || []).length, 2);
   assert.match(src, /var adminText = jobStartAdminText_\(body, opts, bkRow \? bkRow\.data : null, '📷 Before ' \+ photoResult\.urls\.length \+ '枚'\);/);
-  assert.match(src, /'🕐 終了: ' \+ jobTimeBoth_\(body\.endTime\)/);
+  assert.match(src, /'🕐 終了: ' \+ jobTimePP_\(body\.endTime\)/);
   assert.match(src, /caps: \{ pre_photo: 1 \}/);
 });
