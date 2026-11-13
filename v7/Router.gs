@@ -27,6 +27,8 @@
  *     - booking_create              : 予約確定
  *     - job_start                   : 作業開始通知
  *     - job_end                     : 作業終了通知
+ *     - job_photo                   : 写真を1枚ずつ先に受け取る（開始・終了は file_id で届く・JobPhotoPre.gs）
+ *     - job_start_notice            : 写真が送り切れていない時の、文字だけの作業開始の知らせ（JobPhotoPre.gs）
      - job_cancel                  : 作業の取り消し（アプリのテスト・押し間違い。予約なしの作業だけ・JobCancel.gs）
  *     - job                         : 最終データ送信（写真付き）
  *     - chat_history                : 顧客チャット履歴取得
@@ -194,6 +196,15 @@ function doPost(e) {
 
       case 'job_end':
         result = body.client_id ? apiJobEndV2(body) : apiJobEnd(body);
+        break;
+
+      // 2026-11-13: 写真を撮ったそばから先に受け取る／写真が送り切れていない時の文字だけの知らせ（JobPhotoPre.gs）
+      case 'job_photo':
+        result = apiJobPhotoV2(body);
+        break;
+
+      case 'job_start_notice':
+        result = apiJobStartNoticeV2(body);
         break;
 
       // 2026-11-05: 現場アプリの「この作業を取り消す（アプリのテスト・押し間違い）」（JobCancel.gs）

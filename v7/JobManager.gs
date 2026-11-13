@@ -146,7 +146,8 @@ function apiBookingToday() {
     // 2026-10-31: カレンダーに手で入れた予定（見るだけ）。読めない時は空
     var calendar = (typeof fieldCalendarNotes_ === 'function') ? fieldCalendarNotes_(todayStr, tomorrowStr, tz, calIds) : [];
 
-    return { status: 'ok', bookings: bookings, calendar: calendar };
+    // caps: 現場アプリがサーバーの対応を見て動きを変える（pre_photo = 写真を先に受け取れる・2026-11-13 JobPhotoPre.gs）
+    return { status: 'ok', bookings: bookings, calendar: calendar, caps: { pre_photo: 1 } };
   } catch (err) {
     Logger.log('❌ apiBookingToday error: ' + err);
     return { status: 'error', message: String(err) };
@@ -269,6 +270,8 @@ function apiJobStart(body, opts) {
     if (body.beforePhotos && body.beforePhotos.length > 0) {
       photoResult = saveBase64PhotosToDrive(body.beforePhotos, bookingId || 'manual', 'before');
     }
+    // 2026-11-13: 撮ったそばから先に受け取った写真（JobPhotoPre.gs）。本文の写真（古いアプリ）があれば後ろに足す
+    if (opts.prePhotos) photoResult = jobMergePhotos_(opts.prePhotos, photoResult);
 
     // ── 2. 作業記録シートに行追加 ──
     ensureJobsAmountColumn_();  // 「料金(USD)」列を冪等確保
@@ -390,18 +393,9 @@ function apiJobStart(body, opts) {
 
     // ── 5. 管理グループへ: メッセージ先 → 写真 ──
     try {
-      var adminText = '▶️ 作業開始\n' +
-        '━━━━━━━━━━━━━━━━━\n' +
-        (bookingId ? '🆔 ' + bookingId + '\n' : '') +
-        (typeof sourceAdminLineForJob_ === 'function' && bkRow ? sourceAdminLineForJob_(bkRow.data) : '') +
-        (opts.fieldShopId ? '🏪 提携店: ' + ((typeof getShopNameById_ === 'function' && getShopNameById_(opts.fieldShopId)) || opts.fieldShopId) + '\n' : '') +
-        '👤 ' + (body.name || '-') + '\n' +
-        '🏢 ' + (body.building || '-') + ' ' + (body.room || '') + '\n' +
-        '🚗 ' + (body.carModel || '-') + ' / ' + (body.plate || '-') + '\n' +
-        jobServiceLine_(body) +
-        (hasAmountValue_(body.amount) ? '💵 料金: $' + body.amount + '\n' : '') +
-        '🕐 開始: ' + formatISOtoPhnomPenh(body.startTime) + '\n' +
-        '📷 Before ' + photoResult.urls.length + '枚';
+      // 文面は JobPhotoPre.gs（2026-11-13: 時刻はプノンペンと日本の両方・5分以上遅れて届いたら遅れを書く・
+      //   文字だけの知らせを出し済みなら写真に添える短い文）
+      var adminText = jobStartAdminText_(body, opts, bkRow ? bkRow.data : null, '📷 Before ' + photoResult.urls.length + '枚');
 
       var adminOpts = {};
       if (threadId) adminOpts.message_thread_id = threadId;
@@ -426,7 +420,7 @@ function apiJobStart(body, opts) {
       if (customerChatId && typeof notifyShopGroupJobPhotos === 'function') {
         // 店マスター「グループへの通知の言語」の順（PartnerLang.gs・2026-10-26）
         startShopSent = notifyShopGroupJobPhotos(customerChatId, function(sid) {
-          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', id: bookingId, name: body.name || '', car: body.carModel || '', photos: 'before' });
+          return shopGroupJobText_(shopGroupLangs_(sid), { phase: 'start', who: 'qr', id: bookingId, name: body.name || '', car: body.carModel || '', photos: 'before', at: jobLateAt_(body.startTime) });
         }, photoResult.blobs, bkRow ? bkRow.data : null);   // 予約の紹介元を優先（2026-10-27 紹介の期限）
       }
     } catch (e) {
@@ -461,7 +455,7 @@ function apiJobStart(body, opts) {
           jobMarkCustSent_(opts, 'startshop:' + startFieldShop);
           var fieldShopSent = notifyShopGroupByShopId_(startFieldShop,
             shopGroupJobText_(shopGroupLangs_(startFieldShop), { phase: 'start', who: 'shop', id: bookingId,
-              car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before' }),
+              car: [body.carModel, body.plate].filter(Boolean).join(' / ') || body.name || '', photos: 'before', at: jobLateAt_(body.startTime) }),
             photoResult.blobs);
           // 作業前からあった傷・へこみを文章で（2026-10-28 FieldShopMode.gs。SHOP_DAMAGE_NOTE=on の時だけ）
           if (fieldShopSent && typeof notifyShopDamage_ === 'function') notifyShopDamage_(startFieldShop, body);
@@ -473,7 +467,7 @@ function apiJobStart(body, opts) {
 
     // v2: 管理通知が届かない／写真を1枚も保存できない場合は「配信済み」にしない（送り直しで再配信）
     if (opts.rowIndex) {
-      var startPhotosExpected = (body.beforePhotos || []).length;
+      var startPhotosExpected = (body.beforePhotos || []).length + ((opts.prePhotos && opts.prePhotos.urls.length) || 0);
       if (!adminDelivered || (startPhotosExpected > 0 && photoResult.urls.length === 0)) {
         // 上限回数に達したら配信済みとして進め、要確認の印だけ返す
         if (opts.lastChance) return { status: 'ok', jobId: jobId, warning: 'DELIVERY_PARTIAL',
@@ -519,6 +513,8 @@ function apiJobEnd(body, opts) {
     if (body.afterPhotos && body.afterPhotos.length > 0) {
       photoResult = saveBase64PhotosToDrive(body.afterPhotos, bookingId || 'manual', 'after');
     }
+    // 2026-11-13: 撮ったそばから先に受け取った写真（JobPhotoPre.gs）
+    if (opts.prePhotos) photoResult = jobMergePhotos_(opts.prePhotos, photoResult);
 
     // ── 2. 作業記録シート更新（同一予約IDで複数行ある場合は最新行を更新） ──
     if (opts.rowIndex) {
@@ -682,6 +678,9 @@ function apiJobEnd(body, opts) {
         (hasAmountValue_(body.amount) ? (ptEndShop ? '💵 当社分: $' : '💵 料金: $') + body.amount + '\n' : '') +
         (typeof fieldPayAdminLine_ === 'function' ? fieldPayAdminLine_(ptEnd, fieldShopNameEnd, body, opts.fieldShopId || '') : '') +
         '⏱ 所要時間: ' + duration + '分\n' +
+        // 2026-11-13: 終わった時刻（プノンペンと日本）・5分以上遅れて届いたら遅れ・届かなかった写真（JobPhotoPre.gs）
+        (body.endTime ? '🕐 終了: ' + jobTimeBoth_(body.endTime) + '\n' + jobDelayLine_(body.endTime, new Date()) : '') +
+        jobMissingLine_(opts.prePhotos) +
         '📷 After ' + photoResult.urls.length + '枚';
 
       var adminOpts = {};
@@ -704,7 +703,7 @@ function apiJobEnd(body, opts) {
     // v2: 管理通知が届かない／写真を1枚も保存できない場合は売上計上・QR の前に止めて再送を待つ
     var endPartial = null;
     if (opts.rowIndex) {
-      var endPhotosExpected = (body.afterPhotos || []).length;
+      var endPhotosExpected = (body.afterPhotos || []).length + ((opts.prePhotos && opts.prePhotos.urls.length) || 0);
       if (!adminDelivered || (endPhotosExpected > 0 && photoResult.urls.length === 0)) {
         // 上限回数に達したら売上計上・QR へ進め、要確認の印だけ返す
         if (opts.lastChance) endPartial = { warning: 'DELIVERY_PARTIAL', adminSent: adminDelivered,

@@ -143,6 +143,27 @@ function jobFlagNeedsCheck_(rowIndex, rowJson, phase, res) {
   Logger.log('⚠️ 要確認: v2 ' + phase + ' の配信が上限回数失敗したため配信済みとして続行 row=' + rowIndex);
 }
 
+/**
+ * 作業開始の行を作業記録に足す（ロックの中で呼ぶ）。作業開始（apiJobStartV2）と、
+ * 文字だけの知らせ（apiJobStartNoticeV2・JobPhotoPre.gs）のうち先に届いた方が作る。jcid = 作業の client_id
+ */
+function jobAppendStartRow_(body, jcid) {
+  var jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
+  appendRow(SHEET_NAMES.JOBS, {
+    'ジョブID':           jobId,
+    '予約ID':             jobSafeText_(body.bookingId, 40),
+    '作業状態':           '作業中',
+    '開始時刻':           jobDate_(body.startTime, new Date()),
+    'client_id':          jcid,
+    'アプリ版':           jobSafeText_(body.app_version, 40),
+    '受信日時':           new Date(),
+    '送信日時(端末)':     jobDate_(body.sent_at, ''),
+    'スタッフチャットID': jobStaffChatId_(body),
+    'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null })
+  });
+  return jobId;
+}
+
 // ====== 作業開始 ======
 
 function apiJobStartV2(body) {
@@ -181,19 +202,7 @@ function apiJobStartV2(body) {
       // 開始が届く前に取り消した作業（JobCancel.gs の印）。行を作らず、配信もしない
       return jobEcho_({ status: 'duplicate', result: 'cancelled' }, body);
     } else {
-      jobId = generateDateSeqId('JOB', SHEET_NAMES.JOBS, 'ジョブID');
-      appendRow(SHEET_NAMES.JOBS, {
-        'ジョブID':           jobId,
-        '予約ID':             jobSafeText_(body.bookingId, 40),
-        '作業状態':           '作業中',
-        '開始時刻':           jobDate_(body.startTime, new Date()),
-        'client_id':          cid,
-        'アプリ版':           jobSafeText_(body.app_version, 40),
-        '受信日時':           new Date(),
-        '送信日時(端末)':     jobDate_(body.sent_at, ''),
-        'スタッフチャットID': jobStaffChatId_(body),
-        'v2記録(JSON)':       jobV2Json_('', { start: body.v2 || null })
-      });
+      jobId = jobAppendStartRow_(body, cid);
       SpreadsheetApp.flush();
       row = findRow(SHEET_NAMES.JOBS, 'client_id', cid);
       if (!row) return jobErr_(body, 'BUSY', true, { message: 'row not visible yet' });
@@ -208,11 +217,15 @@ function apiJobStartV2(body) {
 
   // ── ロックの外: 写真保存・行の残り項目・3方向配信（既存処理を行指定で実行） ──
   var lastChance = jobBumpTries_('start', cid);
+  // 先に受け取った写真（JobPhotoPre.gs・2026-11-13）。photo_refs が無い送信（古いアプリ）は今までどおり本文の写真を使う
+  var preStart = (Array.isArray(body.photo_refs) && typeof jobPrePhotos_ === 'function') ? jobPrePhotos_(cid, 'before', body.photo_refs) : null;
+  var noticeSent = (typeof jobNoticeSent_ === 'function') && jobNoticeSent_(row.data);
   var res;
   try {
     res = apiJobStart(body, { rowIndex: row.rowIndex, jobId: jobId, cid: cid,
                               skipCustomer: !!(row.data && row.data['完了イベントID']), lastChance: lastChance,
-                              fieldShopId: fieldShop, fieldResidence: fieldRes });
+                              fieldShopId: fieldShop, fieldResidence: fieldRes,
+                              prePhotos: preStart, noticeSent: noticeSent });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
@@ -312,10 +325,12 @@ function apiJobEndV2(body) {
   } catch (eStart) {
     Logger.log('⚠️ apiJobEndV2: 作業開始の店を読めず ' + eStart);
   }
+  // 先に受け取った作業後の写真（JobPhotoPre.gs・2026-11-13）。作業の client_id（jcid）のために保存した写真だけを使う
+  var preEnd = (Array.isArray(body.photo_refs) && typeof jobPrePhotos_ === 'function') ? jobPrePhotos_(jcid, 'after', body.photo_refs) : null;
   var res;
   try {
     res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
-                            fieldShopId: fieldShop, startShopId: startShop, fieldResidence: startRes });
+                            fieldShopId: fieldShop, startShopId: startShop, fieldResidence: startRes, prePhotos: preEnd });
   } catch (e) {
     res = { status: 'error', message: String(e) };
   }
