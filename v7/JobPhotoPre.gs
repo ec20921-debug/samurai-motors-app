@@ -56,6 +56,7 @@ function apiJobPhotoV2(body) {
     var parts = data.split(',');
     var isPng = !!(parts.length > 1 && parts[0].indexOf('image/png') >= 0);
     var decoded = Utilities.base64Decode(parts.length > 1 ? parts[1] : parts[0]);
+    if (!jobPhotoLooksImage_(decoded)) return jobErr_(body, 'NOT_AN_IMAGE', false);   // JPEG・PNG 以外は保存しない
     var name = jobPhotoPrefix_(jcid, phase) + slot + '_' + cid.slice(0, 8) + (isPng ? '.png' : '.jpg');
     var folder = DriveApp.getFolderById(getConfig().driveFolderWashPhotos);
     file = folder.createFile(Utilities.newBlob(decoded, isPng ? 'image/png' : 'image/jpeg', name));
@@ -72,6 +73,13 @@ function apiJobPhotoV2(body) {
     try { jobPhotoLate_(jcid, phase, slot, file); } catch (eLate) { Logger.log('⚠️ apiJobPhotoV2: 遅れた写真の記録に失敗 ' + eLate); }
   }
   return jobEcho_({ status: 'ok', file_id: fileId }, body);
+}
+
+/** 先頭のバイトで JPEG（FF D8）か PNG（89 50）かを確かめる（Apps Script のバイトは -128〜127） */
+function jobPhotoLooksImage_(bytes) {
+  if (!bytes || bytes.length < 4) return false;
+  var b0 = bytes[0] & 255, b1 = bytes[1] & 255;
+  return (b0 === 0xFF && b1 === 0xD8) || (b0 === 0x89 && b1 === 0x50);
 }
 
 /** 配信の後に届いた写真を作業記録の写真URLに足し、管理グループ（一般）に知らせる */
@@ -97,25 +105,31 @@ function jobPhotoLate_(jcid, phase, slot, file) {
 
 /**
  * photo_refs（[{slot, file_id}]）から写真を読む。
- * 戻り値 { urls, blobs, slots, missing }。missing = 読めなかった枠（file_id なし・別の作業の写真・Drive で読めない）
+ * 戻り値 { urls, blobs, slots, missing, failed }
+ *   missing = 届いていない枠（file_id なし・別の作業の写真・下の failed も含む）
+ *   failed  = file_id はあるのに Drive から読めなかった枠（一時的な不調かもしれない）。
+ *             呼び出し側は、これがある間は配信せず送り直してもらう（コードレビュー [H3]:
+ *             一時エラーを「届いていない写真」と決めつけると、お客様・お店へ写真が出ないまま配信済みになる）
  */
 function jobPrePhotos_(jcid, phase, refs) {
-  var out = { urls: [], blobs: [], slots: [], missing: [] };
+  var out = { urls: [], blobs: [], slots: [], missing: [], failed: [] };
   if (!Array.isArray(refs)) return out;
   var prefix = jobPhotoPrefix_(jcid, phase);
-  refs.slice(0, JOB_PHOTO_MAX_REFS_).forEach(function(r) {
-    var slot = String((r && r.slot) || '');
+  refs.forEach(function(r, i) {
+    var slot = String((r && r.slot) || '').replace(/[^A-Z0-9]/g, '').slice(0, 4) || '?';   // 通知の文面に出るので文字を絞る
     var fid = String((r && r.file_id) || '');
+    if (i >= JOB_PHOTO_MAX_REFS_ || !JOB_PHOTO_FILE_ID_RE_.test(fid)) { out.missing.push(slot); return; }
+    var f;
     try {
-      if (!JOB_PHOTO_FILE_ID_RE_.test(fid)) throw new Error('no file_id');
-      var f = DriveApp.getFileById(fid);
-      if (String(f.getName()).indexOf(prefix) !== 0) throw new Error('not a photo of this job');
-      out.blobs.push(f.getBlob());
+      f = DriveApp.getFileById(fid);
+      if (String(f.getName()).indexOf(prefix) !== 0) { out.missing.push(slot); return; }   // 別の作業の写真・無関係のファイルは配らない
+      var blob = f.getBlob();
+      out.blobs.push(blob);
       out.urls.push(String(f.getUrl()));
       out.slots.push(slot);
     } catch (e) {
-      out.missing.push(slot || '?');
-      Logger.log('⚠️ jobPrePhotos_: ' + phase + ' ' + slot + ' を読めず ' + e);
+      out.missing.push(slot); out.failed.push(slot);
+      Logger.log('⚠️ jobPrePhotos_: ' + phase + ' ' + slot + ' を Drive から読めず ' + e);
     }
   });
   return out;
@@ -160,7 +174,8 @@ function apiJobStartNoticeV2(body) {
       row = findRow(SHEET_NAMES.JOBS, 'client_id', jcid);
       if (!row) return jobErr_(body, 'BUSY', true, { message: 'row not visible yet' });
     }
-    if (cache.get(key)) return jobErr_(body, 'IN_PROGRESS', true, { jobId: jobId });
+    // 開始の配信が進んでいる間は出さない（全文が2回出るのを防ぐ。開始が配り終われば次の送り直しで duplicate になる）
+    if (cache.get(key) || cache.get('jobdeliv:start:' + jcid)) return jobErr_(body, 'IN_PROGRESS', true, { jobId: jobId });
     cache.put(key, '1', JOB_DELIVERING_TTL_);
   } finally {
     lock.releaseLock();

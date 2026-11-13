@@ -810,18 +810,26 @@ function preQueue(c, phase, slot, holder, key, img) {
     if (r && r.status !== 'sent' && r.status !== 'sending') Outbox.drop(old);
   }).catch(function () {});
 }
-/** 写真の振り分け: 先に送ってある写真は番号（deps）、そうでない写真は本文（photos）へ */
-function photoSplit(c) {
-  var o = { deps: [], photos: [], inline: [] };
+/**
+ * 写真の振り分け: 先に送ってある写真は番号（deps）、そうでない写真は本文（photos）へ。
+ *   box = 送信待ち箱の中身（Outbox.all）。開始・終了を箱に入れる時に決め直す（コードレビュー [H2][M2]）:
+ *     - 先送りが今は使えない（サーバーを戻した・outbox.js が古い）→ 全部を本文へ
+ *     - 写真の記録が箱に無い（端末の保存が消えた等）→ その写真は本文へ（写真を落とさない）
+ */
+function photoSplit(c, box) {
+  var o = { deps: [], photos: [], inline: [] }, pre = !!c.pre && preOn(), inBox = {};
+  (box || []).forEach(function (r) { if (r.kind === 'job_photo') inBox[r.client_id] = true; });
   o.add = function (img, slot, pcid) {
     if (!img) return;
-    if (c.pre && pcid) o.deps.push({ slot: slot, cid: pcid }); else { o.photos.push(img); o.inline.push(slot); }
+    if (pre && pcid && inBox[pcid]) o.deps.push({ slot: slot, cid: pcid }); else { o.photos.push(img); o.inline.push(slot); }
   };
   o.slots = function () { return o.deps.map(function (d) { return d.slot; }).concat(o.inline); };   // サーバーが並べる順（先送り → 本文）
   return o;
 }
-function queueStart(c) {
-  var shots = shotsFor(c.job, 'before'), ps = photoSplit(c), pc = c.pc || {};
+function boxList() { return Outbox.all().catch(function () { return []; }); }
+function queueStart(c) { return boxList().then(function (box) { return queueStartWith(c, box); }); }
+function queueStartWith(c, box) {
+  var shots = shotsFor(c.job, 'before'), ps = photoSplit(c, box), pc = c.pc || {};
   shots.forEach(function (s) { ps.add(c.photos[s.id], s.id.replace('before_', ''), pc[s.id]); });
   c.dmg.forEach(function (d, i) { ps.add(d.img, 'D' + (i + 1), d.pcid); });
   if (c.mode === 'shop') ps.add(c.vinImg, 'V', pc.vin);   // 車台番号の写真（お店の仕事）
@@ -840,7 +848,7 @@ function queueStart(c) {
   }
   if (!ps.deps.length) return Outbox.enqueue('job_start', p);
   // 先に送った写真がまだ送り切れていない時だけ、文字だけの知らせを先に出す（管理グループへ「写真はあとから届きます」）
-  return Outbox.all().catch(function () { return []; }).then(function (list) {
+  return Promise.resolve(box).then(function (list) {
     var sent = {}; list.forEach(function (r) { if (r.status === 'sent') sent[r.client_id] = true; });
     if (ps.deps.every(function (d) { return sent[d.cid]; })) return null;
     var n = JSON.parse(JSON.stringify(p)), nid = Outbox.uuid();
@@ -866,8 +874,9 @@ function applyShopAmount(c) {
   } else if (!c.amount) c.amount = Number(c.job.amount) || listPriceOf(c);   // 空にした時は初期値（レジデンス等は割引後）に戻す
 }
 function canSavePay(c) { return !!c.pay && c.pay !== 'cash' && !(isShopPay(c.pay) && !c.shop) && (c.pay === 'free' || (Number(c.amount) > 0 && Number(c.amount) <= 2000)); }   // 無料以外は金額が要る
-function queueEnd(c) {
-  var shots = shotsFor(c.job, 'after'), ps = photoSplit(c), pc = c.pc || {};
+function queueEnd(c) { return boxList().then(function (box) { return queueEndWith(c, box); }); }
+function queueEndWith(c, box) {
+  var shots = shotsFor(c.job, 'after'), ps = photoSplit(c, box), pc = c.pc || {};
   shots.forEach(function (s) { ps.add(c.photos[s.id], s.id.replace('after_', ''), pc[s.id]); });
   var photos = ps.photos, slots = ps.slots();
   var p = basePayload(c), endId = c.endCid || (c.endCid = Outbox.uuid()), times = {};   // 同じ作業の終了は同じ client_id（2026-10-27）
@@ -1480,7 +1489,7 @@ function renderJob() {
 // ── 送信の帯（2026-11-13）: 開始・送るを押した後、「まだしまわないで」と「しまって大丈夫」を一目で ──
 //   写真を撮ったそばから送る作業（c.pre）だけ。送っている間は画面が自動で消えないようにし（対応端末のみ）、送り終えたら短い音。
 var JOB_REC = { job_start: 1, job_end: 1, job_photo: 1, job_start_notice: 1 };
-var wakeS = null, sndCtx = null, bnWasPending = false;
+var wakeS = null, wakeAsk = false, sndCtx = null, bnWasPending = false;
 var bnSince = 0, bnTimer = null, SEND_WAIT_MS = 20000;   // 押してからこの時間で送り切れなければ「待たなくていい」に切り替える
 function sendSlow() { return navigator.onLine === false || (bnSince > 0 && Date.now() - bnSince > SEND_WAIT_MS); }
 function recPending(r) { return JOB_REC[r.kind] && (r.status === 'local' || r.status === 'sending'); }
@@ -1490,18 +1499,21 @@ function sendBnHtml(c) {
   var n = jobPend(c);
   // 送っている途中: 画面を開いたままに。圏外・20秒たっても送り切れない時は、待たせずに「あとで自動で送ります」
   if (n > 0) return '<div class="strip warn sendbn">' + (sendSlow() ? '📵' : '📡') + ' <div class="grow">' + t(sendSlow() ? 'send_later' : 'send_wait', { n: n }) + '</div></div>';
+  // 送れない記録（要確認）がある時は「届きました」と出さない（上の赤い帯が「管理者に連絡」と案内する）
+  if ((S.obList || []).some(function (r) { return r.job_client_id === c.jobCid && JOB_REC[r.kind] && r.status === 'review'; })) return '';
   // 送り終えた: 作業中の画面では開始から2分だけ出す（ずっと出すと邪魔）。完了の画面では出したまま
   if (c.step === 'done' || (c.startAt && Date.now() - Date.parse(c.startAt) < 120000)) return '<div class="strip ok sendbn">✅ <div class="grow">' + t('send_ok') + '</div></div>';
   return '';
 }
 function wakeOn() {
   try {
-    if (wakeS || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    if (wakeS || wakeAsk || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    wakeAsk = true;   // 返事が来る前に重ねて頼まない（解放できない指定が残るのを防ぐ）
     navigator.wakeLock.request('screen').then(function (s) {
-      wakeS = s;
+      wakeAsk = false; wakeS = s;
       if (s.addEventListener) s.addEventListener('release', function () { if (wakeS === s) wakeS = null; });
-    }).catch(function () {});
-  } catch (e) {}
+    }).catch(function () { wakeAsk = false; });
+  } catch (e) { wakeAsk = false; }
 }
 function wakeOff() { try { if (wakeS) { var s = wakeS; wakeS = null; s.release(); } } catch (e) {} }
 function sndArm() {

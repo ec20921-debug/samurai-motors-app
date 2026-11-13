@@ -24,7 +24,7 @@ const P1 = 'aaaaaaaa-0000-4000-8000-000000000001';
 const P2 = 'aaaaaaaa-0000-4000-8000-000000000002';
 const NOTICE = 'bbbbbbbb-0000-4000-8000-000000000001';
 const END = 'cccccccc-0000-4000-8000-000000000001';
-const TINY = 'data:image/jpeg;base64,' + Buffer.from('jpeg-bytes').toString('base64');
+const TINY = 'data:image/jpeg;base64,' + Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4]).toString('base64');   // JPEG の先頭バイト
 const fmt = (d, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
 
 function load(rows, opts) {
@@ -45,14 +45,15 @@ function load(rows, opts) {
     SpreadsheetApp: { flush: () => {} },
     Logger: { log: () => {} },
     Utilities: {
-      base64Decode: (s) => { if (opts.decodeThrows) throw new Error('bad base64'); return Buffer.from(s, 'base64'); },
+      // Apps Script と同じく符号つきのバイト（-128〜127）で返す
+      base64Decode: (s) => Array.from(Buffer.from(s, 'base64')).map((b) => (b > 127 ? b - 256 : b)),
       newBlob: (bytes, type, name) => ({ bytes, type, name }),
       formatDate: (d, tz) => fmt(d, tz)
     },
     DriveApp: {
       Access: { ANYONE_WITH_LINK: 'A' }, Permission: { VIEW: 'V' },
       getFolderById: () => ({ createFile: (blob) => { if (opts.driveThrows) throw new Error('drive down'); return mkFile(blob); } }),
-      getFileById: (id) => { if (!files[id]) throw new Error('not found'); return files[id]; }
+      getFileById: (id) => { if (opts.readThrows && opts.readThrows()) throw new Error('drive busy'); if (!files[id]) throw new Error('not found'); return files[id]; }
     },
     SHEET_NAMES: { JOBS: '作業記録' }, BOT_TYPE: { BOOKING: 'booking' },
     getConfig: () => ({ adminGroupId: '-100admin', driveFolderWashPhotos: 'FOLDER' }),
@@ -120,6 +121,11 @@ test('job_photo: おかしな値は要確認（retryable=false）・Drive の失
   assert.equal(ctx.apiJobPhotoV2(photo(P1, { photoBase64: '' })).error, 'NO_PHOTO');
   const big = ctx.apiJobPhotoV2(photo(P1, { photoBase64: 'x'.repeat(4000001) }));
   assert.equal(big.error, 'PHOTO_TOO_LARGE'); assert.equal(big.retryable, false);
+  const notImg = ctx.apiJobPhotoV2(photo(P1, { photoBase64: 'data:image/jpeg;base64,' + Buffer.from('<html>not an image</html>').toString('base64') }));
+  assert.equal(notImg.error, 'NOT_AN_IMAGE'); assert.equal(notImg.retryable, false);
+  assert.equal(Object.keys(ctx.files).length, 0, '画像でないものは保存しない');
+  const png = ctx.apiJobPhotoV2(photo(P2, { photoBase64: 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4E, 0x47, 1, 2]).toString('base64') }));
+  assert.equal(png.status, 'ok');
   const down = load([], { driveThrows: true }).apiJobPhotoV2(photo(P1));
   assert.equal(down.error, 'PHOTO_SAVE_FAILED'); assert.equal(down.retryable, true);
 });
@@ -150,6 +156,7 @@ test('jobPrePhotos_: この作業のために保存した写真だけを読む�
   assert.deepEqual(Array.from(pre.urls), ['https://drive.example/' + mine]);
   assert.equal(pre.blobs.length, 1);
   assert.deepEqual(Array.from(pre.missing), ['B', 'L', 'R', 'V']);
+  assert.deepEqual(Array.from(pre.failed), ['V'], 'file_id はあるのに Drive から読めなかった枠だけ');
 });
 
 test('作業開始: photo_refs の写真を apiJobStart に渡す（本文に写真なし＝軽い送信）', () => {
@@ -186,6 +193,51 @@ test('作業終了: 作業の client_id のために保存した「作業後」�
   const o = ctx.ended[0].o;
   assert.deepEqual(Array.from(o.prePhotos.slots), ['F']);
   assert.deepEqual(Array.from(o.prePhotos.missing), ['B']);
+});
+
+test('Drive から写真を読めない間は配信しない（送り直し）。3回目は読めた写真だけで配信する', () => {
+  let busy = true;
+  const ctx = load([], { readThrows: () => busy });
+  const f1 = ctx.apiJobPhotoV2(photo(P1)).file_id;
+  const b = () => startBody({ photo_refs: [{ slot: 'F', file_id: f1 }] });
+  const r1 = ctx.apiJobStartV2(b());
+  assert.equal(r1.error, 'PHOTO_READ_FAILED'); assert.equal(r1.retryable, true);
+  assert.equal(ctx.started.length, 0, 'お客様・お店・管理へはまだ配らない');
+  assert.equal(ctx.rows[0]['開始配信日時'] || '', '');
+  busy = false;
+  const r2 = ctx.apiJobStartV2(b());
+  assert.equal(r2.status, 'ok');
+  assert.equal(ctx.started[0].o.prePhotos.urls.length, 1, '読めるようになったら写真つきで配信');
+  // ずっと読めない時: 3回目であきらめて、届いていない写真として配信する（開始そのものは止めない）
+  let always = true;
+  const c2 = load([], { readThrows: () => always });
+  always = false; const f2 = c2.apiJobPhotoV2(photo(P1)).file_id; always = true;
+  const b2 = () => startBody({ photo_refs: [{ slot: 'F', file_id: f2 }] });
+  assert.equal(c2.apiJobStartV2(b2()).error, 'PHOTO_READ_FAILED');
+  assert.equal(c2.apiJobStartV2(b2()).error, 'PHOTO_READ_FAILED');
+  assert.equal(c2.apiJobStartV2(b2()).status, 'ok');
+  assert.deepEqual(Array.from(c2.started[0].o.prePhotos.missing), ['F']);
+});
+
+test('作業終了も同じ: Drive から読めない間は配信しない（売上・請求は送り直しで出る）', () => {
+  let busy = true;
+  const rows = [{ 'ジョブID': 'JOB-20261113-001', 'client_id': JOB, '予約ID': '', '作業状態': '作業中', '完了イベントID': '', 'v2記録(JSON)': '{}' }];
+  const ctx = load(rows, { readThrows: () => busy });
+  busy = false; const fa = ctx.apiJobPhotoV2(photo(P1, { phase: 'after' })).file_id; busy = true;
+  const b = () => ({ action: 'job_end', client_id: END, job_client_id: JOB, request_id: END, duration: 10, amount: 25, endTime: new Date().toISOString(),
+    afterPhotos: [], v2: { payment_type: 'shop' }, photo_refs: [{ slot: 'F', file_id: fa }] });
+  assert.equal(ctx.apiJobEndV2(b()).error, 'PHOTO_READ_FAILED');
+  assert.equal(ctx.ended.length, 0);
+  busy = false;
+  assert.equal(ctx.apiJobEndV2(b()).status, 'ok');
+  assert.equal(ctx.ended.length, 1);
+  assert.equal(ctx.ended[0].o.prePhotos.urls.length, 1);
+});
+
+test('通知の文面に出る枠の名前は、大文字と数字4文字までに絞る', () => {
+  const ctx = load();
+  const pre = ctx.jobPrePhotos_(JOB, 'before', [{ slot: 'F<b>\n@everyone', file_id: '' }, { slot: '', file_id: '' }]);
+  assert.deepEqual(Array.from(pre.missing), ['F', '?']);
 });
 
 test('jobMergePhotos_: 先に受け取った写真 → 本文の写真 の順に1つにする', () => {
@@ -228,6 +280,14 @@ test('知らせの後に届いた開始: 同じ行を使い、apiJobStart に no
   assert.equal(res.status, 'ok');
   assert.equal(ctx.rows.length, 1, '行は増えない');
   assert.equal(ctx.started[0].o.noticeSent, true);
+});
+
+test('job_start_notice: 開始の配信が進んでいる間は出さない（全文が2回出ないように送り直し）', () => {
+  const ctx = load();
+  ctx.cacheStore['jobdeliv:start:' + JOB] = '1';
+  const r = ctx.apiJobStartNoticeV2(noticeBody());
+  assert.equal(r.error, 'IN_PROGRESS'); assert.equal(r.retryable, true);
+  assert.equal(ctx.sent.length, 0);
 });
 
 test('job_start_notice: 開始が配り終わっていれば何もしない／取り消した作業にも出さない', () => {

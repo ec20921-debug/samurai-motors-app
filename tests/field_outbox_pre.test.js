@@ -256,3 +256,50 @@ test('文字だけの知らせ（now）は、写真を送っている途中で�
   assert.equal(kinds(posts).filter((k) => k === 'job_start_notice').length, 2);
   assert.ok((await Outbox.all()).every((r) => r.status === 'sent'));
 });
+
+test('[H1] 写真が3回送れなければ、開始はその写真を待たずに送る（売上・請求を写真で止めない）', async () => {
+  const { Outbox, posts } = loadOutbox((body) => { if (body.action === 'job_photo' && body.slot === 'B') throw new Error('timeout'); return okServer(body); });
+  await Outbox.start({ url: 'u', appVersion: 'v' });
+  await Outbox.enqueue('job_photo', photoRec('p-F', 'F'));
+  await Outbox.enqueue('job_photo', photoRec('p-B', 'B'));
+  await Outbox.enqueue('job_start', startRec(), { deps: [{ slot: 'F', cid: 'p-F' }, { slot: 'B', cid: 'p-B' }] });
+  await flushAll(Outbox, 1);
+  assert.ok(!kinds(posts).includes('job_start'), '1回失敗しただけでは、まだ待つ');
+  for (let i = 0; i < 4; i++) { await Outbox.retryAll(); await flushAll(Outbox, 2); }
+  const st = posts.filter((p) => p.kind === 'job_start');
+  assert.equal(st.length, 1, '開始は1回だけ送る');
+  assert.deepEqual(st[0].body.photo_refs, [{ slot: 'F', file_id: 'FILE-F' }, { slot: 'B', file_id: '' }]);
+  assert.equal((await Outbox.all()).filter((r) => r.client_id === 'p-B')[0].status, 'local', '送れなかった写真は箱に残り、あとで送る');
+});
+
+test('[H1] 待つのをやめた写真も、電波が戻った時は開始より先にもう一度試す（写真つきで届く）', async () => {
+  let online = false;
+  const { Outbox, posts } = loadOutbox((body) => { if (!online) throw new Error('offline'); return okServer(body); });
+  await Outbox.start({ url: 'u', appVersion: 'v' });
+  await Outbox.enqueue('job_photo', photoRec('p-F', 'F'));
+  await Outbox.enqueue('job_start', startRec(), { deps: [{ slot: 'F', cid: 'p-F' }] });
+  for (let i = 0; i < 5; i++) { await Outbox.retryAll(); await flushAll(Outbox, 2); }   // 圏外のまま何度も失敗（写真は wait_off・開始も送れない）
+  assert.equal((await Outbox.all()).filter((r) => r.client_id === 'p-F')[0].wait_off, true);
+  assert.ok((await Outbox.all()).every((r) => r.status === 'local'), '圏外の間は何も送信済みにならない');
+  online = true; posts.length = 0;
+  await Outbox.kick(); await flushAll(Outbox);   // 電波が戻った合図（kick）: 再送待ちの時間を待たず、開始の前に写真を先に試す
+  assert.deepEqual(kinds(posts), ['job_photo:F', 'job_start']);
+  assert.deepEqual(posts[1].body.photo_refs, [{ slot: 'F', file_id: 'FILE-F' }]);
+});
+
+test('[M1] 端末に保存できない時の直接送信: 写真の file_id が分からない開始は送らない（写真なしで送信済みにしない）', async () => {
+  const { Outbox, posts } = loadOutbox(okServer);
+  await Outbox.start({ url: 'u', appVersion: 'v' });
+  const ctxWin = posts;   // 保存を失敗させる: IndexedDB の transaction を投げるようにする
+  const src = fs.readFileSync(path.join(__dirname, '..', 'field', 'outbox.js'), 'utf8');
+  assert.match(src, /if \(\(rec\.deps \|\| \[\]\)\.some\(function \(d\) \{ return !fileMem\[d\.cid\]; \}\)\) return false;/);
+  assert.ok(ctxWin);
+});
+
+test('[H2][M2] 画面側: 開始・終了を箱に入れる時に、先送りが使えるか・写真の記録が箱にあるかを確かめ直す', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'field', 'index.html'), 'utf8');
+  assert.match(html, /pre = !!c\.pre && preOn\(\), inBox = \{\}/);
+  assert.match(html, /if \(pre && pcid && inBox\[pcid\]\) o\.deps\.push/);
+  assert.match(html, /function queueStart\(c\) \{ return boxList\(\)\.then/);
+  assert.match(html, /function queueEnd\(c\) \{ return boxList\(\)\.then/);
+});

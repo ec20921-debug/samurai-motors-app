@@ -220,6 +220,11 @@ function apiJobStartV2(body) {
   // 先に受け取った写真（JobPhotoPre.gs・2026-11-13）。photo_refs が無い送信（古いアプリ）は今までどおり本文の写真を使う
   var preStart = (Array.isArray(body.photo_refs) && typeof jobPrePhotos_ === 'function') ? jobPrePhotos_(cid, 'before', body.photo_refs) : null;
   var noticeSent = (typeof jobNoticeSent_ === 'function') && jobNoticeSent_(row.data);
+  // Drive から読めない写真がある間は配信しない（送り直してもらう）。3回目はあきらめて、読めた写真だけで配信する
+  if (preStart && preStart.failed.length > 0 && !lastChance) {
+    cache.remove('jobdeliv:start:' + cid);
+    return jobErr_(body, 'PHOTO_READ_FAILED', true, { jobId: jobId });
+  }
   var res;
   try {
     res = apiJobStart(body, { rowIndex: row.rowIndex, jobId: jobId, cid: cid,
@@ -327,6 +332,10 @@ function apiJobEndV2(body) {
   }
   // 先に受け取った作業後の写真（JobPhotoPre.gs・2026-11-13）。作業の client_id（jcid）のために保存した写真だけを使う
   var preEnd = (Array.isArray(body.photo_refs) && typeof jobPrePhotos_ === 'function') ? jobPrePhotos_(jcid, 'after', body.photo_refs) : null;
+  if (preEnd && preEnd.failed.length > 0 && !lastChanceEnd) {
+    cache.remove('jobdeliv:end:' + cid);
+    return jobErr_(body, 'PHOTO_READ_FAILED', true, { jobId: jobId });
+  }
   var res;
   try {
     res = apiJobEnd(body, { rowIndex: row.rowIndex, jobId: jobId, rowData: row.data, cid: cid, lastChance: lastChanceEnd,
