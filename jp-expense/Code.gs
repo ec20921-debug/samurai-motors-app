@@ -7,7 +7,8 @@
  * 設計:
  *   - v7-operations（業務Bot・本番）とは別の GAS プロジェクト。本番 Bot に影響しない
  *   - リンクは1本・合言葉なし。開いたら名前を選んで入れる（2026-11-10 Daisuke「個別リンクも合言葉もいらない。名前は選べるように」）
- *     名前の選択肢＝経費GSS「日本側メンバー」タブ（A 名前 / B 有効）
+ *     名前の選択肢＝経費GSS「スタッフマスター」の 有効=TRUE かつ 経費アプリ=TRUE の 氏名(JP)
+ *     （2026-11-13 Daisuke「スタッフマスターと日本側メンバーが重複しているので1つに」で「日本側メンバー」タブを統合・削除）
  *   - 書き込み先＝経費マスター（負担先F＝本人・支払方法G＝「方法（本人）」・入力者J＝本人）
  *     出典N＝「日本側経費アプリ」、元ID O＝「JP-yyyyMMdd-HHmmss-xxx」
  *   - 証憑は Drive フォルダ「SamuraiMotors_日本側経費_証憑/yyyy-MM」に保存し H列にリンク
@@ -18,7 +19,7 @@
 const PROP_SHEET_ID_ = 'SHEET_ID';
 const PROP_FOLDER_ID_ = 'FOLDER_ID';
 const MASTER_SHEET_ = '経費マスター';
-const MEMBER_SHEET_ = '日本側メンバー';
+const MEMBER_SHEET_ = 'スタッフマスター';
 const SETTINGS_SHEET_ = '設定';
 const SOURCE_LABEL_ = '日本側経費アプリ';
 const FOLDER_NAME_ = 'SamuraiMotors_日本側経費_証憑';
@@ -204,13 +205,21 @@ function openSheet_() {
   return SpreadsheetApp.openById(id);
 }
 
-/** 名簿タブ「日本側メンバー」: A 名前 / B 有効(TRUE/FALSE) / C メモ。有効な名前だけ返す */
+/**
+ * 名簿＝「スタッフマスター」。1行目の列名で列を探す（列の並びが変わっても動く）
+ * 有効=TRUE かつ 経費アプリ=TRUE の 氏名(JP) を返す（氏名(JP) が経費マスターの負担先に入る）
+ */
 function readMembers_() {
   const sh = openSheet_().getSheetByName(MEMBER_SHEET_);
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues()
-    .filter(function (r) { return String(r[0]).trim() && (r[1] === true || String(r[1]).toUpperCase() === 'TRUE'); })
-    .map(function (r) { return String(r[0]).trim(); });
+  const values = sh.getDataRange().getValues();
+  const head = values[0].map(function (h) { return String(h).trim(); });
+  const cName = head.indexOf('氏名(JP)'), cOn = head.indexOf('有効'), cApp = head.indexOf('経費アプリ');
+  if (cName < 0 || cOn < 0 || cApp < 0) return [];
+  const isTrue = function (v) { return v === true || String(v).toUpperCase() === 'TRUE'; };
+  return values.slice(1)
+    .filter(function (r) { return String(r[cName]).trim() && isTrue(r[cOn]) && isTrue(r[cApp]); })
+    .map(function (r) { return String(r[cName]).trim(); });
 }
 
 function findMember_(name) {
@@ -294,7 +303,7 @@ function setupJpExpense() {
   const props = PropertiesService.getScriptProperties();
   props.setProperty(PROP_SHEET_ID_, SHEET_ID);
   const ss = SpreadsheetApp.openById(SHEET_ID);
-  if (!ss.getSheetByName(MEMBER_SHEET_)) throw new Error('「日本側メンバー」タブがありません');
+  if (!ss.getSheetByName(MEMBER_SHEET_)) throw new Error('「スタッフマスター」タブがありません');
   const folder = getRootFolder_();
   Logger.log('OK: シート=' + ss.getName() + ' / 証憑フォルダ=' + folder.getUrl());
 }
