@@ -19,7 +19,7 @@ v7（顧客対応系）とは**完全に別の GAS・別の Bot**。互いに参
 | 基盤 | Config / Router / TelegramAPI / SheetHelpers / QueueManager / BotPoller / InternalBotDispatcher（勤務Bot の update 入口はここ1か所） |
 | 勤怠・日報・タスク | AttendanceManager / DailyReport / WeeklySalesReport（週次＝毎週土曜 20:30 JST・今週〈日〜土〉／月次＝毎月1日 09:00 JST・先月まるごと（11/14 変更）。売上とサービス明細＋先週比・先月比を日報トピックへ・2026-11-14）/ TaskManager |
 | 秘書 dots（ドッちゃん） | DotsDigestBridge（メール受け取り・管理グループ通知）/ DotsState（状態・ロック）/ DotsDailyReport（「日報」タブ・未着の警告）/ DotsReportItems（「日報明細」タブ）/ DotsSetup（セットアップ）— 手順: docs/DOTS_SECRETARY_SETUP.md |
-| 現場の声 | FieldVoiceRelay（ドっちゃんのスプレッドシート「会話記録」タブの、まだ送っていない行を原文のまま日報トピックへ・毎日 20:30 JST・シートの ID は Script Property `FIELD_VOICE_SPREADSHEET_ID`〈コードやドキュメントに書かない〉・2026-11-14） |
+| 現場の声 | FieldVoiceRelay（ドっちゃんのスプレッドシート「会話記録」タブの、まだ送っていない行を原文のまま日報トピックへ・毎日 20:30 JST＋そのあとに入った分と書き足しは翌朝 09:00 JST に追加・シートの ID は Script Property `FIELD_VOICE_SPREADSHEET_ID`〈コードやドキュメントに書かない〉・2026-11-14） |
 | 経費 | ExpenseManager / ExpenseSync / RoutineExpense |
 | 経営・レポート | Dashboard / ExecDashboard / ExecChat / ReportManager |
 | 渉外・キャンペーン | PartnerManager / JetroCampaignManager / WaterRepellentManager / SalesLogManager（車屋提携 営業ログ・書込先は v7 Database「営業ログ」タブ） / ScoutSupabase（SCOUT を速く開くための Supabase の読み取り用の写しと通行証・2026-11-07・手順 docs/SCOUT_SUPABASE.md）/ PartnerLangOps（車屋のグループへの通知の言語・月次レポートの言語〈月次レポートは 2026-10-31〜 グループへは停止中〉・2026-10-26） |

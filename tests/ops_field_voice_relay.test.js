@@ -8,7 +8,7 @@
  *   - 新しい行が無い日は送らない。読めない日は1行だけ知らせ、番号は進めない
  *   - 送ったあとに書き足された行は「✏️ 書き足し・更新」としてまるごともう一度送る
  *   - 長い時は複数の通に分け、送れたところまで番号を進める
- *   - 20:30〜20:59 JST に1日1回だけ
+ *   - 20:30〜20:59 JST に1日1回だけ。翌朝 09:00〜09:29 JST に、夜のあとに入った分を追加で送る
  *   - シートの ID が未設定なら何もしない
  */
 const test = require('node:test');
@@ -209,7 +209,7 @@ test('20:30〜20:59 JST に1日1回だけ。窓の外では何もしない', () 
   const early = makeCtx({ rows, now: '2026-11-14T11:29:00Z' }); // 20:29 JST
   early.ctx.maybeSendFieldVoiceRelay_();
   assert.equal(early.sent.length, 0);
-  assert.equal(early.props.field_voice_last_sent, undefined);
+  assert.equal(early.props.field_voice_last_sent_evening, undefined);
   const late = makeCtx({ rows, now: '2026-11-14T12:00:00Z' }); // 21:00 JST
   late.ctx.maybeSendFieldVoiceRelay_();
   assert.equal(late.sent.length, 0);
@@ -217,7 +217,7 @@ test('20:30〜20:59 JST に1日1回だけ。窓の外では何もしない', () 
   inWin.ctx.maybeSendFieldVoiceRelay_();
   inWin.ctx.maybeSendFieldVoiceRelay_();
   assert.equal(inWin.sent.length, 1);
-  assert.equal(inWin.props.field_voice_last_sent, TODAY);
+  assert.equal(inWin.props.field_voice_last_sent_evening, TODAY);
 });
 
 test('見出しの行が無いシートは読めない扱い。番号でない行（空行・メモ）は無視する', () => {
@@ -281,4 +281,37 @@ test('送信に失敗した日は指紋を進めない（書き足しは次の�
   assert.equal(b.props.field_voice_hashes, a.props.field_voice_hashes);
   const c = makeCtx({ props: Object.assign({}, b.props), rows: changed });
   assert.equal(c.ctx.sendFieldVoiceRelay(), 1);
+});
+
+test('翌朝 09:00 JST: 夜の回のあとに入った行と書き足しだけを「追加」として送る。無ければ送らない。夜と朝は別々に1日1回', () => {
+  const evening = [row('C58', '2026/11/14', '作業の報告'), row('C60', '2026/11/14', '聞き取り', { body: '18:27 の回答' })];
+  const a = makeCtx({ props: { FIELD_VOICE_SPREADSHEET_ID: 'SHEET', field_voice_last_no: '57' }, rows: evening, now: '2026-11-14T11:30:00Z' });
+  a.ctx.maybeSendFieldVoiceRelay_();
+  assert.equal(a.sent.length, 1);
+  assert.match(a.sent[0].text, /^🗣 <b>Run Kosal の日報（ドっちゃんの会話記録・原文のまま）<\/b>/);
+
+  const late = [evening[0], row('C60', '2026/11/14', '聞き取り', { body: '18:27 の回答\n18:36 追加の説明' }), row('C61', '2026/11/14', '夜に入った報告')];
+  const b = makeCtx({ props: Object.assign({}, a.props), rows: late, now: '2026-11-15T00:00:00Z' }); // 11/15 09:00 JST
+  b.ctx.maybeSendFieldVoiceRelay_();
+  b.ctx.maybeSendFieldVoiceRelay_();
+  assert.equal(b.sent.length, 1);
+  assert.match(b.sent[0].text, /^🗣 <b>Run Kosal の日報・追加（昨夜 20:30 のあとに入った分）（ドっちゃんの会話記録・原文のまま）<\/b>/);
+  assert.match(b.sent[0].text, /新しい記録 1件（C61）・書き足し・更新 1件/);
+  assert.doesNotMatch(b.sent[0].text, /C58/);
+  assert.equal(b.props.field_voice_last_sent_morning, '2026-11-15');
+  assert.equal(b.props.field_voice_last_sent_evening, '2026-11-14');
+
+  // 追加が無い朝は何も送らない
+  const c = makeCtx({ props: Object.assign({}, a.props), rows: evening, now: '2026-11-15T00:10:00Z' });
+  c.ctx.maybeSendFieldVoiceRelay_();
+  assert.equal(c.sent.length, 0);
+  // 窓の外（09:30 JST）
+  const d = makeCtx({ props: Object.assign({}, a.props), rows: late, now: '2026-11-15T00:30:00Z' });
+  d.ctx.maybeSendFieldVoiceRelay_();
+  assert.equal(d.sent.length, 0);
+  // 同じ日の夜の回は、朝に送っていても動く
+  const e = makeCtx({ props: Object.assign({}, b.props), rows: late.concat([row('C62', '2026/11/15', '次の報告')]), now: '2026-11-15T11:31:00Z' });
+  e.ctx.maybeSendFieldVoiceRelay_();
+  assert.equal(e.sent.length, 1);
+  assert.match(e.sent[0].text, /新しい記録 1件（C62）/);
 });

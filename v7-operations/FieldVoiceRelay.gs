@@ -14,13 +14,15 @@
  *   送ったあとにドっちゃんが書き足した・直した行は、「✏️ 書き足し・更新」として行をまるごともう一度送る
  *   （Daisuke 2026-11-14「現場の声をそのまま知りたい」。直近 FIELD_VOICE_WATCH_ROWS_ 行を見張る）。
  *
- * 【スケジュール】
- *   1分トリガー（pollInternalBot）起点。20:30〜20:59 JST の窓で1日1回（日報と同じ方式・日付マーカー）。
+ * 【スケジュール】（Daisuke 2026-11-14「遅い報告は、翌朝日本時間朝9:00に追加で報告を」）
+ *   1分トリガー（pollInternalBot）起点。日付マーカーで各回1日1回（日報と同じ方式）。
+ *   夜: 20:30〜20:59 JST … その時点までの新しい行（日報のすぐあと）
+ *   朝: 09:00〜09:29 JST … 夜の回のあとに入った行・書き足し（追加の報告）。無ければ送らない
  *
  * 【設定（Script Properties）】
  *   FIELD_VOICE_SPREADSHEET_ID … 会話記録のスプレッドシートの ID（未設定なら何もしない）。
  *     シートは「リンクを知っている全員が閲覧可」なので、ID をコードやドキュメントに書かない。
- *   field_voice_last_no / field_voice_last_sent / field_voice_hashes … このファイルが自分で書く
+ *   field_voice_last_no / field_voice_last_sent_evening / field_voice_last_sent_morning / field_voice_hashes … このファイルが自分で書く
  *     （送った最大の番号・送った日・直近の行の中身の指紋。本文は保存しない）
  *
  * 【扱い】
@@ -33,8 +35,11 @@
 const FIELD_VOICE_TAB_ = '会話記録';
 const FIELD_VOICE_ID_HEADER_ = '記録番号';
 const FIELD_VOICE_SEND_TZ_ = 'Asia/Tokyo'; // 送る時刻を数える時計（日報と同じ JST）
-const FIELD_VOICE_SEND_FROM_ = '20:30';
-const FIELD_VOICE_SEND_TO_ = '20:59';
+// 送る回。label は見出しに出す言葉
+const FIELD_VOICE_SLOTS_ = [
+  { key: 'evening', from: '20:30', to: '20:59', label: '' },
+  { key: 'morning', from: '09:00', to: '09:29', label: '・追加（昨夜 20:30 のあとに入った分）' }
+];
 const FIELD_VOICE_MAX_CHARS_ = 3900;   // Telegram の 4096 字に余裕
 const FIELD_VOICE_LINE_CHARS_ = 3000;  // 1セルがこれより長い時は行を分ける
 const FIELD_VOICE_WATCH_ROWS_ = 80;    // 書き足しを見張る行数（番号の新しい順）
@@ -42,25 +47,27 @@ const FIELD_VOICE_WATCH_ROWS_ = 80;    // 書き足しを見張る行数（番�
 const FIELD_VOICE_TITLE_COLS_ = ['記録番号', '会話日', '会話時刻', '話題'];
 
 /**
- * 20:30 JST の定時送信チェック（pollInternalBot から毎分呼ばれる）
+ * 定時送信チェック（pollInternalBot から毎分呼ばれる）。夜 20:30 JST と、翌朝 09:00 JST の追加の回
  */
 function maybeSendFieldVoiceRelay_() {
   const now = new Date();
   const hm = Utilities.formatDate(now, FIELD_VOICE_SEND_TZ_, 'HH:mm');
-  if (hm < FIELD_VOICE_SEND_FROM_ || hm > FIELD_VOICE_SEND_TO_) return;
+  const slot = FIELD_VOICE_SLOTS_.filter(function(sl) { return hm >= sl.from && hm <= sl.to; })[0];
+  if (!slot) return;
 
   const props = PropertiesService.getScriptProperties();
+  const markKey = 'field_voice_last_sent_' + slot.key;
   const today = Utilities.formatDate(now, FIELD_VOICE_SEND_TZ_, 'yyyy-MM-dd');
-  if (props.getProperty('field_voice_last_sent') === today) return;
-  props.setProperty('field_voice_last_sent', today); // 送信前にマーク（多重送信防止優先）
+  if (props.getProperty(markKey) === today) return;
+  props.setProperty(markKey, today); // 送信前にマーク（多重送信防止優先）
 
-  sendFieldVoiceRelay();
+  sendFieldVoiceRelay(slot.label);
 }
 
 /**
  * まだ送っていない会話記録を送る。戻り値は送った行数（テスト・手動実行の確認用）
  */
-function sendFieldVoiceRelay() {
+function sendFieldVoiceRelay(label) {
   const props = PropertiesService.getScriptProperties();
   const sheetId = props.getProperty('FIELD_VOICE_SPREADSHEET_ID');
   if (!sheetId) {
@@ -118,7 +125,7 @@ function sendFieldVoiceRelay() {
       (picked.rows.length > 1 ? '〜' + escapeHtml_(last.id) : '') + '）');
   }
   if (updated.length) counts.push('書き足し・更新 ' + updated.length + '件');
-  const head = '🗣 <b>Run Kosal の日報（ドっちゃんの会話記録・原文のまま）</b>\n' +
+  const head = '🗣 <b>Run Kosal の日報' + escapeHtml_(label || '') + '（ドっちゃんの会話記録・原文のまま）</b>\n' +
     Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd (E)') + '・' + counts.join('・') + '\n' +
     '━━━━━━━━━━━━━━━━━━';
   const blocks = picked.rows.map(function(r) {
