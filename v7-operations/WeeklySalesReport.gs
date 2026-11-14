@@ -4,8 +4,8 @@
  * 【責務】
  *   週次: 毎週土曜 20:30〜20:59 JST に、その週（日曜〜土曜・プノンペンの日付）の売上とサービス明細を、
  *         先週比つきで管理グループの日報トピックへ送る（Daisuke「日本時間20:30に」）。
- *   月次: 毎月の最終日 20:30〜20:59 JST に、その月（1日〜最終日）の売上とサービス明細を先月比つきで送る
- *         （Daisuke「月末最終日に月次レポートも」）。最終日が土曜なら週次と月次の両方が届く。
+ *   月次: 毎月1日 09:00〜09:29 JST に、先月（1日〜最終日）の売上とサービス明細を先々月比つきで送る
+ *         （2026-11-14 Daisuke「月末でなくて、翌月の1日の日本時間朝9:00に」。当初は月の最終日 20:30 だった）。
  *
  *   - 売上・作業件数・お客様の数・客単価  ← v7 の「予約」シート（日報と同じ読み方・キャンセルは除く）
  *   - サービス明細（件数・売上・先週比）  ← 日報の「プラン内訳」と同じ名前（bookingPlanLabel_）
@@ -40,21 +40,24 @@ function maybeSendWeeklySalesReport_() {
 }
 
 /**
- * 毎月の最終日 20:30〜20:59 JST の定時送信チェック（pollInternalBot から毎分呼ばれる）
- * 最終日 = 24時間後の日付が「1日」になる日
+ * 毎月1日 09:00〜09:29 JST の定時送信チェック（pollInternalBot から毎分呼ばれる）
+ * 送るのは先月分（1日〜最終日・まるごと）。2026-11-14 Daisuke「翌月の1日の日本時間朝9:00に」
+ * （09:00 JST = 07:00 プノンペン。プノンペンの日付も同じ1日）
  */
 function maybeSendMonthlySalesReport_() {
   const now = new Date();
   const hm = Utilities.formatDate(now, 'Asia/Tokyo', 'HH:mm');
-  if (hm < '20:30' || hm > '20:59') return;
-  if (Utilities.formatDate(new Date(now.getTime() + 24 * 60 * 60 * 1000), 'Asia/Tokyo', 'dd') !== '01') return;
+  if (hm < '09:00' || hm > '09:29') return;
+  const today = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
+  if (today.substring(8, 10) !== '01') return;
 
   const props = PropertiesService.getScriptProperties();
-  const today = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
   if (props.getProperty('monthly_sales_last_sent') === today) return;
   props.setProperty('monthly_sales_last_sent', today); // 送信前にマーク（多重送信防止優先）
 
-  sendMonthlySalesReport();
+  // 先月の最終日 = プノンペンの今日（1日）の前日
+  const ppToday = Utilities.formatDate(now, OPS_TZ, 'yyyy-MM-dd');
+  sendMonthlySalesReport(weeklySalesShiftDay_(ppToday.substring(0, 8) + '01', -1));
 }
 
 /**
