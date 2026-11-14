@@ -20,8 +20,10 @@ function pollInternalBot() {
   try { maybeSendDailyReport_(); } catch (e) { Logger.log('❌ maybeSendDailyReport_: ' + e); }
   // SNS 週次レビュー（GSS「12_SNS週次」の未送信行を 毎週金曜 20:00〜20:29 JST に日報トピックへ・SnsWeeklyReport.gs）
   try { maybeSendSnsWeekly_(); } catch (e) { Logger.log('❌ maybeSendSnsWeekly_: ' + e); }
-  // 週次売上レポート（毎週土曜 20:00〜20:29 JST・今週の売上とサービス明細＋先週比・WeeklySalesReport.gs）
+  // 週次売上レポート（毎週土曜 20:30〜20:59 JST・今週の売上とサービス明細＋先週比・WeeklySalesReport.gs）
   try { maybeSendWeeklySalesReport_(); } catch (e) { Logger.log('❌ maybeSendWeeklySalesReport_: ' + e); }
+  // 月次売上レポート（毎月の最終日 20:30〜20:59 JST・今月の売上とサービス明細＋先月比・WeeklySalesReport.gs）
+  try { maybeSendMonthlySalesReport_(); } catch (e) { Logger.log('❌ maybeSendMonthlySalesReport_: ' + e); }
 
   const props = PropertiesService.getScriptProperties();
   const offsetKey = STORAGE_KEYS.POLL_OFFSET_PREFIX + BOT_TYPE.INTERNAL;
