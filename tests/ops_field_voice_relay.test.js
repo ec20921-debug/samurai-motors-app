@@ -6,6 +6,7 @@
  *   - 前回までに送った最大の番号より大きい行だけを、番号順に、文を変えずに送る
  *   - はじめて動く日は、会話日か関連日付が今日の行だけ（過去の全行を流さない）
  *   - 新しい行が無い日は送らない。読めない日は1行だけ知らせ、番号は進めない
+ *   - 送ったあとに書き足された行は「✏️ 書き足し・更新」としてまるごともう一度送る
  *   - 長い時は複数の通に分け、送れたところまで番号を進める
  *   - 20:30〜20:59 JST に1日1回だけ
  *   - シートの ID が未設定なら何もしない
@@ -227,4 +228,57 @@ test('見出しの行が無いシートは読めない扱い。番号でない�
   assert.equal(t.rows[0].no, 7);
   assert.equal(ctx.fieldVoiceDay_(t.rows[0].date), '2026-11-04');
   assert.equal(ctx.fieldVoiceDay_(''), '');
+});
+
+test('送ったあとに書き足された行は、次の回に「✏️ 書き足し・更新」としてまるごと送る。変わっていない行は送らない', () => {
+  const day1 = [row('C58', '2026/11/14', '作業の報告'), row('C60', '2026/11/14', '聞き取り', { body: '18:27 の回答' })];
+  const a = makeCtx({ props: { FIELD_VOICE_SPREADSHEET_ID: 'SHEET', field_voice_last_no: '57' }, rows: day1 });
+  assert.equal(a.ctx.sendFieldVoiceRelay(), 2);
+  assert.ok(a.props.field_voice_hashes);
+  assert.doesNotMatch(a.props.field_voice_hashes, /回答|報告/); // 本文は保存しない
+
+  const day2 = [row('C58', '2026/11/14', '作業の報告'),
+    row('C60', '2026/11/14', '聞き取り', { body: '18:27 の回答\n18:36 追加: あとから足した説明' }),
+    row('C61', '2026/11/15', '次の日の報告')];
+  const b = makeCtx({ props: Object.assign({}, a.props), rows: day2, now: '2026-11-15T11:35:00Z' });
+  assert.equal(b.ctx.sendFieldVoiceRelay(), 2);
+  assert.equal(b.sent.length, 1);
+  const text = b.sent[0].text;
+  assert.match(text, /新しい記録 1件（C61）・書き足し・更新 1件/);
+  assert.match(text, /✏️ 書き足し・更新（前に送った記録）\n<b>C60｜2026\/11\/14｜聞き取り<\/b>/);
+  assert.match(text, /18:36 追加: あとから足した説明/);
+  assert.doesNotMatch(text, /C58/);
+  assert.ok(text.indexOf('C61') < text.indexOf('✏️'));
+  assert.equal(b.props.field_voice_last_no, '61');
+
+  // 同じ中身でもう一度動いても、何も送らない
+  const c = makeCtx({ props: Object.assign({}, b.props), rows: day2, now: '2026-11-16T11:35:00Z' });
+  assert.equal(c.ctx.sendFieldVoiceRelay(), 0);
+  assert.equal(c.sent.length, 0);
+});
+
+test('書き足しだけの日も送る。指紋をまだ持っていない行（導入前の行）は送らず、今回から見張る', () => {
+  const rows = [row('C10', '2026/11/10', '古い行'), row('C11', '2026/11/11', 'もう1行')];
+  const a = makeCtx({ props: { FIELD_VOICE_SPREADSHEET_ID: 'SHEET', field_voice_last_no: '11' }, rows });
+  assert.equal(a.ctx.sendFieldVoiceRelay(), 0); // 指紋なし → 送らず覚えるだけ
+  assert.equal(a.sent.length, 0);
+  const b = makeCtx({ props: Object.assign({}, a.props),
+    rows: [row('C10', '2026/11/10', '古い行', { status: '完了' }), rows[1]] });
+  assert.equal(b.ctx.sendFieldVoiceRelay(), 1);
+  assert.match(b.sent[0].text, /・書き足し・更新 1件\n/);
+  assert.doesNotMatch(b.sent[0].text, /新しい記録/);
+  assert.match(b.sent[0].text, /状況: 完了/);
+  assert.equal(b.props.field_voice_last_no, '11');
+});
+
+test('送信に失敗した日は指紋を進めない（書き足しは次の日にもう一度出る）', () => {
+  const base = [row('C01', '2026/11/14', '話題')];
+  const a = makeCtx({ props: { FIELD_VOICE_SPREADSHEET_ID: 'SHEET', field_voice_last_no: '0' }, rows: base });
+  a.ctx.sendFieldVoiceRelay();
+  const changed = [row('C01', '2026/11/14', '話題', { next: '足した' })];
+  const b = makeCtx({ props: Object.assign({}, a.props), rows: changed, failAt: 1 });
+  assert.equal(b.ctx.sendFieldVoiceRelay(), 0);
+  assert.equal(b.props.field_voice_hashes, a.props.field_voice_hashes);
+  const c = makeCtx({ props: Object.assign({}, b.props), rows: changed });
+  assert.equal(c.ctx.sendFieldVoiceRelay(), 1);
 });

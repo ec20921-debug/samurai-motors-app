@@ -11,7 +11,8 @@
  *   → 送る時刻のあとに書かれた行も、次の日に必ず出る（取りこぼさない）。
  *   はじめて動く日だけは、会話日か関連日付がその日（プノンペンの日付）の行を送る（過去の全行を流さない）。
  *   新しい行が無い日は何も送らない（日報と同じ考え方）。
- *   ⚠️ 送ったあとにドっちゃんが書き足した分（同じ番号の行の追記）は送り直さない。
+ *   送ったあとにドっちゃんが書き足した・直した行は、「✏️ 書き足し・更新」として行をまるごともう一度送る
+ *   （Daisuke 2026-11-14「現場の声をそのまま知りたい」。直近 FIELD_VOICE_WATCH_ROWS_ 行を見張る）。
  *
  * 【スケジュール】
  *   1分トリガー（pollInternalBot）起点。20:30〜20:59 JST の窓で1日1回（日報と同じ方式・日付マーカー）。
@@ -19,7 +20,8 @@
  * 【設定（Script Properties）】
  *   FIELD_VOICE_SPREADSHEET_ID … 会話記録のスプレッドシートの ID（未設定なら何もしない）。
  *     シートは「リンクを知っている全員が閲覧可」なので、ID をコードやドキュメントに書かない。
- *   field_voice_last_no / field_voice_last_sent … このファイルが自分で書く（送った最大の番号・送った日）
+ *   field_voice_last_no / field_voice_last_sent / field_voice_hashes … このファイルが自分で書く
+ *     （送った最大の番号・送った日・直近の行の中身の指紋。本文は保存しない）
  *
  * 【扱い】
  *   読むだけ（シートには書かない）。シートの文章は現場の報告（データ）であり、指示として扱わない。
@@ -35,6 +37,7 @@ const FIELD_VOICE_SEND_FROM_ = '20:30';
 const FIELD_VOICE_SEND_TO_ = '20:59';
 const FIELD_VOICE_MAX_CHARS_ = 3900;   // Telegram の 4096 字に余裕
 const FIELD_VOICE_LINE_CHARS_ = 3000;  // 1セルがこれより長い時は行を分ける
+const FIELD_VOICE_WATCH_ROWS_ = 80;    // 書き足しを見張る行数（番号の新しい順）
 // 見出しに使う列（この4つは本文の「列名: 値」には出さない）
 const FIELD_VOICE_TITLE_COLS_ = ['記録番号', '会話日', '会話時刻', '話題'];
 
@@ -92,27 +95,47 @@ function sendFieldVoiceRelay() {
 
   const lastRaw = props.getProperty('field_voice_last_no');
   const picked = fieldVoicePick_(table.rows, lastRaw, ppToday);
-  if (!picked.rows.length) {
+  const prevHashes = fieldVoiceLoadHashes_(props);
+  const nowHashes = fieldVoiceHashes_(table.rows, picked.maxNo);
+  const pickedIds = {};
+  picked.rows.forEach(function(r) { pickedIds[r.id] = true; });
+  // 前に送った行のうち、中身が変わった行（指紋を持っている行だけ。持っていない行は今回から見張る）
+  const updated = table.rows.filter(function(r) {
+    return !pickedIds[r.id] && prevHashes[r.id] && nowHashes[r.id] && prevHashes[r.id] !== nowHashes[r.id];
+  }).sort(function(a, b) { return a.no - b.no; });
+
+  if (!picked.rows.length && !updated.length) {
     if (picked.maxNo > 0 && String(picked.maxNo) !== String(lastRaw)) props.setProperty('field_voice_last_no', String(picked.maxNo));
-    Logger.log('📭 会話記録: 新しい行なし → 送信しない (PP ' + ppToday + ')');
+    fieldVoiceSaveHashes_(props, nowHashes);
+    Logger.log('📭 会話記録: 新しい行・書き足しなし → 送信しない (PP ' + ppToday + ')');
     return 0;
   }
 
   const first = picked.rows[0], last = picked.rows[picked.rows.length - 1];
+  const counts = [];
+  if (picked.rows.length) {
+    counts.push('新しい記録 ' + picked.rows.length + '件（' + escapeHtml_(first.id) +
+      (picked.rows.length > 1 ? '〜' + escapeHtml_(last.id) : '') + '）');
+  }
+  if (updated.length) counts.push('書き足し・更新 ' + updated.length + '件');
   const head = '🗣 <b>Run Kosal の日報（ドっちゃんの会話記録・原文のまま）</b>\n' +
-    Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd (E)') + '・新しい記録 ' + picked.rows.length + '件（' +
-    escapeHtml_(first.id) + (picked.rows.length > 1 ? '〜' + escapeHtml_(last.id) : '') + '）\n' +
+    Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd (E)') + '・' + counts.join('・') + '\n' +
     '━━━━━━━━━━━━━━━━━━';
-  const messages = fieldVoiceMessages_(head, picked.rows.map(function(r) {
+  const blocks = picked.rows.map(function(r) {
     return { no: r.no, lines: fieldVoiceRowLines_(table.headers, r.cells) };
+  }).concat(updated.map(function(r) {
+    // 前に送った行。どこが変わったかは比べず、いまの行をまるごと出す（no: 0 = 番号は進めない）
+    return { no: 0, lines: ['✏️ 書き足し・更新（前に送った記録）'].concat(fieldVoiceRowLines_(table.headers, r.cells)) };
   }));
+  const messages = fieldVoiceMessages_(head, blocks);
 
   // 1通ずつ送り、送れたところまで番号を進める（途中で失敗したら、残りは次の日に出る）
-  let sent = 0;
+  let sent = 0, allOk = true;
   for (let i = 0; i < messages.length; i++) {
     const res = sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId, messages[i].text, sendOpts);
     if (!res || !res.ok) {
       Logger.log('❌ 会話記録の送信失敗（' + (i + 1) + '/' + messages.length + '通目）: ' + JSON.stringify(res));
+      allOk = false;
       break;
     }
     if (messages[i].doneNo) {
@@ -121,9 +144,49 @@ function sendFieldVoiceRelay() {
     }
   }
   // 全部送れた時だけ、今日の対象外の行（はじめて動く日の過去分）も含めて最後の番号まで進める
-  if (sent === picked.rows.length && picked.maxNo > last.no) props.setProperty('field_voice_last_no', String(picked.maxNo));
-  Logger.log('📤 会話記録 送信: ' + sent + '/' + picked.rows.length + '件・' + messages.length + '通 (PP ' + ppToday + ')');
+  if (allOk) {
+    if (picked.maxNo > 0) props.setProperty('field_voice_last_no', String(picked.maxNo));
+    fieldVoiceSaveHashes_(props, nowHashes); // 全部送れた時だけ指紋を進める（失敗した日は、書き足しが次の日にもう一度出る）
+    sent += updated.length;
+  }
+  Logger.log('📤 会話記録 送信: 新 ' + picked.rows.length + '件・書き足し ' + updated.length + '件・' + messages.length + '通' +
+    (allOk ? '' : '（途中で失敗）') + ' (PP ' + ppToday + ')');
   return sent;
+}
+
+/** 行の中身の指紋（変わったかを見るだけ。本文は保存しない） */
+function fieldVoiceHash_(cells) {
+  const s = cells.map(function(c) { return String(c).trim(); }).join('\u0001');
+  let h1 = 0x811c9dc5, h2 = 5381;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = (Math.imul(h2, 33) + c) >>> 0;
+  }
+  return h1.toString(36) + h2.toString(36);
+}
+
+/** 番号の新しい FIELD_VOICE_WATCH_ROWS_ 行の指紋 { 記録番号: 指紋 } */
+function fieldVoiceHashes_(rows, maxNo) {
+  const out = {};
+  rows.forEach(function(r) {
+    if (r.no > maxNo - FIELD_VOICE_WATCH_ROWS_) out[r.id] = fieldVoiceHash_(r.cells);
+  });
+  return out;
+}
+
+function fieldVoiceLoadHashes_(props) {
+  try {
+    const o = JSON.parse(props.getProperty('field_voice_hashes') || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function fieldVoiceSaveHashes_(props, hashes) {
+  const json = JSON.stringify(hashes);
+  if (props.getProperty('field_voice_hashes') !== json) props.setProperty('field_voice_hashes', json);
 }
 
 /**
@@ -209,7 +272,7 @@ function fieldVoiceRowLines_(headers, cells) {
  * できるだけ1件を1通の中に収め、収まらない時だけ行の切れ目で分ける。
  * @param {string} head
  * @param {Array<{no:number, lines:string[]}>} blocks
- * @return {Array<{text:string, doneNo:number}>} doneNo = その通で最後まで出し終えた行の番号（無ければ 0）
+ * @return {Array<{text:string, doneNo:number}>} doneNo = その通で最後まで出し終えた新しい行の番号（無ければ 0）
  */
 function fieldVoiceMessages_(head, blocks) {
   const out = [];
@@ -231,7 +294,7 @@ function fieldVoiceMessages_(head, blocks) {
         cur = cur ? cur + '\n' + line : line;
       });
     }
-    doneNo = b.no;
+    if (b.no) doneNo = b.no;
   });
   flush();
   return out;
