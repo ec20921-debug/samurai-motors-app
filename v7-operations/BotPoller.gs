@@ -18,7 +18,7 @@
 function pollInternalBot() {
   // 日報の 20:30 JST 定時送信チェック（1分トリガー起点・時刻窓外は即 return の軽量処理）
   try { maybeSendDailyReport_(); } catch (e) { Logger.log('❌ maybeSendDailyReport_: ' + e); }
-  // Run Kosal の日報（ドっちゃんの会話記録を原文のまま・毎日 20:30〜20:59 JST＋遅い分は翌朝 09:00〜09:29 JST に追加・FieldVoiceRelay.gs）
+  // Run Kosal の会話記録（ドっちゃんの会話記録を原文のまま・3分おきに見て、書き終えた行をすぐ送る・FieldVoiceRelay.gs）
   try { maybeSendFieldVoiceRelay_(); } catch (e) { Logger.log('❌ maybeSendFieldVoiceRelay_: ' + e); }
   // SNS 週次レビュー（GSS「12_SNS週次」の未送信行を 毎週金曜 20:00〜20:29 JST に日報トピックへ・SnsWeeklyReport.gs）
   try { maybeSendSnsWeekly_(); } catch (e) { Logger.log('❌ maybeSendSnsWeekly_: ' + e); }

@@ -15,9 +15,11 @@
  *   （Daisuke 2026-11-14「現場の声をそのまま知りたい」。直近 FIELD_VOICE_WATCH_ROWS_ 行を見張る）。
  *
  * 【スケジュール】（Daisuke 2026-11-14「遅い報告は、翌朝日本時間朝9:00に追加で報告を」）
- *   1分トリガー（pollInternalBot）起点。日付マーカーで各回1日1回（日報と同じ方式）。
- *   夜: 20:30〜20:59 JST … その時点までの新しい行（日報のすぐあと）
- *   朝: 09:00〜09:29 JST … 夜の回のあとに入った行・書き足し（追加の報告）。無ければ送らない
+ *   ※ 2026-11-14 夜に変更: Daisuke「まとめてというより、ロン君がどっちゃんと会話したらすぐに管理グループに通知」
+ *   1分トリガー（pollInternalBot）起点。3分おきにシートを見て、新しい行・書き足しがあればすぐ送る（1日中）。
+ *   書いている途中の行を送らないよう、前回見た時と中身が同じ行だけ送る（＝書き終えて約3〜6分で届く）。
+ *   シートが読めない時の知らせは1日1回。
+ *   （当初は 夜 20:30 JST＋翌朝 09:00 JST の2回にまとめていた）
  *
  * 【設定（Script Properties）】
  *   FIELD_VOICE_SPREADSHEET_ID … 会話記録のスプレッドシートの ID（未設定なら何もしない）。
@@ -35,11 +37,9 @@
 const FIELD_VOICE_TAB_ = '会話記録';
 const FIELD_VOICE_ID_HEADER_ = '記録番号';
 const FIELD_VOICE_SEND_TZ_ = 'Asia/Tokyo'; // 送る時刻を数える時計（日報と同じ JST）
-// 送る回。label は見出しに出す言葉
-const FIELD_VOICE_SLOTS_ = [
-  { key: 'evening', from: '20:30', to: '20:59', label: '' },
-  { key: 'morning', from: '09:00', to: '09:29', label: '・追加（昨夜 20:30 のあとに入った分）' }
-];
+// 何分おきにシートを見るか（2026-11-14 夜 Daisuke「会話したらすぐに管理グループに通知」。
+// 毎分にしないのは、GAS の1日の実行時間の枠を使いすぎないため）
+const FIELD_VOICE_EVERY_MIN_ = 3;
 const FIELD_VOICE_MAX_CHARS_ = 3900;   // Telegram の 4096 字に余裕
 const FIELD_VOICE_LINE_CHARS_ = 3000;  // 1セルがこれより長い時は行を分ける
 const FIELD_VOICE_WATCH_ROWS_ = 80;    // 書き足しを見張る行数（番号の新しい順）
@@ -47,27 +47,31 @@ const FIELD_VOICE_WATCH_ROWS_ = 80;    // 書き足しを見張る行数（番�
 const FIELD_VOICE_TITLE_COLS_ = ['記録番号', '会話日', '会話時刻', '話題'];
 
 /**
- * 定時送信チェック（pollInternalBot から毎分呼ばれる）。夜 20:30 JST と、翌朝 09:00 JST の追加の回
+ * すぐ送るチェック（pollInternalBot から毎分呼ばれる）。FIELD_VOICE_EVERY_MIN_ 分おきにシートを見る。
+ * 同じ分に2回は見ない（印 = field_voice_last_check）
  */
 function maybeSendFieldVoiceRelay_() {
   const now = new Date();
   const hm = Utilities.formatDate(now, FIELD_VOICE_SEND_TZ_, 'HH:mm');
-  const slot = FIELD_VOICE_SLOTS_.filter(function(sl) { return hm >= sl.from && hm <= sl.to; })[0];
-  if (!slot) return;
+  if (Number(hm.substring(3, 5)) % FIELD_VOICE_EVERY_MIN_ !== 0) return;
 
   const props = PropertiesService.getScriptProperties();
-  const markKey = 'field_voice_last_sent_' + slot.key;
-  const today = Utilities.formatDate(now, FIELD_VOICE_SEND_TZ_, 'yyyy-MM-dd');
-  if (props.getProperty(markKey) === today) return;
-  props.setProperty(markKey, today); // 送信前にマーク（多重送信防止優先）
+  if (!props.getProperty('FIELD_VOICE_SPREADSHEET_ID')) return; // 未設定の間は印も書かない
+  const stamp = Utilities.formatDate(now, FIELD_VOICE_SEND_TZ_, 'yyyy-MM-dd') + ' ' + hm;
+  if (props.getProperty('field_voice_last_check') === stamp) return;
+  props.setProperty('field_voice_last_check', stamp); // 見る前にマーク（多重送信防止優先）
 
-  sendFieldVoiceRelay(slot.label);
+  sendFieldVoiceRelay('', { settle: true, warnOncePerDay: true });
 }
 
 /**
  * まだ送っていない会話記録を送る。戻り値は送った行数（テスト・手動実行の確認用）
+ * opts.settle = true: 書いている途中の行を送らないよう、前回見た時と中身が同じ行だけを送る
+ *                     （＝書き終えてから FIELD_VOICE_EVERY_MIN_ 分たった行。番号の順は守る）
+ * opts.warnOncePerDay = true: シートが読めない時の知らせを1日1回にする
  */
-function sendFieldVoiceRelay(label) {
+function sendFieldVoiceRelay(label, opts) {
+  opts = opts || {};
   const props = PropertiesService.getScriptProperties();
   const sheetId = props.getProperty('FIELD_VOICE_SPREADSHEET_ID');
   if (!sheetId) {
@@ -94,6 +98,11 @@ function sendFieldVoiceRelay(label) {
   } catch (err) {
     // 不具合を隠さない: 読めなかった日は管理グループに1行だけ知らせる（番号は進めない＝次の日にまとめて出る）
     Logger.log('❌ 会話記録の読取失敗: ' + err);
+    if (opts.warnOncePerDay) {
+      const day = Utilities.formatDate(new Date(), FIELD_VOICE_SEND_TZ_, 'yyyy-MM-dd');
+      if (props.getProperty('field_voice_warned') === day) return 0;
+      props.setProperty('field_voice_warned', day);
+    }
     sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId,
       '⚠️ <b>Run Kosal の日報（会話記録）</b>\n　シートを読めませんでした: ' + escapeHtml_(String(err)).substring(0, 300) +
       '\n　（読めるようになった日に、まとめて送ります）', sendOpts);
@@ -107,12 +116,40 @@ function sendFieldVoiceRelay(label) {
   const pickedIds = {};
   picked.rows.forEach(function(r) { pickedIds[r.id] = true; });
   // 前に送った行のうち、中身が変わった行（指紋を持っている行だけ。持っていない行は今回から見張る）
-  const updated = table.rows.filter(function(r) {
+  let updated = table.rows.filter(function(r) {
     return !pickedIds[r.id] && prevHashes[r.id] && nowHashes[r.id] && prevHashes[r.id] !== nowHashes[r.id];
   }).sort(function(a, b) { return a.no - b.no; });
 
+  // settle: 前回見た時と中身が同じ行だけ送る（書いている途中の行は次の回まで待つ）。
+  // はじめて動く回（番号の記憶なし）は待たない。
+  let heldNew = false;
+  if (opts.settle && lastRaw !== null && lastRaw !== undefined && String(lastRaw) !== '') {
+    const pending = fieldVoiceLoadJson_(props, 'field_voice_pending');
+    const nextPending = {};
+    const stable = function(r) {
+      const h = fieldVoiceHash_(r.cells);
+      if (pending[r.id] === h) return true;
+      nextPending[r.id] = h;
+      return false;
+    };
+    const ready = [];
+    picked.rows.forEach(function(r) {
+      // 番号の順を守る: 途中に書きかけがあれば、そこから先は待つ（指紋だけ覚える）
+      if (heldNew) { nextPending[r.id] = fieldVoiceHash_(r.cells); return; }
+      if (stable(r)) ready.push(r); else heldNew = true;
+    });
+    picked.rows = ready;
+    updated = updated.filter(function(r) {
+      if (stable(r)) return true;
+      nowHashes[r.id] = prevHashes[r.id]; // まだ送っていない → 指紋は前のまま
+      return false;
+    });
+    const pj = JSON.stringify(nextPending);
+    if ((props.getProperty('field_voice_pending') || '{}') !== pj) props.setProperty('field_voice_pending', pj);
+  }
+
   if (!picked.rows.length && !updated.length) {
-    if (picked.maxNo > 0 && String(picked.maxNo) !== String(lastRaw)) props.setProperty('field_voice_last_no', String(picked.maxNo));
+    if (!heldNew && picked.maxNo > 0 && String(picked.maxNo) !== String(lastRaw)) props.setProperty('field_voice_last_no', String(picked.maxNo));
     fieldVoiceSaveHashes_(props, nowHashes);
     Logger.log('📭 会話記録: 新しい行・書き足しなし → 送信しない (PP ' + ppToday + ')');
     return 0;
@@ -152,7 +189,7 @@ function sendFieldVoiceRelay(label) {
   }
   // 全部送れた時だけ、今日の対象外の行（はじめて動く日の過去分）も含めて最後の番号まで進める
   if (allOk) {
-    if (picked.maxNo > 0) props.setProperty('field_voice_last_no', String(picked.maxNo));
+    if (!heldNew && picked.maxNo > 0) props.setProperty('field_voice_last_no', String(picked.maxNo));
     fieldVoiceSaveHashes_(props, nowHashes); // 全部送れた時だけ指紋を進める（失敗した日は、書き足しが次の日にもう一度出る）
     sent += updated.length;
   }
@@ -183,8 +220,12 @@ function fieldVoiceHashes_(rows, maxNo) {
 }
 
 function fieldVoiceLoadHashes_(props) {
+  return fieldVoiceLoadJson_(props, 'field_voice_hashes');
+}
+
+function fieldVoiceLoadJson_(props, key) {
   try {
-    const o = JSON.parse(props.getProperty('field_voice_hashes') || '{}');
+    const o = JSON.parse(props.getProperty(key) || '{}');
     return o && typeof o === 'object' ? o : {};
   } catch (e) {
     return {};
