@@ -4,8 +4,9 @@
  * 【責務】
  *   週次: 毎週土曜 20:30〜20:59 JST に、その週（日曜〜土曜・プノンペンの日付）の売上とサービス明細を、
  *         先週比つきで管理グループの日報トピックへ送る（Daisuke「日本時間20:30に」）。
- *   月次: 毎月の最終日 20:30〜20:59 JST に、その月（1日〜最終日）の売上とサービス明細を先月比つきで送る
- *         （Daisuke「月末最終日に月次レポートも」）。最終日が土曜なら週次と月次の両方が届く。
+ *   月次: 毎月1日 20:30〜20:59 JST に、前月（1日〜最終日のまるごと）の売上とサービス明細を、
+ *         その前の月と比べて送る（2026-11-16 Daisuke「月はじめに前月を」・初回 12/1 に11月分）。
+ *         1日が土曜なら週次と月次の両方が届く。
  *
  *   - 売上・作業件数・お客様の数・客単価  ← v7 の「予約」シート（日報と同じ読み方・キャンセルは除く）
  *   - サービス明細（件数・売上・先週比）  ← 日報の「プラン内訳」と同じ名前（bookingPlanLabel_）
@@ -40,14 +41,14 @@ function maybeSendWeeklySalesReport_() {
 }
 
 /**
- * 毎月の最終日 20:30〜20:59 JST の定時送信チェック（pollInternalBot から毎分呼ばれる）
- * 最終日 = 24時間後の日付が「1日」になる日
+ * 毎月1日 20:30〜20:59 JST の定時送信チェック（pollInternalBot から毎分呼ばれる）
+ * 送るのは前月分（sendMonthlySalesReport の既定）
  */
 function maybeSendMonthlySalesReport_() {
   const now = new Date();
   const hm = Utilities.formatDate(now, 'Asia/Tokyo', 'HH:mm');
   if (hm < '20:30' || hm > '20:59') return;
-  if (Utilities.formatDate(new Date(now.getTime() + 24 * 60 * 60 * 1000), 'Asia/Tokyo', 'dd') !== '01') return;
+  if (Utilities.formatDate(now, 'Asia/Tokyo', 'dd') !== '01') return;
 
   const props = PropertiesService.getScriptProperties();
   const today = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
@@ -70,11 +71,11 @@ function sendWeeklySalesReport(endStr) {
 }
 
 /**
- * 月次売上レポートを送る。endStr（yyyy-MM-dd・月の最終日）を省くとプノンペンの今日。
- * 今月 = 1日〜endStr / 先月 = 前の月の1日〜最終日
+ * 月次売上レポートを送る。endStr（yyyy-MM-dd・対象の月の最終日）を省くと前月（プノンペンの今日から見て）。
+ * 対象の月 = 1日〜endStr / 比べる相手（表示は「先月」）= その前の月の1日〜最終日
  */
 function sendMonthlySalesReport(endStr) {
-  const end = endStr || Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
+  const end = endStr || weeklySalesShiftDay_(Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd').substring(0, 8) + '01', -1);
   const from = end.substring(0, 8) + '01';
   const prevTo = weeklySalesShiftDay_(from, -1);
   sendSalesPeriodReport_({
@@ -243,12 +244,9 @@ function weeklySalesSheetTz_(v7SsId) {
   try { return SpreadsheetApp.openById(v7SsId).getSpreadsheetTimeZone() || OPS_TZ; } catch (e) { return OPS_TZ; }
 }
 
-/** 手動確認用: 今日を最終日として今すぐ送る（時刻窓・送信済みの印を無視） */
+/** 手動確認用: 今すぐ送る（時刻窓・送信済みの印を無視）。週次 = 今日を最終日とする週／月次 = 前月 */
 function debugSendWeeklySalesReportNow() { sendWeeklySalesReport(); }
 function debugSendMonthlySalesReportNow() { sendMonthlySalesReport(); }
 
-/** 手動確認用: 先月（1日〜最終日）の月次レポートを今すぐ送る */
-function debugSendLastMonthSalesReportNow() {
-  const today = Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
-  sendMonthlySalesReport(weeklySalesShiftDay_(today.substring(0, 8) + '01', -1));
-}
+/** 手動確認用: 先月（1日〜最終日）の月次レポートを今すぐ送る（= debugSendMonthlySalesReportNow と同じ） */
+function debugSendLastMonthSalesReportNow() { sendMonthlySalesReport(); }

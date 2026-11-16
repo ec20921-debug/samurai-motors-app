@@ -3,7 +3,7 @@
  *
  * 実行: node --test "tests/*.test.js"
  *
- *   - 週次: 土曜 20:30〜20:59 JST だけ送る／月次: 月の最終日 20:30〜20:59 JST だけ送る（先月比）
+ *   - 週次: 土曜 20:30〜20:59 JST だけ送る／月次: 毎月1日 20:30〜20:59 JST に前月分を送る（その前の月と比べる）
  *   - 週次・月次とも・同じ日に2回送らない
  *   - 週は日曜〜土曜。先週は その前の7日
  *   - 売上・件数・サービス明細に先週比が付く。キャンセルは入れない
@@ -18,7 +18,7 @@ const vm = require('node:vm');
 const OPS = path.join(__dirname, '..', 'v7-operations');
 
 function makeCtx(opts) {
-  opts = Object.assign({ rows: [], readThrow: false, dow: '6', hm: '20:35', today: '2026-11-14', tomorrowDd: '15' }, opts || {});
+  opts = Object.assign({ rows: [], readThrow: false, dow: '6', hm: '20:35', today: '2026-11-14', dd: '14' }, opts || {});
   const sent = [];
   const store = {};
   const ranges = [];
@@ -27,7 +27,7 @@ function makeCtx(opts) {
     Logger: { log: () => {} },
     OPS_TZ: 'Asia/Phnom_Penh',
     BOT_TYPE: { INTERNAL: 'internal' },
-    Utilities: { formatDate: (d, tz, fmt) => (fmt === 'u' ? opts.dow : fmt === 'HH:mm' ? opts.hm : fmt === 'dd' ? opts.tomorrowDd : opts.today) },
+    Utilities: { formatDate: (d, tz, fmt) => (fmt === 'u' ? opts.dow : fmt === 'HH:mm' ? opts.hm : fmt === 'dd' ? opts.dd : opts.today) },
     SpreadsheetApp: { openById: () => ({ getSpreadsheetTimeZone: () => 'Asia/Phnom_Penh' }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => store[k] || null, setProperty: (k, v) => { store[k] = v; } }) },
     getConfig: () => ({ adminDailyReportThreadId: '77', adminGroupId: '-100', v7SpreadsheetId: 'v7-sheet' }),
@@ -126,11 +126,11 @@ const MONTH_ROWS = [
   bk('2026-09-30', 'GLASS', 20, 'C5') // 範囲の外
 ];
 
-test('月次: 最終日の 20:35 JST → 今月（1日〜最終日）と先月（前の月まるごと）を比べて送る', () => {
-  const { ctx, sent, ranges } = makeCtx({ rows: MONTH_ROWS, dow: '1', today: '2026-11-30', tomorrowDd: '01' });
+test('月次: 1日の 20:35 JST → 前月（1日〜最終日）とその前の月（まるごと）を比べて送る（初回 12/1 に11月分）', () => {
+  const { ctx, sent, ranges } = makeCtx({ rows: MONTH_ROWS, dow: '2', today: '2026-12-01', dd: '01' });
   ctx.maybeSendMonthlySalesReport_();
   ctx.maybeSendMonthlySalesReport_(); // 2回目は送らない
-  ctx.maybeSendWeeklySalesReport_();  // 月曜なので週次は送らない
+  ctx.maybeSendWeeklySalesReport_();  // 火曜なので週次は送らない
   assert.equal(sent.length, 1);
   assert.deepEqual(ranges[0], ['2026-10-01', '2026-11-30']);
   const t = sent[0].text;
@@ -143,15 +143,18 @@ test('月次: 最終日の 20:35 JST → 今月（1日〜最終日）と先月�
   assert.ok(t.indexOf('先週') < 0);
 });
 
-test('月次: 最終日でない日・時刻の外は送らない／1月は前年12月と比べる', () => {
-  let r = makeCtx({ rows: MONTH_ROWS, today: '2026-11-29', tomorrowDd: '30' }); r.ctx.maybeSendMonthlySalesReport_(); assert.equal(r.sent.length, 0);
-  r = makeCtx({ rows: MONTH_ROWS, today: '2026-11-30', tomorrowDd: '01', hm: '20:29' }); r.ctx.maybeSendMonthlySalesReport_(); assert.equal(r.sent.length, 0);
+test('月次: 1日でない日（月の最終日も）・時刻の外は送らない／2/1 は1月分を前年12月と比べる', () => {
+  let r = makeCtx({ rows: MONTH_ROWS, today: '2026-11-30', dd: '30' }); r.ctx.maybeSendMonthlySalesReport_(); assert.equal(r.sent.length, 0);
+  r = makeCtx({ rows: MONTH_ROWS, today: '2026-12-01', dd: '01', hm: '20:29' }); r.ctx.maybeSendMonthlySalesReport_(); assert.equal(r.sent.length, 0);
+  r = makeCtx({ rows: [bk('2027-01-10', 'GLASS', 20, 'C1')], today: '2027-02-01', dd: '01' }); r.ctx.maybeSendMonthlySalesReport_();
+  assert.deepEqual(r.ranges[0], ['2026-12-01', '2027-01-31']);
+  assert.match(r.sent[0].text, /月次売上レポート（1月）/);
   r = makeCtx({ rows: [bk('2027-01-10', 'GLASS', 20, 'C1')] }); r.ctx.sendMonthlySalesReport('2027-01-31');
   assert.deepEqual(r.ranges[0], ['2026-12-01', '2027-01-31']);
 });
 
-test('土曜が月の最終日 → 週次と月次の両方が届く', () => {
-  const { ctx, sent } = makeCtx({ rows: ROWS.concat(MONTH_ROWS), today: '2026-10-31', tomorrowDd: '01' });
+test('土曜が1日 → 週次と月次の両方が届く', () => {
+  const { ctx, sent } = makeCtx({ rows: [bk('2026-07-20', 'GLASS', 20, 'C1'), bk('2026-08-01', 'SAMURAI WASH (W)', 12, 'C2')], today: '2026-08-01', dd: '01' }); // 2026-08-01 は土曜
   ctx.maybeSendWeeklySalesReport_();
   ctx.maybeSendMonthlySalesReport_();
   assert.equal(sent.length, 2);
