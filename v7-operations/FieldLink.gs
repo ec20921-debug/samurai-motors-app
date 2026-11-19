@@ -88,3 +88,73 @@ function fieldLinkStaffList_() {
     return { staffId: s.staffId, nameJp: s.nameJp, nameEn: s.nameEn, role: s.role, hasChat: !!s.chatId };
   });
 }
+
+// ── 専用リンクを、勤務Bot から本人の Telegram へ送る（2026-11-19） ──
+// Daisuke「なんかめんどくさい」→ 管理者がログからリンクを写して送る手間をなくす。
+// リンク（鍵）は人の手・実行ログ・Claude を通らず、本人のトークにだけ届く。
+//
+// 使い方:
+//   1. 本体シート「アプリと鍵」タブで、その人の FIELD の行の「鍵・リンク・ログインを出した日」に「送る」と書く
+//   2. GAS エディタで fieldLinkSendMarked を実行
+//   3. 送れた行は「送る」が日付に変わり、「出した人」に「勤務Bot（本人の Telegram へ）」と入る
+// 送れる条件: スタッフマスターで有効・Chat ID が数字（＝本人が勤務Bot に START 済み）
+// クメール語の文は 11/19 の A3 で Panha の校閲を通した文をそのまま使う（言いかえない）
+var FIELD_LINK_SHEET_ = 'アプリと鍵';
+var FIELD_LINK_SEND_MARK_ = '送る';
+var FIELD_LINK_SENT_BY_ = '勤務Bot（本人の Telegram へ）';
+
+function fieldLinkMessage_(staff) {
+  var link = FIELD_APP_URL_ + '?u=' + encodeURIComponent(staff.chatId) + '&k=' + fieldLinkKey_(staff.chatId);
+  return '🔗 FIELD — ' + (staff.nameEn || staff.nameJp) + '\n' + link + '\n\n' +
+    'FIELD៖ យើងចុចតំណដែលមកក្នុង Telegram ឱ្យជាប់ រួចជ្រើស “Open in Safari”\n' +
+    'យើងចុចប៊ូតុងចែករំលែកខាងក្រោម (ការ៉េ មានព្រួញឡើងលើ)\n' +
+    'យើងចុច “Add to Home Screen” រួចចុច “Add” ខាងលើស្ដាំ\n' +
+    'តំណ ID ពាក្យសម្ងាត់ខ្លួន យើងមិនប្រាប់ មិនឱ្យអ្នកដទៃខ្ចី\n\n' +
+    '（リンクを長押し →「Safari で開く」→ 共有 →「ホーム画面に追加」。このリンクは人に教えない）';
+}
+
+function fieldLinkSendMarked() {
+  var sheet = getSheet(FIELD_LINK_SHEET_);
+  var values = sheet.getDataRange().getValues();
+  if (!values.length) throw new Error('❌ 「アプリと鍵」が空です');
+  clearStaffMasterCache();   // Chat ID を直した直後でも、古い番号へ送らないように
+  var done = {};             // 同じ人の行が2つあっても、1回の実行で送るのは1通
+  var head = values[0].map(function (h) { return String(h).trim(); });
+  var cId = head.indexOf('スタッフID'), cApp = head.indexOf('アプリ'),
+      cDay = head.indexOf('鍵・リンク・ログインを出した日'), cBy = head.indexOf('出した人'), cUpd = head.indexOf('最終更新');
+  if (cId < 0 || cApp < 0 || cDay < 0 || cBy < 0) throw new Error('❌ 「アプリと鍵」の見出しが見つかりません');
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var sent = 0, skipped = 0;
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    if (String(row[cDay]).trim() !== FIELD_LINK_SEND_MARK_) continue;
+    if (String(row[cApp]).trim().indexOf('FIELD') !== 0) continue;
+    var staffId = String(row[cId]).trim();
+    if (done[staffId]) continue;
+    var s = findStaffById(staffId);
+    if (!s || !/^\d+$/.test(String(s.chatId))) {
+      Logger.log('— ' + staffId + '：送れません（スタッフマスターで有効でない、または Chat ID が未登録）');
+      skipped++;
+      continue;
+    }
+    // プレビューを切る（Telegram のサーバーが鍵つきのアドレスを読みに行かないように）
+    var res = sendMessage(BOT_TYPE.INTERNAL, s.chatId, fieldLinkMessage_(s), { link_preview_options: { is_disabled: true } });
+    if (!res || !res.ok) {
+      Logger.log('⚠️ ' + staffId + '：送信に失敗（本人が勤務Bot に START していない・ブロックしている等）');
+      skipped++;
+      continue;
+    }
+    done[staffId] = true;
+    try {
+      sheet.getRange(r + 1, cDay + 1).setValue(today);
+      sheet.getRange(r + 1, cBy + 1).setValue(FIELD_LINK_SENT_BY_);
+      if (cUpd >= 0) sheet.getRange(r + 1, cUpd + 1).setValue(today);
+    } catch (e) {
+      Logger.log('⚠️ ' + staffId + '：送信はできたが、シートへの書き戻しに失敗（「送る」を手で消してください）' + e);
+    }
+    Logger.log('✅ ' + staffId + '：本人の Telegram へ送りました');   // リンクはログに出さない
+    sent++;
+  }
+  Logger.log('🔗 fieldLinkSendMarked: 送った=' + sent + ' 送れなかった=' + skipped);
+  return { sent: sent, skipped: skipped };
+}
