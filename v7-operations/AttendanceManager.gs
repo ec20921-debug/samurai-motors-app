@@ -383,10 +383,47 @@ function handleInternalMenuCommand_(msg) {
   if (!findStaffByChatId(chat.id)) {
     const username = (msg.from && msg.from.username) ? '@' + msg.from.username : '（なし）';
     Logger.log('ℹ️ 勤務Bot: 未登録の人から ' + cmd + ' chat=' + chat.id + ' username=' + username);
+    try { replyUnregisteredStart_(msg); } catch (e) { Logger.log('⚠️ replyUnregisteredStart_ 失敗: ' + e); }
     return true;
   }
 
   sendInternalMenu_(chat.id);
+  return true;
+}
+
+// ── 名簿にいない人が START を押した時の返事（2026-11-20） ──
+// これまで返事をせず、番号は実行ログにしか残らなかった（新人が何人か同時に押すと、だれの番号か分からない）。
+//   - 本人へ：自分の番号と「この画面をロンさんに見せてください」（クメール語は Panha の校閲済み・言いかえない）
+//   - 管理グループ（勤怠のトピック）へ：名前・ユーザー名・番号。スタッフマスターの Chat ID に入れれば登録できる
+//   - 同じ人には10分に1回だけ（連打や、Bot を見つけた部外者のいたずら対策）。番号は鍵ではない（専用リンクの鍵は別）
+var UNREG_START_REPLY_KM_ = 'លេខរបស់អ្នក៖ {id}\nសូមបង្ហាញអេក្រង់នេះឱ្យបង Ron មើល។ សូមរង់ចាំបន្តិច រហូតដល់ចុះឈ្មោះរួចរាល់។';
+var UNREG_START_QUIET_SEC_ = 600;
+
+function replyUnregisteredStart_(msg) {
+  const chat = msg.chat || {}, from = msg.from || {};
+  const id = String(chat.id || '');
+  if (!/^\d+$/.test(id)) return false;
+  const cache = CacheService.getScriptCache(), ck = 'unreg_start_' + id;
+  if (cache.get(ck)) return false;
+  cache.put(ck, '1', UNREG_START_QUIET_SEC_);
+
+  sendMessage(BOT_TYPE.INTERNAL, id,
+    UNREG_START_REPLY_KM_.split('{id}').join(id) + '\n\n' +
+    'Your number: ' + id + '\nPlease show this screen to your manager.');
+
+  const cfg = getConfig();
+  if (!cfg.adminGroupId) return true;
+  const cut = function (s) { return String(s || '').replace(/[\r\n]+/g, ' ').slice(0, 60); };
+  const name = cut([from.first_name, from.last_name].filter(function (x) { return !!x; }).join(' ')) || '（なし）';
+  const options = {};
+  if (cfg.attendanceTopicId) options.message_thread_id = parseInt(cfg.attendanceTopicId, 10);
+  sendMessage(BOT_TYPE.INTERNAL, cfg.adminGroupId,
+    '🆕 勤務Bot：名簿にいない人が START を押しました\n' +
+    '名前：' + name + '\n' +
+    'ユーザー名：' + (from.username ? '@' + cut(from.username) : '（なし）') + '\n' +
+    '番号（Chat ID）：' + id + '\n' +
+    '→ 新しいスタッフなら、スタッフマスターの Chat ID にこの番号を入れると登録できます。心当たりがなければ何もしなくて大丈夫です。',
+    options);
   return true;
 }
 
