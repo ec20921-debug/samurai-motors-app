@@ -62,6 +62,8 @@ function sendDailyReport() {
   }
 
   const salesSection = buildSalesSection_(ppToday);
+  // スタッフの毎日（そうじ・日本語）2026-11-21 Daisuke 要望。この2つだけの日は日報を送らない（更新の判定には入れない）
+  const staffSection = [buildOsoujiSection_(ppToday), buildNihongoSection_(ppToday)].filter(function(x) { return x; }).join('\n').substring(0, 700);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
   const changesSection = buildSystemChangesSection_(ppToday); // 本日のシステム変更（2026-10-31 Daisuke 要望・SystemChangeLog.gs）
   // ⏸ 2026-10-31: 在庫セクション（金曜の棚卸し）一時停止（Daisuke「在庫の部分はまだしっかりできてないので通知なしに」）
@@ -79,7 +81,8 @@ function sendDailyReport() {
     salesSection +
     (uncountedSection ? '\n\n' + uncountedSection : '') +
     (inventorySection ? '\n\n' + inventorySection : '') +
-    (salesLogSection ? '\n\n' + salesLogSection : '');
+    (salesLogSection ? '\n\n' + salesLogSection : '') +
+    (staffSection ? '\n\n' + staffSection : '');
 
   // システム変更は全件出す（省略しない）。日報全体が Telegram の上限（4096字）に近い時だけ、続きのメッセージで送る
   const sendOpts = {

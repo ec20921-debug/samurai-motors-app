@@ -39,6 +39,9 @@ function makeCtx(opts) {
     readSystemChangesForDate_: () => opts.changes,
     buildSystemChangesSection_: () => (opts.changes.length ? '🛠 <b>本日のシステム変更</b>（' + opts.changes.length + '件）\n　' + opts.changes.map((c) => c.emoji + ' ' + c.text).join('\n　') : ''),
     escapeHtml_: (s) => String(s),
+    // スタッフの毎日（OsoujiRelay.gs / NihongoSection.gs・2026-11-21）
+    buildOsoujiSection_: () => opts.osouji || '',
+    buildNihongoSection_: () => opts.nihongo || '',
     isCancelledStatus_: (s) => s === 'キャンセル',
     isCompletedStatus_: (s) => s === '作業完了',
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) }

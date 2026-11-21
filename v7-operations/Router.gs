@@ -463,6 +463,11 @@ function doPost(e) {
         return jsonOut(handleExecChat(chatId, String(body.question || ''), body.history));
       }
 
+      // ── おそうじアプリの写真（OsoujiRelay.gs・2026-11-21）──
+      // ログインなしの公開ページから届く。認めたスマホ（「おそうじ端末」タブで名前を書いた行）の分だけ通す
+      case 'osouji_photo':
+        return jsonOut(osoujiPhoto_(body));
+
       // ── 撥水モニター施策 ──
       // water_repellent_lookup（モニターID だけで撥水モニターの行を丸ごと返していた: 会社名・経営者/ドライバーの
       // 氏名と連絡先・ナンバー・備考・アンケート。ID は WRM-YYMMDD-NNN なので総当たりで列挙できる）と
