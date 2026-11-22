@@ -463,6 +463,10 @@ function doPost(e) {
         return jsonOut(handleExecChat(chatId, String(body.question || ''), body.history));
       }
 
+      // ── 日本側の入口の「今日」（PortalToday.gs・2026-11-22）── 名鑑のログイン（Supabase）の通行証で役割を確かめる
+      case 'portal_today':
+        return jsonOut(portalToday_(body));
+
       // ── おそうじアプリの写真（OsoujiRelay.gs・2026-11-21）──
       // ログインなしの公開ページから届く。認めたスマホ（「おそうじ端末」タブで名前を書いた行）の分だけ通す
       case 'osouji_photo':
