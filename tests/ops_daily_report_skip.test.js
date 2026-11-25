@@ -52,6 +52,7 @@ function makeCtx(opts) {
   ctx.readV7BookingsForDate_ = () => { if (opts.bookingsThrow) throw new Error('v7 unavailable'); return opts.bookings; };
   ctx.buildManualJobUncountedSection_ = () => opts.uncounted; // 同じファイル内の定義を差し替える
   ctx.buildSalesLogSection_ = () => '🤝 <b>車屋営業状況</b>（stub）'; // 同上
+  ctx.buildPaymentWaitSection_ = () => '💵 <b>入金待ち</b>（stub）'; // PaymentWaitSection.gs（中身は ops_payment_wait.test.js）
   return { ctx, sent };
 }
 

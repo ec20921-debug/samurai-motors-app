@@ -62,6 +62,8 @@ function sendDailyReport() {
   }
 
   const salesSection = buildSalesSection_(ppToday);
+  // 入金待ち（会社ごとに何台・何ドル＋大事な一言）2026-11-25 Daisuke「入金されて仕事が終わる」。更新の判定には入れない
+  const paymentWaitSection = buildPaymentWaitSection_(); // PaymentWaitSection.gs
   // スタッフの毎日（そうじ・日本語）2026-11-21 Daisuke 要望。この2つだけの日は日報を送らない（更新の判定には入れない）
   const staffSection = [buildOsoujiSection_(ppToday), buildNihongoSection_(ppToday)].filter(function(x) { return x; }).join('\n').substring(0, 700);
   const salesLogSection = buildSalesLogSection_(ppToday); // 車屋営業状況（2026-07-26 Daisuke 要望）
@@ -79,6 +81,7 @@ function sendDailyReport() {
     '🌙 <b>日報 ' + jstToday + '</b>\n' +
     '━━━━━━━━━━━━━━━━━━\n' +
     salesSection +
+    (paymentWaitSection ? '\n\n' + paymentWaitSection : '') +
     (uncountedSection ? '\n\n' + uncountedSection : '') +
     (inventorySection ? '\n\n' + inventorySection : '') +
     (salesLogSection ? '\n\n' + salesLogSection : '') +
@@ -637,6 +640,8 @@ function debugPreviewDailyReport() {
   const ppToday = Utilities.formatDate(new Date(), OPS_TZ, 'yyyy-MM-dd');
   Logger.log('--- 売上セクション ---');
   Logger.log(buildSalesSection_(ppToday));
+  Logger.log('--- 入金待ち ---');
+  Logger.log(buildPaymentWaitSection_());
   Logger.log('--- 車屋営業状況（訪問メモ含む）---');
   Logger.log(buildSalesLogSection_(ppToday));
   Logger.log('--- タスクセクション ---');
