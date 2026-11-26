@@ -113,6 +113,8 @@ function getBookingCalendar_() {
   if (__bookingCalMemo_) return __bookingCalMemo_;
   const sysCfg = getConfig();
   __bookingCalMemo_ = CalendarApp.getCalendarById(sysCfg.bookingCalendarId) || null;
+  // 2026-11-26: 見つからない時は管理グループへ知らせる（1時間に1回まで・SystemAlert.gs）
+  if (!__bookingCalMemo_ && typeof systemAlertCalendarMissing_ === 'function') systemAlertCalendarMissing_();
   return __bookingCalMemo_;
 }
 

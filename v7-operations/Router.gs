@@ -56,6 +56,8 @@ function doGet(e) {
     }
   } catch (err) {
     Logger.log('❌ doGet error action=' + action + ' err=' + err);
+    // 2026-11-26: 入口で落ちたら管理グループへ知らせる（SystemAlert.gs）
+    if (typeof systemAlertException_ === 'function') systemAlertException_('doGet', action, err);
     return jsonOut({ ok: false, error: String(err) });
   }
 }
@@ -497,6 +499,8 @@ function doPost(e) {
     }
   } catch (err) {
     Logger.log('❌ doPost error action=' + action + ' err=' + err);
+    // 2026-11-26: 入口で落ちたら管理グループへ知らせる（SystemAlert.gs）
+    if (typeof systemAlertException_ === 'function') systemAlertException_('doPost', action, err);
     return jsonOut({ ok: false, error: String(err) });
   }
 }

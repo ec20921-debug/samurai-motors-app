@@ -54,6 +54,13 @@ function pollTelegramUpdates() {
     Logger.log('⚠️ pollTelegramUpdates → processTelegramQueue error: ' + err);
   }
 
+  // 2026-11-26: システムの見回り（5分に1回・カレンダー／シート／キュー／トリガー。SystemAlert.gs）
+  try {
+    if (typeof systemHealthWatch_ === 'function') systemHealthWatch_();
+  } catch (err) {
+    Logger.log('⚠️ systemHealthWatch_ error: ' + err);
+  }
+
   // 2026-11-09: 受付の health（1時間に1回）。外への通信なので、ふだんの受け取りと処理の後に回す
   try {
     if (typeof tgRelayPingWatch_ === 'function') tgRelayPingWatch_();

@@ -128,6 +128,8 @@ function doGet(e) {
     return jsonResponse(result);
   } catch (err) {
     Logger.log('❌ doGet error: ' + err + ' stack=' + (err.stack || ''));
+    // 2026-11-26: 入口で落ちたら管理グループへ知らせる（SystemAlert.gs）
+    if (typeof systemAlertException_ === 'function') systemAlertException_('doGet', (e && e.parameter && e.parameter.action) || '', err);
     return jsonResponse({ status: 'error', message: String(err) });
   }
 }
@@ -249,6 +251,8 @@ function doPost(e) {
     try {
       var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
       if (b.client_id) { errRes.client_id = String(b.client_id); errRes.request_id = String(b.request_id || b.client_id); }
+      // 2026-11-26: 入口で落ちたら管理グループへ知らせる（SystemAlert.gs）
+      if (typeof systemAlertException_ === 'function') systemAlertException_('doPost', b.action || '', err);
     } catch (ignore) {}
     return jsonResponse(errRes);
   }

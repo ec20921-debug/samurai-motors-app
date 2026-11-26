@@ -45,7 +45,7 @@
 
 | グループ | ファイル | 役割 |
 |---|---|---|
-| 基盤 | Config / Router / QueueManager / TelegramAPI / SheetHelpers / Holidays / BotPoller / TgRelay | 設定・ルーティング・キュー・API・シートIO・祝日・ポーリング・Supabase の受付（2026-11-09・docs/TG_RELAY_SUPABASE.md） |
+| 基盤 | Config / Router / QueueManager / TelegramAPI / SheetHelpers / Holidays / BotPoller / TgRelay / SystemAlert | 設定・ルーティング・キュー・API・シートIO・祝日・ポーリング・Supabase の受付（2026-11-09・docs/TG_RELAY_SUPABASE.md）・異常を管理グループへ知らせる（2026-11-26・v7-operations にも同じファイル。入口のエラー＋5分ごとの見回り＝予約カレンダー／シート／キューの滞留／常設トリガー。同じ異常は1時間に1回・直ったら復旧の知らせ） |
 | 予約 | BookingBot / BookingLogic / BookingDashboard | 会話フロー・空き検索/料金・予約ダッシュボード |
 | 作業管理 | JobManager / JobIdempotency / StaffLookup | 作業開始/完了・写真3方向配信・リピーター判定／v2 の二重処理対策／送り主→スタッフID・スタッフ名（2026-10-31） |
 | 顧客コミュ | CustomerChat / CustomerContact / CustomerNotifier / ForumTopicManager | 転送・連絡先・通知・1顧客1トピック |
@@ -75,7 +75,7 @@
 | 関数 | 間隔 | 役割 |
 |---|---|---|
 | `processTelegramQueue` | 1分 | キュー処理（Bot処理の本体）。2026-11-09〜 受付（Supabase）からの `tg_drain` でもその場で走る・1本ずつ（UserLock） |
-| `pollTelegramUpdates` | 1分 | 1分ごとの受け取り（受付で受けている Bot は飛ばす）＋受付の見張り（TgRelay.gs） |
+| `pollTelegramUpdates` | 1分 | 1分ごとの受け取り（受付で受けている Bot は飛ばす）＋受付の見張り（TgRelay.gs）＋システムの見回り（5分に1回・SystemAlert.gs） |
 | `checkUnpaidReminders` | 1時間 | 24h未払い検知→催促 |
 | `cleanupOldProcessedIds` | 1時間 | 古い処理済みマーカー削除 |
 
