@@ -291,7 +291,8 @@ function buildOsoujiSection_(ppToday) {
       if (String(vals[r][6]) === '後') o.rooms[String(vals[r][5])] = Number(vals[r][8]) || 0;   // 撮り直しは最後の分を使う
     }
     const names = Object.keys(by);
-    if (!names.length) return '🧹 <b>そうじ</b>　今日は届いていません';
+    // 記録が無い日は欄ごと出さない（新人に iPhone を渡すまでは毎日「届いていません」になるため・2026-11-27 Daisuke 指示）
+    if (!names.length) return '';
     return names.slice(0, 5).map(function (n) {
       const o = by[n];
       const rooms = Object.keys(o.rooms);

@@ -170,7 +170,7 @@ test('日報の「そうじ」欄', () => {
   assert.equal(ctx.buildOsoujiSection_(TODAY), '', 'タブが無ければ出さない');
   ctx.osoujiPhoto_(body()); approve();
   ctx.osoujiPhoto_(body({ t: NOW, lap: 4 }));
-  assert.match(ctx.buildOsoujiSection_('2000-01-01'), /今日は届いていません/, 'タブはあるがその日の行が無い');
+  assert.equal(ctx.buildOsoujiSection_('2000-01-01'), '', 'タブはあるがその日の行が無い日は欄ごと出さない');
   ctx.osoujiPhoto_(body({ room: '5-B', w: 'b', t: NOW + 60000 }));
   ctx.osoujiPhoto_(body({ room: '5-B', t: NOW + 180000, lap: 3, done: 2 }));
   const s = ctx.buildOsoujiSection_(TODAY);
